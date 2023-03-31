@@ -1813,8 +1813,37 @@ namespace builtin {
           return ret; \
   } 
 
+  #define BUILTINFUNC_NOEVAL(__name__, __body__, __numArgs__) Value __name__(std::vector<Value> args, Environment &env) { \
+          Value ret = Value(); \
+          if (args.size() != __numArgs__) \
+              Serial.println(args.size() > __numArgs__? TOO_MANY_ARGS : TOO_FEW_ARGS); \
+          else { \
+            __body__ \
+          } \
+          return ret; \
+  }
+
+
+
+(let (...)
+ (d1 ..)
+ (d2 ...))
+
+
+
 //extra arduino api functions
 namespace builtin {
+    BUILTINFUNC_NOEVAL(d1, env.set_global("d1-form", args[0]);, 1)
+    BUILTINFUNC_NOEVAL(d2,
+                       env.set_global("d2-form", args[0]);
+                       , 1)
+    BUILTINFUNC_NOEVAL(d3,
+                       env.set_global("d3-form", args[0]);
+                       , 1)
+    BUILTINFUNC_NOEVAL(d4,
+                       env.set_global("d3-form", args[0]);
+                       , 1)
+
     BUILTINFUNC(ard_pinMode, 
           int pinNumber = args[0].as_int();     
           int onOff = args[1].as_int();   
