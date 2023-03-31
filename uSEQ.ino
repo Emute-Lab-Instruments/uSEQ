@@ -1,8 +1,28 @@
 /// A microlisp named Wisp, by Adam McDaniel
 
-////////////////////////////////////////////////////////////////////////////////
-/// LANGUAGE OPTIONS ///////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
+#include "pinmap.h"
+#include "LispLibrary.h"
+
+const String lib[] PROGMEM = {"alskdj,", "kjas"};
+const int liblength=199;
+
+
+enum useqInputNames {
+  //signals
+  USEQI1=0,
+  USEQI2=1,
+  //momentary
+  USEQM1=2,
+  USEQM2=3,
+  //toggle
+  USEQT1=4,
+  USEQT2=5,
+  //rotary enoder
+  USEQRS1=6, //switch
+  USEQR1=7 //encoder
+};
+
+int useqInputValues[8];
 
 
 #define NO_LIBM_SUPPORT "no libm support"
@@ -52,7 +72,6 @@ RO_STRING(EVAL_EMPTY_LIST,"evaluated empty list")
 RO_STRING(INTERNAL_ERROR,"interal virtual machine error")
 RO_STRING(INDEX_OUT_OF_RANGE,"index out of range")
 RO_STRING(MALFORMED_PROGRAM,"malformed program")
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// LISP LIBRARY /////////////////////////////////////////////////////////////
@@ -136,15 +155,19 @@ public:
     Value get(String name) const;
     // Set the value associated with this name in this scope
     void set(String name, Value value);
+    void set_global(String name, Value value);
 
     void combine(Environment const &other);
+    String toString(Environment const &e);
 
     void set_parent_scope(Environment *parent) {
         parent_scope = parent;
     }
     
+    
     // Output this scope in readable form to a stream.
     friend std::ostream &operator<<(std::ostream &os, Environment const &v);
+
 private:
 
     // The definitions in the scope.
@@ -854,9 +877,33 @@ std::ostream &operator<<(std::ostream &os, Environment const &e) {
     return os << "}";
 }
 
+String Environment::toString(Environment const &e) {
+    std::map<String, Value>::const_iterator itr = e.defs.begin();
+    String os = "{ ";
+    for (; itr != e.defs.end(); itr++) {
+      
+      os += '\'';
+      os += itr->first;
+      os +=  "' : ";
+      os += itr->second.debug();
+      os +=", ";
+    }
+    os += "}";
+    return os;
+}
+
 void Environment::set(String name, Value value) {
     defs[name] = value;
 }
+
+void Environment::set_global(String name, Value value) {
+  set(name,value);
+  if (parent_scope) {
+    parent_scope->set_global(name, value);
+
+  }
+}
+
 
 
 Value Value::apply(std::vector<Value> args, Environment &env) {
@@ -903,7 +950,6 @@ Value Value::apply(std::vector<Value> args, Environment &env) {
         return Value(args);
     }
 }
-
 
 
 Value Value::eval(Environment &env) {
@@ -1140,6 +1186,15 @@ namespace builtin {
             
         Value result = args[1].eval(env);
         env.set(args[0].display(), result);
+        return result;
+    }
+
+    Value set(std::vector<Value> args, Environment &env) {
+        if (args.size() != 2)
+            Serial.println(args.size() > 2? TOO_MANY_ARGS : TOO_FEW_ARGS);
+            
+        Value result = args[1].eval(env);
+        env.set_global(args[0].display(), result);
         return result;
     }
 
@@ -1747,7 +1802,7 @@ namespace builtin {
 }
 //end of builtin namespace
 
-#define BUILTINFUNC(__name__, __body__, __numArgs__) Value __name__(std::vector<Value> args, Environment &env) { \
+  #define BUILTINFUNC(__name__, __body__, __numArgs__) Value __name__(std::vector<Value> args, Environment &env) { \
           eval_args(args, env); \
           Value ret = Value(); \
           if (args.size() != __numArgs__) \
@@ -1758,27 +1813,8 @@ namespace builtin {
           return ret; \
   } 
 
-#define BUILTINFUNC_NOEVAL(__name__, __body__, __numArgs__) Value __name__(std::vector<Value> args, Environment &env) { \
-          eval_args(args, env); \
-          Value ret = Value(); \
-          if (args.size() != __numArgs__) \
-              Serial.println(args.size() > __numArgs__? TOO_MANY_ARGS : TOO_FEW_ARGS); \
-          else { \
-            __body__ \
-          } \
-          return ret; \
-  }
-
-
 //extra arduino api functions
 namespace builtin {
-    // TODO add faux-macro API functions
-/*     BUILTINFUNC_NOEVAL( */
-/*         d1, */
-/*         env.set("d1-form", ) */
-
-/* ) */
-
     BUILTINFUNC(ard_pinMode, 
           int pinNumber = args[0].as_int();     
           int onOff = args[1].as_int();   
@@ -1895,7 +1931,7 @@ Value Environment::get(String name) const {
     if (name == "max") return Value("max",  builtin::ard_max);
     if (name == "pow") return Value("pow",  builtin::ard_pow);
     if (name == "sqrt") return Value("sqrt",  builtin::ard_sqrt);
-    if (name == "map") return Value("map",  builtin::ard_map);
+    if (name == "scale") return Value("scale",  builtin::ard_map);
 
 
     // Meta operations
@@ -1912,6 +1948,7 @@ Value Environment::get(String name) const {
     if (name == "quote")  return Value("quote",  builtin::quote);
     if (name == "defun")  return Value("defun",  builtin::defun);
     if (name == "define") return Value("define", builtin::define);
+    if (name == "set") return Value("set", builtin::set);
     if (name == "lambda") return Value("lambda", builtin::lambda);
 
     // Comparison operations
@@ -1985,11 +2022,128 @@ Value Environment::get(String name) const {
 
 Environment env;
 
+void flash_builtin_led(int num, int amt) {
+  for(int i=0; i < num; i++)
+  {
+    digitalWrite(LED_BUILTIN, 1);
+    delay(amt);
+    digitalWrite(LED_BUILTIN, 0);
+    delay(amt);
+  }
+}
+
+void setup_digital_outs() {
+  pinMode(USEQ_PIN_D1, OUTPUT); 
+  pinMode(USEQ_PIN_D2, OUTPUT);
+  pinMode(USEQ_PIN_D3, OUTPUT);
+  pinMode(USEQ_PIN_D4, OUTPUT);
+}
+
+void setup_analog_outs() {
+  pinMode(USEQ_PIN_A1, OUTPUT); 
+  pinMode(USEQ_PIN_A2, OUTPUT); 
+
+  //PWM outputs
+  analogWriteFreq(30000); //out of hearing range
+  analogWriteResolution(11); // about the best we can get for 30kHz
+
+  analogWrite(USEQ_PIN_A1,0);
+  analogWrite(USEQ_PIN_A2,0);
+}
+
+void setup_digital_ins() {
+  pinMode(USEQ_PIN_I1, INPUT_PULLUP);  
+  pinMode(USEQ_PIN_I2, INPUT_PULLUP);  
+}
+
+void setup_leds() {
+  pinMode(LED_BOARD, OUTPUT);  //test LED
+
+  pinMode(USEQ_PIN_LED_I1, OUTPUT);
+  pinMode(USEQ_PIN_LED_I2, OUTPUT);
+  pinMode(USEQ_PIN_LED_A1, OUTPUT);
+  pinMode(USEQ_PIN_LED_A2, OUTPUT);
+
+  pinMode(USEQ_PIN_LED_D1, OUTPUT);
+  pinMode(USEQ_PIN_LED_D2, OUTPUT);
+  pinMode(USEQ_PIN_LED_D3, OUTPUT);
+  pinMode(USEQ_PIN_LED_D4, OUTPUT);
+
+  digitalWrite(LED_BOARD, 1);
+}
+
+void setup_switches() {
+  pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);  
+  pinMode(USEQ_PIN_SWITCH_M2, INPUT_PULLUP);  
+
+  pinMode(USEQ_PIN_SWITCH_T1, INPUT_PULLUP);  
+  pinMode(USEQ_PIN_SWITCH_T2, INPUT_PULLUP);  
+}
+
+void setup_rotary_encoder() {
+  pinMode(USEQ_PIN_SWITCH_R1, INPUT_PULLUP);  
+  pinMode(USEQ_PIN_ROTARYENC_A, INPUT_PULLUP);  
+  pinMode(USEQ_PIN_ROTARYENC_B, INPUT_PULLUP);  
+  useqInputValues[USEQR1] = 0;
+}
+
+void led_animation () {
+  int ledDelay=30;
+  for(int i=0; i < 8; i++) {
+    digitalWrite(USEQ_PIN_LED_I1,1);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_A1,1);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_D1,1);
+    digitalWrite(USEQ_PIN_LED_I1,0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_D3,1);
+    digitalWrite(USEQ_PIN_LED_A1,0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_D4,1);
+    digitalWrite(USEQ_PIN_LED_D1,0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_D2,1);
+    digitalWrite(USEQ_PIN_LED_D3,0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_A2,1);
+    digitalWrite(USEQ_PIN_LED_D4,0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_I2,1);
+    digitalWrite(USEQ_PIN_LED_D2,0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_A2,0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_I2,0);
+    delay(ledDelay);  
+    ledDelay -= 3;
+  }  
+}
+
+void setup_IO() {
+ setup_digital_outs();
+ setup_analog_outs();
+ setup_digital_ins();
+ setup_switches();
+ setup_rotary_encoder(); 
+}
+
+void module_setup() {
+  setup_IO();
+}
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.setTimeout(0);
   randomSeed(analogRead (0));
+
+  setup_leds();
+  led_animation();
+  module_setup();
+
+  run(LispLibrary, env);
+  Serial.println("Library loaded");
 }
 
 void loop() {
@@ -2000,5 +2154,7 @@ void loop() {
     Value res; 
     res = run(cmd, env);  
     Serial.println(res.debug());
+    Serial.println("complete");
+    Serial.println(env.toString(env));
   }
 }
