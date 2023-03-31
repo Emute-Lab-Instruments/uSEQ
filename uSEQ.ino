@@ -310,7 +310,7 @@ public:
 
     // Get this item's floating point value
     double as_float() const {
-        return stack_data.f;
+        return cast_to_float().stack_data.f;
     }
 
     // Get this item's string value
