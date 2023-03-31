@@ -310,7 +310,7 @@ public:
 
     // Get this item's floating point value
     double as_float() const {
-        return cast_to_int().stack_data.f;
+        return stack_data.f;
     }
 
     // Get this item's string value
@@ -670,7 +670,6 @@ public:
         
         switch (type) {
         // If we support libm, we can find the remainder of floating point values.
-        #ifdef HAS_LIBM
         case FLOAT:
             return Value(fmod(stack_data.f, other.cast_to_float().stack_data.f));
         case INT:
@@ -678,14 +677,11 @@ public:
                 return Value(fmod(cast_to_float().stack_data.f, other.stack_data.f));
             else return Value(stack_data.i % other.stack_data.i);
 
-        #else
-        case INT:
-            // If we do not support libm, we have to throw errors for floating point values.
-            if (other.type != INT)
-               Serial.println(NO_LIBM_SUPPORT);
-                // throw Error(other, Environment(), NO_LIBM_SUPPORT);
-            return Value(stack_data.i % other.stack_data.i);
-        #endif
+//         #else
+//         case INT:
+// //            // If we do not support libm, we have to throw errors for floating point values.
+//             return Value(stack_data.i % other.stack_data.i);
+//         #endif
 
         case UNIT:
             // Unit types consume all arithmetic operations.
@@ -1878,14 +1874,13 @@ int analog_out_LED_pin(int out) {
 
 
 
-(let (...)
- (d1 ..)
- (d2 ...))
-
 
 
 //extra arduino api functions
 namespace builtin {
+    BUILTINFUNC_NOEVAL(a1, env.set_global("a1-form", args[0]);, 1)
+    BUILTINFUNC_NOEVAL(a2, env.set_global("a2-form", args[0]);, 1)
+    
     BUILTINFUNC_NOEVAL(d1, env.set_global("d1-form", args[0]);, 1)
     BUILTINFUNC_NOEVAL(d2,
                        env.set_global("d2-form", args[0]);
@@ -1914,7 +1909,7 @@ namespace builtin {
     BUILTINFUNC(ard_useqaw, 
         int pin = analog_out_pin(args[0].as_int());
         int led_pin = analog_out_LED_pin(args[0].as_int());
-        int val = floor(args[1].as_int() * (float)2047);
+        int val = args[1].as_float() * 2047.0;
         analogWrite(pin, val);
         analogWrite(led_pin, val);
     , 2)
@@ -2016,6 +2011,12 @@ Value Environment::get(String name) const {
     //arduino
     if (name == "useqdw") return Value("useqdw",  builtin::ard_useqdw);
     if (name == "useqaw") return Value("useqaw",  builtin::ard_useqaw);
+    if (name == "a1") return Value("a1",  builtin::a1);
+    if (name == "a2") return Value("a2",  builtin::a2);
+    if (name == "d1") return Value("d1",  builtin::d1);
+    if (name == "d2") return Value("d2",  builtin::d2);
+    if (name == "d3") return Value("d3",  builtin::d3);
+    if (name == "d4") return Value("d4",  builtin::d4);
     if (name == "pm") return Value("pm",  builtin::ard_pinMode);
     if (name == "dw") return Value("dw",  builtin::ard_digitalWrite);
     if (name == "dr") return Value("dr",  builtin::ard_digitalRead);
@@ -2234,6 +2235,72 @@ void module_setup() {
   setup_IO();
 }
 
+static uint8_t prevNextCode = 0;
+static uint16_t store=0;
+
+int8_t read_rotary() {
+  static int8_t rot_enc_table[] = {0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0};
+
+  prevNextCode <<= 2;
+  if (digitalRead(USEQ_PIN_ROTARYENC_B)) prevNextCode |= 0x02;
+  if (digitalRead(USEQ_PIN_ROTARYENC_A)) prevNextCode |= 0x01;
+  prevNextCode &= 0x0f;
+
+   // If valid then store as 16 bit data.
+   if  (rot_enc_table[prevNextCode] ) {
+      store <<= 4;
+      store |= prevNextCode;
+      //if (store==0xd42b) return 1;
+      //if (store==0xe817) return -1;
+      if ((store&0xff)==0x2b) return -1;
+      if ((store&0xff)==0x17) return 1;
+   }
+   return 0;
+}
+
+void readRotaryEnc() {
+  static int32_t c,val;
+
+   if( val=read_rotary() ) {
+      useqInputValues[USEQR1] +=val;
+      // Serial.print(c);Serial.print(" ");
+   }
+}
+
+void useq_readInputs() {
+  //inputs are input_pullup, so invert
+  useqInputValues[USEQI1] = 1 - digitalRead(USEQ_PIN_I1);
+  useqInputValues[USEQI2] = 1 - digitalRead(USEQ_PIN_I2);
+  digitalWrite(USEQ_PIN_LED_I1, useqInputValues[USEQI1]);
+  digitalWrite(USEQ_PIN_LED_I2, useqInputValues[USEQI2]);
+  useqInputValues[USEQRS1] = 1 - digitalRead(USEQ_PIN_SWITCH_R1);
+
+  useqInputValues[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
+  useqInputValues[USEQM2] = 1 - digitalRead(USEQ_PIN_SWITCH_M2);
+  useqInputValues[USEQT1] = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
+  useqInputValues[USEQT2] = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
+}
+
+void useq_updateTime(){
+  run("(update-time)", env);
+}
+
+void useq_updateOutputs(){
+ run("(update-d1)", env);
+ run("(update-d2)", env);
+ run("(update-d3)", env);
+ run("(update-d4)", env);
+ run("(update-a1)", env);
+ run("(update-a2)", env);
+ }
+
+void useq_update()
+{
+  useq_readInputs();
+  useq_updateTime();
+  useq_updateOutputs();
+}
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
@@ -2249,7 +2316,14 @@ void setup() {
   Serial.println("Library loaded");
 }
 
+int ts=0;
+int updateSpeed=0;
+
 void loop() {
+  updateSpeed = millis() - ts;
+  ts = millis();
+  useq_update();
+  
   // put your main code here, to run repeatedly:
   if (Serial.available()) {
     String cmd = Serial.readString();
@@ -2259,5 +2333,9 @@ void loop() {
     Serial.println(res.debug());
     Serial.println("complete");
     Serial.println(env.toString(env));
+    Serial.println(updateSpeed);
   }
+  // run("(useq-update)", env);
+  // readRotaryEnc();
+
 }
