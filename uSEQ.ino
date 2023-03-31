@@ -58,7 +58,7 @@ RO_STRING(MALFORMED_PROGRAM,"malformed program")
 /// LISP LIBRARY /////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 #include "LispLibrary.h"
-RO_STRING(LISP_LIBRARY, LispLibrary)
+//RO_STRING(LISP_LIBRARY, LispLibrary)
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1743,19 +1743,6 @@ namespace builtin {
     }
 
     // uSEQ-specific builtins
-    Value defun(std::vector<Value> args, Environment &env) {
-        if (args.size() != 3)
-            Serial.println(args.size() > 3? TOO_MANY_ARGS : TOO_FEW_ARGS);
-            // throw Error(Value("defun", defun), env, args.size() > 3? TOO_MANY_ARGS : TOO_FEW_ARGS);
-
-        if (args[1].get_type_name() != LIST_TYPE)
-            Serial.println(INVALID_LAMBDA);
-            // throw Error(Value("defun", defun), env, INVALID_LAMBDA);
-
-        Value f = Value(args[1].as_list(), args[2], env);
-        env.set(args[0].display(), f);
-        return f;
-    }
 
 }
 //end of builtin namespace
@@ -2003,8 +1990,6 @@ void setup() {
   Serial.begin(115200);
   Serial.setTimeout(0);
   randomSeed(analogRead (0));
-
-
 }
 
 void loop() {
@@ -2015,6 +2000,5 @@ void loop() {
     Value res; 
     res = run(cmd, env);  
     Serial.println(res.debug());
-    Serial.println("complete");
   }
 }

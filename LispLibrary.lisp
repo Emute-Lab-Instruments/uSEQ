@@ -1,16 +1,17 @@
-;; Test stuff, TODO delete
-(defun led-on () (digitalWrite 25 1))
-(defun led-off () (digitalWrite 25 0))
-(defun blink-for (amt) (do (led-on) (delay amt) (led-off)))
-(defun test-loop-1 () (loop (blink-for 200) (delay 100)))
-(defun test-loop-2 () (loop (blink-for 800) (delay 400)))
-(defun test-loop-3 () (loop (blink-for 500) (delay 50)))
+;;;; List Functions
+(defun index (l n)
+  (head
+   (reduce
+    (lambda (acc arg) (tail acc))
+    l
+    (range 0 n))))
 
-;; FIXME not that important but should figure it out at some point
-;; the first time it runs okay, but on subsequent calls it seems
-;; to only blink once or twice before it crashes...
-;; (only happens when passed to runOnThread)
-;; Misc Utils
+(defun first (l) (index l 0))
+(defun second (l) (index l 1))
+(defun third (l) (index l 2))
+
+(defun nth (l n)
+  (index l n))
 
 ;;;; Timing API
 
@@ -109,17 +110,6 @@
 (defun mul (amt x) (* amt x))
 (defun div (amt x) (/ amt x))
 
-(defun index (l n)
-    ; get the head of the result
-    (head
-        ; get the nth tail of the list `l`
-        (reduce
-            (lambda (acc arg) (tail acc))
-            l
-            (range 0 n))))
-
-(defun nth (l n)
-  (index l n))
 
 (defun fromList (lst phasor)
   (do
