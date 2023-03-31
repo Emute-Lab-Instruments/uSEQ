@@ -3,9 +3,6 @@
 #include "pinmap.h"
 #include "LispLibrary.h"
 
-const String lib[] PROGMEM = {"alskdj,", "kjas"};
-const int liblength=199;
-
 
 enum useqInputNames {
   //signals
@@ -127,7 +124,7 @@ String unescape(String str) {
 }
 // Is this character a valid lisp symbol character
 bool is_symbol(char ch) {
-    return (isalpha(ch) || ispunct(ch)) && ch != '(' && ch != ')' && ch != '"' && ch != '\'';
+    return (isdigit(ch) || isalpha(ch) || ispunct(ch)) && ch != '(' && ch != ')' && ch != '"' && ch != '\'';
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1802,6 +1799,62 @@ namespace builtin {
 }
 //end of builtin namespace
 
+int digital_out_pin(int out) {
+  switch (out)  {
+    case 99:
+      return LED_BOARD;
+    case 1:
+      return USEQ_PIN_D1;
+    case 2:
+      return USEQ_PIN_D2;
+    case 3:
+      return USEQ_PIN_D3;
+    case 4:
+      return USEQ_PIN_D4;
+    default:
+      return -1;
+  }
+}
+
+int digital_out_LED_pin(int out) {
+  switch (out)  {
+    // Builtin LED
+    case 1:
+      return USEQ_PIN_LED_D1;
+    case 2:
+      return USEQ_PIN_LED_D2;
+    case 3:
+      return USEQ_PIN_LED_D3;
+    case 4:
+      return USEQ_PIN_LED_D4;
+    default:
+      return -1;
+  }
+}
+
+int analog_out_pin(int out) {
+  switch (out)  {
+    // Analog Pins
+    case 1:
+      return USEQ_PIN_A1;
+    case 2:
+      return USEQ_PIN_A2;
+    default: return -1;
+  }
+}
+
+int analog_out_LED_pin(int out) {
+  switch (out)  {
+    // Analog Pins
+    case 1:
+      return USEQ_PIN_LED_A1;
+    case 2:
+      return USEQ_PIN_LED_A2;
+    default: return -1;
+  }
+}
+
+
   #define BUILTINFUNC(__name__, __body__, __numArgs__) Value __name__(std::vector<Value> args, Environment &env) { \
           eval_args(args, env); \
           Value ret = Value(); \
@@ -1849,6 +1902,24 @@ namespace builtin {
           int onOff = args[1].as_int();   
           pinMode(pinNumber, onOff);
     , 2)
+
+    BUILTINFUNC(ard_useqdw, 
+      int pin = digital_out_pin(args[0].as_int());
+      int led_pin = digital_out_LED_pin(args[0].as_int());
+      int val = args[1].as_int();
+      digitalWrite(pin, val);
+      digitalWrite(led_pin, val);
+    , 2)
+
+    BUILTINFUNC(ard_useqaw, 
+        int pin = analog_out_pin(args[0].as_int());
+        int led_pin = analog_out_LED_pin(args[0].as_int());
+        int val = floor(args[1].as_int() * (float)2047);
+        analogWrite(pin, val);
+        analogWrite(led_pin, val);
+    , 2)
+
+
 
     BUILTINFUNC(ard_digitalWrite, 
           int pinNumber = args[0].as_int();     
@@ -1943,6 +2014,8 @@ bool Environment::has(String name) const {
 // Get the value associated with this name in this scope
 Value Environment::get(String name) const {
     //arduino
+    if (name == "useqdw") return Value("useqdw",  builtin::ard_useqdw);
+    if (name == "useqaw") return Value("useqaw",  builtin::ard_useqaw);
     if (name == "pm") return Value("pm",  builtin::ard_pinMode);
     if (name == "dw") return Value("dw",  builtin::ard_digitalWrite);
     if (name == "dr") return Value("dr",  builtin::ard_digitalRead);
@@ -2171,7 +2244,8 @@ void setup() {
   led_animation();
   module_setup();
 
-  run(LispLibrary, env);
+  for(int i=0; i < LispLibrarySize; i++)
+    run(LispLibrary[i], env);
   Serial.println("Library loaded");
 }
 
