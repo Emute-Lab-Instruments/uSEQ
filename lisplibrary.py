@@ -31,6 +31,7 @@ for i, char in enumerate(content):
 # write output file
 with open(output_path, 'w') as f:
     f.write('// LispLibrary.h\n')
+    f.write('#pragma once\n')
     f.write('const String PROGMEM LispLibrary[] = {\n')
     for i, s_expression in enumerate(s_expressions):
         f.write(s_expression)

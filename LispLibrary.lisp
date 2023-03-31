@@ -136,18 +136,18 @@
 (define d2-form '(sqr (fast 2 beat)))
 (define d3-form '(sqr (fast 3 beat)))
 (define d4-form '(sqr (fast 4 beat)))
-(defun update-d1 () (dw 1 (eval d1-form)))
-(defun update-d2 () (dw 2 (eval d2-form)))
-(defun update-d3 () (dw 3 (eval d3-form)))
-(defun update-d4 () (dw 4 (eval d4-form)))
+(defun update-d1 () (useqdw 1 (eval d1-form)))
+(defun update-d2 () (useqdw 2 (eval d2-form)))
+(defun update-d3 () (useqdw 3 (eval d3-form)))
+(defun update-d4 () (useqdw 4 (eval d4-form)))
 (defun d1 (new-form) (set d1-form new-form))
 (defun d2 (new-form) (set d2-form new-form))
 (defun d3 (new-form) (set d3-form new-form))
 (defun d4 (new-form) (set d4-form new-form))
 
 ;; Analog outs
-(defun update-a1 () (c_analogWrite 1 (eval a1-form)))  ;; runs on core 1
-(defun update-a2 () (c_analogWrite 2 (eval a2-form)))  ;; runs on core 1
+(defun update-a1 () (useqaw 1 (eval a1-form)))  ;; runs on core 1
+(defun update-a2 () (useqaw 2 (eval a2-form)))  ;; runs on core 1
 
 ;; TODO some kind of thread synchronisation needed here?
 (defun in1 (new-form) INPUT_1_VALUE)
