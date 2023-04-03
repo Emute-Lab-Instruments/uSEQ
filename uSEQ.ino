@@ -2424,15 +2424,15 @@ size_t meter_denominator = 4;
 
 // BPM
 double defaultBpm = 120.0;
-double bpm = 0.0;
+double bpm = 120.0;
 double bps = 0.0;
-size_t beatDur = 0.0;
-size_t barDur = 0.0;
+double beatDur = 0.0;
+double barDur = 0.0;
 
 // Timing
-size_t lastResetTime = micros();
-size_t time = 0;
-size_t t = 0;
+double lastResetTime = micros();
+double time = 0;
+double t = 0;
 double beat = 0.0;
 double bar  = 0.0;
 
@@ -2448,8 +2448,9 @@ void updateBpmVariables()
 void setBpm(double newBpm)
 {
     bpm = newBpm;
-    bps = bpm / static_cast<double>(60);
-    beatDur = 1,000,000 / static_cast<size_t>(bps);
+    bps = bpm / 60.0;
+
+    beatDur = 1000000.0 / bps;
     barDur = beatDur * meter_numerator;
 
     updateBpmVariables();
@@ -2457,8 +2458,8 @@ void setBpm(double newBpm)
 
 void updateTimeVariables()
 {
-    env.set("time", Value(static_cast<double>(time / 1,000)));
-    env.set("t", Value(static_cast<double>(t / 1,000)));
+    env.set("time", Value(time / 1000));
+    env.set("t", Value(t / 1000.0));
     env.set("beat", Value(beat));
     env.set("bar", Value(bar));
 }
@@ -2469,11 +2470,8 @@ void setTime(size_t newTimeMicros)
 {
     time = newTimeMicros;
     t = newTimeMicros - lastResetTime;
-
-    time = micros();
-    t = time - lastResetTime;
-    beat = (t % beatDur) / static_cast<double>(beatDur);
-    bar  = (t % barDur)  / static_cast<double>(barDur);
+    beat = fmod(t, beatDur) / beatDur;
+    bar  = fmod(t, barDur)  / barDur;
 
     updateTimeVariables();
 }
@@ -2504,13 +2502,10 @@ void updateAnalogOutputs() {
 }
 
 
-bool setupComplete = false;
-
 void setup()
 {
     setBpm(defaultBpm);
     updateTime();
-    setupComplete = true;
 }
 
 
@@ -2525,6 +2520,7 @@ void update() {
   env.set("perf_time", Value(int(millis() - ts_time)));
   ts_outputs = millis();
   updateAnalogOutputs();
+  updateDigitalOutputs();  
   env.set("perf_out", Value(int(millis() - ts_outputs)));
 }
 
@@ -2545,11 +2541,11 @@ void setup() {
   led_animation();
   module_setup();
 
-  useq::setup();
 
   for (int i = 0; i < LispLibrarySize; i++)
     run(LispLibrary[i], env);
   Serial.println("Library loaded");
+  useq::setup();
   setupComplete = true;
 }
 
@@ -2589,15 +2585,15 @@ void loop() {
   // readRotaryEnc();
 }
 
-void setup1() {
+// void setup1() {
 
-}
+// }
 
-void loop1() {
-  int ts=micros();
-  if (setupComplete) {
-    useq::updateDigitalOutputs();
-  }
-  ts = micros() - ts;
-  env.set("perf_fps1", Value(float(ts/1000.0)));
-}
+// void loop1() {
+  // int ts=micros();
+  // if (setupComplete) {
+  //   useq::updateDigitalOutputs();
+  // }
+  // ts = micros() - ts;
+  // env.set("perf_fps1", Value(float(ts/1000.0)));
+// }
