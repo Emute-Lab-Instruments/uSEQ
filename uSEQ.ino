@@ -953,9 +953,9 @@ String Environment::toString(Environment const &e) {
 
 void Environment::set(String name, Value value) {
   //for multicore 
-  mutex_enter_blocking(&write_mutex);
+  // mutex_enter_blocking(&write_mutex);
   defs[name] = value;
-  mutex_exit(&write_mutex);
+  // mutex_exit(&write_mutex);
 }
 
 void Environment::set_global(String name, Value value) {
@@ -1682,7 +1682,7 @@ Value insert(std::vector<Value> args, Environment &env) {
     Serial.println(INDEX_OUT_OF_RANGE);
   // throw Error(list, env, INDEX_OUT_OF_RANGE);
 
-  list.insert(list.begin() + args[1].as_int(), args[2]);
+  list.insert(list.begin() + args[1].as_int(), args[2].as_int());
   return Value(list);
 }
 
@@ -2441,11 +2441,14 @@ void useq_update() {
   env.set("perf_time", Value(int(millis() - ts_time)));
   ts_outputs = millis();
   useq_updateAnalogOutputs();
+  useq_updateDigitalOutputs();
+
   env.set("perf_out", Value(int(millis() - ts_outputs)));
 }
 
 
 bool setupComplete=false;
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
@@ -2461,6 +2464,7 @@ void setup() {
   for (int i = 0; i < LispLibrarySize; i++)
     run(LispLibrary[i], env);
   Serial.println("Library loaded");
+  useq_updateTime();
   setupComplete = true;
 }
 
@@ -2500,15 +2504,18 @@ void loop() {
   // readRotaryEnc();
 }
 
-void setup1() {
-  
-}
+// void setup1() {
 
-void loop1() {
-  int ts=micros();
-  if (setupComplete) {
-    useq_updateDigitalOutputs();
-  }
-  ts = micros() - ts;
-  env.set("perf_fps1", Value(float(ts/1000.0)));
-}
+// }
+
+// void loop1() {
+    // Serial.println("core1");
+    // delay(500);
+  // if (setupComplete) {
+    // int ts=micros();
+    // useq_updateDigitalOutputs();
+    // ts = micros() - ts;
+    // env.set("perf_fps1", Value(float(ts/1000.0)));
+    // Serial.println("core1");
+  // }
+// }
