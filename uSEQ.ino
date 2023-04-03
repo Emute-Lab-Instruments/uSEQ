@@ -1,17 +1,13 @@
 /// A microlisp named Wisp, by Adam McDaniel
 
 #include "pinmap.h"
-
+#include "LispLibrary.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 /// LISP LIBRARY /////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-#define LispLibrary
-#ifdef LispLibrary
-#include "LispLibrary.h"
-#endif
 
-int ts1=0;
+int ts1=0 ;
 int ts_total=0;
 int timer_level=0;
 #define RESET_TIMER ts_total=0; timer_level=0;
@@ -203,7 +199,7 @@ private:
   mutex write_mutex;
 
   void init() {
-    mutex_init(&write_mutex);          
+    mutex_init(&write_mutex);
   }
 
 };
@@ -899,7 +895,7 @@ private:
   std::vector<Value> list;
   Environment lambda_scope;
 
-  
+
 };
 
 // end of class Value
@@ -956,7 +952,7 @@ String Environment::toString(Environment const &e) {
 }
 
 void Environment::set(String name, Value value) {
-  //for multicore 
+  //for multicore
   mutex_enter_blocking(&write_mutex);
   defs[name] = value;
   mutex_exit(&write_mutex);
@@ -1042,7 +1038,7 @@ Value Value::eval(Environment &env) {
       ts_get = micros();
       auto atomdata = env.get(str);
       ts_get = micros() - ts_get;
-      get_time += ts_get;   
+      get_time += ts_get;
       return atomdata;
     }
     case LIST:
@@ -2566,7 +2562,7 @@ void loop() {
   ts = millis();
 
   get_time=0;
-  parse_time=0; 
+  parse_time=0;
   run_time=0;
 
   RESET_TIMER
@@ -2594,7 +2590,7 @@ void loop() {
 }
 
 void setup1() {
-  
+
 }
 
 void loop1() {
