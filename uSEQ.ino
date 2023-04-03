@@ -150,12 +150,17 @@ public:
   // Default constructor
   Environment()
     : parent_scope(NULL) {
-  }
+      init();
+    }
 
   Environment(const Environment &v)
-    : defs(defs) {}
+    : defs(defs) {
+      init();
+    }
   Environment(Environment &&v)
-    : defs(std::move(v.defs)) {}
+    : defs(std::move(v.defs)) {
+      init();
+    }
   Environment &operator=(const Environment &env2) {
     this->defs = std::move(env2.defs);
     return *this;
@@ -191,6 +196,11 @@ private:
   // The definitions in the scope.
   std::map<String, Value> defs;
   Environment *parent_scope;
+  mutex write_mutex;
+
+  void init() {
+    mutex_init(&write_mutex);          
+  }
 
 };
 
@@ -884,6 +894,8 @@ private:
   String str;
   std::vector<Value> list;
   Environment lambda_scope;
+
+  
 };
 
 // end of class Value
@@ -940,7 +952,10 @@ String Environment::toString(Environment const &e) {
 }
 
 void Environment::set(String name, Value value) {
+  //for multicore 
+  mutex_enter_blocking(&write_mutex);
   defs[name] = value;
+  mutex_exit(&write_mutex);
 }
 
 void Environment::set_global(String name, Value value) {
@@ -991,14 +1006,14 @@ Value Value::apply(std::vector<Value> args, Environment &env) {
       // This allows us to write special forms without syntactic sugar.
       // For functions that are not special forms, we just evaluate
       // the arguments before we run the function.
-int ts_res=micros();
-      auto result = (stack_data.b)(args, env);
-    ts_res = micros() - ts_res;
-    if (millis() < 0) {
-    Serial.print(str);
-    Serial.print(": ");
-    Serial.println(ts_res/1000.0);
-    }
+    // int ts_res=micros();
+    auto result = (stack_data.b)(args, env);
+    // ts_res = micros() - ts_res;
+    // if (millis() < 0) {
+    //   Serial.print(str);
+    //   Serial.print(": ");
+    //   Serial.println(ts_res/1000.0);
+    // }
       return result;
     }
     default:
@@ -2425,7 +2440,6 @@ void useq_update() {
   useq_updateTime();
   env.set("perf_time", Value(int(millis() - ts_time)));
   ts_outputs = millis();
-  useq_updateDigitalOutputs();
   useq_updateAnalogOutputs();
   env.set("perf_out", Value(int(millis() - ts_outputs)));
 }
@@ -2493,7 +2507,7 @@ void setup1() {
 void loop1() {
   int ts=micros();
   if (setupComplete) {
-    // useq_updateDigitalOutputs();
+    useq_updateDigitalOutputs();
   }
   ts = micros() - ts;
   env.set("perf_fps1", Value(float(ts/1000.0)));
