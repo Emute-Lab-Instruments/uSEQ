@@ -45,8 +45,8 @@
   (do
    (set time new-time)
    (set t (- new-time last-reset-time))
-    (set beat (/ (% t beatDur) beatDur))
-    (set bar (/ (% t barDur) barDur))))
+    (set beat (/ (% t beatDur) (float beatDur)))
+    (set bar (/ (% t barDur) (float barDur)))))
 
 (defun update-time ()
   (set-time (millis)))
@@ -140,12 +140,14 @@
 (defun update-d2 () (useqdw 2 (eval d2-form)))
 (defun update-d3 () (useqdw 3 (eval d3-form)))
 (defun update-d4 () (useqdw 4 (eval d4-form)))
-(defun d1 (new-form) (set d1-form new-form))
-(defun d2 (new-form) (set d2-form new-form))
-(defun d3 (new-form) (set d3-form new-form))
-(defun d4 (new-form) (set d4-form new-form))
+;; (defun d1 (new-form) (set d1-form new-form))
+;; (defun d2 (new-form) (set d2-form new-form))
+;; (defun d3 (new-form) (set d3-form new-form))
+;; (defun d4 (new-form) (set d4-form new-form))
 
 ;; Analog outs
+(define a1-form '(every 2 beatDur))
+(define a2-form '(every 4 beatDur))
 (defun update-a1 () (useqaw 1 (eval a1-form)))  ;; runs on core 1
 (defun update-a2 () (useqaw 2 (eval a2-form)))  ;; runs on core 1
 
@@ -157,4 +159,8 @@
 (defun useq_update ()
   (do
    (set-time (millis))
-   (update-led)))
+   (update-led)
+    (update-d1)
+    (update-d2)
+    (update-d3)
+    (update-d4)))
