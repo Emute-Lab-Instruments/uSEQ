@@ -149,7 +149,8 @@ class Environment {
 public:
   // Default constructor
   Environment()
-    : parent_scope(NULL) {}
+    : parent_scope(NULL) {
+  }
 
   Environment(const Environment &v)
     : defs(defs) {}
@@ -182,12 +183,17 @@ public:
   // Output this scope in readable form to a stream.
   friend std::ostream &operator<<(std::ostream &os, Environment const &v);
 
+
+  static std::map<String, Value> builtindefs;
+
 private:
 
   // The definitions in the scope.
   std::map<String, Value> defs;
   Environment *parent_scope;
+
 };
+
 
 // The type for a builtin function, which takes a list of values,
 // and the environment to run the function in.
@@ -2071,8 +2077,10 @@ BUILTINFUNC(ard_map,
             , 5)
 BUILTINFUNC(perf,
 
-            String report= "fps: ";
+            String report= "fps0: ";
             report += env.get("fps").as_int();
+            report += ", fps1: ";
+            report += env.get("perf_fps1").as_int();
             report += ", in: ";
             report += env.get("perf_in").as_int();
             report += ", upd_tm: ";
@@ -2108,114 +2116,120 @@ bool Environment::has(String name) const {
   else return false;
 }
 
+std::map<String, Value> Environment::builtindefs;
+void loadBuiltinDefs() {
+  Environment::builtindefs["useqdw"]= Value("useqdw", builtin::ard_useqdw);
+  Environment::builtindefs["useqaw"]= Value("useqaw", builtin::ard_useqaw);
+  Environment::builtindefs["a1"]= Value("a1", builtin::a1);
+  Environment::builtindefs["a2"]= Value("a2", builtin::a2);
+  Environment::builtindefs["d1"]= Value("d1", builtin::a2);
+  Environment::builtindefs["d2"]= Value("d2", builtin::a2);
+  Environment::builtindefs["d3"]= Value("d3", builtin::a2);
+  Environment::builtindefs["d4"]= Value("d4", builtin::a2);
+  Environment::builtindefs["pm"]= Value("pm", builtin::ard_pinMode);
+  Environment::builtindefs["dw"]= Value("dw", builtin::ard_digitalWrite);
+  Environment::builtindefs["dr"]= Value("dr", builtin::ard_digitalRead);
+  Environment::builtindefs["delay"]= Value("delay", builtin::ard_delay);
+  Environment::builtindefs["delaym"]= Value("delaym", builtin::ard_delaymicros);
+  Environment::builtindefs["millis"]= Value("millis", builtin::ard_millis);
+  Environment::builtindefs["micros"]= Value("micros", builtin::ard_micros);
+  Environment::builtindefs["perf"]= Value("perf", builtin::perf);
+
+  //arduino math
+  Environment::builtindefs["sin"]= Value("sin", builtin::ard_sin);
+  Environment::builtindefs["cos"]= Value("cos", builtin::ard_cos);
+  Environment::builtindefs["tan"]= Value("tan", builtin::ard_tan);
+  Environment::builtindefs["abs"]= Value("abs", builtin::ard_abs);
+
+  Environment::builtindefs["min"]= Value("min", builtin::ard_min);
+  Environment::builtindefs["max"]= Value("max", builtin::ard_max);
+  Environment::builtindefs["pow"]= Value("pow", builtin::ard_pow);
+  Environment::builtindefs["sqrt"]= Value("sqrt", builtin::ard_sqrt);
+  Environment::builtindefs["scale"]= Value("scale", builtin::ard_map);
+
+  // Meta operations
+  Environment::builtindefs["eval"]= Value("eval", builtin::eval);
+  Environment::builtindefs["type"]= Value("type", builtin::get_type_name);
+  Environment::builtindefs["parse"]= Value("parse", builtin::parse);
+
+  // Special forms
+  Environment::builtindefs["do"]= Value("do", builtin::do_block);
+  Environment::builtindefs["if"] = Value("if", builtin::if_then_else);
+  Environment::builtindefs["for"] = Value("for", builtin::for_loop);
+  Environment::builtindefs["while"] = Value("while", builtin::while_loop);
+  Environment::builtindefs["scope"] = Value("scope", builtin::scope);
+  Environment::builtindefs["quote"] = Value("quote", builtin::quote);
+  Environment::builtindefs["defun"] = Value("defun", builtin::defun);
+  Environment::builtindefs["define"] = Value("define", builtin::define);
+  Environment::builtindefs["set"] = Value("set", builtin::set);
+  Environment::builtindefs["lambda"] = Value("lambda", builtin::lambda);
+
+  // Comparison operations
+  Environment::builtindefs["="] = Value("=", builtin::eq);
+  Environment::builtindefs["!="] = Value("!=", builtin::neq);
+  Environment::builtindefs[">"] = Value(">", builtin::greater);
+  Environment::builtindefs["<"] = Value("<", builtin::less);
+  Environment::builtindefs[">="] = Value(">=", builtin::greater_eq);
+  Environment::builtindefs["<="] = Value("<=", builtin::less_eq);
+
+  // Arithmetic operations
+  Environment::builtindefs["+"] = Value("+", builtin::sum);
+  Environment::builtindefs["-"] = Value("-", builtin::subtract);
+  Environment::builtindefs["*"] = Value("*", builtin::product);
+  Environment::builtindefs["/"] = Value("/", builtin::divide);
+  Environment::builtindefs["%"] = Value("%", builtin::remainder);
+
+  // List operations
+  Environment::builtindefs["list"] = Value("list", builtin::list);
+  Environment::builtindefs["insert"] = Value("insert", builtin::insert);
+  Environment::builtindefs["index"] = Value("index", builtin::index);
+  Environment::builtindefs["remove"] = Value("remove", builtin::remove);
+
+  Environment::builtindefs["len"] = Value("len", builtin::len);
+
+  Environment::builtindefs["push"] = Value("push", builtin::push);
+  Environment::builtindefs["pop"] = Value("pop", builtin::pop);
+  Environment::builtindefs["head"] = Value("head", builtin::head);
+  Environment::builtindefs["tail"] = Value("tail", builtin::tail);
+  Environment::builtindefs["first"] = Value("first", builtin::head);
+  Environment::builtindefs["last"] = Value("last", builtin::pop);
+  Environment::builtindefs["range"] = Value("range", builtin::range);
+
+  // Functional operations
+  Environment::builtindefs["map"] = Value("map", builtin::map_list);
+  Environment::builtindefs["filter"] = Value("filter", builtin::filter_list);
+  Environment::builtindefs["reduce"] = Value("reduce", builtin::reduce_list);
+
+// IO operations
+#ifdef USE_STD
+  // if (name == "exit") return Value("exit", builtin::exit);
+  // if (name == "quit") return Value("quit", builtin::exit);
+  Environment::builtindefs["print"] = Value("print", builtin::print);
+  // if (name == "input") return Value("input", builtin::input);
+  Environment::builtindefs["random"] = Value("random", builtin::gen_random);
+#endif
+
+  // String operations
+  Environment::builtindefs["debug"] = Value("debug", builtin::debug);
+  Environment::builtindefs["replace"] = Value("replace", builtin::replace);
+  Environment::builtindefs["display"] = Value("display", builtin::display);
+
+  // Casting operations
+  Environment::builtindefs["int"] = Value("int", builtin::cast_to_int);
+  Environment::builtindefs["float"] = Value("float", builtin::cast_to_float);
+
+  // Constants
+  Environment::builtindefs["endl"] = Value::string("\n");
+
+}
 // Get the value associated with this name in this scope
 Value Environment::get(String name) const {
   // Serial.print("Env get ");
   // Serial.println(name);
 
-  //arduino
-  if (name == "useqdw") return Value("useqdw", builtin::ard_useqdw);
-  if (name == "useqaw") return Value("useqaw", builtin::ard_useqaw);
-  if (name == "a1") return Value("a1", builtin::a1);
-  if (name == "a2") return Value("a2", builtin::a2);
-  if (name == "d1") return Value("d1", builtin::d1);
-  if (name == "d2") return Value("d2", builtin::d2);
-  if (name == "d3") return Value("d3", builtin::d3);
-  if (name == "d4") return Value("d4", builtin::d4);
-  if (name == "pm") return Value("pm", builtin::ard_pinMode);
-  if (name == "dw") return Value("dw", builtin::ard_digitalWrite);
-  if (name == "dr") return Value("dr", builtin::ard_digitalRead);
-  if (name == "delay") return Value("delay", builtin::ard_delay);
-  if (name == "delaymicros") return Value("delaymicros", builtin::ard_delaymicros);
-  if (name == "millis") return Value("millis", builtin::ard_millis);
-  if (name == "micros") return Value("micros", builtin::ard_micros);
-  if (name == "perf") return Value("perf", builtin::perf);
 
-  //arduino math
-  if (name == "sin") return Value("sin", builtin::ard_sin);
-  if (name == "cos") return Value("cos", builtin::ard_cos);
-  if (name == "tan") return Value("tan", builtin::ard_tan);
-  if (name == "abs") return Value("abs", builtin::ard_abs);
-  if (name == "min") return Value("min", builtin::ard_min);
-  if (name == "max") return Value("max", builtin::ard_max);
-  if (name == "pow") return Value("pow", builtin::ard_pow);
-  if (name == "sqrt") return Value("sqrt", builtin::ard_sqrt);
-  if (name == "scale") return Value("scale", builtin::ard_map);
-
-
-  // Meta operations
-  if (name == "eval") return Value("eval", builtin::eval);
-  if (name == "type") return Value("type", builtin::get_type_name);
-  if (name == "parse") return Value("parse", builtin::parse);
-
-  // Special forms
-  if (name == "do") return Value("do", builtin::do_block);
-  if (name == "if") return Value("if", builtin::if_then_else);
-  if (name == "for") return Value("for", builtin::for_loop);
-  if (name == "while") return Value("while", builtin::while_loop);
-  if (name == "scope") return Value("scope", builtin::scope);
-  if (name == "quote") return Value("quote", builtin::quote);
-  if (name == "defun") return Value("defun", builtin::defun);
-  if (name == "define") return Value("define", builtin::define);
-  if (name == "set") return Value("set", builtin::set);
-  if (name == "lambda") return Value("lambda", builtin::lambda);
-
-  // Comparison operations
-  if (name == "=") return Value("=", builtin::eq);
-  if (name == "!=") return Value("!=", builtin::neq);
-  if (name == ">") return Value(">", builtin::greater);
-  if (name == "<") return Value("<", builtin::less);
-  if (name == ">=") return Value(">=", builtin::greater_eq);
-  if (name == "<=") return Value("<=", builtin::less_eq);
-
-  // Arithmetic operations
-  if (name == "+") return Value("+", builtin::sum);
-  if (name == "-") return Value("-", builtin::subtract);
-  if (name == "*") return Value("*", builtin::product);
-  if (name == "/") return Value("/", builtin::divide);
-  if (name == "%") return Value("%", builtin::remainder);
-
-  // List operations
-  if (name == "list") return Value("list", builtin::list);
-  if (name == "insert") return Value("insert", builtin::insert);
-  if (name == "index") return Value("index", builtin::index);
-  if (name == "remove") return Value("remove", builtin::remove);
-
-  if (name == "len") return Value("len", builtin::len);
-
-  if (name == "push") return Value("push", builtin::push);
-  if (name == "pop") return Value("pop", builtin::pop);
-  if (name == "head") return Value("head", builtin::head);
-  if (name == "tail") return Value("tail", builtin::tail);
-  if (name == "first") return Value("first", builtin::head);
-  if (name == "last") return Value("last", builtin::pop);
-  if (name == "range") return Value("range", builtin::range);
-
-  // Functional operations
-  if (name == "map") return Value("map", builtin::map_list);
-  if (name == "filter") return Value("filter", builtin::filter_list);
-  if (name == "reduce") return Value("reduce", builtin::reduce_list);
-
-// IO operations
-#ifdef USE_STD
-  if (name == "exit") return Value("exit", builtin::exit);
-  if (name == "quit") return Value("quit", builtin::exit);
-  if (name == "print") return Value("print", builtin::print);
-  if (name == "input") return Value("input", builtin::input);
-  if (name == "random") return Value("random", builtin::gen_random);
-#endif
-
-  // String operations
-  if (name == "debug") return Value("debug", builtin::debug);
-  if (name == "replace") return Value("replace", builtin::replace);
-  if (name == "display") return Value("display", builtin::display);
-
-  // Casting operations
-  if (name == "int") return Value("int", builtin::cast_to_int);
-  if (name == "float") return Value("float", builtin::cast_to_float);
-
-  // Constants
-  if (name == "endl") return Value::string("\n");
+  auto b_itr = Environment::builtindefs.find(name);
+  if (b_itr != Environment::builtindefs.end()) return b_itr->second;
 
   auto itr = defs.find(name);
   if (itr != defs.end()) return itr->second;
@@ -2390,11 +2404,14 @@ void useq_updateTime() {
   run("(update-time)", env);
 }
 
-void useq_updateOutputs() {
+void useq_updateDigitalOutputs() {
   run("(update-d1)", env);
   run("(update-d2)", env);
   run("(update-d3)", env);
   run("(update-d4)", env);
+}
+
+void useq_updateAnalogOutputs() {
   run("(update-a1)", env);
   run("(update-a2)", env);
 }
@@ -2408,15 +2425,20 @@ void useq_update() {
   useq_updateTime();
   env.set("perf_time", Value(int(millis() - ts_time)));
   ts_outputs = millis();
-  useq_updateOutputs();
+  useq_updateDigitalOutputs();
+  useq_updateAnalogOutputs();
   env.set("perf_out", Value(int(millis() - ts_outputs)));
 }
 
+
+bool setupComplete=false;
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.setTimeout(0);
   randomSeed(analogRead(0));
+
+  loadBuiltinDefs();
 
   setup_leds();
   led_animation();
@@ -2425,6 +2447,7 @@ void setup() {
   for (int i = 0; i < LispLibrarySize; i++)
     run(LispLibrary[i], env);
   Serial.println("Library loaded");
+  setupComplete = true;
 }
 
 int ts = 0;
@@ -2434,6 +2457,7 @@ void loop() {
   updateSpeed = millis() - ts;
   env.set("fps", Value(updateSpeed));
   ts = millis();
+
   get_time=0;
   parse_time=0; 
   run_time=0;
@@ -2460,4 +2484,17 @@ void loop() {
   }
   // run("(useq-update)", env);
   // readRotaryEnc();
+}
+
+void setup1() {
+  
+}
+
+void loop1() {
+  int ts=micros();
+  if (setupComplete) {
+    // useq_updateDigitalOutputs();
+  }
+  ts = micros() - ts;
+  env.set("perf_fps1", Value(float(ts/1000.0)));
 }
