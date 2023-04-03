@@ -1,7 +1,15 @@
 /// A microlisp named Wisp, by Adam McDaniel
 
 #include "pinmap.h"
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// LISP LIBRARY /////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+#define LispLibrary
+#ifdef LispLibrary
 #include "LispLibrary.h"
+#endif
 
 int ts1=0;
 int ts_total=0;
@@ -77,10 +85,6 @@ RO_STRING(INTERNAL_ERROR, "interal virtual machine error")
 RO_STRING(INDEX_OUT_OF_RANGE, "index out of range")
 RO_STRING(MALFORMED_PROGRAM, "malformed program")
 
-////////////////////////////////////////////////////////////////////////////////
-/// LISP LIBRARY /////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-#include "LispLibrary.h"
 //RO_STRING(LISP_LIBRARY, LispLibrary)
 
 
@@ -2401,7 +2405,7 @@ void readRotaryEnc() {
   }
 }
 
-void useq_readInputs() {
+void readInputs() {
   //inputs are input_pullup, so invert
   useqInputValues[USEQI1] = 1 - digitalRead(USEQ_PIN_I1);
   useqInputValues[USEQI2] = 1 - digitalRead(USEQ_PIN_I2);
@@ -2415,33 +2419,120 @@ void useq_readInputs() {
   useqInputValues[USEQT2] = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
 }
 
-void useq_updateTime() {
-  run("(update-time)", env);
+namespace useq
+{
+
+// Meter
+size_t meter_numerator   = 4;
+size_t meter_denominator = 4;
+
+// BPM
+double defaultBpm = 120.0;
+double bpm = 0.0;
+double bps = 0.0;
+size_t beatDur = 0.0;
+size_t barDur = 0.0;
+
+// Timing
+size_t lastResetTime = micros();
+size_t time = 0;
+size_t t = 0;
+double beat = 0.0;
+double bar  = 0.0;
+
+
+void updateBpmVariables()
+{
+    env.set("bpm", Value(bpm));
+    env.set("bps", Value(bps));
+    env.set("beatDur", Value(static_cast<double>(beatDur)));
+    env.set("barDur", Value(static_cast<double>(barDur)));
 }
 
-void useq_updateDigitalOutputs() {
+void setBpm(double newBpm)
+{
+    bpm = newBpm;
+    bps = bpm / static_cast<double>(60);
+    beatDur = 1,000,000 / static_cast<size_t>(bps);
+    barDur = beatDur * meter_numerator;
+
+    updateBpmVariables();
+}
+
+void updateTimeVariables()
+{
+    env.set("time", Value(static_cast<double>(time / 1,000)));
+    env.set("t", Value(static_cast<double>(t / 1,000)));
+    env.set("beat", Value(beat));
+    env.set("bar", Value(bar));
+}
+
+// Set the module's "transport" to a specified value in microseconds
+// and update all derrivative variables
+void setTime(size_t newTimeMicros)
+{
+    time = newTimeMicros;
+    t = newTimeMicros - lastResetTime;
+
+    time = micros();
+    t = time - lastResetTime;
+    beat = (t % beatDur) / static_cast<double>(beatDur);
+    bar  = (t % barDur)  / static_cast<double>(barDur);
+
+    updateTimeVariables();
+}
+
+
+// Update time to the current value of `micros()`
+// and update each variable that's derrived from it
+void updateTime() {
+    setTime(micros());
+}
+
+void resetTime()
+{
+    lastResetTime = micros();
+    updateTime();
+}
+
+void updateDigitalOutputs() {
   run("(update-d1)", env);
   run("(update-d2)", env);
   run("(update-d3)", env);
   run("(update-d4)", env);
 }
 
-void useq_updateAnalogOutputs() {
+void updateAnalogOutputs() {
   run("(update-a1)", env);
   run("(update-a2)", env);
 }
 
+
+bool setupComplete = false;
+
+void setup()
+{
+    setBpm(defaultBpm);
+    updateTime();
+    setupComplete = true;
+}
+
+
 int ts_inputs = 0, ts_time = 0, ts_outputs = 0;
-void useq_update() {
+
+void update() {
   ts_inputs = millis();
-  useq_readInputs();
+  readInputs();
   env.set("perf_in", Value(int(millis() - ts_inputs)));
   ts_time = millis();
-  useq_updateTime();
+  updateTime();
   env.set("perf_time", Value(int(millis() - ts_time)));
   ts_outputs = millis();
-  useq_updateAnalogOutputs();
+  updateAnalogOutputs();
   env.set("perf_out", Value(int(millis() - ts_outputs)));
+}
+
+
 }
 
 
@@ -2457,6 +2548,8 @@ void setup() {
   setup_leds();
   led_animation();
   module_setup();
+
+  useq::setup();
 
   for (int i = 0; i < LispLibrarySize; i++)
     run(LispLibrary[i], env);
@@ -2478,7 +2571,7 @@ void loop() {
 
   RESET_TIMER
 
-  useq_update();
+  useq::update();
 
   env.set("perf_get", Value(float(get_time/1000.0)));
   env.set("perf_parse", Value(float(parse_time/1000.0)));
@@ -2507,7 +2600,7 @@ void setup1() {
 void loop1() {
   int ts=micros();
   if (setupComplete) {
-    useq_updateDigitalOutputs();
+    useq::updateDigitalOutputs();
   }
   ts = micros() - ts;
   env.set("perf_fps1", Value(float(ts/1000.0)));
