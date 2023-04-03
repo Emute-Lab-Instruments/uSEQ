@@ -40,4 +40,4 @@ with open(output_path, 'w') as f:
         else:
             f.write('\n')
     f.write('};\n')
-    f.write(f'const int LispLibrarySize = {len(s_expressions)};\n')
+    f.write(f'\nconst int LispLibrarySize = {len(s_expressions)};\n')
