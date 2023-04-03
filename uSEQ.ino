@@ -2137,10 +2137,10 @@ void loadBuiltinDefs() {
   Environment::builtindefs["useqaw"]= Value("useqaw", builtin::ard_useqaw);
   Environment::builtindefs["a1"]= Value("a1", builtin::a1);
   Environment::builtindefs["a2"]= Value("a2", builtin::a2);
-  Environment::builtindefs["d1"]= Value("d1", builtin::a2);
-  Environment::builtindefs["d2"]= Value("d2", builtin::a2);
-  Environment::builtindefs["d3"]= Value("d3", builtin::a2);
-  Environment::builtindefs["d4"]= Value("d4", builtin::a2);
+  Environment::builtindefs["d1"]= Value("d1", builtin::d1);
+  Environment::builtindefs["d2"]= Value("d2", builtin::d2);
+  Environment::builtindefs["d3"]= Value("d3", builtin::d3);
+  Environment::builtindefs["d4"]= Value("d4", builtin::d4);
   Environment::builtindefs["pm"]= Value("pm", builtin::ard_pinMode);
   Environment::builtindefs["dw"]= Value("dw", builtin::ard_digitalWrite);
   Environment::builtindefs["dr"]= Value("dr", builtin::ard_digitalRead);
