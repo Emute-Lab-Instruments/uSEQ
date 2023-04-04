@@ -1,3 +1,4 @@
+
 ;;;; List Functions
 (defun index (l n)
   (head
@@ -13,73 +14,9 @@
 (defun nth (l n)
   (index l n))
 
-;;;; Timing API
-
-;; Vars (mostly static)
-;; TODO use meter in calculations, for now assumed 4/4
-(define meter '(4 4))
-(define bpm 120)
-(define bps 2)
-(define beatDur 500)
-(define barDur 2000)
-(define last-reset-time (millis))  ;; holds the last time the  transport  was reset
-;; Useful phasors
-(define time 0)
-(define t 0)
-(define beat 0)
-(define bar 0)
-;; Update functions
-(defun bpm-to-bps (bpm) (/ bpm 60))
-(defun bpm-to-beatDur (bpm) (/ 1000.0 (bpm-to-bps bpm)))
-(defun bpm-to-barDur (bpm) (* (bpm-to-beatDur bpm) (first meter)))
-
-(defun set-bpm (new-bpm)
-  (do
-   (set bpm new-bpm)
-   (set bps (bpm-to-bps new-bpm))
-    (set beatDur (bpm-to-beatDur new-bpm))
-    (set barDur (bpm-to-barDur new-bpm))))
-
-;; will be called once at the beginning of every loop
-(defun set-time (new-time)
-  (do
-   (set time new-time)
-   (set t (- new-time last-reset-time))
-    (set beat (/ (% t beatDur) beatDur))
-    (set bar (/ (% t barDur) barDur))))
-
-(defun update-time ()
-  (set-time (millis)))
-
-(defun reset-time ()
-  (do
-   (set last-reset-time (millis))
-   (set-time time)))
-;; UI functions
 (defun %1 (x) (% x 1.0))
 
 (defun fast (amt phasor) (%1 (* phasor amt)))
-
-;; TODO figure out if Wisp's `defun` can have &optionals
-;; (defun pulse (on-relative-dur phasor &optional speed-mult)
-;;   (let ((phasor (if speed-mult
-;;                     (fast speed-mult phasor)
-;;                     phasor)))
-;;     (if (< phasor on-relative-dur) 1 0)))
-
-;; (defun sqr (phasor &optional speed-mult)
-;;   (pulse 0.5 phasor speed-mult))
-
-;; ;; add (cos)sine
-;; ;; add pow/log
-;; (defun impulse (phasor &optional speed-mult)
-;;   (pulse 0.05 phasor speed-mult))
-
-;; (defun saw (phasor &optional fast-amt)
-;;   (if fast-amt (fast fast-amt phasor) phasor))
-
-;; (defun ramp (phasor &optional fast-amt)
-;;   (saw phasor fast-amt))
 
 (defun pulse (on-relative-dur phasor)
   (do
@@ -91,8 +28,6 @@
 (defun sqr (phasor)
   (pulse 0.5 phasor))
 
-;; add (cos)sine
-;; add pow/log
 (defun impulse (phasor)
   (pulse 0.05 phasor))
 
@@ -109,6 +44,8 @@
 (defun sub (amt x) (- amt x))
 (defun mul (amt x) (* amt x))
 (defun div (amt x) (/ amt x))
+
+(defun every (amt dur) (/ (% t (* amt dur)) (* amt dur)))
 
 
 (defun fromList (lst phasor)
@@ -146,15 +83,34 @@
 (defun d4 (new-form) (set d4-form new-form))
 
 ;; Analog outs
+(define a1-form '(every 2 beatDur))
+(define a2-form '(every 4 beatDur))
 (defun update-a1 () (useqaw 1 (eval a1-form)))  ;; runs on core 1
 (defun update-a2 () (useqaw 2 (eval a2-form)))  ;; runs on core 1
 
-;; TODO some kind of thread synchronisation needed here?
-(defun in1 (new-form) INPUT_1_VALUE)
-(defun in2 (new-form) (set d4-form new-form))  ;; runs on core 0
+(defun sig-in (index) (useqGetInput index))
+(defun in1 () (useqGetInput 1))
+(defun in2 () (useqGetInput 2))
+(defun swm (index) (useqGetInput (add 2 index)))
+(defun swt (index) (useqGetInput (add 4 index)))
+(defun swr () (useqGetInput 6))
+(defun rot () (useqGetInput 7))
 
-;; TODO
-(defun useq_update ()
-  (do
-   (set-time (millis))
-   (update-led)))
+(defun seq (lst speed)  (fromList lst (every speed beatDur)))
+(defun fromList (lst phasor)
+	(do
+	   (define num-elements (len lst))
+   	(define scaled-phasor (* num-elements (clamp01 phasor)))
+	   (define idx (floor scaled-phasor))
+	   (if (= idx num-elements) (define idx (- idx 1)) 0)
+	   (nth lst idx)))
+	   
+(defun slow (amt phasor)
+(do
+  (define result (% (/ phasor amt) 1))
+  (if (< result 0)
+       (+ 1 result)
+      result)))
+
+
+
