@@ -208,7 +208,7 @@ private:
 
 // The type for a builtin function, which takes a list of values,
 // and the environment to run the function in.
-typedef Value (*Builtin)(std::vector<Value>, Environment &);
+typedef Value (*Builtin)(std::vector<Value>&, Environment &);
 
 class Value {
 public:
@@ -360,7 +360,7 @@ public:
   }
 
   // Apply this as a function to a list of arguments in a given environment.
-  Value apply(std::vector<Value> args, Environment &env);
+  Value apply(std::vector<Value> &args, Environment &env);
   // Evaluate this value as lisp code.
   Value eval(Environment &env);
 
@@ -463,7 +463,7 @@ public:
   Value cast_to_float() const {
     switch (type) {
       case FLOAT: return *this;
-      case INT: return Value(float(stack_data.i));
+      case INT: return Value(double(stack_data.i));
       // Only ints and floats can be cast to a float
       default:
         Serial.println(BAD_CAST);
@@ -828,7 +828,7 @@ public:
         }
         return "(" + result + ")";
       case BUILTIN:
-        return "<" + str + " at " + String(long(stack_data.b)) + ">";
+        return "<" + str + " at " + String(size_t(stack_data.b)) + ">";
       case UNIT:
         return "@";
       case ERROR:
@@ -993,7 +993,7 @@ void Environment::set_global(String name, Value value) {
   }
 }
 
-Value Value::apply(std::vector<Value> args, Environment &env) {
+Value Value::apply(std::vector<Value> &args, Environment &env) {
 
   Environment e;
   std::vector<Value> params;
@@ -1281,7 +1281,7 @@ void eval_args(std::vector<Value> &args, Environment &env) {
 }
 
 // Create a lambda function (SPECIAL FORM)
-Value lambda(std::vector<Value> args, Environment &env) {
+Value lambda(std::vector<Value> &args, Environment &env) {
   if (args.size() < 2)
     Serial.println(TOO_FEW_ARGS);
 
@@ -1296,10 +1296,8 @@ Value lambda(std::vector<Value> args, Environment &env) {
 }
 
 // if-else (SPECIAL FORM)
-Value if_then_else(std::vector<Value> args, Environment &env) {
+Value if_then_else(std::vector<Value> &args, Environment &env) {
   if (args.size() != 3)
-
-    // throw Error(Value("if", if_then_else), env, args.size() > 3? TOO_MANY_ARGS : TOO_FEW_ARGS);
     Serial.println(args.size() > 3 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
   if (args[0].eval(env).as_bool())
     return args[1].eval(env);
@@ -1307,17 +1305,16 @@ Value if_then_else(std::vector<Value> args, Environment &env) {
 }
 
 // Define a variable with a value (SPECIAL FORM)
-Value define(std::vector<Value> args, Environment &env) {
+Value define(std::vector<Value> &args, Environment &env) {
   if (args.size() != 2)
     Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-  // throw Error(Value("define", define), env, args.size() > 2? TOO_MANY_ARGS : TOO_FEW_ARGS);
 
   Value result = args[1].eval(env);
   env.set(args[0].display(), result);
   return result;
 }
 
-Value set(std::vector<Value> args, Environment &env) {
+Value set(std::vector<Value> &args, Environment &env) {
   if (args.size() != 2)
     Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
 
@@ -1327,7 +1324,7 @@ Value set(std::vector<Value> args, Environment &env) {
 }
 
 // Define a function with parameters and a result expression (SPECIAL FORM)
-Value defun(std::vector<Value> args, Environment &env) {
+Value defun(std::vector<Value> &args, Environment &env) {
   if (args.size() != 3)
     Serial.println(args.size() > 3 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
   // throw Error(Value("defun", defun), env, args.size() > 3? TOO_MANY_ARGS : TOO_FEW_ARGS);
@@ -1342,7 +1339,7 @@ Value defun(std::vector<Value> args, Environment &env) {
 }
 
 // Loop over a list of expressions with a condition (SPECIAL FORM)
-Value while_loop(std::vector<Value> args, Environment &env) {
+Value while_loop(std::vector<Value> &args, Environment &env) {
   Value acc;
   while (args[0].eval(env).as_bool()) {
     for (size_t i = 1; i < args.size() - 1; i++)
@@ -1353,7 +1350,7 @@ Value while_loop(std::vector<Value> args, Environment &env) {
 }
 
 // Iterate through a list of values in a list (SPECIAL FORM)
-Value for_loop(std::vector<Value> args, Environment &env) {
+Value for_loop(std::vector<Value> &args, Environment &env) {
   Value acc;
   std::vector<Value> list = args[1].eval(env).as_list();
 
@@ -1369,7 +1366,7 @@ Value for_loop(std::vector<Value> args, Environment &env) {
 }
 
 // Evaluate a block of expressions in the current environment (SPECIAL FORM)
-Value do_block(std::vector<Value> args, Environment &env) {
+Value do_block(std::vector<Value> &args, Environment &env) {
   Value acc;
   for (size_t i = 0; i < args.size(); i++)
     acc = args[i].eval(env);
@@ -1377,7 +1374,7 @@ Value do_block(std::vector<Value> args, Environment &env) {
 }
 
 // Evaluate a block of expressions in a new environment (SPECIAL FORM)
-Value scope(std::vector<Value> args, Environment &env) {
+Value scope(std::vector<Value> &args, Environment &env) {
   Environment e = env;
   Value acc;
   for (size_t i = 0; i < args.size(); i++)
@@ -1386,25 +1383,25 @@ Value scope(std::vector<Value> args, Environment &env) {
 }
 
 // Quote an expression (SPECIAL FORM)
-Value quote(std::vector<Value> args, Environment &) {
-  std::vector<Value> v;
-  for (size_t i = 0; i < args.size(); i++)
-    v.push_back(args[i]);
-  return Value(v);
+Value quote(std::vector<Value> &args, Environment &) {
+  // std::vector<Value> v(args);
+  // for (size_t i = 0; i < args.size(); i++)
+  //   v.push_back(args[i]);
+  return Value(args);
 }
 
 #ifdef USE_STD
 // Exit the program with an integer code
-Value exit(std::vector<Value> args, Environment &env) {
-  // Is not a special form, so we can evaluate our args.
-  eval_args(args, env);
+// Value exit(std::vector<Value> &args, Environment &env) {
+//   // Is not a special form, so we can evaluate our args.
+//   eval_args(args, env);
 
-  std::exit(args.size() < 1 ? 0 : args[0].cast_to_int().as_int());
-  return Value();
-}
+//   std::exit(args.size() < 1 ? 0 : args[0].cast_to_int().as_int());
+//   return Value();
+// }
 
 // Print several values and return the last one
-Value print(std::vector<Value> args, Environment &env) {
+Value print(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1426,24 +1423,24 @@ Value print(std::vector<Value> args, Environment &env) {
   return acc;
 }
 
-// Get user input with an optional prompt
-Value input(std::vector<Value> args, Environment &env) {
-  // Is not a special form, so we can evaluate our args.
-  eval_args(args, env);
+// // Get user input with an optional prompt
+// Value input(std::vector<Value> &args, Environment &env) {
+//   // Is not a special form, so we can evaluate our args.
+//   eval_args(args, env);
 
-  if (args.size() > 1)
-    Serial.println(TOO_MANY_ARGS);
-  // throw Error(Value("input", input), env, TOO_MANY_ARGS);
+//   if (args.size() > 1)
+//     Serial.println(TOO_MANY_ARGS);
+//   // throw Error(Value("input", input), env, TOO_MANY_ARGS);
 
-  if (!args.empty())
-    Serial.println(args[0].as_string());
+//   if (!args.empty())
+//     Serial.println(args[0].as_string());
 
-  String s = Serial.readString();
-  return Value::string(s);
-}
+//   String s = Serial.readString();
+//   return Value::string(s);
+// }
 
 // Get a random number between two numbers inclusively
-Value gen_random(std::vector<Value> args, Environment &env) {
+Value gen_random(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1453,10 +1450,11 @@ Value gen_random(std::vector<Value> args, Environment &env) {
 
   int low = args[0].as_int(), high = args[1].as_int();
   return Value((int)random(low, high));
+  
 }
 
 // // Get the contents of a file
-// Value read_file(std::vector<Value> args, Environment &env) {
+// Value read_file(std::vector<Value> &args, Environment &env) {
 //     // Is not a special form, so we can evaluate our args.
 //     eval_args(args, env);
 
@@ -1468,7 +1466,7 @@ Value gen_random(std::vector<Value> args, Environment &env) {
 // }
 
 // // Write a string to a file
-// Value write_file(std::vector<Value> args, Environment &env) {
+// Value write_file(std::vector<Value> &args, Environment &env) {
 //     // Is not a special form, so we can evaluate our args.
 //     eval_args(args, env);
 
@@ -1485,7 +1483,7 @@ Value gen_random(std::vector<Value> args, Environment &env) {
 // }
 
 // Read a file and execute its code
-// Value include(std::vector<Value> args, Environment &env) {
+// Value include(std::vector<Value> &args, Environment &env) {
 //     // Import is technically not a special form, it's more of a macro.
 //     // We can evaluate our arguments.
 //     eval_args(args, env);
@@ -1501,7 +1499,7 @@ Value gen_random(std::vector<Value> args, Environment &env) {
 #endif
 
 // Evaluate a value as code
-Value eval(std::vector<Value> args, Environment &env) {
+Value eval(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1515,7 +1513,7 @@ Value eval(std::vector<Value> args, Environment &env) {
 }
 
 // Create a list of values
-Value list(std::vector<Value> args, Environment &env) {
+Value list(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1523,7 +1521,7 @@ Value list(std::vector<Value> args, Environment &env) {
 }
 
 // Sum multiple values
-Value sum(std::vector<Value> args, Environment &env) {
+Value sum(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1538,7 +1536,7 @@ Value sum(std::vector<Value> args, Environment &env) {
 }
 
 // Subtract two values
-Value subtract(std::vector<Value> args, Environment &env) {
+Value subtract(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1549,7 +1547,7 @@ Value subtract(std::vector<Value> args, Environment &env) {
 }
 
 // Multiply several values
-Value product(std::vector<Value> args, Environment &env) {
+Value product(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1564,7 +1562,7 @@ Value product(std::vector<Value> args, Environment &env) {
 }
 
 // Divide two values
-Value divide(std::vector<Value> args, Environment &env) {
+Value divide(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1576,7 +1574,7 @@ Value divide(std::vector<Value> args, Environment &env) {
 }
 
 // Get the remainder of values
-Value remainder(std::vector<Value> args, Environment &env) {
+Value remainder(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1588,7 +1586,7 @@ Value remainder(std::vector<Value> args, Environment &env) {
 }
 
 // Are two values equal?
-Value eq(std::vector<Value> args, Environment &env) {
+Value eq(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1599,7 +1597,7 @@ Value eq(std::vector<Value> args, Environment &env) {
 }
 
 // Are two values not equal?
-Value neq(std::vector<Value> args, Environment &env) {
+Value neq(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1610,7 +1608,7 @@ Value neq(std::vector<Value> args, Environment &env) {
 }
 
 // Is one number greater than another?
-Value greater(std::vector<Value> args, Environment &env) {
+Value greater(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1621,7 +1619,7 @@ Value greater(std::vector<Value> args, Environment &env) {
 }
 
 // Is one number less than another?
-Value less(std::vector<Value> args, Environment &env) {
+Value less(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1632,7 +1630,7 @@ Value less(std::vector<Value> args, Environment &env) {
 }
 
 // Is one number greater than or equal to another?
-Value greater_eq(std::vector<Value> args, Environment &env) {
+Value greater_eq(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1643,7 +1641,7 @@ Value greater_eq(std::vector<Value> args, Environment &env) {
 }
 
 // Is one number less than or equal to another?
-Value less_eq(std::vector<Value> args, Environment &env) {
+Value less_eq(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1654,7 +1652,7 @@ Value less_eq(std::vector<Value> args, Environment &env) {
 }
 
 // Get the type name of a value
-Value get_type_name(std::vector<Value> args, Environment &env) {
+Value get_type_name(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1666,7 +1664,7 @@ Value get_type_name(std::vector<Value> args, Environment &env) {
 }
 
 // Cast an item to a float
-Value cast_to_float(std::vector<Value> args, Environment &env) {
+Value cast_to_float(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1677,7 +1675,7 @@ Value cast_to_float(std::vector<Value> args, Environment &env) {
 }
 
 // Cast an item to an int
-Value cast_to_int(std::vector<Value> args, Environment &env) {
+Value cast_to_int(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1688,7 +1686,7 @@ Value cast_to_int(std::vector<Value> args, Environment &env) {
 }
 
 // Index a list
-Value index(std::vector<Value> args, Environment &env) {
+Value index(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1706,7 +1704,7 @@ Value index(std::vector<Value> args, Environment &env) {
 }
 
 // Insert a value into a list
-Value insert(std::vector<Value> args, Environment &env) {
+Value insert(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1725,7 +1723,7 @@ Value insert(std::vector<Value> args, Environment &env) {
 }
 
 // Remove a value at an index from a list
-Value remove(std::vector<Value> args, Environment &env) {
+Value remove(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1744,7 +1742,7 @@ Value remove(std::vector<Value> args, Environment &env) {
 }
 
 // Get the length of a list
-Value len(std::vector<Value> args, Environment &env) {
+Value len(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1758,7 +1756,7 @@ Value len(std::vector<Value> args, Environment &env) {
 }
 
 // Add an item to the end of a list
-Value push(std::vector<Value> args, Environment &env) {
+Value push(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1770,7 +1768,7 @@ Value push(std::vector<Value> args, Environment &env) {
   return args[0];
 }
 
-Value pop(std::vector<Value> args, Environment &env) {
+Value pop(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1780,7 +1778,7 @@ Value pop(std::vector<Value> args, Environment &env) {
   return args[0].pop();
 }
 
-Value head(std::vector<Value> args, Environment &env) {
+Value head(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1795,7 +1793,7 @@ Value head(std::vector<Value> args, Environment &env) {
   return list[0];
 }
 
-Value tail(std::vector<Value> args, Environment &env) {
+Value tail(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1811,7 +1809,7 @@ Value tail(std::vector<Value> args, Environment &env) {
   return Value(result);
 }
 
-Value parse(std::vector<Value> args, Environment &env) {
+Value parse(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1829,7 +1827,7 @@ Value parse(std::vector<Value> args, Environment &env) {
   return Value(parsed);
 }
 
-Value replace(std::vector<Value> args, Environment &env) {
+Value replace(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1842,7 +1840,7 @@ Value replace(std::vector<Value> args, Environment &env) {
   return Value::string(src);
 }
 
-Value display(std::vector<Value> args, Environment &env) {
+Value display(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1853,7 +1851,7 @@ Value display(std::vector<Value> args, Environment &env) {
   return Value::string(args[0].display());
 }
 
-Value debug(std::vector<Value> args, Environment &env) {
+Value debug(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1864,7 +1862,7 @@ Value debug(std::vector<Value> args, Environment &env) {
   return Value::string(args[0].debug());
 }
 
-Value map_list(std::vector<Value> args, Environment &env) {
+Value map_list(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1877,7 +1875,7 @@ Value map_list(std::vector<Value> args, Environment &env) {
   return Value(result);
 }
 
-Value filter_list(std::vector<Value> args, Environment &env) {
+Value filter_list(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1891,7 +1889,7 @@ Value filter_list(std::vector<Value> args, Environment &env) {
   return Value(result);
 }
 
-Value reduce_list(std::vector<Value> args, Environment &env) {
+Value reduce_list(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1906,7 +1904,7 @@ Value reduce_list(std::vector<Value> args, Environment &env) {
   return acc;
 }
 
-Value range(std::vector<Value> args, Environment &env) {
+Value range(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
 
@@ -1990,7 +1988,7 @@ int analog_out_LED_pin(int out) {
 
 
 #define BUILTINFUNC(__name__, __body__, __numArgs__) \
-  Value __name__(std::vector<Value> args, Environment &env) { \
+  Value __name__(std::vector<Value> &args, Environment &env) { \
     eval_args(args, env); \
     Value ret = Value(); \
     if (args.size() != __numArgs__) \
@@ -2002,7 +2000,7 @@ int analog_out_LED_pin(int out) {
   }
 
 #define BUILTINFUNC_NOEVAL(__name__, __body__, __numArgs__) \
-  Value __name__(std::vector<Value> args, Environment &env) { \
+  Value __name__(std::vector<Value> &args, Environment &env) { \
     Value ret = Value(); \
     if (args.size() != __numArgs__) \
       Serial.println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS); \
