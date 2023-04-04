@@ -3,7 +3,11 @@
 #include "pinmap.h"
 #include "LispLibrary.h"
 
-int ts1=0;
+////////////////////////////////////////////////////////////////////////////////
+/// LISP LIBRARY /////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+int ts1=0 ;
 int ts_total=0;
 int timer_level=0;
 #define RESET_TIMER ts_total=0; timer_level=0;
@@ -65,22 +69,18 @@ RO_STRING(TOO_FEW_ARGS, "too few arguments to function")
 RO_STRING(TOO_MANY_ARGS, "too many arguments to function")
 RO_STRING(INVALID_ARGUMENT, "invalid argument")
 RO_STRING(MISMATCHED_TYPES, "mismatched types")
-RO_STRING(CALL_NON_FUNCTION, "called non-function")
+RO_STRING(CALL_NON_FUNCTION, "called non-function ")
 RO_STRING(UNKNOWN_ERROR, "unknown exception")
 RO_STRING(INVALID_LAMBDA, "invalid lambda")
 RO_STRING(INVALID_BIN_OP, "invalid binary operation")
 RO_STRING(INVALID_ORDER, "cannot order expression")
 RO_STRING(BAD_CAST, "cannot cast")
-RO_STRING(ATOM_NOT_DEFINED, "atom not defined")
+RO_STRING(ATOM_NOT_DEFINED, "atom not defined ")
 RO_STRING(EVAL_EMPTY_LIST, "evaluated empty list")
-RO_STRING(INTERNAL_ERROR, "interal virtual machine error")
+RO_STRING(INTERNAL_ERROR, "internal virtual machine error")
 RO_STRING(INDEX_OUT_OF_RANGE, "index out of range")
 RO_STRING(MALFORMED_PROGRAM, "malformed program")
 
-////////////////////////////////////////////////////////////////////////////////
-/// LISP LIBRARY /////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-#include "LispLibrary.h"
 //RO_STRING(LISP_LIBRARY, LispLibrary)
 
 
@@ -96,6 +96,7 @@ RO_STRING(MALFORMED_PROGRAM, "malformed program")
 #define ATOM_TYPE "atom"
 #define QUOTE_TYPE "quote"
 #define LIST_TYPE "list"
+#define ERROR_TYPE "error"
 
 ////////////////////////////////////////////////////////////////////////////////
 /// HELPER FUNCTIONS ///////////////////////////////////////////////////////////
@@ -199,7 +200,7 @@ private:
   mutex write_mutex;
 
   void init() {
-    mutex_init(&write_mutex);          
+    mutex_init(&write_mutex);
   }
 
 };
@@ -254,7 +255,11 @@ public:
     std::vector<Value> list;
     Environment lambda_scope;*/
 
-
+  static Value error() {
+    Value result;
+    result.type=ERROR;
+    return result;
+  }
   // Construct a quoted value
   static Value quote(Value quoted) {
     Value result;
@@ -361,6 +366,10 @@ public:
 
   bool is_number() const {
     return type == INT || type == FLOAT;
+  }
+
+  bool is_error() const {
+    return type == ERROR;
   }
 
   // Get the "truthy" boolean value of this value.
@@ -775,6 +784,8 @@ public:
         return FUNCTION_TYPE;
       case UNIT:
         return UNIT_TYPE;
+      case ERROR:
+        return ERROR_TYPE;
       default:
         // We don't know the name of this type.
         // This isn't the users fault, this is just unhandled.
@@ -814,6 +825,8 @@ public:
         return "<" + str + " at " + String(long(stack_data.b)) + ">";
       case UNIT:
         return "@";
+      case ERROR:
+        return "error";
       default:
         // We don't know how to display whatever type this is.
         // This isn't the users fault, this is just unhandled.
@@ -858,6 +871,8 @@ public:
         return "<" + str + " at " + String(long(stack_data.b)) + ">";
       case UNIT:
         return "@";
+      case ERROR:
+        return "error";
       default:
         // We don't know how to debug whatever type this is.
         // This isn't the users fault, this is just unhandled.
@@ -882,7 +897,8 @@ private:
     STRING,
     LAMBDA,
     BUILTIN,
-    UNIT
+    UNIT,
+    ERROR
   } type;
 
   union {
@@ -895,7 +911,7 @@ private:
   std::vector<Value> list;
   Environment lambda_scope;
 
-  
+
 };
 
 // end of class Value
@@ -1018,7 +1034,8 @@ Value Value::apply(std::vector<Value> args, Environment &env) {
     }
     default:
       // We can only call lambdas and builtins
-      Serial.println(CALL_NON_FUNCTION);
+      Serial.print(CALL_NON_FUNCTION);
+      Serial.println(args[0].as_string());
       // throw Error(*this, env, CALL_NON_FUNCTION);
       return Value(args);
   }
@@ -1038,7 +1055,7 @@ Value Value::eval(Environment &env) {
       ts_get = micros();
       auto atomdata = env.get(str);
       ts_get = micros() - ts_get;
-      get_time += ts_get;   
+      get_time += ts_get;
       return atomdata;
     }
     case LIST:
@@ -1137,9 +1154,11 @@ Value parse(String &s, int &ptr) {
     // If this is a string
     int n = 1;
     while (s[ptr + n] != '\"') {
-      if (ptr + n >= int(s.length()))
+      if (ptr + n >= int(s.length())) {
         Serial.println(MALFORMED_PROGRAM);
+        return Value::error();
       // throw std::runtime_error(MALFORMED_PROGRAM);
+      }
 
       if (s[ptr + n] == '\\') n++;
       n++;
@@ -1152,17 +1171,6 @@ Value parse(String &s, int &ptr) {
     // Iterate over the characters in the string, and
     // replace escaped characters with their intended values.
     x = unescape(x);
-    // for (size_t i=0; i<x.length(); i++) {
-    //     if (x[i] == '\\' && x[i+1] == '\\')
-    //         x.replace(i, 2, "\\");
-    //     else if (x[i] == '\\' && x[i+1] == '"')
-    //         x.replace(i, 2, "\"");
-    //     else if (x[i] == '\\' && x[i+1] == 'n')
-    //         x.replace(i, 2, "\n");
-    //     else if (x[i] == '\\' && x[i+1] == 't')
-    //         x.replace(i, 2, "\t");
-    // }
-
     return Value::string(x);
   } else if (s[ptr] == '@') {
     ptr++;
@@ -1182,7 +1190,7 @@ Value parse(String &s, int &ptr) {
     return Value::atom(x);
   } else {
     Serial.println(MALFORMED_PROGRAM);
-    return Value();
+    return Value::error();
     // throw std::runtime_error(MALFORMED_PROGRAM);
   }
 }
@@ -1191,19 +1199,28 @@ Value parse(String &s, int &ptr) {
 std::vector<Value> parse(String s) {
   int i = 0, last_i = -1;
   std::vector<Value> result;
+  bool error=false;
   // While the parser is making progress (while the pointer is moving right)
   // and the pointer hasn't reached the end of the string,
   while (last_i != i && i <= int(s.length() - 1)) {
     // Parse another expression and add it to the list.
     last_i = i;
-    result.push_back(parse(s, i));
+    Value token = parse(s,i);
+    if (token.is_error()) {
+      error=true;
+      break;
+    }
+    result.push_back(token);
   }
 
   // If the whole string wasn't parsed, the program must be bad.
-  if (i < int(s.length()))
+  if (i < int(s.length())) {
     Serial.println(MALFORMED_PROGRAM);
-  // throw std::runtime_error(MALFORMED_PROGRAM);
-
+    error=true;
+  }
+  if (error) {
+    result.clear();
+  }
   // Return the list of values parsed.
   return result;
 }
@@ -1216,16 +1233,20 @@ Value run(String code, Environment &env) {
   // Parse the code
   std::vector<Value> parsed = parse(code);
   parse_time += (micros() - ts_parse);
-  // Iterate over the expressions and evaluate them
-  // in this environment.
-  ts_run = micros();
-  for (size_t i = 0; i < parsed.size() - 1; i++)
-    parsed[i].eval(env);
+  if (parsed.size() > 0) {
+    // Iterate over the expressions and evaluate them
+    // in this environment.
+    ts_run = micros();
+    for (size_t i = 0; i < parsed.size() - 1; i++)
+      parsed[i].eval(env);
 
-  // Return the result of the last expression.
-  auto result = parsed[parsed.size() - 1].eval(env);
-  run_time += (micros() - ts_run);
-  return result;
+    // Return the result of the last expression.
+    auto result = parsed[parsed.size() - 1].eval(env);
+    run_time += (micros() - ts_run);
+    return result;
+  }else{
+    return Value::error();
+  }
 }
 
 
@@ -2090,6 +2111,14 @@ BUILTINFUNC(ard_map,
             float m = map(args[0].as_float(), args[1].as_float(), args[2].as_float(), args[3].as_float(), args[4].as_float());
             ret = Value(m);
             , 5)
+BUILTINFUNC(ard_floor,
+            double m = floor(args[0].as_float());
+            ret = Value(m);
+            , 1)
+BUILTINFUNC(ard_ceil,
+            double m = ceil(args[0].as_float());
+            ret = Value(m);
+            , 1)
 BUILTINFUNC(perf,
 
             String report= "fps0: ";
@@ -2137,10 +2166,10 @@ void loadBuiltinDefs() {
   Environment::builtindefs["useqaw"]= Value("useqaw", builtin::ard_useqaw);
   Environment::builtindefs["a1"]= Value("a1", builtin::a1);
   Environment::builtindefs["a2"]= Value("a2", builtin::a2);
-  Environment::builtindefs["d1"]= Value("d1", builtin::a2);
-  Environment::builtindefs["d2"]= Value("d2", builtin::a2);
-  Environment::builtindefs["d3"]= Value("d3", builtin::a2);
-  Environment::builtindefs["d4"]= Value("d4", builtin::a2);
+  Environment::builtindefs["d1"]= Value("d1", builtin::d1);
+  Environment::builtindefs["d2"]= Value("d2", builtin::d2);
+  Environment::builtindefs["d3"]= Value("d3", builtin::d3);
+  Environment::builtindefs["d4"]= Value("d4", builtin::d4);
   Environment::builtindefs["pm"]= Value("pm", builtin::ard_pinMode);
   Environment::builtindefs["dw"]= Value("dw", builtin::ard_digitalWrite);
   Environment::builtindefs["dr"]= Value("dr", builtin::ard_digitalRead);
@@ -2193,6 +2222,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["*"] = Value("*", builtin::product);
   Environment::builtindefs["/"] = Value("/", builtin::divide);
   Environment::builtindefs["%"] = Value("%", builtin::remainder);
+  Environment::builtindefs["floor"] = Value("floor", builtin::ard_floor);
+  Environment::builtindefs["ceil"] = Value("ceil", builtin::ard_ceil);
 
   // List operations
   Environment::builtindefs["list"] = Value("list", builtin::list);
@@ -2253,7 +2284,8 @@ Value Environment::get(String name) const {
     if (itr != parent_scope->defs.end()) return itr->second;
     else return parent_scope->get(name);
   }
-  Serial.println(ATOM_NOT_DEFINED);
+  Serial.print(ATOM_NOT_DEFINED);
+  Serial.println(name);
   return Value();
 }
 
@@ -2401,7 +2433,7 @@ void readRotaryEnc() {
   }
 }
 
-void useq_readInputs() {
+void readInputs() {
   //inputs are input_pullup, so invert
   useqInputValues[USEQI1] = 1 - digitalRead(USEQ_PIN_I1);
   useqInputValues[USEQI2] = 1 - digitalRead(USEQ_PIN_I2);
@@ -2415,35 +2447,116 @@ void useq_readInputs() {
   useqInputValues[USEQT2] = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
 }
 
-void useq_updateTime() {
-  run("(update-time)", env);
+namespace useq
+{
+
+// Meter
+size_t meter_numerator   = 4;
+size_t meter_denominator = 4;
+
+// BPM
+double defaultBpm = 120.0;
+double bpm = 120.0;
+double bps = 0.0;
+double beatDur = 0.0;
+double barDur = 0.0;
+
+// Timing
+double lastResetTime = micros();
+double time = 0;
+double t = 0;
+double beat = 0.0;
+double bar  = 0.0;
+
+
+void updateBpmVariables()
+{
+    env.set("bpm", Value(bpm));
+    env.set("bps", Value(bps));
+    env.set("beatDur", Value(static_cast<double>(beatDur/1000.0)));
+    env.set("barDur", Value(static_cast<double>(barDur/1000.0)));
 }
 
-void useq_updateDigitalOutputs() {
+void setBpm(double newBpm)
+{
+    bpm = newBpm;
+    bps = bpm / 60.0;
+
+    beatDur = 1000000.0 / bps;
+    barDur = beatDur * meter_numerator;
+
+    updateBpmVariables();
+}
+
+void updateTimeVariables()
+{
+    env.set("time", Value(time / 1000));
+    env.set("t", Value(t / 1000.0));
+    env.set("beat", Value(beat));
+    env.set("bar", Value(bar));
+}
+
+// Set the module's "transport" to a specified value in microseconds
+// and update all derrivative variables
+void setTime(size_t newTimeMicros)
+{
+    time = newTimeMicros;
+    t = newTimeMicros - lastResetTime;
+    beat = fmod(t, beatDur) / beatDur;
+    bar  = fmod(t, barDur)  / barDur;
+
+    updateTimeVariables();
+}
+
+
+// Update time to the current value of `micros()`
+// and update each variable that's derrived from it
+void updateTime() {
+    setTime(micros());
+}
+
+void resetTime()
+{
+    lastResetTime = micros();
+    updateTime();
+}
+
+void updateDigitalOutputs() {
   run("(update-d1)", env);
   run("(update-d2)", env);
   run("(update-d3)", env);
   run("(update-d4)", env);
 }
 
-void useq_updateAnalogOutputs() {
+void updateAnalogOutputs() {
   run("(update-a1)", env);
   run("(update-a2)", env);
 }
 
+
+void setup()
+{
+    setBpm(defaultBpm);
+    updateTime();
+}
+
+
 int ts_inputs = 0, ts_time = 0, ts_outputs = 0;
-void useq_update() {
+
+void update() {
   ts_inputs = millis();
-  useq_readInputs();
+  readInputs();
   env.set("perf_in", Value(int(millis() - ts_inputs)));
   ts_time = millis();
-  useq_updateTime();
+  updateTime();
   env.set("perf_time", Value(int(millis() - ts_time)));
   ts_outputs = millis();
-  useq_updateAnalogOutputs();
-  useq_updateDigitalOutputs();
-
+  updateAnalogOutputs();
+  updateDigitalOutputs();  
   env.set("perf_out", Value(int(millis() - ts_outputs)));
+}
+
+
 }
 
 
@@ -2461,10 +2574,11 @@ void setup() {
   led_animation();
   module_setup();
 
+
   for (int i = 0; i < LispLibrarySize; i++)
     run(LispLibrary[i], env);
   Serial.println("Library loaded");
-  useq_updateTime();
+  useq::setup();
   setupComplete = true;
 }
 
@@ -2477,12 +2591,12 @@ void loop() {
   ts = millis();
 
   get_time=0;
-  parse_time=0; 
+  parse_time=0;
   run_time=0;
 
   RESET_TIMER
 
-  useq_update();
+  useq::update();
 
   env.set("perf_get", Value(float(get_time/1000.0)));
   env.set("perf_parse", Value(float(parse_time/1000.0)));
@@ -2509,13 +2623,10 @@ void loop() {
 // }
 
 // void loop1() {
-    // Serial.println("core1");
-    // delay(500);
+  // int ts=micros();
   // if (setupComplete) {
-    // int ts=micros();
-    // useq_updateDigitalOutputs();
-    // ts = micros() - ts;
-    // env.set("perf_fps1", Value(float(ts/1000.0)));
-    // Serial.println("core1");
+  //   useq::updateDigitalOutputs();
   // }
+  // ts = micros() - ts;
+  // env.set("perf_fps1", Value(float(ts/1000.0)));
 // }
