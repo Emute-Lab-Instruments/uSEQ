@@ -10,7 +10,6 @@ u = SerialPort.new('/dev/ttyACM0', baudrate:115200)
 (
 this.preProcessor = {
 	|code|
-	code.postln;
 	(code[..3] == "(//u").if({
 		var cmd;
 		">> useq >> ".post;
