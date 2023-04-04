@@ -77,7 +77,7 @@ RO_STRING(INVALID_ORDER, "cannot order expression")
 RO_STRING(BAD_CAST, "cannot cast")
 RO_STRING(ATOM_NOT_DEFINED, "atom not defined ")
 RO_STRING(EVAL_EMPTY_LIST, "evaluated empty list")
-RO_STRING(INTERNAL_ERROR, "interal virtual machine error")
+RO_STRING(INTERNAL_ERROR, "internal virtual machine error")
 RO_STRING(INDEX_OUT_OF_RANGE, "index out of range")
 RO_STRING(MALFORMED_PROGRAM, "malformed program")
 
@@ -96,6 +96,7 @@ RO_STRING(MALFORMED_PROGRAM, "malformed program")
 #define ATOM_TYPE "atom"
 #define QUOTE_TYPE "quote"
 #define LIST_TYPE "list"
+#define ERROR_TYPE "error"
 
 ////////////////////////////////////////////////////////////////////////////////
 /// HELPER FUNCTIONS ///////////////////////////////////////////////////////////
@@ -254,7 +255,11 @@ public:
     std::vector<Value> list;
     Environment lambda_scope;*/
 
-
+  static Value error() {
+    Value result;
+    result.type=ERROR;
+    return result;
+  }
   // Construct a quoted value
   static Value quote(Value quoted) {
     Value result;
@@ -361,6 +366,10 @@ public:
 
   bool is_number() const {
     return type == INT || type == FLOAT;
+  }
+
+  bool is_error() const {
+    return type == ERROR;
   }
 
   // Get the "truthy" boolean value of this value.
@@ -775,6 +784,8 @@ public:
         return FUNCTION_TYPE;
       case UNIT:
         return UNIT_TYPE;
+      case ERROR:
+        return ERROR_TYPE;
       default:
         // We don't know the name of this type.
         // This isn't the users fault, this is just unhandled.
@@ -814,6 +825,8 @@ public:
         return "<" + str + " at " + String(long(stack_data.b)) + ">";
       case UNIT:
         return "@";
+      case ERROR:
+        return "error";
       default:
         // We don't know how to display whatever type this is.
         // This isn't the users fault, this is just unhandled.
@@ -858,6 +871,8 @@ public:
         return "<" + str + " at " + String(long(stack_data.b)) + ">";
       case UNIT:
         return "@";
+      case ERROR:
+        return "error";
       default:
         // We don't know how to debug whatever type this is.
         // This isn't the users fault, this is just unhandled.
@@ -882,7 +897,8 @@ private:
     STRING,
     LAMBDA,
     BUILTIN,
-    UNIT
+    UNIT,
+    ERROR
   } type;
 
   union {
@@ -1140,7 +1156,7 @@ Value parse(String &s, int &ptr) {
     while (s[ptr + n] != '\"') {
       if (ptr + n >= int(s.length())) {
         Serial.println(MALFORMED_PROGRAM);
-        return Value();
+        return Value::error();
       // throw std::runtime_error(MALFORMED_PROGRAM);
       }
 
@@ -1155,17 +1171,6 @@ Value parse(String &s, int &ptr) {
     // Iterate over the characters in the string, and
     // replace escaped characters with their intended values.
     x = unescape(x);
-    // for (size_t i=0; i<x.length(); i++) {
-    //     if (x[i] == '\\' && x[i+1] == '\\')
-    //         x.replace(i, 2, "\\");
-    //     else if (x[i] == '\\' && x[i+1] == '"')
-    //         x.replace(i, 2, "\"");
-    //     else if (x[i] == '\\' && x[i+1] == 'n')
-    //         x.replace(i, 2, "\n");
-    //     else if (x[i] == '\\' && x[i+1] == 't')
-    //         x.replace(i, 2, "\t");
-    // }
-
     return Value::string(x);
   } else if (s[ptr] == '@') {
     ptr++;
@@ -1185,7 +1190,7 @@ Value parse(String &s, int &ptr) {
     return Value::atom(x);
   } else {
     Serial.println(MALFORMED_PROGRAM);
-    return Value();
+    return Value::error();
     // throw std::runtime_error(MALFORMED_PROGRAM);
   }
 }
@@ -1194,20 +1199,28 @@ Value parse(String &s, int &ptr) {
 std::vector<Value> parse(String s) {
   int i = 0, last_i = -1;
   std::vector<Value> result;
+  bool error=false;
   // While the parser is making progress (while the pointer is moving right)
   // and the pointer hasn't reached the end of the string,
   while (last_i != i && i <= int(s.length() - 1)) {
     // Parse another expression and add it to the list.
     last_i = i;
-    result.push_back(parse(s, i));
+    Value token = parse(s,i);
+    if (token.is_error()) {
+      error=true;
+      break;
+    }
+    result.push_back(token);
   }
 
   // If the whole string wasn't parsed, the program must be bad.
   if (i < int(s.length())) {
     Serial.println(MALFORMED_PROGRAM);
+    error=true;
   }
-  // throw std::runtime_error(MALFORMED_PROGRAM);
-
+  if (error) {
+    result.clear();
+  }
   // Return the list of values parsed.
   return result;
 }
@@ -1220,16 +1233,20 @@ Value run(String code, Environment &env) {
   // Parse the code
   std::vector<Value> parsed = parse(code);
   parse_time += (micros() - ts_parse);
-  // Iterate over the expressions and evaluate them
-  // in this environment.
-  ts_run = micros();
-  for (size_t i = 0; i < parsed.size() - 1; i++)
-    parsed[i].eval(env);
+  if (parsed.size() > 0) {
+    // Iterate over the expressions and evaluate them
+    // in this environment.
+    ts_run = micros();
+    for (size_t i = 0; i < parsed.size() - 1; i++)
+      parsed[i].eval(env);
 
-  // Return the result of the last expression.
-  auto result = parsed[parsed.size() - 1].eval(env);
-  run_time += (micros() - ts_run);
-  return result;
+    // Return the result of the last expression.
+    auto result = parsed[parsed.size() - 1].eval(env);
+    run_time += (micros() - ts_run);
+    return result;
+  }else{
+    return Value::error();
+  }
 }
 
 
