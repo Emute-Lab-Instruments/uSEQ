@@ -56,9 +56,9 @@ int useqInputValues[8];
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <map>
-#include <unordered_map>
+// #include <unordered_map>
 #include <vector>
-#include <sstream>
+// #include <sstream>
 
 ////////////////////////////////////////////////////////////////////////////////
 /// ERROR MESSAGES /////////////////////////////////////////////////////////////
@@ -187,7 +187,7 @@ public:
 
 
   // Output this scope in readable form to a stream.
-  friend std::ostream &operator<<(std::ostream &os, Environment const &v);
+  // friend std::ostream &operator<<(std::ostream &os, Environment const &v);
 
 
   static std::map<String, Value> builtindefs;
@@ -709,15 +709,21 @@ public:
     //             throw Error(*this, Environment(), INVALID_BIN_OP);
 
     switch (type) {
-      case FLOAT:
-        return Value(stack_data.f / other.cast_to_float().stack_data.f);
+      case FLOAT:{
+        auto res= Value(stack_data.f / other.cast_to_float().stack_data.f);
+        return res;
+      }        
       case INT:
+      {   
         // If the other type is a float, go ahead and promote this expression
         // before continuing with the product
+        Value res;
         if (other.type == FLOAT)
-          return Value(cast_to_float().stack_data.f / other.stack_data.f);
+          res = Value(cast_to_float().stack_data.f / other.stack_data.f);
         // Otherwise, do integer multiplication.
-        else return Value(stack_data.i / other.stack_data.i);
+        else res = Value(stack_data.i / other.stack_data.i);
+        return res;
+      }
       case UNIT:
         // Unit types consume all arithmetic operations.
         return *this;
@@ -846,9 +852,15 @@ public:
       case ATOM:
         return str;
       case INT:
-        return String(stack_data.i);
+      {
+        auto val= String(stack_data.i);
+        return val;
+      }
       case FLOAT:
-        return String(stack_data.f);
+      {
+        auto val = String(stack_data.f);
+        return val;
+      }
       case STRING:
         for (size_t i = 0; i < str.length(); i++) {
           if (str[i] == '"') result += "\\\"";
@@ -883,9 +895,9 @@ public:
     }
   }
 
-  friend std::ostream &operator<<(std::ostream &os, Value const &v) {
-    return os << v.display();
-  }
+  // friend std::ostream &operator<<(std::ostream &os, Value const &v) {
+  //   return os << v.display();
+  // }
 
 private:
   enum {
@@ -943,14 +955,14 @@ void Environment::combine(Environment const &other) {
   }
 }
 
-std::ostream &operator<<(std::ostream &os, Environment const &e) {
-  auto itr = e.defs.begin();
-  os << "{ ";
-  for (; itr != e.defs.end(); itr++) {
-    os << '\'' << itr->first << "' : " << itr->second.debug() << ", ";
-  }
-  return os << "}";
-}
+// std::ostream &operator<<(std::ostream &os, Environment const &e) {
+//   auto itr = e.defs.begin();
+//   os << "{ ";
+//   for (; itr != e.defs.end(); itr++) {
+//     os << '\'' << itr->first << "' : " << itr->second.debug() << ", ";
+//   }
+//   return os << "}";
+// }
 
 String Environment::toString(Environment const &e) {
   auto itr = e.defs.begin();
@@ -969,9 +981,9 @@ String Environment::toString(Environment const &e) {
 
 void Environment::set(String name, Value value) {
   //for multicore 
-  // mutex_enter_blocking(&write_mutex);
+  mutex_enter_blocking(&write_mutex);
   defs[name] = value;
-  // mutex_exit(&write_mutex);
+  mutex_exit(&write_mutex);
 }
 
 void Environment::set_global(String name, Value value) {
@@ -1037,7 +1049,7 @@ Value Value::apply(std::vector<Value> args, Environment &env) {
       Serial.print(CALL_NON_FUNCTION);
       Serial.println(args[0].as_string());
       // throw Error(*this, env, CALL_NON_FUNCTION);
-      return Value(args);
+      return Value::error();
   }
 }
 
@@ -1070,15 +1082,20 @@ Value Value::eval(Environment &env) {
       // Builtin functions can be special forms, so we
       // leave them to evaluate their arguments.
       function = list[0].eval(env);
+      if (function.is_error()) {
+        return Value::error();
+      }
+      else
+      {
+        if (!function.is_builtin())
+          for (size_t i = 0; i < args.size(); i++)
+            args[i] = args[i].eval(env);
 
-      if (!function.is_builtin())
-        for (size_t i = 0; i < args.size(); i++)
-          args[i] = args[i].eval(env);
-
-      auto functionResult = function.apply(
-        args,
-        env);
-      return functionResult;
+        auto functionResult = function.apply(
+          args,
+          env);
+        return functionResult;
+      }
     }
 
     default:
@@ -2139,6 +2156,8 @@ BUILTINFUNC(perf,
             report += env.get("perf_run").as_float();
             report += ", ts1: ";
             report += env.get("perf_ts1").as_float();
+            report += ", heap free: ";
+            report += rp2040.getFreeHeap() / 1024;
             Serial.println(report);
             ret = Value();
             , 0)
@@ -2285,8 +2304,9 @@ Value Environment::get(String name) const {
     else return parent_scope->get(name);
   }
   Serial.print(ATOM_NOT_DEFINED);
+  Serial.print(": ");
   Serial.println(name);
-  return Value();
+  return Value::error();
 }
 
 
@@ -2490,8 +2510,8 @@ void setBpm(double newBpm)
 
 void updateTimeVariables()
 {
-    env.set("time", Value(time / 1000));
-    env.set("t", Value(t / 1000.0));
+    env.set("time", Value(time * 0.001));
+    env.set("t", Value(t * 0.001));
     env.set("beat", Value(beat));
     env.set("bar", Value(bar));
 }
@@ -2557,8 +2577,28 @@ void update() {
 }
 
 
-}
+} //end of useq namespace
 
+int test=0;
+
+// void setup_core1() {
+//   test = 10;
+// }
+
+// void loop_core1() {
+//   setup_core1();
+//   test++;
+//   for(;;) {
+//   // if(setupComplete) {
+//     test++;
+//     // // env.set("tt",Value(test));  
+//     // if (Serial.availableForWrite()) {
+//     //   Serial.println(test);
+//     // }
+//   // }
+//   // sleep_ms(10);
+//   }
+// }
 
 bool setupComplete=false;
 
@@ -2580,10 +2620,13 @@ void setup() {
   Serial.println("Library loaded");
   useq::setup();
   setupComplete = true;
+  // multicore_launch_core1(loop_core1);
 }
 
 int ts = 0;
 int updateSpeed = 0;
+
+
 
 void loop() {
   updateSpeed = millis() - ts;
@@ -2598,18 +2641,22 @@ void loop() {
 
   useq::update();
 
-  env.set("perf_get", Value(float(get_time/1000.0)));
-  env.set("perf_parse", Value(float(parse_time/1000.0)));
-  env.set("perf_run", Value(float(run_time/1000.0)));
-  env.set("perf_ts1", Value(float(ts_total/1000.0)));
+  env.set("perf_get", Value(float(get_time * 0.001)));
+  env.set("perf_parse", Value(float(parse_time *0.001)));
+  env.set("perf_run", Value(float(run_time * 0.001)));
+  env.set("perf_ts1", Value(float(ts_total * 0.001)));
 
   // put your main code here, to run repeatedly:
   if (Serial.available()) {
     String cmd = Serial.readString();
     Serial.println(cmd);
     Value res;
+    int cmdts = micros();
     res = run(cmd, env);
+    cmdts = micros() - cmdts;
     Serial.println(res.debug());
+    Serial.println(cmdts * 0.001);
+    // Serial.println(test);
     // Serial.println("complete");
     // Serial.println(env.toString(env));
     // Serial.println(updateSpeed);
@@ -2618,15 +2665,3 @@ void loop() {
   // readRotaryEnc();
 }
 
-// void setup1() {
-
-// }
-
-// void loop1() {
-  // int ts=micros();
-  // if (setupComplete) {
-  //   useq::updateDigitalOutputs();
-  // }
-  // ts = micros() - ts;
-  // env.set("perf_fps1", Value(float(ts/1000.0)));
-// }
