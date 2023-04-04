@@ -69,13 +69,13 @@ RO_STRING(TOO_FEW_ARGS, "too few arguments to function")
 RO_STRING(TOO_MANY_ARGS, "too many arguments to function")
 RO_STRING(INVALID_ARGUMENT, "invalid argument")
 RO_STRING(MISMATCHED_TYPES, "mismatched types")
-RO_STRING(CALL_NON_FUNCTION, "called non-function")
+RO_STRING(CALL_NON_FUNCTION, "called non-function ")
 RO_STRING(UNKNOWN_ERROR, "unknown exception")
 RO_STRING(INVALID_LAMBDA, "invalid lambda")
 RO_STRING(INVALID_BIN_OP, "invalid binary operation")
 RO_STRING(INVALID_ORDER, "cannot order expression")
 RO_STRING(BAD_CAST, "cannot cast")
-RO_STRING(ATOM_NOT_DEFINED, "atom not defined")
+RO_STRING(ATOM_NOT_DEFINED, "atom not defined ")
 RO_STRING(EVAL_EMPTY_LIST, "evaluated empty list")
 RO_STRING(INTERNAL_ERROR, "interal virtual machine error")
 RO_STRING(INDEX_OUT_OF_RANGE, "index out of range")
@@ -1018,7 +1018,8 @@ Value Value::apply(std::vector<Value> args, Environment &env) {
     }
     default:
       // We can only call lambdas and builtins
-      Serial.println(CALL_NON_FUNCTION);
+      Serial.print(CALL_NON_FUNCTION);
+      Serial.println(args[0].as_string());
       // throw Error(*this, env, CALL_NON_FUNCTION);
       return Value(args);
   }
@@ -1137,9 +1138,11 @@ Value parse(String &s, int &ptr) {
     // If this is a string
     int n = 1;
     while (s[ptr + n] != '\"') {
-      if (ptr + n >= int(s.length()))
+      if (ptr + n >= int(s.length())) {
         Serial.println(MALFORMED_PROGRAM);
+        return Value();
       // throw std::runtime_error(MALFORMED_PROGRAM);
+      }
 
       if (s[ptr + n] == '\\') n++;
       n++;
@@ -1200,8 +1203,9 @@ std::vector<Value> parse(String s) {
   }
 
   // If the whole string wasn't parsed, the program must be bad.
-  if (i < int(s.length()))
+  if (i < int(s.length())) {
     Serial.println(MALFORMED_PROGRAM);
+  }
   // throw std::runtime_error(MALFORMED_PROGRAM);
 
   // Return the list of values parsed.
@@ -2090,6 +2094,14 @@ BUILTINFUNC(ard_map,
             float m = map(args[0].as_float(), args[1].as_float(), args[2].as_float(), args[3].as_float(), args[4].as_float());
             ret = Value(m);
             , 5)
+BUILTINFUNC(ard_floor,
+            double m = floor(args[0].as_float());
+            ret = Value(m);
+            , 1)
+BUILTINFUNC(ard_ceil,
+            double m = ceil(args[0].as_float());
+            ret = Value(m);
+            , 1)
 BUILTINFUNC(perf,
 
             String report= "fps0: ";
@@ -2193,6 +2205,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["*"] = Value("*", builtin::product);
   Environment::builtindefs["/"] = Value("/", builtin::divide);
   Environment::builtindefs["%"] = Value("%", builtin::remainder);
+  Environment::builtindefs["floor"] = Value("floor", builtin::ard_floor);
+  Environment::builtindefs["ceil"] = Value("ceil", builtin::ard_ceil);
 
   // List operations
   Environment::builtindefs["list"] = Value("list", builtin::list);
@@ -2253,7 +2267,8 @@ Value Environment::get(String name) const {
     if (itr != parent_scope->defs.end()) return itr->second;
     else return parent_scope->get(name);
   }
-  Serial.println(ATOM_NOT_DEFINED);
+  Serial.print(ATOM_NOT_DEFINED);
+  Serial.println(name);
   return Value();
 }
 
@@ -2441,8 +2456,8 @@ void updateBpmVariables()
 {
     env.set("bpm", Value(bpm));
     env.set("bps", Value(bps));
-    env.set("beatDur", Value(static_cast<double>(beatDur)));
-    env.set("barDur", Value(static_cast<double>(barDur)));
+    env.set("beatDur", Value(static_cast<double>(beatDur/1000.0)));
+    env.set("barDur", Value(static_cast<double>(barDur/1000.0)));
 }
 
 void setBpm(double newBpm)
