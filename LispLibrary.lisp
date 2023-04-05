@@ -18,8 +18,6 @@
 
 (defun fast (amt phasor) (%1 (* phasor amt)))
 
-(defun sqr (phasor)
-  (pulse 0.5 phasor))
 
 (defun impulse (phasor)
   (pulse 0.05 phasor))

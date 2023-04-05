@@ -2138,6 +2138,9 @@ BUILTINFUNC(ard_ceil,
 BUILTINFUNC(useq_pulse,
             ret = Value(args[1].as_float() < args[0].as_float() ? 1.0 : 0.0);
             , 2)
+BUILTINFUNC(useq_sqr,
+            ret = Value(args[0].as_float() < 0.5 ? 1.0 : 0.0);
+            , 1)
 
           
 BUILTINFUNC(perf,
@@ -2204,6 +2207,7 @@ void loadBuiltinDefs() {
 
   //sequencing
   Environment::builtindefs["pulse"]= Value("pulse", builtin::useq_pulse);
+  Environment::builtindefs["sqr"]= Value("sqr", builtin::useq_sqr);
 
   //arduino math
   Environment::builtindefs["sin"]= Value("sin", builtin::ard_sin);
