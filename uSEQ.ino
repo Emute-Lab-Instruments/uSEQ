@@ -2134,6 +2134,12 @@ BUILTINFUNC(ard_ceil,
             double m = ceil(args[0].as_float());
             ret = Value(m);
             , 1)
+
+BUILTINFUNC(useq_pulse,
+            ret = Value(args[1].as_float() < args[0].as_float() ? 1.0 : 0.0);
+            , 2)
+
+          
 BUILTINFUNC(perf,
 
             String report= "fps0: ";
@@ -2195,6 +2201,9 @@ void loadBuiltinDefs() {
   Environment::builtindefs["millis"]= Value("millis", builtin::ard_millis);
   Environment::builtindefs["micros"]= Value("micros", builtin::ard_micros);
   Environment::builtindefs["perf"]= Value("perf", builtin::perf);
+
+  //sequencing
+  Environment::builtindefs["pulse"]= Value("pulse", builtin::useq_pulse);
 
   //arduino math
   Environment::builtindefs["sin"]= Value("sin", builtin::ard_sin);

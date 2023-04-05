@@ -18,13 +18,6 @@
 
 (defun fast (amt phasor) (%1 (* phasor amt)))
 
-(defun pulse (on-relative-dur phasor)
-  (do
-   (define phasor phasor)
-   (if (< phasor on-relative-dur)
-       1
-       0)))
-
 (defun sqr (phasor)
   (pulse 0.5 phasor))
 
