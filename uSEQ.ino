@@ -981,7 +981,7 @@ String Environment::toString(Environment const &e) {
 
 void Environment::set(String name, Value value) {
   //for multicore 
-  mutex_enter_blocking(&write_mutex);
+  mutex_enter_blocking(&write_mutex); 
   defs[name] = value;
   mutex_exit(&write_mutex);
 }
