@@ -40,11 +40,6 @@
 (defun clamp (mn mx x) (min mx (max x mn)))
 (defun clamp01 (x) (clamp 0.0 1.0 x))
 
-(defun add (amt x) (+ amt x))
-(defun sub (amt x) (- amt x))
-(defun mul (amt x) (* amt x))
-(defun div (amt x) (/ amt x))
-
 (defun every (amt dur) (/ (% t (* amt dur)) (* amt dur)))
 
 
