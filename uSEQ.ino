@@ -2136,11 +2136,19 @@ BUILTINFUNC(ard_ceil,
             , 1)
 
 BUILTINFUNC(useq_pulse,
+            //args: pulse width, phasor
             ret = Value(args[1].as_float() < args[0].as_float() ? 1.0 : 0.0);
             , 2)
 BUILTINFUNC(useq_sqr,
             ret = Value(args[0].as_float() < 0.5 ? 1.0 : 0.0);
             , 1)
+BUILTINFUNC(useq_fast,
+            double speed = args[0].as_float();
+            double phasor = args[1].as_float();
+            phasor *= speed;            
+            double phase = fmod(phasor, 1.0);
+            ret = Value(phase);
+            , 2)
 
           
 BUILTINFUNC(perf,
@@ -2208,6 +2216,7 @@ void loadBuiltinDefs() {
   //sequencing
   Environment::builtindefs["pulse"]= Value("pulse", builtin::useq_pulse);
   Environment::builtindefs["sqr"]= Value("sqr", builtin::useq_sqr);
+  Environment::builtindefs["fast"]= Value("fast", builtin::useq_fast);
 
   //arduino math
   Environment::builtindefs["sin"]= Value("sin", builtin::ard_sin);
@@ -2616,7 +2625,7 @@ bool setupComplete=false;
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
-  Serial.setTimeout(0);
+  Serial.setTimeout(2);
   randomSeed(analogRead(0));
 
   loadBuiltinDefs();

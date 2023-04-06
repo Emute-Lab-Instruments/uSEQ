@@ -16,7 +16,6 @@
 
 (defun %1 (x) (% x 1.0))
 
-(defun fast (amt phasor) (%1 (* phasor amt)))
 
 
 (defun impulse (phasor)
@@ -36,7 +35,7 @@
 
 (defun fromList (lst phasor)
   (do
-   (define num-elements (length lst))
+   (define num-elements (len lst))
    (define scaled-phasor (* num-elements (clamp01 phasor)))
     (define idx (floor scaled-phasor))
     (nth lst
@@ -46,13 +45,7 @@
 
 ;; Outputs
 
-(define INPUT_1_VALUE 0)
-(define INPUT_2_VALUE 0)
 
-;; for testing
-(define led-form '(sqr beat))
-(defun update-led () (c_digitalWrite 99 (eval led-form)))  ;; runs on core 1
-(defun led (new-form) (set led-form new-form))  ;; runs on core 0
 
 ;; Digital outs
 (define d1-form '(sqr beat))
@@ -97,6 +90,8 @@
   (if (< result 0)
        (+ 1 result)
       result)))
+      
+(defun gates (lst speed pw) (* (fromList lst (fast speed bar)) (pulse (fast (* speed (len lst)) bar) pw)))
 
 
 
