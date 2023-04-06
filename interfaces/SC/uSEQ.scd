@@ -4,7 +4,7 @@
 
 SerialPort.listDevices
 //open a connection to the module
-u = SerialPort.new('/dev/ttyACM0', baudrate:115200)
+u = SerialPort.new('/dev/ttyACM0', baudrate:115200,databits:8, stopbit:false, parity:nil);
 
 
 (
@@ -42,6 +42,8 @@ Tdef(\serialReader, {
 )
 
 
+u.putAll("time")
+u.putAll("(+ 120.4 10)")
 
 (//u
 (pm 25 1)
@@ -52,9 +54,36 @@ Tdef(\serialReader, {
 )
 
 (//u
-(d1 (fast 2 bar))
+(d2 (sqr (fast 4 beat)))
 )
 
+(//u
+(d2 (* (fromList (quote 1 0 1 0 1 1 0 0) (fast 2 bar)) (sqr (fast 16 bar))))
+)
+
+(//u
+(d2 (gates (quote 1 1 0 1  1 1 1 0  1 1 1 1  1 0 1 1) 1 0.9 ))
+)
+
+(//u
+(d2 (gates (quote 1 1 0 1  1 1 1 0  1 1 1 1  1 0) 1 0.9 ))
+)
+
+(//u
+(d2 (gates (quote 1 0 0 1  1 1 1 0  1 1 1 1  1 0 1 1) 1 0.8 ))
+)
+
+(//u
+(a2 (+ (pulse (fast 2 bar) 0.9) 0.01))
+)
+
+(//u
+(defun gates (lst speed pw) (* (fromList lst (fast speed bar)) (pulse (fast (* speed (len lst)) bar) pw)))
+)
+
+(//u
+(perf)
+)
 
 //free the port
 SerialPort.closeAll
