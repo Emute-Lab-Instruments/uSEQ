@@ -1,4 +1,14 @@
-/// A microlisp named Wisp, by Adam McDaniel
+// uSEQ firmware, by Dimitris Kyriakoudis and Chris Kiefer
+
+/// LISP interpreter forked from Wisp, by Adam McDaniel
+
+
+// firmware build options (comment out as needed)
+
+#define MIDIOUT // (drum sequencer implemented using (mdo note (f t)))
+//#define MIDIIN //(to be implemented)
+
+// end of build options
 
 #include "pinmap.h"
 #include "LispLibrary.h"
@@ -39,13 +49,6 @@ int useqInputValues[8];
 // This allows the program to run without a runtime.
 #define USE_STD
 #ifdef USE_STD
-// #include <cstdlib>
-// #include <iostream>
-// #include <fstream>
-// #include <ctime>
-
-
-
 #else
 #define NO_STD "no standard library support"
 #endif
@@ -58,7 +61,10 @@ int useqInputValues[8];
 #include <map>
 // #include <unordered_map>
 #include <vector>
-// #include <sstream>
+
+
+
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// ERROR MESSAGES /////////////////////////////////////////////////////////////
@@ -136,7 +142,7 @@ bool is_symbol(char ch) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// LISP CONSTRUCTS ////////////////////////////////////////////////////////////
+/// LISP FORWARD DECL //////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
 // Forward declaration for Environment class definition
@@ -144,6 +150,14 @@ class Value;
 class Environment;
 Value parse(String &s, int &ptr);
 Value run(String code, Environment &env);
+
+////////////////////////////////////////////////////////////////////////////////
+/// USEQ DATA      /////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+#ifdef MIDIOUT
+std::map<int, Value> useqMDOMap;
+#endif
 
 // An instance of a function's scope.
 class Environment {
@@ -1003,8 +1017,10 @@ Value Value::apply(std::vector<Value> &args, Environment &env) {
 
       // Get the list of parameter atoms
       params = list[0].list;
-      if (params.size() != args.size())
+      if (params.size() != args.size()) {
         Serial.println(args.size() > params.size() ? TOO_MANY_ARGS : TOO_FEW_ARGS);
+        return Value::error();
+      }
 
       // throw Error(Value(args), env, args.size() > params.size()?
       //     TOO_MANY_ARGS : TOO_FEW_ARGS
@@ -1232,6 +1248,7 @@ std::vector<Value> parse(String s) {
 
   // If the whole string wasn't parsed, the program must be bad.
   if (i < int(s.length())) {
+    Serial.print("parse: ");
     Serial.println(MALFORMED_PROGRAM);
     error=true;
   }
@@ -2027,8 +2044,19 @@ BUILTINFUNC_NOEVAL(d3,
                    env.set_global("d3-form", args[0]);
                    , 1)
 BUILTINFUNC_NOEVAL(d4,
-                   env.set_global("d3-form", args[0]);
+                   env.set_global("d4-form", args[0]);
                    , 1)
+
+#ifdef MIDIOUT
+//midi drum out
+BUILTINFUNC(useq_mdo,
+  int midiNote = args[0].as_int();                  
+  Serial.println(midiNote);                  
+  Serial.println(args[1].display());                  
+  //TODO: remove function if nil
+  useqMDOMap[midiNote] = args[1];
+  , 2)
+#endif
 
 BUILTINFUNC(ard_pinMode,
             int pinNumber = args[0].as_int();
@@ -2155,8 +2183,8 @@ BUILTINFUNC(perf,
 
             String report= "fps0: ";
             report += env.get("fps").as_int();
-            report += ", fps1: ";
-            report += env.get("perf_fps1").as_int();
+            // report += ", fps1: ";
+            // report += env.get("perf_fps1").as_int();
             report += ", in: ";
             report += env.get("perf_in").as_int();
             report += ", upd_tm: ";
@@ -2218,6 +2246,9 @@ void loadBuiltinDefs() {
   Environment::builtindefs["sqr"]= Value("sqr", builtin::useq_sqr);
   Environment::builtindefs["fast"]= Value("fast", builtin::useq_fast);
 
+#ifdef MIDIOUT
+  Environment::builtindefs["mdo"]= Value("mdo", builtin::useq_mdo);
+#endif
   //arduino math
   Environment::builtindefs["sin"]= Value("sin", builtin::ard_sin);
   Environment::builtindefs["cos"]= Value("cos", builtin::ard_cos);
@@ -2435,6 +2466,13 @@ void setup_IO() {
   setup_digital_ins();
   setup_switches();
   setup_rotary_encoder();
+
+#ifdef MIDIOUT
+  Serial1.setRX(1);
+  Serial1.setTX(0);
+  Serial1.begin(31250);
+#endif
+
 }
 
 void module_setup() {
@@ -2504,7 +2542,8 @@ double barDur = 0.0;
 // Timing
 double lastResetTime = micros();
 double time = 0;
-double t = 0;
+double t = 0; //time since last reset
+double last_t = 0; //timestamp of the previous time update (since reset)
 double beat = 0.0;
 double bar  = 0.0;
 
@@ -2541,6 +2580,7 @@ void updateTimeVariables()
 void setTime(size_t newTimeMicros)
 {
     time = newTimeMicros;
+    // last_t = t;
     t = newTimeMicros - lastResetTime;
     beat = fmod(t, beatDur) / beatDur;
     bar  = fmod(t, barDur)  / barDur;
@@ -2573,6 +2613,57 @@ void updateAnalogOutputs() {
   run("(update-a2)", env);
 }
 
+#ifdef MIDIOUT
+double last_midi_t=0;
+void updateMidiOut() {
+  const double midiRes = 48*8;
+  const double timeUnitMicros = (barDur / midiRes); 
+  
+  const double timeDeltaMicros = t - last_midi_t;
+  size_t steps = floor(timeDeltaMicros / timeUnitMicros);
+  double initValPhase = bar - (timeDeltaMicros / barDur);
+  
+  if (steps > 0) {
+    const double timeUnitBar = 1.0 / midiRes;
+
+    auto itr = useqMDOMap.begin();
+    for (; itr != useqMDOMap.end(); itr++) {
+      // Iterate through the keys process MIDI events
+      Value midiFunction = itr->second;
+      if (initValPhase < 0) initValPhase++;
+      std::vector<Value> mdoArgs = {Value(initValPhase)};
+      Value prev = midiFunction.apply(mdoArgs, env);  
+      // Serial.print("ivp: ");
+      // Serial.println(initValPhase);
+      // Serial.print("pr: ");
+      // Serial.println(prev.as_float());
+      for(size_t step = 0; step < steps; step++) {
+        double t_step = bar - ((steps - (step+1)) * timeUnitBar);
+        //wrap phasor
+        if (t_step < 0) t_step += 1.0;
+        // Serial.println(t_step);
+        mdoArgs[0] = Value(t_step);
+        Value val = midiFunction.apply(mdoArgs, env); 
+        // Serial.println(val.as_float());
+        if (val > prev) {
+          // Serial.println("noteon");
+          Serial1.write(0x99);
+          Serial1.write(36);
+          Serial1.write(127);
+        }else if (val < prev) {
+          // Serial.println("noteoff");
+          Serial1.write(0x89);
+          Serial1.write(36);
+          Serial1.write((byte)0);
+        }
+        prev = val;
+      }  
+    }
+    last_midi_t = t;
+  }
+}
+#endif
+
 
 void setup()
 {
@@ -2593,6 +2684,9 @@ void update() {
   ts_outputs = millis();
   updateAnalogOutputs();
   updateDigitalOutputs();  
+#ifdef MIDIOUT
+  updateMidiOut(); 
+#endif  
   env.set("perf_out", Value(int(millis() - ts_outputs)));
 }
 
