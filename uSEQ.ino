@@ -1074,7 +1074,7 @@ int get_time=0;
 Value Value::eval(Environment &env) {
   std::vector<Value> args;
   Value function;
-  Environment e;
+  // Environment e;
   switch (type) {
     case QUOTE:
       return list[0];
@@ -1713,8 +1713,10 @@ Value index(std::vector<Value> &args, Environment &env) {
 
   std::vector<Value> list = args[0].as_list();
   int i = args[1].as_int();
-  if (list.empty() || i >= (int)list.size())
+  if (list.empty() || i >= (int)list.size()) {
     Serial.println(INDEX_OUT_OF_RANGE);
+    return Value::error();
+  }
   // throw Error(list, env, INDEX_OUT_OF_RANGE);
 
   return list[i];
@@ -2177,6 +2179,17 @@ BUILTINFUNC(useq_fast,
             double phase = fmod(phasor, 1.0);
             ret = Value(phase);
             , 2)
+BUILTINFUNC(useq_fromList,
+            auto lst = args[0].as_list();
+            double phasor = args[1].as_float();
+            double scaled_phasor = lst.size() * fmod(phasor, 1.0);            
+            size_t idx = floor(scaled_phasor);
+            if (idx == lst.size()) idx--;
+            ret = lst[idx];
+            , 2)
+
+//"(defun fromList (lst phasor)\n	(do\n	   (define num-elements (len lst))\n   	(define scaled-phasor (* num-elements (clamp01 phasor)))\n	   (define idx (floor scaled-phasor))\n	   (if (= idx num-elements) (define idx (- idx 1)) 0)\n	   (nth lst idx)))",
+
 
           
 BUILTINFUNC(perf,
@@ -2616,7 +2629,7 @@ void updateAnalogOutputs() {
 #ifdef MIDIOUT
 double last_midi_t=0;
 void updateMidiOut() {
-  const double midiRes = 48*8;
+  const double midiRes = 48*meter_numerator;
   const double timeUnitMicros = (barDur / midiRes); 
   
   const double timeDeltaMicros = t - last_midi_t;
@@ -2627,6 +2640,7 @@ void updateMidiOut() {
     const double timeUnitBar = 1.0 / midiRes;
 
     auto itr = useqMDOMap.begin();
+    Serial.println(useqMDOMap.size());
     for (; itr != useqMDOMap.end(); itr++) {
       // Iterate through the keys process MIDI events
       Value midiFunction = itr->second;
@@ -2648,12 +2662,12 @@ void updateMidiOut() {
         if (val > prev) {
           // Serial.println("noteon");
           Serial1.write(0x99);
-          Serial1.write(36);
+          Serial1.write(itr->first);
           Serial1.write(127);
         }else if (val < prev) {
           // Serial.println("noteoff");
           Serial1.write(0x89);
-          Serial1.write(36);
+          Serial1.write(itr->first);
           Serial1.write((byte)0);
         }
         prev = val;

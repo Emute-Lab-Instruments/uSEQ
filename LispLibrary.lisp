@@ -76,13 +76,6 @@
 (defun rot () (useqGetInput 7))
 
 (defun seq (lst speed)  (fromList lst (every speed beatDur)))
-(defun fromList (lst phasor)
-	(do
-	   (define num-elements (len lst))
-   	(define scaled-phasor (* num-elements (clamp01 phasor)))
-	   (define idx (floor scaled-phasor))
-	   (if (= idx num-elements) (define idx (- idx 1)) 0)
-	   (nth lst idx)))
 	   
 (defun slow (amt phasor)
 (do
@@ -91,7 +84,6 @@
        (+ 1 result)
       result)))
       
-(defun gates (lst speed pw) (* (fromList lst (fast speed bar)) (pulse (fast (* speed (len lst)) bar) pw)))
-
+(defun gates (lst ph speed pw) (* (fromList lst (fast speed ph)) (pulse (fast (* speed (len lst)) ph) pw)))
 
 
