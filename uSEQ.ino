@@ -2600,8 +2600,8 @@ size_t meter_numerator = 4;
 size_t meter_denominator = 4;
 
 // BPM
-double defaultBpm = 120.0;
-double bpm = 120.0;
+double defaultBpm = 130.0;
+double bpm = 130.0;
 double bps = 0.0;
 double beatDur = 0.0;
 double barDur = 0.0;
@@ -2706,7 +2706,7 @@ void updateMidiOut() {
         if (val > prev) {
           Serial1.write(0x99);
           Serial1.write(itr->first);
-          Serial1.write(50);
+          Serial1.write(val.as_int() * 14);
         } else if (val < prev) {
           Serial1.write(0x89);
           Serial1.write(itr->first);
