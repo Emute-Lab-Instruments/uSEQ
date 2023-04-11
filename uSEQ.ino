@@ -5,7 +5,7 @@
 
 // firmware build options (comment out as needed)
 
-#define MIDIOUT // (drum sequencer implemented using (mdo note (f t)))
+#define MIDIOUT  // (drum sequencer implemented using (mdo note (f t)))
 //#define MIDIIN //(to be implemented)
 
 // end of build options
@@ -17,12 +17,18 @@
 /// LISP LIBRARY /////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-int ts1=0 ;
-int ts_total=0;
-int timer_level=0;
-#define RESET_TIMER ts_total=0; timer_level=0;
-#define START_TIMER if (timer_level==0) {ts1 = micros();}; timer_level++;
-#define STOP_TIMER timer_level--; if (timer_level==0) ts_total += (micros()-ts1);
+int ts1 = 0;
+int ts_total = 0;
+int timer_level = 0;
+#define RESET_TIMER \
+  ts_total = 0; \
+  timer_level = 0;
+#define START_TIMER \
+  if (timer_level == 0) { ts1 = micros(); }; \
+  timer_level++;
+#define STOP_TIMER \
+  timer_level--; \
+  if (timer_level == 0) ts_total += (micros() - ts1);
 
 enum useqInputNames {
   //signals
@@ -165,17 +171,17 @@ public:
   // Default constructor
   Environment()
     : parent_scope(NULL) {
-      init();
-    }
+    init();
+  }
 
   Environment(const Environment &v)
     : defs(defs) {
-      init();
-    }
+    init();
+  }
   Environment(Environment &&v)
     : defs(std::move(v.defs)) {
-      init();
-    }
+    init();
+  }
   Environment &operator=(const Environment &env2) {
     this->defs = std::move(env2.defs);
     return *this;
@@ -216,13 +222,12 @@ private:
   void init() {
     mutex_init(&write_mutex);
   }
-
 };
 
 
 // The type for a builtin function, which takes a list of values,
 // and the environment to run the function in.
-typedef Value (*Builtin)(std::vector<Value>&, Environment &);
+typedef Value (*Builtin)(std::vector<Value> &, Environment &);
 
 class Value {
 public:
@@ -258,20 +263,10 @@ public:
   //   return *this;
   // }
 
-  /*
-        union {
-        int i;
-        double f;
-        Builtin b;
-    } stack_data;
-
-    String str;
-    std::vector<Value> list;
-    Environment lambda_scope;*/
 
   static Value error() {
     Value result;
-    result.type=ERROR;
+    result.type = ERROR;
     return result;
   }
   // Construct a quoted value
@@ -723,21 +718,22 @@ public:
     //             throw Error(*this, Environment(), INVALID_BIN_OP);
 
     switch (type) {
-      case FLOAT:{
-        auto res= Value(stack_data.f / other.cast_to_float().stack_data.f);
-        return res;
-      }        
+      case FLOAT:
+        {
+          auto res = Value(stack_data.f / other.cast_to_float().stack_data.f);
+          return res;
+        }
       case INT:
-      {   
-        // If the other type is a float, go ahead and promote this expression
-        // before continuing with the product
-        Value res;
-        if (other.type == FLOAT)
-          res = Value(cast_to_float().stack_data.f / other.stack_data.f);
-        // Otherwise, do integer multiplication.
-        else res = Value(stack_data.i / other.stack_data.i);
-        return res;
-      }
+        {
+          // If the other type is a float, go ahead and promote this expression
+          // before continuing with the product
+          Value res;
+          if (other.type == FLOAT)
+            res = Value(cast_to_float().stack_data.f / other.stack_data.f);
+          // Otherwise, do integer multiplication.
+          else res = Value(stack_data.i / other.stack_data.i);
+          return res;
+        }
       case UNIT:
         // Unit types consume all arithmetic operations.
         return *this;
@@ -866,15 +862,15 @@ public:
       case ATOM:
         return str;
       case INT:
-      {
-        auto val= String(stack_data.i);
-        return val;
-      }
+        {
+          auto val = String(stack_data.i);
+          return val;
+        }
       case FLOAT:
-      {
-        auto val = String(stack_data.f);
-        return val;
-      }
+        {
+          auto val = String(stack_data.f);
+          return val;
+        }
       case STRING:
         for (size_t i = 0; i < str.length(); i++) {
           if (str[i] == '"') result += "\\\"";
@@ -936,8 +932,6 @@ private:
   String str;
   std::vector<Value> list;
   Environment lambda_scope;
-
-
 };
 
 // end of class Value
@@ -994,8 +988,8 @@ String Environment::toString(Environment const &e) {
 }
 
 void Environment::set(String name, Value value) {
-  //for multicore 
-  mutex_enter_blocking(&write_mutex); 
+  //for multicore
+  mutex_enter_blocking(&write_mutex);
   defs[name] = value;
   mutex_exit(&write_mutex);
 }
@@ -1009,57 +1003,57 @@ void Environment::set_global(String name, Value value) {
 
 Value Value::apply(std::vector<Value> &args, Environment &env) {
 
-  Environment e;
-  std::vector<Value> params;
   switch (type) {
     case LAMBDA:
-    {
+      {
+        Environment e;
+        std::vector<Value> params;
 
-      // Get the list of parameter atoms
-      params = list[0].list;
-      if (params.size() != args.size()) {
-        Serial.println(args.size() > params.size() ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-        return Value::error();
+        // Get the list of parameter atoms
+        params = list[0].list;
+        if (params.size() != args.size()) {
+          Serial.println(args.size() > params.size() ? TOO_MANY_ARGS : TOO_FEW_ARGS);
+          return Value::error();
+        }
+
+        // throw Error(Value(args), env, args.size() > params.size()?
+        //     TOO_MANY_ARGS : TOO_FEW_ARGS
+        // );
+
+        // Get the captured scope from the lambda
+        e = lambda_scope;
+        // And make this scope the parent scope
+        e.set_parent_scope(&env);
+
+        // Iterate through the list of parameters and
+        // insert the arguments into the scope.
+        for (size_t i = 0; i < params.size(); i++) {
+          if (params[i].type != ATOM)
+            Serial.println(INVALID_LAMBDA);
+          // throw Error(*this, env, INVALID_LAMBDA);
+          // Set the parameter name into the scope.
+          e.set(params[i].str, args[i]);
+        }
+        // Evaluate the function body with the function scope
+        auto result = list[1].eval(e);
+        return result;
       }
-
-      // throw Error(Value(args), env, args.size() > params.size()?
-      //     TOO_MANY_ARGS : TOO_FEW_ARGS
-      // );
-
-      // Get the captured scope from the lambda
-      e = lambda_scope;
-      // And make this scope the parent scope
-      e.set_parent_scope(&env);
-
-      // Iterate through the list of parameters and
-      // insert the arguments into the scope.
-      for (size_t i = 0; i < params.size(); i++) {
-        if (params[i].type != ATOM)
-          Serial.println(INVALID_LAMBDA);
-        // throw Error(*this, env, INVALID_LAMBDA);
-        // Set the parameter name into the scope.
-        e.set(params[i].str, args[i]);
-      }
-      // Evaluate the function body with the function scope
-      auto result = list[1].eval(e);
-      return result;
-    }
     case BUILTIN:
-    {
-      // Here, we call the builtin function with the current scope.
-      // This allows us to write special forms without syntactic sugar.
-      // For functions that are not special forms, we just evaluate
-      // the arguments before we run the function.
-    // int ts_res=micros();
-    auto result = (stack_data.b)(args, env);
-    // ts_res = micros() - ts_res;
-    // if (millis() < 0) {
-    //   Serial.print(str);
-    //   Serial.print(": ");
-    //   Serial.println(ts_res/1000.0);
-    // }
-      return result;
-    }
+      {
+        // Here, we call the builtin function with the current scope.
+        // This allows us to write special forms without syntactic sugar.
+        // For functions that are not special forms, we just evaluate
+        // the arguments before we run the function.
+        // int ts_res=micros();
+        auto result = (stack_data.b)(args, env);
+        // ts_res = micros() - ts_res;
+        // if (millis() < 0) {
+        //   Serial.print(str);
+        //   Serial.print(": ");
+        //   Serial.println(ts_res/1000.0);
+        // }
+        return result;
+      }
     default:
       // We can only call lambdas and builtins
       Serial.print(CALL_NON_FUNCTION);
@@ -1069,8 +1063,8 @@ Value Value::apply(std::vector<Value> &args, Environment &env) {
   }
 }
 
-int ts_get=0;
-int get_time=0;
+int ts_get = 0;
+int get_time = 0;
 Value Value::eval(Environment &env) {
   std::vector<Value> args;
   Value function;
@@ -1079,40 +1073,39 @@ Value Value::eval(Environment &env) {
     case QUOTE:
       return list[0];
     case ATOM:
-    {
-      ts_get = micros();
-      auto atomdata = env.get(str);
-      ts_get = micros() - ts_get;
-      get_time += ts_get;
-      return atomdata;
-    }
-    case LIST:
-    {
-      if (list.size() < 1)
-        Serial.println(EVAL_EMPTY_LIST);
-      // throw Error(*this, env, EVAL_EMPTY_LIST);
-
-      args = std::vector<Value>(list.begin() + 1, list.end());
-
-      // Only evaluate our arguments if it's not builtin!
-      // Builtin functions can be special forms, so we
-      // leave them to evaluate their arguments.
-      function = list[0].eval(env);
-      if (function.is_error()) {
-        return Value::error();
-      }
-      else
       {
-        if (!function.is_builtin())
-          for (size_t i = 0; i < args.size(); i++)
-            args[i] = args[i].eval(env);
-
-        auto functionResult = function.apply(
-          args,
-          env);
-        return functionResult;
+        ts_get = micros();
+        auto atomdata = env.get(str);
+        ts_get = micros() - ts_get;
+        get_time += ts_get;
+        return atomdata;
       }
-    }
+    case LIST:
+      {
+        if (list.size() < 1)
+          Serial.println(EVAL_EMPTY_LIST);
+        // throw Error(*this, env, EVAL_EMPTY_LIST);
+
+        args = std::vector<Value>(list.begin() + 1, list.end());
+
+        // Only evaluate our arguments if it's not builtin!
+        // Builtin functions can be special forms, so we
+        // leave them to evaluate their arguments.
+        function = list[0].eval(env);
+        if (function.is_error()) {
+          return Value::error();
+        } else {
+          //lambda?
+          if (!function.is_builtin())
+            for (size_t i = 0; i < args.size(); i++)
+              args[i] = args[i].eval(env);
+
+          auto functionResult = function.apply(
+            args,
+            env);
+          return functionResult;
+        }
+      }
 
     default:
       return *this;
@@ -1190,7 +1183,7 @@ Value parse(String &s, int &ptr) {
       if (ptr + n >= int(s.length())) {
         Serial.println(MALFORMED_PROGRAM);
         return Value::error();
-      // throw std::runtime_error(MALFORMED_PROGRAM);
+        // throw std::runtime_error(MALFORMED_PROGRAM);
       }
 
       if (s[ptr + n] == '\\') n++;
@@ -1232,15 +1225,15 @@ Value parse(String &s, int &ptr) {
 std::vector<Value> parse(String s) {
   int i = 0, last_i = -1;
   std::vector<Value> result;
-  bool error=false;
+  bool error = false;
   // While the parser is making progress (while the pointer is moving right)
   // and the pointer hasn't reached the end of the string,
   while (last_i != i && i <= int(s.length() - 1)) {
     // Parse another expression and add it to the list.
     last_i = i;
-    Value token = parse(s,i);
+    Value token = parse(s, i);
     if (token.is_error()) {
-      error=true;
+      error = true;
       break;
     }
     result.push_back(token);
@@ -1250,7 +1243,7 @@ std::vector<Value> parse(String s) {
   if (i < int(s.length())) {
     Serial.print("parse: ");
     Serial.println(MALFORMED_PROGRAM);
-    error=true;
+    error = true;
   }
   if (error) {
     result.clear();
@@ -1259,8 +1252,8 @@ std::vector<Value> parse(String s) {
   return result;
 }
 
-int ts_parse=0, ts_run=0;
-int parse_time=0, run_time=0;
+int ts_parse = 0, ts_run = 0;
+int parse_time = 0, run_time = 0;
 // Execute code in an environment
 Value run(String code, Environment &env) {
   ts_parse = micros();
@@ -1278,7 +1271,7 @@ Value run(String code, Environment &env) {
     auto result = parsed[parsed.size() - 1].eval(env);
     run_time += (micros() - ts_run);
     return result;
-  }else{
+  } else {
     return Value::error();
   }
 }
@@ -1467,7 +1460,6 @@ Value gen_random(std::vector<Value> &args, Environment &env) {
 
   int low = args[0].as_int(), high = args[1].as_int();
   return Value((int)random(low, high));
-  
 }
 
 // // Get the contents of a file
@@ -2018,6 +2010,20 @@ int analog_out_LED_pin(int out) {
     return ret; \
   }
 
+
+#define BUILTINFUNC_VARGS(__name__, __body__, __minArgs__, __maxArgs__) \
+  Value __name__(std::vector<Value> &args, Environment &env) { \
+    eval_args(args, env); \
+    Value ret = Value(); \
+    if (args.size() < __minArgs__ || args.size() > __maxArgs__) \
+      Serial.println(args.size() > __maxArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS); \
+    else { \
+      __body__ \
+    } \
+    return ret; \
+  }
+
+
 #define BUILTINFUNC_NOEVAL(__name__, __body__, __numArgs__) \
   Value __name__(std::vector<Value> &args, Environment &env) { \
     Value ret = Value(); \
@@ -2035,6 +2041,27 @@ int analog_out_LED_pin(int out) {
 
 //extra arduino api functions
 namespace builtin {
+
+double fast(double speed, double phasor) {
+  phasor *= speed;
+  double phase = fmod(phasor, 1.0);
+  return phase;
+}
+
+Value fromList(std::vector<Value> &lst, double phasor) {
+  if (phasor < 0.0) {
+    phasor = 0;
+  } else if (phasor > 1) {
+    phasor = 1;
+  }
+  double scaled_phasor = lst.size() * phasor;
+  size_t idx = floor(scaled_phasor);
+  if (idx == lst.size()) idx--;
+  return lst[idx];
+}
+
+
+
 BUILTINFUNC_NOEVAL(a1, env.set_global("a1-form", args[0]);, 1)
 BUILTINFUNC_NOEVAL(a2, env.set_global("a2-form", args[0]);, 1)
 
@@ -2052,12 +2079,12 @@ BUILTINFUNC_NOEVAL(d4,
 #ifdef MIDIOUT
 //midi drum out
 BUILTINFUNC(useq_mdo,
-  int midiNote = args[0].as_int();                  
-  Serial.println(midiNote);                  
-  Serial.println(args[1].display());                  
-  //TODO: remove function if nil
-  useqMDOMap[midiNote] = args[1];
-  , 2)
+            int midiNote = args[0].as_int();
+            Serial.println(midiNote);
+            Serial.println(args[1].display());
+            //TODO: remove function if nil
+            useqMDOMap[midiNote] = args[1];
+            , 2)
 #endif
 
 BUILTINFUNC(ard_pinMode,
@@ -2167,7 +2194,9 @@ BUILTINFUNC(ard_ceil,
 
 BUILTINFUNC(useq_pulse,
             //args: pulse width, phasor
-            ret = Value(args[1].as_float() < args[0].as_float() ? 1.0 : 0.0);
+            double pulseWidth = args[0].as_float();
+            double phasor = args[1].as_float();
+            ret = Value(pulseWidth < phasor ? 1.0 : 0.0);
             , 2)
 BUILTINFUNC(useq_sqr,
             ret = Value(args[0].as_float() < 0.5 ? 1.0 : 0.0);
@@ -2175,26 +2204,51 @@ BUILTINFUNC(useq_sqr,
 BUILTINFUNC(useq_fast,
             double speed = args[0].as_float();
             double phasor = args[1].as_float();
-            phasor *= speed;            
-            double phase = fmod(phasor, 1.0);
-            ret = Value(phase);
+            double fastPhasor = fast(speed, phasor);
+            ret = Value(fastPhasor);
             , 2)
 BUILTINFUNC(useq_fromList,
             auto lst = args[0].as_list();
             double phasor = args[1].as_float();
-            double scaled_phasor = lst.size() * fmod(phasor, 1.0);            
-            size_t idx = floor(scaled_phasor);
-            if (idx == lst.size()) idx--;
-            ret = lst[idx];
+            ret = fromList(lst, phasor);
             , 2)
 
-//"(defun fromList (lst phasor)\n	(do\n	   (define num-elements (len lst))\n   	(define scaled-phasor (* num-elements (clamp01 phasor)))\n	   (define idx (floor scaled-phasor))\n	   (if (= idx num-elements) (define idx (- idx 1)) 0)\n	   (nth lst idx)))",
+BUILTINFUNC_VARGS(useq_gates,
+                  auto lst = args[0].as_list();
+                  double phasor = args[1].as_float();
+                  double speed = args[2].as_float();
+                  double pulseWidth = args.size() == 4 ? args[3].as_float() : 0.5;
+                  double val = fromList(lst, fast(speed, phasor)).as_float();
+                  double gates = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
+                  ret = Value(val * gates);
+                  , 3, 4)
+
+/*
+(defun gates (lst ph speed pw) 
+  ( * 
+    (fromList lst 
+      (fast speed ph)
+      ) 
+    (pulse 
+      pw
+      (fast 
+        (* speed (len lst)
+        ) 
+        ph
+      )
+    )
+  )
+)
+
+*/
 
 
-          
+
+
+
 BUILTINFUNC(perf,
 
-            String report= "fps0: ";
+            String report = "fps0: ";
             report += env.get("fps").as_int();
             // report += ", fps1: ";
             // report += env.get("perf_fps1").as_int();
@@ -2237,50 +2291,53 @@ bool Environment::has(String name) const {
 
 std::map<String, Value> Environment::builtindefs;
 void loadBuiltinDefs() {
-  Environment::builtindefs["useqdw"]= Value("useqdw", builtin::ard_useqdw);
-  Environment::builtindefs["useqaw"]= Value("useqaw", builtin::ard_useqaw);
-  Environment::builtindefs["a1"]= Value("a1", builtin::a1);
-  Environment::builtindefs["a2"]= Value("a2", builtin::a2);
-  Environment::builtindefs["d1"]= Value("d1", builtin::d1);
-  Environment::builtindefs["d2"]= Value("d2", builtin::d2);
-  Environment::builtindefs["d3"]= Value("d3", builtin::d3);
-  Environment::builtindefs["d4"]= Value("d4", builtin::d4);
-  Environment::builtindefs["pm"]= Value("pm", builtin::ard_pinMode);
-  Environment::builtindefs["dw"]= Value("dw", builtin::ard_digitalWrite);
-  Environment::builtindefs["dr"]= Value("dr", builtin::ard_digitalRead);
-  Environment::builtindefs["delay"]= Value("delay", builtin::ard_delay);
-  Environment::builtindefs["delaym"]= Value("delaym", builtin::ard_delaymicros);
-  Environment::builtindefs["millis"]= Value("millis", builtin::ard_millis);
-  Environment::builtindefs["micros"]= Value("micros", builtin::ard_micros);
-  Environment::builtindefs["perf"]= Value("perf", builtin::perf);
+  Environment::builtindefs["useqdw"] = Value("useqdw", builtin::ard_useqdw);
+  Environment::builtindefs["useqaw"] = Value("useqaw", builtin::ard_useqaw);
+  Environment::builtindefs["a1"] = Value("a1", builtin::a1);
+  Environment::builtindefs["a2"] = Value("a2", builtin::a2);
+  Environment::builtindefs["d1"] = Value("d1", builtin::d1);
+  Environment::builtindefs["d2"] = Value("d2", builtin::d2);
+  Environment::builtindefs["d3"] = Value("d3", builtin::d3);
+  Environment::builtindefs["d4"] = Value("d4", builtin::d4);
+  Environment::builtindefs["pm"] = Value("pm", builtin::ard_pinMode);
+  Environment::builtindefs["dw"] = Value("dw", builtin::ard_digitalWrite);
+  Environment::builtindefs["dr"] = Value("dr", builtin::ard_digitalRead);
+  Environment::builtindefs["delay"] = Value("delay", builtin::ard_delay);
+  Environment::builtindefs["delaym"] = Value("delaym", builtin::ard_delaymicros);
+  Environment::builtindefs["millis"] = Value("millis", builtin::ard_millis);
+  Environment::builtindefs["micros"] = Value("micros", builtin::ard_micros);
+  Environment::builtindefs["perf"] = Value("perf", builtin::perf);
 
   //sequencing
-  Environment::builtindefs["pulse"]= Value("pulse", builtin::useq_pulse);
-  Environment::builtindefs["sqr"]= Value("sqr", builtin::useq_sqr);
-  Environment::builtindefs["fast"]= Value("fast", builtin::useq_fast);
+  Environment::builtindefs["pulse"] = Value("pulse", builtin::useq_pulse);
+  Environment::builtindefs["sqr"] = Value("sqr", builtin::useq_sqr);
+  Environment::builtindefs["fast"] = Value("fast", builtin::useq_fast);
+  Environment::builtindefs["fromList"] = Value("fromList", builtin::useq_fromList);
+  Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
+
 
 #ifdef MIDIOUT
-  Environment::builtindefs["mdo"]= Value("mdo", builtin::useq_mdo);
+  Environment::builtindefs["mdo"] = Value("mdo", builtin::useq_mdo);
 #endif
   //arduino math
-  Environment::builtindefs["sin"]= Value("sin", builtin::ard_sin);
-  Environment::builtindefs["cos"]= Value("cos", builtin::ard_cos);
-  Environment::builtindefs["tan"]= Value("tan", builtin::ard_tan);
-  Environment::builtindefs["abs"]= Value("abs", builtin::ard_abs);
+  Environment::builtindefs["sin"] = Value("sin", builtin::ard_sin);
+  Environment::builtindefs["cos"] = Value("cos", builtin::ard_cos);
+  Environment::builtindefs["tan"] = Value("tan", builtin::ard_tan);
+  Environment::builtindefs["abs"] = Value("abs", builtin::ard_abs);
 
-  Environment::builtindefs["min"]= Value("min", builtin::ard_min);
-  Environment::builtindefs["max"]= Value("max", builtin::ard_max);
-  Environment::builtindefs["pow"]= Value("pow", builtin::ard_pow);
-  Environment::builtindefs["sqrt"]= Value("sqrt", builtin::ard_sqrt);
-  Environment::builtindefs["scale"]= Value("scale", builtin::ard_map);
+  Environment::builtindefs["min"] = Value("min", builtin::ard_min);
+  Environment::builtindefs["max"] = Value("max", builtin::ard_max);
+  Environment::builtindefs["pow"] = Value("pow", builtin::ard_pow);
+  Environment::builtindefs["sqrt"] = Value("sqrt", builtin::ard_sqrt);
+  Environment::builtindefs["scale"] = Value("scale", builtin::ard_map);
 
   // Meta operations
-  Environment::builtindefs["eval"]= Value("eval", builtin::eval);
-  Environment::builtindefs["type"]= Value("type", builtin::get_type_name);
-  Environment::builtindefs["parse"]= Value("parse", builtin::parse);
+  Environment::builtindefs["eval"] = Value("eval", builtin::eval);
+  Environment::builtindefs["type"] = Value("type", builtin::get_type_name);
+  Environment::builtindefs["parse"] = Value("parse", builtin::parse);
 
   // Special forms
-  Environment::builtindefs["do"]= Value("do", builtin::do_block);
+  Environment::builtindefs["do"] = Value("do", builtin::do_block);
   Environment::builtindefs["if"] = Value("if", builtin::if_then_else);
   Environment::builtindefs["for"] = Value("for", builtin::for_loop);
   Environment::builtindefs["while"] = Value("while", builtin::while_loop);
@@ -2349,7 +2406,6 @@ void loadBuiltinDefs() {
 
   // Constants
   Environment::builtindefs["endl"] = Value::string("\n");
-
 }
 // Get the value associated with this name in this scope
 Value Environment::get(String name) const {
@@ -2485,7 +2541,6 @@ void setup_IO() {
   Serial1.setTX(0);
   Serial1.begin(31250);
 #endif
-
 }
 
 void module_setup() {
@@ -2538,11 +2593,10 @@ void readInputs() {
   useqInputValues[USEQT2] = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
 }
 
-namespace useq
-{
+namespace useq {
 
 // Meter
-size_t meter_numerator   = 4;
+size_t meter_numerator = 4;
 size_t meter_denominator = 4;
 
 // BPM
@@ -2555,63 +2609,58 @@ double barDur = 0.0;
 // Timing
 double lastResetTime = micros();
 double time = 0;
-double t = 0; //time since last reset
-double last_t = 0; //timestamp of the previous time update (since reset)
+double t = 0;       //time since last reset
+double last_t = 0;  //timestamp of the previous time update (since reset)
 double beat = 0.0;
-double bar  = 0.0;
+double bar = 0.0;
 
 
-void updateBpmVariables()
-{
-    env.set("bpm", Value(bpm));
-    env.set("bps", Value(bps));
-    env.set("beatDur", Value(static_cast<double>(beatDur/1000.0)));
-    env.set("barDur", Value(static_cast<double>(barDur/1000.0)));
+void updateBpmVariables() {
+  env.set("bpm", Value(bpm));
+  env.set("bps", Value(bps));
+  env.set("beatDur", Value(static_cast<double>(beatDur / 1000.0)));
+  env.set("barDur", Value(static_cast<double>(barDur / 1000.0)));
 }
 
-void setBpm(double newBpm)
-{
-    bpm = newBpm;
-    bps = bpm / 60.0;
+void setBpm(double newBpm) {
+  bpm = newBpm;
+  bps = bpm / 60.0;
 
-    beatDur = 1000000.0 / bps;
-    barDur = beatDur * meter_numerator;
+  beatDur = 1000000.0 / bps;
+  barDur = beatDur * meter_numerator;
 
-    updateBpmVariables();
+  updateBpmVariables();
 }
 
-void updateTimeVariables()
-{
-    env.set("time", Value(time * 0.001));
-    env.set("t", Value(t * 0.001));
-    env.set("beat", Value(beat));
-    env.set("bar", Value(bar));
+void updateTimeVariables() {
+  env.set("time", Value(time * 0.001));
+  env.set("t", Value(t * 0.001));
+  env.set("beat", Value(beat));
+  env.set("bar", Value(bar));
 }
 
 // Set the module's "transport" to a specified value in microseconds
 // and update all derrivative variables
-void setTime(size_t newTimeMicros)
-{
-    time = newTimeMicros;
-    // last_t = t;
-    t = newTimeMicros - lastResetTime;
-    beat = fmod(t, beatDur) / beatDur;
-    bar  = fmod(t, barDur)  / barDur;
+void setTime(size_t newTimeMicros) {
+  time = newTimeMicros;
+  // last_t = t;
+  t = newTimeMicros - lastResetTime;
+  beat = fmod(t, beatDur) / beatDur;
+  bar = fmod(t, barDur) / barDur;
 
-    updateTimeVariables();
+  updateTimeVariables();
 }
 
 
 // Update time to the current value of `micros()`
 // and update each variable that's derrived from it
 void updateTime() {
-    setTime(micros());
+  setTime(micros());
 }
 
-void resetTime()
-{
-    lastResetTime = micros();
-    updateTime();
+void resetTime() {
+  lastResetTime = micros();
+  updateTime();
 }
 
 void updateDigitalOutputs() {
@@ -2627,51 +2676,44 @@ void updateAnalogOutputs() {
 }
 
 #ifdef MIDIOUT
-double last_midi_t=0;
+double last_midi_t = 0;
 void updateMidiOut() {
-  const double midiRes = 48*meter_numerator;
-  const double timeUnitMicros = (barDur / midiRes); 
-  
+  const double midiRes = 48 * meter_numerator * 2;
+  const double timeUnitMicros = (barDur / midiRes);
+
   const double timeDeltaMicros = t - last_midi_t;
   size_t steps = floor(timeDeltaMicros / timeUnitMicros);
   double initValPhase = bar - (timeDeltaMicros / barDur);
-  
+
   if (steps > 0) {
     const double timeUnitBar = 1.0 / midiRes;
 
     auto itr = useqMDOMap.begin();
-    Serial.println(useqMDOMap.size());
     for (; itr != useqMDOMap.end(); itr++) {
       // Iterate through the keys process MIDI events
       Value midiFunction = itr->second;
       if (initValPhase < 0) initValPhase++;
-      std::vector<Value> mdoArgs = {Value(initValPhase)};
-      Value prev = midiFunction.apply(mdoArgs, env);  
-      // Serial.print("ivp: ");
-      // Serial.println(initValPhase);
-      // Serial.print("pr: ");
-      // Serial.println(prev.as_float());
-      for(size_t step = 0; step < steps; step++) {
-        double t_step = bar - ((steps - (step+1)) * timeUnitBar);
+      std::vector<Value> mdoArgs = { Value(initValPhase) };
+      Value prev = midiFunction.apply(mdoArgs, env);
+      for (size_t step = 0; step < steps; step++) {
+        double t_step = bar - ((steps - (step + 1)) * timeUnitBar);
         //wrap phasor
         if (t_step < 0) t_step += 1.0;
         // Serial.println(t_step);
         mdoArgs[0] = Value(t_step);
-        Value val = midiFunction.apply(mdoArgs, env); 
+        Value val = midiFunction.apply(mdoArgs, env);
         // Serial.println(val.as_float());
         if (val > prev) {
-          // Serial.println("noteon");
           Serial1.write(0x99);
           Serial1.write(itr->first);
-          Serial1.write(127);
-        }else if (val < prev) {
-          // Serial.println("noteoff");
+          Serial1.write(50);
+        } else if (val < prev) {
           Serial1.write(0x89);
           Serial1.write(itr->first);
           Serial1.write((byte)0);
         }
         prev = val;
-      }  
+      }
     }
     last_midi_t = t;
   }
@@ -2679,10 +2721,9 @@ void updateMidiOut() {
 #endif
 
 
-void setup()
-{
-    setBpm(defaultBpm);
-    updateTime();
+void setup() {
+  setBpm(defaultBpm);
+  updateTime();
 }
 
 
@@ -2697,17 +2738,17 @@ void update() {
   env.set("perf_time", Value(int(millis() - ts_time)));
   ts_outputs = millis();
   updateAnalogOutputs();
-  updateDigitalOutputs();  
+  updateDigitalOutputs();
 #ifdef MIDIOUT
-  updateMidiOut(); 
-#endif  
+  updateMidiOut();
+#endif
   env.set("perf_out", Value(int(millis() - ts_outputs)));
 }
 
 
-} //end of useq namespace
+}  //end of useq namespace
 
-int test=0;
+int test = 0;
 
 // void setup_core1() {
 //   test = 10;
@@ -2719,7 +2760,7 @@ int test=0;
 //   for(;;) {
 //   // if(setupComplete) {
 //     test++;
-//     // // env.set("tt",Value(test));  
+//     // // env.set("tt",Value(test));
 //     // if (Serial.availableForWrite()) {
 //     //   Serial.println(test);
 //     // }
@@ -2728,7 +2769,7 @@ int test=0;
 //   }
 // }
 
-bool setupComplete=false;
+bool setupComplete = false;
 
 void setup() {
   // put your setup code here, to run once:
@@ -2761,16 +2802,16 @@ void loop() {
   env.set("fps", Value(updateSpeed));
   ts = millis();
 
-  get_time=0;
-  parse_time=0;
-  run_time=0;
+  get_time = 0;
+  parse_time = 0;
+  run_time = 0;
 
   RESET_TIMER
 
   useq::update();
 
   env.set("perf_get", Value(float(get_time * 0.001)));
-  env.set("perf_parse", Value(float(parse_time *0.001)));
+  env.set("perf_parse", Value(float(parse_time * 0.001)));
   env.set("perf_run", Value(float(run_time * 0.001)));
   env.set("perf_ts1", Value(float(ts_total * 0.001)));
 
@@ -2792,4 +2833,3 @@ void loop() {
   // run("(useq-update)", env);
   // readRotaryEnc();
 }
-
