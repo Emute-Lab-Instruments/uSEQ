@@ -2594,7 +2594,7 @@ double beatDur = 0.0;
 double barDur = 0.0;
 
 // Timing
-double lastResetTime = micros();
+double lastResetTime = millis();
 double time = 0;
 double t = 0;       //time since last reset
 double last_t = 0;  //timestamp of the previous time update (since reset)
@@ -2605,33 +2605,33 @@ double bar = 0.0;
 void updateBpmVariables() {
   env.set("bpm", Value(bpm));
   env.set("bps", Value(bps));
-  env.set("beatDur", Value(static_cast<double>(beatDur / 1000.0)));
-  env.set("barDur", Value(static_cast<double>(barDur / 1000.0)));
+  env.set("beatDur", Value(beatDur));
+  env.set("barDur", Value(barDur));
 }
 
 void setBpm(double newBpm) {
   bpm = newBpm;
   bps = bpm / 60.0;
 
-  beatDur = 1000000.0 / bps;
+  beatDur = 1000.0 / bps;
   barDur = beatDur * meter_numerator;
 
   updateBpmVariables();
 }
 
 void updateTimeVariables() {
-  env.set("time", Value(time * 0.001));
-  env.set("t", Value(t * 0.001));
+  env.set("time", Value(time));
+  env.set("t", Value(t));
   env.set("beat", Value(beat));
   env.set("bar", Value(bar));
 }
 
 // Set the module's "transport" to a specified value in microseconds
 // and update all derrivative variables
-void setTime(size_t newTimeMicros) {
-  time = newTimeMicros;
+void setTime(size_t newTimeMillis) {
+  time = newTimeMillis;
   // last_t = t;
-  t = newTimeMicros - lastResetTime;
+  t = newTimeMillis - lastResetTime;
   beat = fmod(t, beatDur) / beatDur;
   bar = fmod(t, barDur) / barDur;
 
@@ -2642,11 +2642,11 @@ void setTime(size_t newTimeMicros) {
 // Update time to the current value of `micros()`
 // and update each variable that's derrived from it
 void updateTime() {
-  setTime(micros());
+  setTime(millis());
 }
 
 void resetTime() {
-  lastResetTime = micros();
+  lastResetTime = millis();
   updateTime();
 }
 
@@ -2666,11 +2666,11 @@ void updateAnalogOutputs() {
 double last_midi_t = 0;
 void updateMidiOut() {
   const double midiRes = 48 * meter_numerator * 2;
-  const double timeUnitMicros = (barDur / midiRes);
+  const double timeUnitMillis = (barDur / midiRes);
 
-  const double timeDeltaMicros = t - last_midi_t;
-  size_t steps = floor(timeDeltaMicros / timeUnitMicros);
-  double initValPhase = bar - (timeDeltaMicros / barDur);
+  const double timeDeltaMillis = t - last_midi_t;
+  size_t steps = floor(timeDeltaMillis / timeUnitMillis);
+  double initValPhase = bar - (timeDeltaMillis / barDur);
 
   if (steps > 0) {
     const double timeUnitBar = 1.0 / midiRes;
