@@ -2223,24 +2223,6 @@ BUILTINFUNC_VARGS(useq_gates,
                   ret = Value(val * gates);
                   , 3, 4)
 
-/*
-(defun gates (lst ph speed pw) 
-  ( * 
-    (fromList lst 
-      (fast speed ph)
-      ) 
-    (pulse 
-      pw
-      (fast 
-        (* speed (len lst)
-        ) 
-        ph
-      )
-    )
-  )
-)
-
-*/
 
 
 
@@ -2290,6 +2272,7 @@ bool Environment::has(String name) const {
 }
 
 std::map<String, Value> Environment::builtindefs;
+
 void loadBuiltinDefs() {
   Environment::builtindefs["useqdw"] = Value("useqdw", builtin::ard_useqdw);
   Environment::builtindefs["useqaw"] = Value("useqaw", builtin::ard_useqaw);
@@ -2750,24 +2733,6 @@ void update() {
 
 int test = 0;
 
-// void setup_core1() {
-//   test = 10;
-// }
-
-// void loop_core1() {
-//   setup_core1();
-//   test++;
-//   for(;;) {
-//   // if(setupComplete) {
-//     test++;
-//     // // env.set("tt",Value(test));
-//     // if (Serial.availableForWrite()) {
-//     //   Serial.println(test);
-//     // }
-//   // }
-//   // sleep_ms(10);
-//   }
-// }
 
 bool setupComplete = false;
 
@@ -2830,6 +2795,7 @@ void loop() {
     // Serial.println(env.toString(env));
     // Serial.println(updateSpeed);
   }
-  // run("(useq-update)", env);
   // readRotaryEnc();
 }
+
+
