@@ -1007,12 +1007,12 @@ Value Value::apply(std::vector<Value> &args, Environment &env) {
     case LAMBDA:
       {
         Environment e;
-        std::vector<Value> params;
+        std::vector<Value> *params;
 
         // Get the list of parameter atoms
-        params = list[0].list;
-        if (params.size() != args.size()) {
-          Serial.println(args.size() > params.size() ? TOO_MANY_ARGS : TOO_FEW_ARGS);
+        params = &list[0].list;
+        if (params->size() != args.size()) {
+          Serial.println(args.size() > params->size() ? TOO_MANY_ARGS : TOO_FEW_ARGS);
           return Value::error();
         }
 
@@ -1027,12 +1027,12 @@ Value Value::apply(std::vector<Value> &args, Environment &env) {
 
         // Iterate through the list of parameters and
         // insert the arguments into the scope.
-        for (size_t i = 0; i < params.size(); i++) {
-          if (params[i].type != ATOM)
+        for (size_t i = 0; i < params->size(); i++) {
+          if ((*params)[i].type != ATOM)
             Serial.println(INVALID_LAMBDA);
           // throw Error(*this, env, INVALID_LAMBDA);
           // Set the parameter name into the scope.
-          e.set(params[i].str, args[i]);
+          e.set((*params)[i].str, args[i]);
         }
         // Evaluate the function body with the function scope
         auto result = list[1].eval(e);
@@ -1085,9 +1085,9 @@ Value Value::eval(Environment &env) {
         if (list.size() < 1)
           Serial.println(EVAL_EMPTY_LIST);
         // throw Error(*this, env, EVAL_EMPTY_LIST);
-
+START_TIMER
         args = std::vector<Value>(list.begin() + 1, list.end());
-
+STOP_TIMER
         // Only evaluate our arguments if it's not builtin!
         // Builtin functions can be special forms, so we
         // leave them to evaluate their arguments.
@@ -1096,9 +1096,11 @@ Value Value::eval(Environment &env) {
           return Value::error();
         } else {
           //lambda?
-          if (!function.is_builtin())
-            for (size_t i = 0; i < args.size(); i++)
+          if (!function.is_builtin()) {
+            for (size_t i = 0; i < args.size(); i++) {
               args[i] = args[i].eval(env);
+            }
+          }
 
           auto functionResult = function.apply(
             args,
@@ -2231,9 +2233,11 @@ BUILTINFUNC_VARGS(useq_gates,
 BUILTINFUNC(perf,
 
             String report = "fps0: ";
-            report += env.get("fps").as_int();
+            report += env.get("fps").as_float();
             // report += ", fps1: ";
             // report += env.get("perf_fps1").as_int();
+            report += ", q0: ";
+            report += env.get("q0").as_float();
             report += ", in: ";
             report += env.get("perf_in").as_int();
             report += ", upd_tm: ";
@@ -2763,9 +2767,10 @@ int updateSpeed = 0;
 
 
 void loop() {
-  updateSpeed = millis() - ts;
-  env.set("fps", Value(updateSpeed));
-  ts = millis();
+  updateSpeed = micros() - ts;
+  env.set("fps", Value(1000000.0 / updateSpeed));
+  env.set("q0", Value(updateSpeed * 0.001));
+  ts = micros();
 
   get_time = 0;
   parse_time = 0;
