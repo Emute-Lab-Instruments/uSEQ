@@ -2039,6 +2039,169 @@ int analog_out_LED_pin(int out) {
 
 
 
+///////////////////////////
+// USEQ NAMESPACE
+///////////////////////////
+
+Environment env;
+
+namespace useq {
+
+// Meter
+size_t meter_numerator = 4;
+size_t meter_denominator = 4;
+
+// BPM
+double defaultBpm = 130.0;
+double bpm = 130.0;
+double bps = 0.0;
+double beatDur = 0.0;
+double barDur = 0.0;
+
+// Timing
+double lastResetTime = millis();
+double time = 0;
+double t = 0;       //time since last reset
+double last_t = 0;  //timestamp of the previous time update (since reset)
+double beat = 0.0;
+double bar = 0.0;
+
+
+void updateBpmVariables() {
+  env.set("bpm", Value(bpm));
+  env.set("bps", Value(bps));
+  env.set("beatDur", Value(beatDur));
+  env.set("barDur", Value(barDur));
+}
+
+void setBpm(double newBpm) {
+  bpm = newBpm;
+  bps = bpm / 60.0;
+
+  beatDur = 1000.0 / bps;
+  barDur = beatDur * meter_numerator;
+
+  updateBpmVariables();
+}
+
+void updateTimeVariables() {
+  env.set("time", Value(time));
+  env.set("t", Value(t));
+  env.set("beat", Value(beat));
+  env.set("bar", Value(bar));
+}
+
+// Set the module's "transport" to a specified value in microseconds
+// and update all derrivative variables
+void setTime(size_t newTimeMillis) {
+  time = newTimeMillis;
+  // last_t = t;
+  t = newTimeMillis - lastResetTime;
+  beat = fmod(t, beatDur) / beatDur;
+  bar = fmod(t, barDur) / barDur;
+
+  updateTimeVariables();
+}
+
+
+// Update time to the current value of `micros()`
+// and update each variable that's derrived from it
+void updateTime() {
+  setTime(millis());
+}
+
+void resetTime() {
+  lastResetTime = millis();
+  updateTime();
+}
+
+void updateDigitalOutputs() {
+  run("(update-d1)", env);
+  run("(update-d2)", env);
+  run("(update-d3)", env);
+  run("(update-d4)", env);
+}
+
+void updateAnalogOutputs() {
+  run("(update-a1)", env);
+  run("(update-a2)", env);
+}
+
+#ifdef MIDIOUT
+double last_midi_t = 0;
+void updateMidiOut() {
+  const double midiRes = 48 * meter_numerator * 2;
+  const double timeUnitMillis = (barDur / midiRes);
+
+  const double timeDeltaMillis = t - last_midi_t;
+  size_t steps = floor(timeDeltaMillis / timeUnitMillis);
+  double initValPhase = bar - (timeDeltaMillis / barDur);
+
+  if (steps > 0) {
+    const double timeUnitBar = 1.0 / midiRes;
+
+    auto itr = useqMDOMap.begin();
+    for (; itr != useqMDOMap.end(); itr++) {
+      // Iterate through the keys process MIDI events
+      Value midiFunction = itr->second;
+      if (initValPhase < 0) initValPhase++;
+      std::vector<Value> mdoArgs = { Value(initValPhase) };
+      Value prev = midiFunction.apply(mdoArgs, env);
+      for (size_t step = 0; step < steps; step++) {
+        double t_step = bar - ((steps - (step + 1)) * timeUnitBar);
+        //wrap phasor
+        if (t_step < 0) t_step += 1.0;
+        // Serial.println(t_step);
+        mdoArgs[0] = Value(t_step);
+        Value val = midiFunction.apply(mdoArgs, env);
+        // Serial.println(val.as_float());
+        if (val > prev) {
+          Serial1.write(0x99);
+          Serial1.write(itr->first);
+          Serial1.write(val.as_int() * 14);
+        } else if (val < prev) {
+          Serial1.write(0x89);
+          Serial1.write(itr->first);
+          Serial1.write((byte)0);
+        }
+        prev = val;
+      }
+    }
+    last_midi_t = t;
+  }
+}
+#endif
+
+
+void setup() {
+  setBpm(defaultBpm);
+  updateTime();
+}
+
+
+int ts_inputs = 0, ts_time = 0, ts_outputs = 0;
+
+void update() {
+  ts_inputs = millis();
+  readInputs();
+  env.set("perf_in", Value(int(millis() - ts_inputs)));
+  ts_time = millis();
+  updateTime();
+  env.set("perf_time", Value(int(millis() - ts_time)));
+  ts_outputs = millis();
+  updateAnalogOutputs();
+  updateDigitalOutputs();
+#ifdef MIDIOUT
+  updateMidiOut();
+#endif
+  env.set("perf_out", Value(int(millis() - ts_outputs)));
+}
+
+
+}  //end of useq namespace
+
+
+
 
 
 //extra arduino api functions
@@ -2225,6 +2388,11 @@ BUILTINFUNC_VARGS(useq_gates,
                   ret = Value(val * gates);
                   , 3, 4)
 
+                  
+BUILTINFUNC(useq_setbpm,
+          useq::setBpm(args[0].as_float());
+          ret = args[0];
+          , 1)
 
 
 
@@ -2301,6 +2469,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["fast"] = Value("fast", builtin::useq_fast);
   Environment::builtindefs["fromList"] = Value("fromList", builtin::useq_fromList);
   Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
+  Environment::builtindefs["setbpm"] = Value("setbpm", builtin::useq_setbpm);
 
 
 #ifdef MIDIOUT
@@ -2417,7 +2586,6 @@ Value Environment::get(String name) const {
 }
 
 
-Environment env;
 
 void flash_builtin_led(int num, int amt) {
   for (int i = 0; i < num; i++) {
@@ -2580,160 +2748,6 @@ void readInputs() {
   useqInputValues[USEQT2] = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
 }
 
-namespace useq {
-
-// Meter
-size_t meter_numerator = 4;
-size_t meter_denominator = 4;
-
-// BPM
-double defaultBpm = 130.0;
-double bpm = 130.0;
-double bps = 0.0;
-double beatDur = 0.0;
-double barDur = 0.0;
-
-// Timing
-double lastResetTime = millis();
-double time = 0;
-double t = 0;       //time since last reset
-double last_t = 0;  //timestamp of the previous time update (since reset)
-double beat = 0.0;
-double bar = 0.0;
-
-
-void updateBpmVariables() {
-  env.set("bpm", Value(bpm));
-  env.set("bps", Value(bps));
-  env.set("beatDur", Value(beatDur));
-  env.set("barDur", Value(barDur));
-}
-
-void setBpm(double newBpm) {
-  bpm = newBpm;
-  bps = bpm / 60.0;
-
-  beatDur = 1000.0 / bps;
-  barDur = beatDur * meter_numerator;
-
-  updateBpmVariables();
-}
-
-void updateTimeVariables() {
-  env.set("time", Value(time));
-  env.set("t", Value(t));
-  env.set("beat", Value(beat));
-  env.set("bar", Value(bar));
-}
-
-// Set the module's "transport" to a specified value in microseconds
-// and update all derrivative variables
-void setTime(size_t newTimeMillis) {
-  time = newTimeMillis;
-  // last_t = t;
-  t = newTimeMillis - lastResetTime;
-  beat = fmod(t, beatDur) / beatDur;
-  bar = fmod(t, barDur) / barDur;
-
-  updateTimeVariables();
-}
-
-
-// Update time to the current value of `micros()`
-// and update each variable that's derrived from it
-void updateTime() {
-  setTime(millis());
-}
-
-void resetTime() {
-  lastResetTime = millis();
-  updateTime();
-}
-
-void updateDigitalOutputs() {
-  run("(update-d1)", env);
-  run("(update-d2)", env);
-  run("(update-d3)", env);
-  run("(update-d4)", env);
-}
-
-void updateAnalogOutputs() {
-  run("(update-a1)", env);
-  run("(update-a2)", env);
-}
-
-#ifdef MIDIOUT
-double last_midi_t = 0;
-void updateMidiOut() {
-  const double midiRes = 48 * meter_numerator * 2;
-  const double timeUnitMillis = (barDur / midiRes);
-
-  const double timeDeltaMillis = t - last_midi_t;
-  size_t steps = floor(timeDeltaMillis / timeUnitMillis);
-  double initValPhase = bar - (timeDeltaMillis / barDur);
-
-  if (steps > 0) {
-    const double timeUnitBar = 1.0 / midiRes;
-
-    auto itr = useqMDOMap.begin();
-    for (; itr != useqMDOMap.end(); itr++) {
-      // Iterate through the keys process MIDI events
-      Value midiFunction = itr->second;
-      if (initValPhase < 0) initValPhase++;
-      std::vector<Value> mdoArgs = { Value(initValPhase) };
-      Value prev = midiFunction.apply(mdoArgs, env);
-      for (size_t step = 0; step < steps; step++) {
-        double t_step = bar - ((steps - (step + 1)) * timeUnitBar);
-        //wrap phasor
-        if (t_step < 0) t_step += 1.0;
-        // Serial.println(t_step);
-        mdoArgs[0] = Value(t_step);
-        Value val = midiFunction.apply(mdoArgs, env);
-        // Serial.println(val.as_float());
-        if (val > prev) {
-          Serial1.write(0x99);
-          Serial1.write(itr->first);
-          Serial1.write(val.as_int() * 14);
-        } else if (val < prev) {
-          Serial1.write(0x89);
-          Serial1.write(itr->first);
-          Serial1.write((byte)0);
-        }
-        prev = val;
-      }
-    }
-    last_midi_t = t;
-  }
-}
-#endif
-
-
-void setup() {
-  setBpm(defaultBpm);
-  updateTime();
-}
-
-
-int ts_inputs = 0, ts_time = 0, ts_outputs = 0;
-
-void update() {
-  ts_inputs = millis();
-  readInputs();
-  env.set("perf_in", Value(int(millis() - ts_inputs)));
-  ts_time = millis();
-  updateTime();
-  env.set("perf_time", Value(int(millis() - ts_time)));
-  ts_outputs = millis();
-  updateAnalogOutputs();
-  updateDigitalOutputs();
-#ifdef MIDIOUT
-  updateMidiOut();
-#endif
-  env.set("perf_out", Value(int(millis() - ts_outputs)));
-}
-
-
-}  //end of useq namespace
 
 int test = 0;
 
