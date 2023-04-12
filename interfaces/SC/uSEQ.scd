@@ -50,7 +50,7 @@ u.putAll("(+ 120.4 10)")
 )
 
 (//u
-(dw 25 0)
+(dw 25 1)
 )
 
 (//u
@@ -76,11 +76,21 @@ u.putAll("(+ 120.4 10)")
 (//u
 (a2 (+ (pulse (fast 2 bar) 0.9) 0.01))
 )
-
 (//u
-(defun gates (lst speed pw) (* (fromList lst (fast speed bar)) (pulse (fast (* speed (len lst)) bar) pw)))
+(mdo 36 (lambda (t) (gates (quote 9 0 0 1) t (+ 2 (sqr t)))))
+(mdo 43 (lambda (t) (gates (quote 9 0 1 0 9 0) t 4)))
 )
 
+(//u
+(mdo 36 (lambda (t) (gates (quote 9 0 9 0) t (+ 2 (sqr t)))))
+(mdo 43 (lambda (t) (gates (quote 9 0 1 0 1 0) t 4)))
+)
+(//u
+(mdo 39 (lambda (t) (gates (quote 9 0 9 0 9 0 1 1) t 2)))
+)
+(//u
+(mdo 39 (lambda (t) 0))
+)
 (//u
 (perf)
 )
