@@ -1057,8 +1057,7 @@ Value Value::apply(std::vector<Value> &args, Environment &env) {
     default:
       // We can only call lambdas and builtins
       Serial.print(CALL_NON_FUNCTION);
-      Serial.println(args[0].as_string());
-      // throw Error(*this, env, CALL_NON_FUNCTION);
+      Serial.println(str);
       return Value::error();
   }
 }
@@ -2048,15 +2047,24 @@ Environment env;
 namespace useq {
 
 // Meter
-size_t meter_numerator = 4;
-size_t meter_denominator = 4;
+double meter_numerator = 4;
+double meter_denominator = 4;
+
+//TODO: better to have custom specified long phasors e.g. (addPhasor phasorName (lambda () (beats * 17))) - to be stored in std::map<String, Double[2]>
+double barsPerPhrase = 16;
+double phrasesPerEpoch = 300;
 
 // BPM
 double defaultBpm = 130.0;
 double bpm = 130.0;
 double bps = 0.0;
+
+//TODO: builtin functions to set phasor lengths and other timing
+//phasor lengths
 double beatDur = 0.0;
 double barDur = 0.0;
+double phraseDur = 0.0;
+double epochDur = 0.0;
 
 // Timing
 double lastResetTime = millis();
@@ -2065,6 +2073,8 @@ double t = 0;       //time since last reset
 double last_t = 0;  //timestamp of the previous time update (since reset)
 double beat = 0.0;
 double bar = 0.0;
+double phrase = 0.0;
+double epoch = 0.0;
 
 
 void updateBpmVariables() {
@@ -2072,6 +2082,8 @@ void updateBpmVariables() {
   env.set("bps", Value(bps));
   env.set("beatDur", Value(beatDur));
   env.set("barDur", Value(barDur));
+  env.set("phraseDur", Value(phraseDur));
+  env.set("epochDur", Value(epochDur));
 }
 
 void setBpm(double newBpm) {
@@ -2079,7 +2091,10 @@ void setBpm(double newBpm) {
   bps = bpm / 60.0;
 
   beatDur = 1000.0 / bps;
-  barDur = beatDur * meter_numerator;
+  barDur = beatDur * (4.0/meter_denominator) * meter_numerator;
+  phraseDur = barDur * barsPerPhrase;
+  epochDur = phraseDur * phrasesPerEpoch;
+
 
   updateBpmVariables();
 }
@@ -2089,6 +2104,8 @@ void updateTimeVariables() {
   env.set("t", Value(t));
   env.set("beat", Value(beat));
   env.set("bar", Value(bar));
+  env.set("phrase", Value(phrase));
+  env.set("epoch", Value(epoch));
 }
 
 // Set the module's "transport" to a specified value in microseconds
@@ -2099,6 +2116,8 @@ void setTime(size_t newTimeMillis) {
   t = newTimeMillis - lastResetTime;
   beat = fmod(t, beatDur) / beatDur;
   bar = fmod(t, barDur) / barDur;
+  phrase = fmod(t, phraseDur) / phraseDur;
+  epoch = fmod(t, epochDur) / epochDur;
 
   updateTimeVariables();
 }
