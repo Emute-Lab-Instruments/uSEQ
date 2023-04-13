@@ -13,6 +13,13 @@
 #include "pinmap.h"
 #include "LispLibrary.h"
 
+#define ETL_NO_STL
+#include <Embedded_Template_Library.h> // Mandatory for Arduino IDE only
+#include <etl/map.h>  
+#include <etl/unordered_map.h>  
+#include <etl/string.h>
+String board(ARDUINO_BOARD);
+
 ////////////////////////////////////////////////////////////////////////////////
 /// LISP LIBRARY /////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -165,6 +172,26 @@ Value run(String code, Environment &env);
 std::map<int, Value> useqMDOMap;
 #endif
 
+namespace etl {
+
+  template <>
+  struct hash<String>
+  {
+    std::size_t operator()(const String& k) const
+    {
+      using etl::hash;
+
+      // Compute individual hash values for first,
+      // second and third and combine them using XOR
+      // and bit shifting:
+
+      etl::string<3> firstThree(k.substring(0,3).c_str());
+      return hash<etl::string<3> >()(firstThree);
+    }
+  };
+
+}
+
 // An instance of a function's scope.
 class Environment {
 public:
@@ -210,12 +237,14 @@ public:
   // friend std::ostream &operator<<(std::ostream &os, Environment const &v);
 
 
-  static std::map<String, Value> builtindefs;
+  // static std::map<String, Value> builtindefs;
+  static etl::unordered_map<String, Value, 256> builtindefs;
 
 private:
 
   // The definitions in the scope.
   std::map<String, Value> defs;
+  // etl::unordered_map<String, Value, 1024> defs;
   Environment *parent_scope;
   mutex write_mutex;
 
@@ -2462,7 +2491,8 @@ bool Environment::has(String name) const {
   else return false;
 }
 
-std::map<String, Value> Environment::builtindefs;
+// std::map<String, Value> Environment::builtindefs;
+etl::unordered_map<String, Value, 256> Environment::builtindefs;
 
 void loadBuiltinDefs() {
   Environment::builtindefs["useqdw"] = Value("useqdw", builtin::ard_useqdw);
