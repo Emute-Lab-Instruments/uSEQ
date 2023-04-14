@@ -180,11 +180,6 @@ namespace etl {
     std::size_t operator()(const String& k) const
     {
       using etl::hash;
-
-      // Compute individual hash values for first,
-      // second and third and combine them using XOR
-      // and bit shifting:
-
       etl::string<3> firstThree(k.substring(0,3).c_str());
       return hash<etl::string<3> >()(firstThree);
     }
@@ -244,7 +239,7 @@ private:
 
   // The definitions in the scope.
   std::map<String, Value> defs;
-  // etl::unordered_map<String, Value, 1024> defs;
+  // etl::unordered_map<String, Value, 1024> defs; //note can't do this yet because of forward declaration
   Environment *parent_scope;
   mutex write_mutex;
 
