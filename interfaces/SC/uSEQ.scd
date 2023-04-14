@@ -70,11 +70,11 @@ u.putAll("(+ 120.4 10)")
 )
 
 (//u
-(d2 (gates (quote 1 0 0 1  1 1 1 0  1 1 1 1  1 0 1 1) 1 0.8 ))
+(d2 (gates (quote 1 0 0 1  1 1 1 0  1 1 0 1  1 0 1 1) 1 bar 0.8))
 )
 
 (//u
-(a2 (+ (pulse (fast 2 bar) 0.9) 0.01))
+(a1 (* (+ (pulse (fast 4 bar) (- 1 bar)) phrase) 0.1))
 )
 (//u
 (mdo 36 (lambda (t) (gates (quote 9 0 0 1) t (+ 2 (sqr t)))))
@@ -90,6 +90,9 @@ u.putAll("(+ 120.4 10)")
 )
 (//u
 (mdo 39 (lambda (t) 0))
+)
+(//u
+(mdo 36 (lambda (t) (gates (quote 9 0 1 1 0 9 1 0) t 1)))
 )
 (//u
 (perf)
