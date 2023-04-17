@@ -2161,15 +2161,21 @@ void resetTime() {
 }
 
 void updateDigitalOutputs() {
-  run("(update-d1)", env);
-  run("(update-d2)", env);
-  run("(update-d3)", env);
-  run("(update-d4)", env);
+  // run("(update-d1)", env);
+  // run("(update-d2)", env);
+  // run("(update-d3)", env);
+  // run("(update-d4)", env);
+  run("(useqdw 1 (eval d1-form))", env);
+  run("(useqdw 2 (eval d2-form))", env);
+  run("(useqdw 3 (eval d3-form))", env);
+  run("(useqdw 4 (eval d4-form))", env);
 }
 
 void updateAnalogOutputs() {
-  run("(update-a1)", env);
-  run("(update-a2)", env);
+  // run("(update-a1)", env);
+  // run("(update-a2)", env);
+  run("(useqaw 1 (eval a1-form))", env);
+  run("(useqaw 2 (eval a2-form))", env);
 }
 
 #ifdef MIDIOUT
