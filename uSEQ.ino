@@ -2449,8 +2449,29 @@ BUILTINFUNC(useq_in2,
           ret = Value(useqInputValues[USEQI2]);
           , 0)
 
+BUILTINFUNC(useq_swm,
+          int index = args[0].as_int();
+          if (index == 1) {
+            ret = Value(useqInputValues[USEQM1]);
+          }
+          else {
+            ret = Value(useqInputValues[USEQM2]);
+          }
+          , 1)
 
+BUILTINFUNC(useq_swt,
+          int index = args[0].as_int();
+          if (index == 1) {
+            ret = Value(useqInputValues[USEQT1]);
+          }
+          else {
+            ret = Value(useqInputValues[USEQT2]);
+          }
+          , 1)
 
+BUILTINFUNC(useq_swr,
+          ret = Value(useqInputValues[USEQRS1]);
+          , 0)
 
 BUILTINFUNC(perf,
 
@@ -2521,6 +2542,9 @@ void loadBuiltinDefs() {
   Environment::builtindefs["perf"] = Value("perf", builtin::perf);
   Environment::builtindefs["in1"] = Value("in1", builtin::useq_in1);
   Environment::builtindefs["in2"] = Value("in2", builtin::useq_in2);
+  Environment::builtindefs["swm"] = Value("swm", builtin::useq_swm);
+  Environment::builtindefs["swt"] = Value("swt", builtin::useq_swt);
+  Environment::builtindefs["swr"] = Value("swr", builtin::useq_swr);
 
   //sequencing
   Environment::builtindefs["pulse"] = Value("pulse", builtin::useq_pulse);
@@ -2873,7 +2897,7 @@ void loop() {
     // Serial.println(env.toString(env));
     // Serial.println(updateSpeed);
   }
-  // readRotaryEnc();
+  readRotaryEnc();
 }
 
 
