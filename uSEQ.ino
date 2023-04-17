@@ -2431,6 +2431,12 @@ BUILTINFUNC(useq_fromList,
             double phasor = args[1].as_float();
             ret = fromList(lst, phasor, env);
             , 2)
+BUILTINFUNC(useq_dm,
+            auto index = args[0].as_int();
+            auto v1 = args[1].as_float();
+            auto v2 = args[2].as_float();
+            ret = Value(index > 0 ? v2 : v1);
+            , 3)
 
 BUILTINFUNC_VARGS(useq_gates,
                   auto lst = args[0].as_list();
@@ -2562,6 +2568,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["sqr"] = Value("sqr", builtin::useq_sqr);
   Environment::builtindefs["fast"] = Value("fast", builtin::useq_fast);
   Environment::builtindefs["fromList"] = Value("fromList", builtin::useq_fromList);
+  Environment::builtindefs["dm"] = Value("dm", builtin::useq_dm);
   Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
   Environment::builtindefs["setbpm"] = Value("setbpm", builtin::useq_setbpm);
 
