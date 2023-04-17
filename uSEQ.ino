@@ -2478,6 +2478,10 @@ BUILTINFUNC(useq_swt,
 BUILTINFUNC(useq_swr,
           ret = Value(useqInputValues[USEQRS1]);
           , 0)
+          
+BUILTINFUNC(useq_rot,
+          ret = Value(useqInputValues[USEQR1]);
+          , 0)
 
 BUILTINFUNC(perf,
 
@@ -2551,6 +2555,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["swm"] = Value("swm", builtin::useq_swm);
   Environment::builtindefs["swt"] = Value("swt", builtin::useq_swt);
   Environment::builtindefs["swr"] = Value("swr", builtin::useq_swr);
+  Environment::builtindefs["rot"] = Value("rot", builtin::useq_rot);
 
   //sequencing
   Environment::builtindefs["pulse"] = Value("pulse", builtin::useq_pulse);
