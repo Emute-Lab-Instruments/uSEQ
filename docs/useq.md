@@ -257,7 +257,7 @@ Examples:
 
 ```
 
-## `gates <list> <phasor> <speed> <pulse width>`
+## `gates <list> <phasor> <speed> (<pulse width>)`
 
 Output a sequence of gates, with variable pulse width.
 
@@ -266,7 +266,7 @@ Output a sequence of gates, with variable pulse width.
 | list | A list of gate values | 0 or 1 |
 | phasor | The sequence is output once per cycle of the phasor | 0-1 |
 | speed | Modify the speed of the phasor | >= 1 |
-| pulse width | The pulse width of the gates | 0-1 |
+| pulse width | Optional, default: 0.5. The pulse width of the gates | 0-1 |
 
 ```
 (d2 (gates (quote 0 1 1 0  1 1 1 0  1 1 0 1  1 0 0 1) bar 1 (+ (swm 1) 0.3)))
@@ -277,6 +277,15 @@ Output a sequence of gates, with variable pulse width.
 (d2 (gates (quote 0 1 1 0 1 0 0 (swt 1) ) bar 2 0.5)))
 ```
 
+## `gatesw <list> <phasor> (<speed>)`
+
+Output a sequence of gates, with pulse width controlled from values in the list
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| list | A list of gate/pulse width values, varying from 0 (0% pulse width) to p (100% pulse width / tie into the next note) | 0 - 9 |
+| phasor | The sequence is output once per cycle of the phasor | 0-1 |
+| speed | Optional, default: 1. Modify the speed of the phasor | >= 1 |
 
 # MIDI functions
 
