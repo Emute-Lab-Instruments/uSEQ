@@ -40,6 +40,20 @@ Example: to echo digital input 2 to digital output 1
 (d1 (in2))
 ```
 
+## `print <value>`
+
+Print to the serial terminal
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| value | A value to print | any |
+
+
+```
+(print (in1))
+```
+
+
 
 # Timing functions
 
@@ -53,6 +67,15 @@ Set the speed of the sequencer in beats per minute
 
 
 # Sequencing Functions
+
+## `q0 <form>`
+
+Specify a function to run at the start of each quantum
+
+```
+(q0 (print bar))
+```
+
 
 ## `sqr <phasor>`
 
