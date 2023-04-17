@@ -2234,11 +2234,13 @@ void update() {
   updateTime();
   env.set("perf_time", Value(int(millis() - ts_time)));
   ts_outputs = millis();
+  run("(eval q-form)", env);  
   updateAnalogOutputs();
   updateDigitalOutputs();
 #ifdef MIDIOUT
   updateMidiOut();
 #endif
+
   env.set("perf_out", Value(int(millis() - ts_outputs)));
 }
 
@@ -2272,6 +2274,7 @@ Value fromList(std::vector<Value> &lst, double phasor, Environment &env) {
 
 
 
+BUILTINFUNC_NOEVAL(useq_q0, env.set_global("q-form", args[0]);, 1)
 BUILTINFUNC_NOEVAL(a1, env.set_global("a1-form", args[0]);, 1)
 BUILTINFUNC_NOEVAL(a2, env.set_global("a2-form", args[0]);, 1)
 
@@ -2455,8 +2458,8 @@ BUILTINFUNC(perf,
             report += env.get("fps").as_float();
             // report += ", fps1: ";
             // report += env.get("perf_fps1").as_int();
-            report += ", q0: ";
-            report += env.get("q0").as_float();
+            report += ", qt: ";
+            report += env.get("qt").as_float();
             report += ", in: ";
             report += env.get("perf_in").as_int();
             report += ", upd_tm: ";
@@ -2506,6 +2509,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["d2"] = Value("d2", builtin::d2);
   Environment::builtindefs["d3"] = Value("d3", builtin::d3);
   Environment::builtindefs["d4"] = Value("d4", builtin::d4);
+  Environment::builtindefs["q0"] = Value("q0", builtin::useq_q0);
+
   Environment::builtindefs["pm"] = Value("pm", builtin::ard_pinMode);
   Environment::builtindefs["dw"] = Value("dw", builtin::ard_digitalWrite);
   Environment::builtindefs["dr"] = Value("dr", builtin::ard_digitalRead);
@@ -2837,7 +2842,7 @@ int updateSpeed = 0;
 void loop() {
   updateSpeed = micros() - ts;
   env.set("fps", Value(1000000.0 / updateSpeed));
-  env.set("q0", Value(updateSpeed * 0.001));
+  env.set("qt", Value(updateSpeed * 0.001));
   ts = micros();
 
   get_time = 0;
