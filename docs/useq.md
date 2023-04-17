@@ -287,6 +287,11 @@ Output a sequence of gates, with pulse width controlled from values in the list
 | phasor | The sequence is output once per cycle of the phasor | 0-1 |
 | speed | Optional, default: 1. Modify the speed of the phasor | >= 1 |
 
+```
+(d2 (gatesw (quote 9 9 5 9 3 0 3 8) bar 2))
+```
+
+
 # MIDI functions
 
 To use MIDI functions, the firmware must be compiled with the MIDI flag(s) defined.  See the hardware documentation for info on how to extend the module with MIDI inputs and outputs
