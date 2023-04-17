@@ -20,6 +20,26 @@ A phasor, rising from 0-1 over the length of a phrase
 
 A phasor, rising from 0-1 over the length of a section
 
+# Input and Output
+
+## `in1`
+
+Returns the value of digital input 1 
+
+Example: to echo digital input 1 to digital output 1
+```
+(d1 (in1))
+```
+
+## `in2`
+
+Returns the value of digital input 2
+
+Example: to echo digital input 2 to digital output 1
+```
+(d1 (in2))
+```
+
 
 # Timing functions
 
@@ -82,6 +102,16 @@ Examples:
 
 ```
 (fromList (quote 1 2 (fromList (quote 1 2) bar)) 0.9)
+
 ```
 
+# MIDI functions
+
+To use MIDI functions, the firmware must be compiled with the MIDI flag(s) defined.  See the hardware documentation for info on how to extend the module with MIDI inputs and outputs
+
+# System Functions
+
+## `perf`
+
+Returns information on system performance and free memory
 
