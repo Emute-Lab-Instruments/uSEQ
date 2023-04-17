@@ -16,6 +16,21 @@ A phasor, rising from 0-1 over the length of a bar
 
 A phasor, rising from 0-1 over the length of a phrase
 
+## `phrase` 
+
+A phasor, rising from 0-1 over the length of a section
+
+
+# Timing functions
+
+## `setbpm <bpm>`
+
+Set the speed of the sequencer in beats per minute
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| bpm | beats per minute | any |
+
 
 # Sequencing Functions
 
