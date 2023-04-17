@@ -2439,6 +2439,12 @@ BUILTINFUNC(useq_setbpm,
           ret = args[0];
           , 1)
 
+BUILTINFUNC(useq_in1,
+          ret = Value(useqInputValues[USEQI1]);
+          , 0)
+BUILTINFUNC(useq_in2,
+          ret = Value(useqInputValues[USEQI2]);
+          , 0)
 
 
 
@@ -2508,6 +2514,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["millis"] = Value("millis", builtin::ard_millis);
   Environment::builtindefs["micros"] = Value("micros", builtin::ard_micros);
   Environment::builtindefs["perf"] = Value("perf", builtin::perf);
+  Environment::builtindefs["in1"] = Value("in1", builtin::useq_in1);
+  Environment::builtindefs["in2"] = Value("in2", builtin::useq_in2);
 
   //sequencing
   Environment::builtindefs["pulse"] = Value("pulse", builtin::useq_pulse);

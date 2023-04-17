@@ -56,10 +56,6 @@
 (defun update-d2 () (useqdw 2 (eval d2-form)))
 (defun update-d3 () (useqdw 3 (eval d3-form)))
 (defun update-d4 () (useqdw 4 (eval d4-form)))
-(defun d1 (new-form) (set d1-form new-form))
-(defun d2 (new-form) (set d2-form new-form))
-(defun d3 (new-form) (set d3-form new-form))
-(defun d4 (new-form) (set d4-form new-form))
 
 ;; Analog outs
 (define a1-form '(every 2 beatDur))
@@ -67,13 +63,13 @@
 (defun update-a1 () (useqaw 1 (eval a1-form)))  ;; runs on core 1
 (defun update-a2 () (useqaw 2 (eval a2-form)))  ;; runs on core 1
 
-(defun sig-in (index) (useqGetInput index))
-(defun in1 () (useqGetInput 1))
-(defun in2 () (useqGetInput 2))
-(defun swm (index) (useqGetInput (add 2 index)))
-(defun swt (index) (useqGetInput (add 4 index)))
-(defun swr () (useqGetInput 6))
-(defun rot () (useqGetInput 7))
+;;(defun sig-in (index) (useqGetInput index))
+;;(defun in1 () (useqGetInput 1))
+;;(defun in2 () (useqGetInput 2))
+;;(defun swm (index) (useqGetInput (add 2 index)))
+;;(defun swt (index) (useqGetInput (add 4 index)))
+;;(defun swr () (useqGetInput 6))
+;;(defun rot () (useqGetInput 7))
 
 (defun seq (lst speed)  (fromList lst (every speed beatDur)))
 	   
