@@ -54,7 +54,6 @@ Print to the serial terminal
 ```
 
 
-
 # Timing functions
 
 ## `setbpm <bpm>`
@@ -74,6 +73,9 @@ Specify a function to run at the start of each quantum
 
 ```
 (q0 (print bar))
+```
+```
+(q0 0)
 ```
 
 
