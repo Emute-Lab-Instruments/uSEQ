@@ -16,7 +16,7 @@ A phasor, rising from 0-1 over the length of a bar
 
 A phasor, rising from 0-1 over the length of a phrase
 
-## `phrase` 
+## `section` 
 
 A phasor, rising from 0-1 over the length of a section
 
