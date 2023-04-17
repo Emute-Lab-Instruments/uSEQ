@@ -209,6 +209,20 @@ Outputs a pulse wave.
 | pulse width | The relative width of each pulse | 0-1 |
 
 
+## `dm <input value> <value 1> <value 2>`
+
+Digital mapping.
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| input value | A binary input | 0 or 1 |
+| value 1 | This value is returned if the input is 0 | any |
+| value 2 | This value is returned if the input is 1 | any |
+
+```
+(d2 (gates (quote 0 1 1 0) bar (dm (swt 1) 2 6) 0.5)))
+```
+
 ## `fromList <list> <position>`
 
 Read an item from a list, using a normalised index.  
