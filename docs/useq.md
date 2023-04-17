@@ -70,7 +70,7 @@ Control the speed of a square wave with toggle switch 1
 
 ## `swr`
 
-Read the value of the switch rotary encoder switch
+Read the value of the rotary encoder switch
 
 ```
 (q0 (print (swr)))
