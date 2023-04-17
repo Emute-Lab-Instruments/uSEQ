@@ -122,6 +122,71 @@ Specify a function to run at the start of each quantum
 (q0 0)
 ```
 
+## `a1 <form>`
+
+Specify a function to calculate the value of analog output 1, calculated every quantum
+
+```
+(a1 (* (fromList '(0.4 0.1) bar) 3))
+```
+```
+(a1 0)
+```
+
+## `a2 <form>`
+
+Specify a function to calculate the value of analog output 2, calculated every quantum
+
+```
+(a2 (* (fromList '(0.4 0.1) bar) 3))
+```
+```
+(a2 0)
+```
+
+## `d1 <form>`
+
+Specify a function to calculate the value of digital output 1, calculated every quantum
+
+```
+(d1 (sqr beat))
+```
+```
+(d1 0)
+```
+
+## `d2 <form>`
+
+Specify a function to calculate the value of digital output 2, calculated every quantum
+
+```
+(d2 (sqr beat))
+```
+```
+(d2 0)
+```
+
+## `d3 <form>`
+
+Specify a function to calculate the value of digital output 3, calculated every quantum
+
+```
+(d3 (sqr beat))
+```
+```
+(d3 0)
+```
+
+## `d4 <form>`
+
+Specify a function to calculate the value of digital output 4, calculated every quantum
+
+```
+(d4 (sqr beat))
+```
+```
+(d4 0)
+```
 
 ## `sqr <phasor>`
 
