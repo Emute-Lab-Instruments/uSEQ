@@ -283,7 +283,7 @@ Output a sequence of gates, with pulse width controlled from values in the list
 
 | Parameter | Description | Range |
 | --- | --- | --- |
-| list | A list of gate/pulse width values, varying from 0 (0% pulse width) to p (100% pulse width / tie into the next note) | 0 - 9 |
+| list | A list of gate/pulse width values, varying from 0 (0% pulse width) to 9 (100% pulse width / tie into the next note) | 0 - 9 |
 | phasor | The sequence is output once per cycle of the phasor | 0-1 |
 | speed | Optional, default: 1. Modify the speed of the phasor | >= 1 |
 
