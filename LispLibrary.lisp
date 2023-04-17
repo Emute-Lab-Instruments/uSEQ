@@ -45,7 +45,7 @@
 
 ;; Outputs
 
-
+(define q-form 0)
 
 ;; Digital outs
 (define d1-form '(sqr beat))
