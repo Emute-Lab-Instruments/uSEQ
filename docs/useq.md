@@ -77,6 +77,13 @@ Read the value of the rotary encoder switch
 ```
 
 
+## `rot`
+
+Read the value of the rotary encoder
+
+```
+(q0 (print (rot)))
+```
 ## `print <value>`
 
 Print to the serial terminal
