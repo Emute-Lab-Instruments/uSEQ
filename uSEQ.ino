@@ -2076,7 +2076,7 @@ double meter_denominator = 4;
 
 //TODO: better to have custom specified long phasors e.g. (addPhasor phasorName (lambda () (beats * 17))) - to be stored in std::map<String, Double[2]>
 double barsPerPhrase = 16;
-double phrasesPerEpoch = 300;
+double phrasesPerSection = 16;
 
 // BPM
 double defaultBpm = 130.0;
@@ -2088,7 +2088,7 @@ double bps = 0.0;
 double beatDur = 0.0;
 double barDur = 0.0;
 double phraseDur = 0.0;
-double epochDur = 0.0;
+double sectionDur = 0.0;
 
 // Timing
 double lastResetTime = millis();
@@ -2098,7 +2098,7 @@ double last_t = 0;  //timestamp of the previous time update (since reset)
 double beat = 0.0;
 double bar = 0.0;
 double phrase = 0.0;
-double epoch = 0.0;
+double section = 0.0;
 
 
 void updateBpmVariables() {
@@ -2107,7 +2107,7 @@ void updateBpmVariables() {
   env.set("beatDur", Value(beatDur));
   env.set("barDur", Value(barDur));
   env.set("phraseDur", Value(phraseDur));
-  env.set("epochDur", Value(epochDur));
+  env.set("sectionDur", Value(sectionDur));
 }
 
 void setBpm(double newBpm) {
@@ -2117,7 +2117,7 @@ void setBpm(double newBpm) {
   beatDur = 1000.0 / bps;
   barDur = beatDur * (4.0/meter_denominator) * meter_numerator;
   phraseDur = barDur * barsPerPhrase;
-  epochDur = phraseDur * phrasesPerEpoch;
+  sectionDur = phraseDur * phrasesPerSection;
 
 
   updateBpmVariables();
@@ -2126,10 +2126,12 @@ void setBpm(double newBpm) {
 void updateTimeVariables() {
   env.set("time", Value(time));
   env.set("t", Value(t));
+
+  //phasors
   env.set("beat", Value(beat));
   env.set("bar", Value(bar));
   env.set("phrase", Value(phrase));
-  env.set("epoch", Value(epoch));
+  env.set("section", Value(section));
 }
 
 // Set the module's "transport" to a specified value in microseconds
@@ -2141,7 +2143,7 @@ void setTime(size_t newTimeMillis) {
   beat = fmod(t, beatDur) / beatDur;
   bar = fmod(t, barDur) / barDur;
   phrase = fmod(t, phraseDur) / phraseDur;
-  epoch = fmod(t, epochDur) / epochDur;
+  section = fmod(t, sectionDur) / sectionDur;
 
   updateTimeVariables();
 }
@@ -2256,7 +2258,7 @@ double fast(double speed, double phasor) {
   return phase;
 }
 
-Value fromList(std::vector<Value> &lst, double phasor) {
+Value fromList(std::vector<Value> &lst, double phasor, Environment &env) {
   if (phasor < 0.0) {
     phasor = 0;
   } else if (phasor > 1) {
@@ -2265,7 +2267,7 @@ Value fromList(std::vector<Value> &lst, double phasor) {
   double scaled_phasor = lst.size() * phasor;
   size_t idx = floor(scaled_phasor);
   if (idx == lst.size()) idx--;
-  return lst[idx];
+  return lst[idx].eval(env);
 }
 
 
@@ -2418,7 +2420,7 @@ BUILTINFUNC(useq_fast,
 BUILTINFUNC(useq_fromList,
             auto lst = args[0].as_list();
             double phasor = args[1].as_float();
-            ret = fromList(lst, phasor);
+            ret = fromList(lst, phasor, env);
             , 2)
 
 BUILTINFUNC_VARGS(useq_gates,
@@ -2426,7 +2428,7 @@ BUILTINFUNC_VARGS(useq_gates,
                   double phasor = args[1].as_float();
                   double speed = args[2].as_float();
                   double pulseWidth = args.size() == 4 ? args[3].as_float() : 0.5;
-                  double val = fromList(lst, fast(speed, phasor)).as_float();
+                  double val = fromList(lst, fast(speed, phasor), env).as_float();
                   double gates = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
                   ret = Value(val * gates);
                   , 3, 4)
