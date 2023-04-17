@@ -40,6 +40,43 @@ Example: to echo digital input 2 to digital output 1
 (d1 (in2))
 ```
 
+## `swm <index>`
+
+Read the value of a momentary switch
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| index | The index of the switch | 1 or 2 |
+
+
+Control the speed of a square wave with momentary switch 1
+```
+(d2 (sqr (fast (+ 1 (swm 1)) beat)))
+```
+
+## `swt <index>`
+
+Read the value of a toggle switch
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| index | The index of the switch | 1 or 2 |
+
+
+Control the speed of a square wave with toggle switch 1
+```
+(d2 (sqr (fast (+ 1 (swt 1)) beat)))
+```
+
+## `swr`
+
+Read the value of the switch rotary encoder switch
+
+```
+(q0 (print (swr)))
+```
+
+
 ## `print <value>`
 
 Print to the serial terminal
