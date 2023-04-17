@@ -2443,11 +2443,20 @@ BUILTINFUNC_VARGS(useq_gates,
                   double phasor = args[1].as_float();
                   double speed = args[2].as_float();
                   double pulseWidth = args.size() == 4 ? args[3].as_float() : 0.5;
-                  double val = fromList(lst, fast(speed, phasor), env).as_float();
+                  double val = fromList(lst, fast(speed, phasor), env).as_int();
                   double gates = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
                   ret = Value(val * gates);
                   , 3, 4)
 
+BUILTINFUNC_VARGS(useq_gatesw,
+                  auto lst = args[0].as_list();
+                  double phasor = args[1].as_float();
+                  double speed = args.size() == 3 ? args[2].as_float() : 1.0;
+                  double val = fromList(lst, fast(speed, phasor), env).as_int();
+                  double pulseWidth = val / 9.0;
+                  double gate = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
+                  ret = Value((val > 0 ? 1.0 : 0.0) * gate);
+                  , 2, 3)
                   
 BUILTINFUNC(useq_setbpm,
           useq::setBpm(args[0].as_float());
@@ -2570,6 +2579,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["fromList"] = Value("fromList", builtin::useq_fromList);
   Environment::builtindefs["dm"] = Value("dm", builtin::useq_dm);
   Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
+  Environment::builtindefs["gatesw"] = Value("gatesw", builtin::useq_gatesw);
   Environment::builtindefs["setbpm"] = Value("setbpm", builtin::useq_setbpm);
 
 
