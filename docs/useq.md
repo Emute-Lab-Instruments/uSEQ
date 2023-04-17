@@ -254,6 +254,15 @@ Output a sequence of gates, with variable pulse width.
 | speed | Modify the speed of the phasor | >= 1 |
 | pulse width | The pulse width of the gates | 0-1 |
 
+```
+(d2 (gates (quote 0 1 1 0  1 1 1 0  1 1 0 1  1 0 0 1) bar 1 (+ (swm 1) 0.3)))
+
+```
+
+```
+(d2 (gates (quote 0 1 1 0 1 0 0 (swt 1) ) bar 2 0.5)))
+```
+
 
 # MIDI functions
 
