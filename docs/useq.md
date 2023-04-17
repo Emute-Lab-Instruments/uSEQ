@@ -63,9 +63,9 @@ Read the value of a toggle switch
 | index | The index of the switch | 1 or 2 |
 
 
-Control the speed of a square wave with toggle switch 1
+Control the speed of a square wave with toggle switch 2
 ```
-(d2 (sqr (fast (+ 1 (swt 1)) beat)))
+(d4 (sqr (fast (scale (swt 2) 0 1 3 8) beat)))
 ```
 
 ## `swr`
