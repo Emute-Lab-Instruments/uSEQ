@@ -4,9 +4,17 @@
 
 The number of milliseconds since the last reset.
 
+## `beat` 
+
+A phasor, rising from 0-1 over the length of a beat
+
 ## `bar` 
 
 A phasor, rising from 0-1 over the length of a bar
+
+## `phrase` 
+
+A phasor, rising from 0-1 over the length of a phrase
 
 
 # Sequencing Functions
