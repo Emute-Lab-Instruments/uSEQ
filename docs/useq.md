@@ -109,7 +109,7 @@ Set the speed of the sequencer in beats per minute
 | bpm | beats per minute | any |
 
 
-# Sequencing Functions
+# Sequencing Callback Functions
 
 ## `q0 <form>`
 
@@ -188,6 +188,8 @@ Specify a function to calculate the value of digital output 4, calculated every 
 (d4 0)
 ```
 
+# Sequence Generation and Manipulation
+
 ## `sqr <phasor>`
 
 Turns a phasor into a square wave.
@@ -195,6 +197,7 @@ Turns a phasor into a square wave.
 | Parameter | Description | Range |
 | --- | --- | --- |
 | phasor | A phasor (e.g. bar, beat) | 0-1 |
+
 
 ## `pulse <phasor> <pulse width>`
 
@@ -204,6 +207,21 @@ Outputs a pulse wave.
 | --- | --- | --- |
 | phasor | A phasor (e.g. bar, beat) | 0-1 |
 | pulse width | The relative width of each pulse | 0-1 |
+
+
+## `dm <input value> <value 1> <value 2>`
+
+Digital mapping.
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| input value | A binary input | 0 or 1 |
+| value 1 | This value is returned if the input is 0 | any |
+| value 2 | This value is returned if the input is 1 | any |
+
+```
+(d2 (gates (quote 0 1 1 0) bar (dm (swt 1) 2 6) 0.5)))
+```
 
 ## `fromList <list> <position>`
 
@@ -238,6 +256,27 @@ Examples:
 (fromList (quote 1 2 (fromList (quote 1 2) bar)) 0.9)
 
 ```
+
+## `gates <list> <phasor> <speed> <pulse width>`
+
+Output a sequence of gates, with variable pulse width.
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| list | A list of gate values | 0 or 1 |
+| phasor | The sequence is output once per cycle of the phasor | 0-1 |
+| speed | Modify the speed of the phasor | >= 1 |
+| pulse width | The pulse width of the gates | 0-1 |
+
+```
+(d2 (gates (quote 0 1 1 0  1 1 1 0  1 1 0 1  1 0 0 1) bar 1 (+ (swm 1) 0.3)))
+
+```
+
+```
+(d2 (gates (quote 0 1 1 0 1 0 0 (swt 1) ) bar 2 0.5)))
+```
+
 
 # MIDI functions
 
