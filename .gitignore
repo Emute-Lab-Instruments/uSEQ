@@ -6,3 +6,6 @@ tmp/
 build/
 out/
 LispLibrary.h
+
+.vscode
+

@@ -1,4 +1,3 @@
-
 ;;;; List Functions
 (defun index (l n)
   (head
