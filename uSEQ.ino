@@ -1,3 +1,25 @@
+/*
+ ------------------------------------------------------------------------------
+| Copyright Dimitris Kyriakoudis and Chris Kiefer 2022.                                                    |
+|                                                                              |
+| This source describes Open Hardware and is licensed under the CERN-OHL-S v2. |
+|                                                                              |
+| You may redistribute and modify this source and make products using it under |
+| the terms of the CERN-OHL-S v2 (https://ohwr.org/cern_ohl_s_v2.txt).         |
+|                                                                              |
+| This source is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY,          |
+| INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY AND FITNESS FOR A         |
+| PARTICULAR PURPOSE. Please see the CERN-OHL-S v2 for applicable conditions.  |
+|                                                                              |
+| Source location: https://github.com/lnfiniteMonkeys/uSEQ                                      |
+|                                                                              |
+| As per CERN-OHL-S v2 section 4, should You produce hardware based on this    |
+| source, You must where practicable maintain the Source Location visible      |
+| on the external case of the Gizmo or other products you make using this      |
+| source.                                                                      |
+ ------------------------------------------------------------------------------
+
+ */
 // uSEQ firmware, by Dimitris Kyriakoudis and Chris Kiefer
 
 /// LISP interpreter forked from Wisp, by Adam McDaniel
@@ -2431,6 +2453,25 @@ BUILTINFUNC(useq_fromList,
             double phasor = args[1].as_float();
             ret = fromList(lst, phasor, env);
             , 2)
+BUILTINFUNC(useq_interpolate,
+            auto lst = args[0].as_list();
+            double phasor = args[1].as_float();
+            if (phasor < 0.0) {
+              phasor = 0;
+            } else if (phasor > 1) {
+              phasor = 1;
+            }
+            double scaled_phasor = lst.size() * phasor;
+            size_t idx = static_cast<size_t>(scaled_phasor) + 1;
+            if (idx == lst.size()) idx--;
+            double v2 = lst[idx].eval(env).as_float();
+            size_t idxv1 = idx == 0 ? lst.size() - 1 : idx -1;
+            double v1 = lst[idxv1].eval(env).as_float();
+            double relativePosition = scaled_phasor - idx;  
+            ret = Value((v1 * relativePosition) + (v2 * (1.0-relativePosition)));
+                        // ret = fromList(lst, phasor, env);
+            , 2)
+
 BUILTINFUNC(useq_dm,
             auto index = args[0].as_int();
             auto v1 = args[1].as_float();
@@ -2581,6 +2622,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
   Environment::builtindefs["gatesw"] = Value("gatesw", builtin::useq_gatesw);
   Environment::builtindefs["setbpm"] = Value("setbpm", builtin::useq_setbpm);
+  Environment::builtindefs["interp"] = Value("interp", builtin::useq_interpolate);
+  
 
 
 #ifdef MIDIOUT
