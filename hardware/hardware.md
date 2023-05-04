@@ -5,7 +5,7 @@ The hardware version is show n the front side of the PCB
 ## Version 0.2
 
 
-
+[coming soon: build docs]
 
 ## Version 0.1
 
