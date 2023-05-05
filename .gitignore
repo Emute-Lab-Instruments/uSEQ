@@ -9,3 +9,9 @@ LispLibrary.h
 
 .vscode
 
+
+interfaces/useqedit/__pycache__/Buffer.cpython-310.pyc
+
+interfaces/useqedit/__pycache__/Cursor.cpython-310.pyc
+
+interfaces/useqedit/__pycache__/MessageLog.cpython-310.pyc
