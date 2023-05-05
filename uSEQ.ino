@@ -2203,7 +2203,7 @@ void updateAnalogOutputs() {
 #ifdef MIDIOUT
 double last_midi_t = 0;
 void updateMidiOut() {
-  const double midiRes = 48 * meter_numerator * 2;
+  const double midiRes = 48 * meter_numerator * 1;
   const double timeUnitMillis = (barDur / midiRes);
 
   const double timeDeltaMillis = t - last_midi_t;
