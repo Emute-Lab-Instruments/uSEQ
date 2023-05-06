@@ -2145,6 +2145,12 @@ void setBpm(double newBpm) {
   updateBpmVariables();
 }
 
+void setTimeSignature(double numerator, double denominator) {
+  meter_denominator = denominator;
+  meter_numerator = numerator;
+  setBpm(bpm);
+}
+
 void updateTimeVariables() {
   env.set("time", Value(time));
   env.set("t", Value(t));
@@ -2504,6 +2510,12 @@ BUILTINFUNC(useq_setbpm,
           ret = args[0];
           , 1)
 
+
+BUILTINFUNC(useq_settimesig,
+          useq::setTimeSignature(args[0].as_float(), args[1].as_float());
+          ret = Value(1);
+          , 2)
+
 BUILTINFUNC(useq_in1,
           ret = Value(useqInputValues[USEQI1]);
           , 0)
@@ -2622,6 +2634,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
   Environment::builtindefs["gatesw"] = Value("gatesw", builtin::useq_gatesw);
   Environment::builtindefs["setbpm"] = Value("setbpm", builtin::useq_setbpm);
+  Environment::builtindefs["settimesig"] = Value("settimesig", builtin::useq_settimesig);
+  
   Environment::builtindefs["interp"] = Value("interp", builtin::useq_interpolate);
   
 

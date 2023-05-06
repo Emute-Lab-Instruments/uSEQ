@@ -25,6 +25,10 @@ Kyriakoudis, Dimitris, & Kiefer, Chris. (2023, April 19). uSEQ: A LISPy Modular 
 
 see the [library documentation](docs/useq.md)
 
+## Building the Firmware
+
+Build the firmware in Arduino IDE, using the [Earle Philhower Pico core](https://github.com/earlephilhower/arduino-pico).  Overclock the Pico at 250Mhz and set the optimisation level to -O3.
+
 ## Building a uSEQ module
 
 Contact @chriskiefer (https://ravenation.club/@luuma) for PCBs
