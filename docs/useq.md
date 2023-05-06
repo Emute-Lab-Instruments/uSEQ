@@ -108,6 +108,14 @@ Set the speed of the sequencer in beats per minute
 | --- | --- | --- |
 | bpm | beats per minute | any |
 
+## `settimesig <numerator> <denominator>`
+
+Set the time signature of the sequencer
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| numerator | number of beats in a measure | any |
+| denominator | the length of a beat | any |
 
 # Sequencing Callback Functions
 

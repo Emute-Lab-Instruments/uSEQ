@@ -63,6 +63,7 @@ def main():
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
     curses.mouseinterval(20)
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_WHITE)
+    curses.init_pair(2, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
     consoleWidth = 60
     window = Window(curses.LINES - 1, curses.COLS - 1 - consoleWidth)
     editor = curses.newwin(curses.LINES - 1, curses.COLS - 1 - consoleWidth)
@@ -79,7 +80,8 @@ def main():
         console.erase()
         console.border()
         for i, msg in enumerate(msglog):
-            console.addstr(i + 1, 2, msg, curses.color_pair(1))
+            for j, ch in enumerate(msg):
+                console.addch(i + 1, 2+j, ch, curses.color_pair(1))
         console.refresh()
 
     #serial setup
@@ -117,8 +119,8 @@ def main():
             if len(line) > window.n_cols:
                 line = line[:window.n_cols - 1] + "»"
             editor.addstr(row, 0, line)
+        # editor.chgat(1,1,1,curses.A_ITALIC | curses.color_pair(2))
         editor.move(*window.translate(cursor))
-
         actionReceived=False
         while not actionReceived:
             k = editor.getch()
