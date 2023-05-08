@@ -2970,13 +2970,13 @@ void loop() {
   // put your main code here, to run repeatedly:
   if (Serial.available()) {
     String cmd = Serial.readString();
-    Serial.println(cmd);
+    // Serial.println(cmd);
     Value res;
     int cmdts = micros();
     res = run(cmd, env);
     cmdts = micros() - cmdts;
     Serial.println(res.debug());
-    Serial.println(cmdts * 0.001);
+    // Serial.println(cmdts * 0.001);
     // Serial.println(test);
     // Serial.println("complete");
     // Serial.println(env.toString(env));

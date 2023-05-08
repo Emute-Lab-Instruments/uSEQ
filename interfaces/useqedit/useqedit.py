@@ -174,9 +174,9 @@ def main():
                             right(window, buffer, cursor)
                     editor.refresh()
 
-                #save the buffer
-                with open(args.filename, "w") as f:
-                    [f.write(x + '\n') for x in buffer]
+                    #save the buffer
+                    with open(args.filename, "w") as f:
+                        [f.write(x + '\n') for x in buffer]
 
             ##read serial if available
             if cx:
@@ -198,6 +198,9 @@ def main():
                     updateConsole("uSEQ disconnected")
             else:
                 cx = trySerialConnection(cx, port, updateConsole)
+
+            #save some cpu
+            curses.napms(2)
 
 
 def trySerialConnection(cx, port, updateConsole):
