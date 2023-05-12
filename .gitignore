@@ -21,3 +21,5 @@ interfaces/useqedit/__pycache__/MessageLog.cpython-310.pyc
 interfaces/useqedit/__pycache__/
 
 *.csv#
+
+hardware/version0.2/kicad/useq-backups/
