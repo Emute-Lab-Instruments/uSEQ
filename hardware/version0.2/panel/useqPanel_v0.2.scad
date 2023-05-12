@@ -148,6 +148,7 @@ module hollowCylinder(ch, cr1, cr2, th) {
 
 module drawPanelWithHoles() {
     rSocket=3.5;
+    rRotaryEnc=4;
     rSwitch=3.5;
     rMomentarySwitch=4;
     rLed = 2;
@@ -169,7 +170,7 @@ module drawPanelWithHoles() {
 
         //rotary encoder
         translate([(w-8.69), base+38.2, 0])
-        cylinder(10, rSocket, rSocket, center=true, $fn=128);
+        cylinder(10, rRotaryEnc, rRotaryEnc, center=true, $fn=128);
 
         //reset hole
         translate([(w-31.6), base+2.8, 0])

@@ -119,8 +119,26 @@ def main():
             if len(line) > window.n_cols:
                 line = line[:window.n_cols - 1] + "»"
             editor.addstr(row, 0, line)
-        # editor.chgat(1,1,1,curses.A_ITALIC | curses.color_pair(2))
         editor.move(*window.translate(cursor))
+
+        #do highlighting
+        if buffer.getch(cursor) == ')':
+            editor.chgat(cursor.row,cursor.col,1,curses.A_BOLD | curses.color_pair(1))
+            #find the matching bracket
+            searchCursor = Cursor.createFromCursor(cursor)
+            stack = 0
+            while searchCursor.col > 0 and searchCursor.row > 0:
+                searchCursor.left(buffer)
+                searchChar = buffer.getch(searchCursor)
+                if (searchChar == ')'):
+                    stack = stack + 1
+                elif (searchChar == '('):
+                    if stack == 0:
+                        editor.chgat(searchCursor.row, searchCursor.col, 1, curses.A_BOLD | curses.color_pair(1))
+                        break
+                    else:
+                        stack = stack - 1
+
         actionReceived=False
         while not actionReceived:
             k = editor.getch()
