@@ -12,6 +12,12 @@ class Buffer:
     def bottom(self):
         return len(self) - 1
 
+    def getch(self, cursor):
+        ch=''
+        if cursor.row < len(self.lines) and cursor.col < len(self.lines[cursor.row]):
+            ch = self.lines[cursor.row][cursor.col]
+        return ch
+
     def insert(self, cursor, string):
         row, col = cursor.row, cursor.col
         if (len(self.lines) > 0):

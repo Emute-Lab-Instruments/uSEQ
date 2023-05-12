@@ -4,6 +4,10 @@ class Cursor:
         self._col = col
         self._col_hint = col if col_hint is None else col_hint
 
+    @classmethod
+    def createFromCursor(cls,cursor):
+        return cls(row=cursor.row, col=cursor.col)
+
     @property
     def col(self):
         return self._col
