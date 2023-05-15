@@ -43,8 +43,13 @@ class Cursor:
             self.col = len(buffer[self.row])
 
     def right(self, buffer):
+        ok = True
         if self.col < len(buffer[self.row]):
             self.col += 1
         elif self.row < len(buffer) - 1:
             self.row += 1
             self.col = 0
+        else:
+            ok = False
+        return ok
+

@@ -125,19 +125,20 @@ def main():
         if buffer.getch(cursor) == ')':
             editor.chgat(cursor.row,cursor.col,1,curses.A_BOLD | curses.color_pair(1))
             #find the matching bracket
-            searchCursor = Cursor.createFromCursor(cursor)
-            stack = 0
-            while searchCursor.col > 0 and searchCursor.row > 0:
-                searchCursor.left(buffer)
-                searchChar = buffer.getch(searchCursor)
-                if (searchChar == ')'):
-                    stack = stack + 1
-                elif (searchChar == '('):
-                    if stack == 0:
-                        editor.chgat(searchCursor.row, searchCursor.col, 1, curses.A_BOLD | curses.color_pair(1))
-                        break
-                    else:
-                        stack = stack - 1
+            leftParenCursor = findMatchingLeftParenthesis(buffer, cursor)
+            if leftParenCursor:
+                editor.chgat(leftParenCursor.row, leftParenCursor.col, 1, curses.A_BOLD | curses.color_pair(1))
+                #find next along
+                highParen = findMatchingRightParenthesis(buffer, cursor, 1)
+                while highParen != None:
+                    # updateConsole(f"hp {highParen.row} {highParen.col}")
+                    nextHighParen = findMatchingRightParenthesis(buffer, highParen, 1)
+                    if not nextHighParen:
+                        editor.chgat(highParen.row, highParen.col, 1, curses.A_BOLD | curses.color_pair(2))
+                        leftParenCursor = findMatchingLeftParenthesis(buffer, highParen)
+                        if leftParenCursor:
+                            editor.chgat(leftParenCursor.row, leftParenCursor.col, 1, curses.A_BOLD | curses.color_pair(2))
+                    highParen = nextHighParen
 
         actionReceived=False
         while not actionReceived:
@@ -220,6 +221,37 @@ def main():
             #save some cpu
             curses.napms(2)
 
+
+def findMatchingLeftParenthesis(buffer, cursor):
+    searchCursor = Cursor.createFromCursor(cursor)
+    stack = 0
+    found=False
+    while searchCursor.col > 0 and searchCursor.row > 0:
+        searchCursor.left(buffer)
+        searchChar = buffer.getch(searchCursor)
+        if (searchChar == ')'):
+            stack = stack + 1
+        elif (searchChar == '('):
+            if stack == 0:
+                found = True
+                break
+            else:
+                stack = stack - 1
+    return (searchCursor if found else None)
+
+def findMatchingRightParenthesis(buffer, cursor, stack=0):
+    searchCursor = Cursor.createFromCursor(cursor)
+    found = False
+    while searchCursor.right(buffer):
+        searchChar = buffer.getch(searchCursor)
+        if (searchChar == '('):
+            stack = stack + 1
+        elif (searchChar == ')'):
+            stack = stack - 1
+            if stack == 0:
+                found = True
+                break
+    return (searchCursor if found else None)
 
 def trySerialConnection(cx, port, updateConsole):
     try:
