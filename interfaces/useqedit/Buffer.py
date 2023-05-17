@@ -45,3 +45,14 @@ class Buffer:
                 next = self.lines.pop(row)
                 new = current + next
                 self.lines.insert(row, new)
+
+    def copy(self, leftCursor, rightCursor):
+        copyText = ""
+        if leftCursor.row == rightCursor.row:
+            copyText = self.lines[leftCursor.row][leftCursor.col:rightCursor.col+1]
+        else:
+            copyText = self.lines[leftCursor.row][leftCursor.col:]
+            for line in range(leftCursor.row+1, rightCursor.row):
+                copyText = copyText + self.lines[line]
+            copyText = copyText + self.lines[rightCursor.row][:rightCursor.col+1]
+        return copyText
