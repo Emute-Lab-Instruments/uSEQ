@@ -121,24 +121,32 @@ def main():
             editor.addstr(row, 0, line)
         editor.move(*window.translate(cursor))
 
+
         #do highlighting
-        if buffer.getch(cursor) == ')':
-            editor.chgat(cursor.row,cursor.col,1,curses.A_BOLD | curses.color_pair(1))
-            #find the matching bracket
+        leftParenCursor = cursor if buffer.getch(cursor) == '(' else None
+        #     editor.chgat(*window.translate(cursor),1,curses.A_BOLD | curses.color_pair(1))
+        #find the matching bracket
+        if (leftParenCursor == None):
             leftParenCursor = findMatchingLeftParenthesis(buffer, cursor)
-            if leftParenCursor:
-                editor.chgat(leftParenCursor.row, leftParenCursor.col, 1, curses.A_BOLD | curses.color_pair(1))
-                #find next along
+        if leftParenCursor:
+            editor.chgat(*window.translate(leftParenCursor), 1, curses.A_BOLD | curses.color_pair(1))
+            # leftParenCursor.right(buffer)
+            rightParen = findMatchingRightParenthesis(buffer, leftParenCursor, 1)
+            if rightParen:
+                editor.chgat(*window.translate(rightParen), 1, curses.A_BOLD | curses.color_pair(1))
+                #find outer statement
                 highParen = findMatchingRightParenthesis(buffer, cursor, 1)
                 while highParen != None:
                     # updateConsole(f"hp {highParen.row} {highParen.col}")
                     nextHighParen = findMatchingRightParenthesis(buffer, highParen, 1)
                     if not nextHighParen:
-                        editor.chgat(highParen.row, highParen.col, 1, curses.A_BOLD | curses.color_pair(2))
+                        editor.chgat(*window.translate(highParen), 1, curses.A_BOLD | curses.color_pair(2))
                         leftParenCursor = findMatchingLeftParenthesis(buffer, highParen)
                         if leftParenCursor:
-                            editor.chgat(leftParenCursor.row, leftParenCursor.col, 1, curses.A_BOLD | curses.color_pair(2))
+                            editor.chgat(*window.translate(leftParenCursor), 1, curses.A_BOLD | curses.color_pair(2))
                     highParen = nextHighParen
+
+        editor.move(*window.translate(cursor))
 
         actionReceived=False
         while not actionReceived:
@@ -181,9 +189,8 @@ def main():
                     elif k == 12: #ctrl-l
                         #send to terminal
                         if cx:
-                            row,col = window.translate(cursor)
-                            cx.write(buffer[row].encode('ascii'))
-                            updateConsole(f">> {buffer[row]}")
+                            cx.write(buffer[cursor.row].encode('ascii'))
+                            updateConsole(f">> {buffer[cursor.row]}")
                         else:
                             updateConsole("Serial disconnected")
                     else:
