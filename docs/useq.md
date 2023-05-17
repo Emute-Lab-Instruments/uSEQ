@@ -265,6 +265,44 @@ Examples:
 
 ```
 
+## `flat <list>`
+
+Take a list that might contain other lists or functions, evaluate them all in turn and collect them in a one dimensional list.
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| list | A list of values | any |
+
+Examples:
+
+```
+(flat '(1 '(2 3) bar))
+```
+
+
+```
+(define part1 '(1 2 3))
+(define part2 '(4 5))
+(flat '(part1 part2 part1))
+```
+
+## `flatIdx <list> <position>`
+
+Read an item from a list, using a normalised index, but flatten then list first (using `flat`)
+
+
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| list | A list of values | any |
+| position | A normalised index | 0-1 |
+
+This is a shortcut, equivelant to
+
+```
+(fromList (flat list), position)
+```
+
 ## `gates <list> <phasor> <speed> (<pulse width>)`
 
 Output a sequence of gates, with variable pulse width.

@@ -427,6 +427,10 @@ public:
     return type == ERROR;
   }
 
+  bool is_list () const {
+    return type == LIST;
+  }
+
   // Get the "truthy" boolean value of this value.
   bool as_bool() const {
     return *this != Value(0);
@@ -1867,6 +1871,26 @@ Value tail(std::vector<Value> &args, Environment &env) {
   return Value(result);
 }
 
+Value flatten(Value &val, Environment &env) {
+    std::vector<Value> flattened;
+    if (!val.is_list()) {
+      flattened.push_back(val);
+    }else{
+      auto valList = val.as_list();
+      for(size_t i=0; i < valList.size(); i++) {
+        Value evaluatedElement = valList[i].eval(env);
+        if(evaluatedElement.is_list()) {
+          auto flattenedElement = flatten(evaluatedElement, env).as_list();
+          flattened.insert(flattened.end(), flattenedElement.begin(), flattenedElement.end());
+        }else{
+          flattened.push_back(evaluatedElement);
+        }
+      }
+    }
+    return Value(flattened);
+  }
+
+
 Value parse(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
   eval_args(args, env);
@@ -2459,6 +2483,14 @@ BUILTINFUNC(useq_fromList,
             double phasor = args[1].as_float();
             ret = fromList(lst, phasor, env);
             , 2)
+BUILTINFUNC(useq_fromFlattenedList,
+            auto lst = flatten(args[0], env).as_list();
+            double phasor = args[1].as_float();
+            ret = fromList(lst, phasor, env);
+            , 2)
+BUILTINFUNC(useq_flatten,
+            ret = flatten(args[0], env);
+            , 1)
 BUILTINFUNC(useq_interpolate,
             auto lst = args[0].as_list();
             double phasor = args[1].as_float();
@@ -2630,6 +2662,9 @@ void loadBuiltinDefs() {
   Environment::builtindefs["sqr"] = Value("sqr", builtin::useq_sqr);
   Environment::builtindefs["fast"] = Value("fast", builtin::useq_fast);
   Environment::builtindefs["fromList"] = Value("fromList", builtin::useq_fromList);
+  Environment::builtindefs["flatIdx"] = Value("flatIdx", builtin::useq_fromFlattenedList);
+  Environment::builtindefs["flat"] = Value("flat", builtin::useq_flatten);
+  
   Environment::builtindefs["dm"] = Value("dm", builtin::useq_dm);
   Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
   Environment::builtindefs["gatesw"] = Value("gatesw", builtin::useq_gatesw);
