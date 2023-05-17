@@ -84,6 +84,36 @@ def main():
                 console.addch(i + 1, 2+j, ch, curses.color_pair(1))
         console.refresh()
 
+    def findMatchingLeftParenthesis(buffer, cursor):
+        searchCursor = Cursor.createFromCursor(cursor)
+        stack = 0
+        found = False
+        while searchCursor.left(buffer):
+            searchChar = buffer.getch(searchCursor)
+            if (searchChar == ')'):
+                stack = stack + 1
+            elif (searchChar == '('):
+                if stack == 0:
+                    found = True
+                    break
+                else:
+                    stack = stack - 1
+        return (searchCursor if found else None)
+
+    def findMatchingRightParenthesis(buffer, cursor, stack=0):
+        searchCursor = Cursor.createFromCursor(cursor)
+        found = False
+        while searchCursor.right(buffer):
+            searchChar = buffer.getch(searchCursor)
+            if (searchChar == '('):
+                stack = stack + 1
+            elif (searchChar == ')'):
+                stack = stack - 1
+                if stack == 0:
+                    found = True
+                    break
+        return (searchCursor if found else None)
+
     #serial setup
     incoming = ''
     port = '/dev/ttyACM0'
@@ -121,7 +151,7 @@ def main():
             editor.addstr(row, 0, line)
         editor.move(*window.translate(cursor))
 
-
+        outerBrackets = None
         #do highlighting
         leftParenCursor = cursor if buffer.getch(cursor) == '(' else None
         #     editor.chgat(*window.translate(cursor),1,curses.A_BOLD | curses.color_pair(1))
@@ -144,6 +174,7 @@ def main():
                         leftParenCursor = findMatchingLeftParenthesis(buffer, highParen)
                         if leftParenCursor:
                             editor.chgat(*window.translate(leftParenCursor), 1, curses.A_BOLD | curses.color_pair(2))
+                            outerBrackets = (leftParenCursor, highParen)
                     highParen = nextHighParen
 
         editor.move(*window.translate(cursor))
@@ -189,8 +220,12 @@ def main():
                     elif k == 12: #ctrl-l
                         #send to terminal
                         if cx:
-                            cx.write(buffer[cursor.row].encode('ascii'))
-                            updateConsole(f">> {buffer[cursor.row]}")
+                            if outerBrackets:
+                                code = buffer.copy(outerBrackets[0], outerBrackets[1])
+                                cx.write(code.encode('ascii'))
+                                updateConsole(f">> {code}")
+                            else:
+                                updateConsole("missing a bracket?")
                         else:
                             updateConsole("Serial disconnected")
                     else:
@@ -229,36 +264,6 @@ def main():
             curses.napms(2)
 
 
-def findMatchingLeftParenthesis(buffer, cursor):
-    searchCursor = Cursor.createFromCursor(cursor)
-    stack = 0
-    found=False
-    while searchCursor.col > 0 and searchCursor.row > 0:
-        searchCursor.left(buffer)
-        searchChar = buffer.getch(searchCursor)
-        if (searchChar == ')'):
-            stack = stack + 1
-        elif (searchChar == '('):
-            if stack == 0:
-                found = True
-                break
-            else:
-                stack = stack - 1
-    return (searchCursor if found else None)
-
-def findMatchingRightParenthesis(buffer, cursor, stack=0):
-    searchCursor = Cursor.createFromCursor(cursor)
-    found = False
-    while searchCursor.right(buffer):
-        searchChar = buffer.getch(searchCursor)
-        if (searchChar == '('):
-            stack = stack + 1
-        elif (searchChar == ')'):
-            stack = stack - 1
-            if stack == 0:
-                found = True
-                break
-    return (searchCursor if found else None)
 
 def trySerialConnection(cx, port, updateConsole):
     try:

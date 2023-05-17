@@ -36,11 +36,15 @@ class Cursor:
             self._clamp_col(buffer)
 
     def left(self, buffer):
+        ok = True
         if self.col > 0:
             self.col -= 1
         elif self.row > 0:
             self.row -= 1
             self.col = len(buffer[self.row])
+        else:
+            ok = False
+        return ok
 
     def right(self, buffer):
         ok = True
