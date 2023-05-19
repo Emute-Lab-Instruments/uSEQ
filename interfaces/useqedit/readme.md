@@ -12,7 +12,15 @@ The app runs in a linux/unix terminal, and requires Python 3.
 
 uSEQEdit saves (overwrites) the file every time you make a change.
 
-Controls
+## Command Line Options
+
+| Key | Description |
+| --- | --- |
+| -cw, --conswidth | Specify the width of the console in characters |
+
+
+
+## Controls
 
 | Key | Description |
 | --- | --- |
