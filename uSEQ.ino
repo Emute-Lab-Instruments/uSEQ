@@ -1484,21 +1484,6 @@ Value print(std::vector<Value> &args, Environment &env) {
   return acc;
 }
 
-// // Get user input with an optional prompt
-// Value input(std::vector<Value> &args, Environment &env) {
-//   // Is not a special form, so we can evaluate our args.
-//   eval_args(args, env);
-
-//   if (args.size() > 1)
-//     Serial.println(TOO_MANY_ARGS);
-//   // throw Error(Value("input", input), env, TOO_MANY_ARGS);
-
-//   if (!args.empty())
-//     Serial.println(args[0].as_string());
-
-//   String s = Serial.readString();
-//   return Value::string(s);
-// }
 
 // Get a random number between two numbers inclusively
 Value gen_random(std::vector<Value> &args, Environment &env) {
@@ -2213,10 +2198,6 @@ void resetTime() {
 }
 
 void updateDigitalOutputs() {
-  // run("(update-d1)", env);
-  // run("(update-d2)", env);
-  // run("(update-d3)", env);
-  // run("(update-d4)", env);
   run("(useqdw 1 (eval d1-form))", env);
   run("(useqdw 2 (eval d2-form))", env);
   run("(useqdw 3 (eval d3-form))", env);
@@ -2224,8 +2205,6 @@ void updateDigitalOutputs() {
 }
 
 void updateAnalogOutputs() {
-  // run("(update-a1)", env);
-  // run("(update-a2)", env);
   run("(useqaw 1 (eval a1-form))", env);
   run("(useqaw 2 (eval a2-form))", env);
 }
