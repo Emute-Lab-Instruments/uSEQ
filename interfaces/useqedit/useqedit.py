@@ -64,6 +64,8 @@ def main():
     parser.add_argument("-cw", "--conswidth", help="console width", default=40, type=int)
     args = parser.parse_args()
 
+    pasteBuffer=""
+
     stdscr = curses.initscr()
     curses.start_color()
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
@@ -194,6 +196,7 @@ def main():
                     if (my < window.n_rows and mx < window.n_cols):
                         cursor.move(my, mx, buffer)
                 else:
+                    updateConsole(f"input {k}")
                     if k == 23: #ctrl-w
                         if cx:
                             cx.close()
@@ -231,6 +234,13 @@ def main():
                                 updateConsole("missing a bracket?")
                         else:
                             updateConsole("Serial disconnected")
+                    elif k == 16:  # ctrl-p - copy
+                        if outerBrackets:
+                            code = buffer.copy(outerBrackets[0], outerBrackets[1])
+                            pasteBuffer = code
+                            updateConsole(f"pb << {code}")
+                    elif k == 22:  # ctrl-v - paste
+                        buffer.insert(cursor, pasteBuffer)
                     else:
                         kchar = chr(k)
                         if (kchar.isascii()):
