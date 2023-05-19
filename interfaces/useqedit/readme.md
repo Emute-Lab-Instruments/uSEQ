@@ -16,6 +16,7 @@ Controls
 
 | Key | Description |
 | --- | --- |
+| Ctrl - l | Send the current LISP statement to uSEQ (within the highlighted outer brackets) |
 | Ctrl - w | Quit |
 
 

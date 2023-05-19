@@ -58,13 +58,19 @@ def right(window, buffer, cursor):
 
 
 def main():
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("filename", help="A file to edit")
+    parser.add_argument("-cw", "--conswidth", help="console width", default=40, type=int)
+    args = parser.parse_args()
+
     stdscr = curses.initscr()
     curses.start_color()
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
     curses.mouseinterval(20)
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_WHITE)
     curses.init_pair(2, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
-    consoleWidth = 60
+    consoleWidth = args.conswidth
     window = Window(curses.LINES - 1, curses.COLS - 1 - consoleWidth)
     editor = curses.newwin(curses.LINES - 1, curses.COLS - 1 - consoleWidth)
     console = curses.newwin(curses.LINES-1, consoleWidth-1, 0, curses.COLS-consoleWidth)
@@ -124,9 +130,6 @@ def main():
 
 
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("filename")
-    args = parser.parse_args()
 
     with open(args.filename) as f:
         buffer = Buffer(f.read().splitlines())
