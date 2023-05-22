@@ -35,7 +35,7 @@ class Buffer:
 
     def delete(self, cursor):
         row, col = cursor.row, cursor.col
-
+        ch = self[row][col]
         if (row, col) < (self.bottom, len(self[row])):
             current = self.lines.pop(row)
             if col < len(current):
@@ -45,6 +45,7 @@ class Buffer:
                 next = self.lines.pop(row)
                 new = current + next
                 self.lines.insert(row, new)
+        return ch
 
     def copy(self, leftCursor, rightCursor):
         copyText = ""
