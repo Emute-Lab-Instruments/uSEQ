@@ -241,8 +241,17 @@ def main():
                             code = buffer.copy(outerBrackets[0], outerBrackets[1])
                             pasteBuffer = code
                             updateConsole(f"pb << {code}")
+                    elif k == 24:  # ctrl-X - cut
+                        if outerBrackets:
+                            code = buffer.copy(outerBrackets[0], outerBrackets[1])
+                            pasteBuffer = code
+                            updateConsole(f"pbx << {code}")
+                            buffer.deleteSection(outerBrackets[0], outerBrackets[1])
+                            cursor = outerBrackets[0]
                     elif k == 22:  # ctrl-v - paste
                         buffer.insert(cursor, pasteBuffer)
+                        for i in range(len(pasteBuffer)):
+                            right(window, buffer, cursor)
                     elif k == 9: #ctrl-i
                         #add statement to queue
                         if outerBrackets:
