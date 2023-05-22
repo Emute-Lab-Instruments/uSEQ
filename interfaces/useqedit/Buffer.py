@@ -57,3 +57,12 @@ class Buffer:
                 copyText = copyText + self.lines[line]
             copyText = copyText + self.lines[rightCursor.row][:rightCursor.col+1]
         return copyText
+
+    def deleteSection(self, leftCursor, rightCursor):
+        if leftCursor.row == rightCursor.row:
+            self.lines[leftCursor.row] = self.lines[leftCursor.row][:leftCursor.col] + self.lines[leftCursor.row][rightCursor.col+1:]
+        else:
+            self.lines[leftCursor.row] = self.lines[leftCursor.row][:leftCursor.col]
+            self.lines[rightCursor.row] = self.lines[rightCursor.row][rightCursor.col+1:]
+            self.lines = self.lines[:leftCursor.row+1] + self.lines[rightCursor.row:]
+
