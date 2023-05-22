@@ -72,6 +72,7 @@ def main():
     curses.mouseinterval(20)
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_WHITE)
     curses.init_pair(2, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    curses.raw()
     consoleWidth = args.conswidth
     window = Window(curses.LINES - 1, curses.COLS - 1 - consoleWidth)
     editor = curses.newwin(curses.LINES - 1, curses.COLS - 1 - consoleWidth)
@@ -125,19 +126,17 @@ def main():
     #serial setup
     incoming = ''
     port = '/dev/ttyACM0'
-    cx = None
-    cx = trySerialConnection(cx, port, updateConsole)
+    cx = trySerialConnection(port, updateConsole)
     if not cx:
         updateConsole("Error connecting to uSEQ")
-
-
-
 
     with open(args.filename) as f:
         buffer = Buffer(f.read().splitlines())
 
-
     editor.nodelay(True) #nonblocking getch
+
+    codeQueue = []
+    undoList = []
 
     while True:
         stdscr.erase()
@@ -183,6 +182,13 @@ def main():
                     highParen = nextHighParen
 
         editor.move(*window.translate(cursor))
+        def sendTouSEQ(statement):
+            # send to terminal
+            if cx:
+                cx.write(statement.encode('ascii'))
+                updateConsole(f">> {statement}")
+            else:
+                updateConsole("Serial disconnected")
 
         actionReceived=False
         while not actionReceived:
@@ -214,33 +220,48 @@ def main():
                         window.horizontal_scroll(cursor)
                     elif k == 261: #right arrow
                         right(window, buffer, cursor)
+                        undoList.append(lambda window, buffer, cursor: left(window, buffer, cursor))
                     elif k == 10: #enter
                         buffer.split(cursor)
                         right(window, buffer, cursor)
                     elif k == 330: #delete
-                        buffer.delete(cursor)
+                        ch = buffer.delete(cursor)
                     elif k == 127: #backspace
                         if (cursor.row, cursor.col) > (0, 0):
                             left(window, buffer, cursor)
                             buffer.delete(cursor)
                     elif k == 12: #ctrl-l
-                        #send to terminal
-                        if cx:
-                            if outerBrackets:
-                                code = buffer.copy(outerBrackets[0], outerBrackets[1])
-                                cx.write(code.encode('ascii'))
-                                updateConsole(f">> {code}")
-                            else:
-                                updateConsole("missing a bracket?")
+                        if outerBrackets:
+                            code = buffer.copy(outerBrackets[0], outerBrackets[1])
+                            sendTouSEQ(code)
                         else:
-                            updateConsole("Serial disconnected")
-                    elif k == 16:  # ctrl-p - copy
+                            updateConsole("missing a bracket?")
+                    elif k == 3:  # ctrl-c - copy
                         if outerBrackets:
                             code = buffer.copy(outerBrackets[0], outerBrackets[1])
                             pasteBuffer = code
                             updateConsole(f"pb << {code}")
                     elif k == 22:  # ctrl-v - paste
                         buffer.insert(cursor, pasteBuffer)
+                    elif k == 9: #ctrl-i
+                        #add statement to queue
+                        if outerBrackets:
+                            code = buffer.copy(outerBrackets[0], outerBrackets[1])
+                            codeQueue.append(code)
+                            updateConsole(f"Qd: {code}")
+                    elif k == 15:
+                        updateConsole(f"Sending Q: {len(codeQueue)}")
+                        for i, statement in enumerate(codeQueue):
+                            updateConsole(f"{i} {statement}")
+                            sendTouSEQ(statement)
+                        codeQueue = []
+                    elif k == 21: #ctrl-u - undo
+                        if len(undoList) > 0:
+                            for u in undoList:
+                                updateConsole(u)
+                                u(window, buffer, cursor)
+                            undoList = []
+                            None
                     else:
                         kchar = chr(k)
                         if (kchar.isascii()):
@@ -271,14 +292,14 @@ def main():
                     cx = None
                     updateConsole("uSEQ disconnected")
             else:
-                cx = trySerialConnection(cx, port, updateConsole)
+                cx = trySerialConnection(port, updateConsole)
 
             #save some cpu
             curses.napms(2)
 
 
 
-def trySerialConnection(cx, port, updateConsole):
+def trySerialConnection(port, updateConsole):
     try:
         cx = serial.Serial(port, baudrate=115200)
         updateConsole(f"Connected to uSEQ on {port}")
