@@ -1,6 +1,7 @@
 import argparse
 import curses
 import sys
+from art import *
 
 import serial
 
@@ -129,9 +130,11 @@ def main():
     cx = trySerialConnection(port, updateConsole)
     if not cx:
         updateConsole("Error connecting to uSEQ")
-
-    with open(args.filename) as f:
-        buffer = Buffer(f.read().splitlines())
+    try:
+        with open(args.filename) as f:
+            buffer = Buffer(f.read().splitlines())
+    except:
+        buffer = Buffer([""])
 
     editor.nodelay(True) #nonblocking getch
 
@@ -271,6 +274,14 @@ def main():
                                 u(window, buffer, cursor)
                             undoList = []
                             None
+
+                    elif k == 28: #ctrl-\, asciiart the current line as a  comment
+                        currentLine = buffer.deleteLine(cursor)
+                        s = text2art(currentLine)
+                        #add ;comment symbols to the text
+                        s = ";" + s
+                        s = s.replace('\n', '\n;')
+                        buffer.insert(cursor, s)
                     else:
                         kchar = chr(k)
                         if (kchar.isascii()):
