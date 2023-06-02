@@ -185,6 +185,8 @@ class Value;
 class Environment;
 Value parse(String &s, int &ptr);
 Value run(String code, Environment &env);
+Value runParsedCode(std::vector<Value> ast, Environment &env);
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// USEQ DATA      /////////////////////////////////////////////////////////////
@@ -1327,6 +1329,23 @@ Value run(String code, Environment &env) {
   }
 }
 
+Value runParsedCode(std::vector<Value> ast, Environment &env) {
+  if (ast.size() > 0) {
+    // Iterate over the expressions and evaluate them
+    // in this environment.
+    ts_run = micros();
+    for (size_t i = 0; i < ast.size() - 1; i++)
+      ast[i].eval(env);
+
+    // Return the result of the last expression.
+    auto result = ast[ast.size() - 1].eval(env);
+    run_time += (micros() - ts_run);
+    return result;
+  } else {
+    return Value::error();
+  }
+}
+
 
 // This namespace contains all the definitions of builtin functions
 namespace builtin {
@@ -2132,6 +2151,11 @@ double phrase = 0.0;
 double section = 0.0;
 
 
+
+std::vector<Value> digitalASTs[4];
+std::vector<Value> analogASTs[2];
+
+
 void updateBpmVariables() {
   env.set("bpm", Value(bpm));
   env.set("bps", Value(bps));
@@ -2198,15 +2222,20 @@ void resetTime() {
 }
 
 void updateDigitalOutputs() {
-  run("(useqdw 1 (eval d1-form))", env);
-  run("(useqdw 2 (eval d2-form))", env);
-  run("(useqdw 3 (eval d3-form))", env);
-  run("(useqdw 4 (eval d4-form))", env);
+  // run("(useqdw 1 (eval d1-form))", env);
+  // auto d2ast = parse("(useqdw 2 (eval d2-form))");
+  // run("(useqdw 2 (eval d2-form))", env);
+  // run("(useqdw 3 (eval d3-form))", env);
+  // run("(useqdw 4 (eval d4-form))", env);
+  for (size_t i=0; i < 4; i++)
+    runParsedCode(digitalASTs[i], env);
 }
 
 void updateAnalogOutputs() {
-  run("(useqaw 1 (eval a1-form))", env);
-  run("(useqaw 2 (eval a2-form))", env);
+  for (size_t i=0; i < 2; i++)
+    runParsedCode(analogASTs[i], env);
+  // run("(useqaw 1 (eval a1-form))", env);
+  // run("(useqaw 2 (eval a2-form))", env);
 }
 
 #ifdef MIDIOUT
@@ -2312,19 +2341,32 @@ Value fromList(std::vector<Value> &lst, double phasor, Environment &env) {
 
 
 BUILTINFUNC_NOEVAL(useq_q0, env.set_global("q-form", args[0]);, 1)
-BUILTINFUNC_NOEVAL(a1, env.set_global("a1-form", args[0]);, 1)
-BUILTINFUNC_NOEVAL(a2, env.set_global("a2-form", args[0]);, 1)
+BUILTINFUNC_NOEVAL(a1, 
+  env.set_global("a1-form", args[0]);
+  useq::analogASTs[0] = ::parse("(useqaw 1 (eval a1-form))");
+  // run("(useqaw 1 (eval a1-form))", env);
+, 1)
+BUILTINFUNC_NOEVAL(a2, 
+  env.set_global("a2-form", args[0]);
+  useq::analogASTs[1] = ::parse("(useqaw 2 (eval a2-form))");
+, 1)
 
-BUILTINFUNC_NOEVAL(d1, env.set_global("d1-form", args[0]);, 1)
+BUILTINFUNC_NOEVAL(d1, 
+  env.set_global("d1-form", args[0]);
+  useq::digitalASTs[0] = ::parse("(useqdw 1 (eval d1-form))");
+, 1)
 BUILTINFUNC_NOEVAL(d2,
-                   env.set_global("d2-form", args[0]);
-                   , 1)
+  env.set_global("d2-form", args[0]);
+  useq::digitalASTs[1] = ::parse("(useqdw 2 (eval d2-form))");
+  , 1)
 BUILTINFUNC_NOEVAL(d3,
-                   env.set_global("d3-form", args[0]);
-                   , 1)
+  env.set_global("d3-form", args[0]);
+  useq::digitalASTs[2] = ::parse("(useqdw 3 (eval d3-form))");
+, 1)
 BUILTINFUNC_NOEVAL(d4,
-                   env.set_global("d4-form", args[0]);
-                   , 1)
+  env.set_global("d4-form", args[0]);
+  useq::digitalASTs[3] = ::parse("(useqdw 4 (eval d4-form))");
+, 1)
 
 #ifdef MIDIOUT
 //midi drum out

@@ -140,6 +140,15 @@ def main():
 
     codeQueue = []
     undoList = []
+    startMarker=None
+    endMarker=None
+
+    def markedSection():
+        return startMarker != None and endMarker != None
+
+    def clearMarkedSection():
+        startMarker = None
+        endMarker = None
 
     while True:
         stdscr.erase()
@@ -149,16 +158,27 @@ def main():
         # console.border(1)
         updateConsole()
 
-
+        highlightOn = False
         for row, line in enumerate(buffer[window.row:window.row + window.n_rows-1]):
             if row == cursor.row - window.row and window.col > 0:
                 line = "«" + line[window.col + 1:]
             if len(line) > window.n_cols:
                 line = line[:window.n_cols - 1] + "»"
-            editor.addstr(row, 0, line)
+            for i, ch in enumerate(line):
+                editor.addch(row,i,ch)
+                if markedSection():
+                    if (row == startMarker.row and i == startMarker.col):
+                        highlightOn = True
+                    if  (row == endMarker.row and i == endMarker.col):
+                        highlightOn = False
+                    if (highlightOn):
+                        editor.chgat(row, i, curses.color_pair(1))
+
+            # editor.addstr(row, 0, line)
         editor.move(*window.translate(cursor))
 
         outerBrackets = None
+
         #do highlighting
         leftParenCursor = cursor if buffer.getch(cursor) == '(' else None
         #     editor.chgat(*window.translate(cursor),1,curses.A_BOLD | curses.color_pair(1))
@@ -184,6 +204,7 @@ def main():
                             outerBrackets = (leftParenCursor, highParen)
                     highParen = nextHighParen
 
+
         editor.move(*window.translate(cursor))
         def sendTouSEQ(statement):
             # send to terminal
@@ -192,6 +213,7 @@ def main():
                 updateConsole(f">> {statement}")
             else:
                 updateConsole("Serial disconnected")
+
 
         actionReceived=False
         while not actionReceived:
@@ -240,17 +262,27 @@ def main():
                         else:
                             updateConsole("missing a bracket?")
                     elif k == 3:  # ctrl-c - copy
-                        if outerBrackets:
-                            code = buffer.copy(outerBrackets[0], outerBrackets[1])
-                            pasteBuffer = code
+                        def copySection(st, en):
+                            code = buffer.copy(st, en)
                             updateConsole(f"pb << {code}")
+                            pasteBuffer = code
+                        if markedSection():
+                            copySection(startMarker, endMarker)
+                            clearMarkedSection()
+                        elif outerBrackets:
+                            copySection(outerBrackets[0], outerBrackets[1])
                     elif k == 24:  # ctrl-X - cut
-                        if outerBrackets:
-                            code = buffer.copy(outerBrackets[0], outerBrackets[1])
+                        def cutSection(st, en):
+                            code = buffer.copy(st, en)
                             pasteBuffer = code
                             updateConsole(f"pbx << {code}")
-                            buffer.deleteSection(outerBrackets[0], outerBrackets[1])
-                            cursor = outerBrackets[0]
+                            buffer.deleteSection(st, en)
+                            cursor = st
+                        if markedSection():
+                            cutSection(startMarker, endMarker)
+                            clearMarkedSection()
+                        elif outerBrackets:
+                            cutSection(outerBrackets[0], outerBrackets[1])
                     elif k == 22:  # ctrl-v - paste
                         buffer.insert(cursor, pasteBuffer)
                         for i in range(len(pasteBuffer)):
@@ -277,11 +309,19 @@ def main():
 
                     elif k == 28: #ctrl-\, asciiart the current line as a  comment
                         currentLine = buffer.deleteLine(cursor)
+                        updateConsole(currentLine)
                         s = text2art(currentLine)
                         #add ;comment symbols to the text
                         s = ";" + s
                         s = s.replace('\n', '\n;')
+                        s = s + '\n'
+                        # s = "11111\n2222222\n333\n4444\n"
+                        updateConsole(s)
                         buffer.insert(cursor, s)
+                    elif k == 6: #ctrl-f
+                        startMarker = Cursor.createFromCursor(cursor)
+                    elif k == 7: #ctrl-g
+                        endMarker = Cursor.createFromCursor(cursor)
                     else:
                         kchar = chr(k)
                         if (kchar.isascii()):
