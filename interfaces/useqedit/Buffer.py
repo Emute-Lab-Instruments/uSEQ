@@ -1,6 +1,9 @@
 class Buffer:
     def __init__(self, lines):
         self.lines = lines
+        if len(lines) == 0:
+            self.lines=[""]
+
 
     def __len__(self):
         return len(self.lines)
@@ -20,24 +23,27 @@ class Buffer:
 
     def getLine(self, cursor):
         line=""
-        if cursor.row < len(self.lines) and cursor.col < len(self.lines[cursor.row]):
+        if cursor.row < len(self.lines) and cursor.col <= len(self.lines[cursor.row]):
             line = self.lines[cursor.row]
         return line
 
     def deleteLine(self, cursor):
-        line=""
-        if cursor.row < len(self.lines) and cursor.col < len(self.lines[cursor.row]):
-            line = self.lines[cursor.row]
+        line=self.getLine(cursor)
+        if line != "":
             del self.lines[cursor.row]
         return line
 
-    #todo: multiline insert
     def insert(self, cursor, string):
         row, col = cursor.row, cursor.col
-        linesToInsert = string.split('\n')
-        current = self.lines.pop(row)
-        new = current[:col] + string + current[col:]
-        self.lines.insert(row, new)
+        linesToInsert = string.splitlines()
+        if len(linesToInsert) == 1:
+            self.lines[row] = self.lines[row][:col] + string + self.lines[row][col:]
+        else:
+            self.split(cursor)
+            self.lines[row] = self.lines[row][:col] + linesToInsert[0]
+            self.lines[row+1] = linesToInsert[-1] + self.lines[row+1]
+            for i in range(1,len(linesToInsert)-1):
+                self.lines.insert(row+i, linesToInsert[i])
 
     def split(self, cursor):
         row, col = cursor.row, cursor.col
