@@ -34,6 +34,7 @@
 
 #include "pinmap.h"
 #include "LispLibrary.h"
+#include "MAFilter.hpp"
 
 #define ETL_NO_STL
 #include <Embedded_Template_Library.h> // Mandatory for Arduino IDE only
@@ -2283,14 +2284,25 @@ void updateMidiOut() {
 }
 #endif
 
+MovingAverageFilter cqpMA(3); //code quantising phasor 
+double lastCQP = 0;
+String cqpCode = "(define cqp 'bar)";
+std::vector<Value> cqpAST;
+
+std::vector< std::vector<Value> > runQueue;
+
 
 void setup() {
   setBpm(defaultBpm);
   updateTime();
+  // env.set_global("cqp", ::parse(cqpCode));
+  // run(cqpCode, env);
+  cqpAST = ::parse("(eval 'bar)");
 }
 
 
 int ts_inputs = 0, ts_time = 0, ts_outputs = 0;
+
 
 void update() {
   ts_inputs = millis();
@@ -2300,6 +2312,26 @@ void update() {
   updateTime();
   env.set("perf_time", Value(int(millis() - ts_time)));
   ts_outputs = millis();
+
+  //check code quant phasor
+  // double newCqpVal = run("(eval bar)", env).as_float();
+  double newCqpVal = runParsedCode(cqpAST, env).as_float();
+  double cqpAvgTime = cqpMA.process(newCqpVal - lastCQP);
+  // Serial.println(newCqpVal);
+  lastCQP = newCqpVal;
+  if (newCqpVal + cqpAvgTime > 1) {
+
+    for(size_t q=0; q < runQueue.size(); q++) {    
+      Value res;
+      int cmdts = micros();
+      res = runParsedCode(runQueue[q], env);
+      cmdts = micros() - cmdts;
+      Serial.println(res.debug());
+    }
+    runQueue.clear();
+  }
+
+
   run("(eval q-form)", env);  
   updateAnalogOutputs();
   updateDigitalOutputs();
@@ -3003,7 +3035,6 @@ int ts = 0;
 int updateSpeed = 0;
 
 
-
 void loop() {
   updateSpeed = micros() - ts;
   env.set("fps", Value(1000000.0 / updateSpeed));
@@ -3027,11 +3058,9 @@ void loop() {
   if (Serial.available()) {
     String cmd = Serial.readString();
     // Serial.println(cmd);
-    Value res;
-    int cmdts = micros();
-    res = run(cmd, env);
-    cmdts = micros() - cmdts;
-    Serial.println(res.debug());
+    auto parsedCode = ::parse(cmd);
+    useq::runQueue.push_back(parsedCode);
+
     // Serial.println(cmdts * 0.001);
     // Serial.println(test);
     // Serial.println("complete");
