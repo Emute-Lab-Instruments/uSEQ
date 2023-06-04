@@ -4,6 +4,7 @@ import sys
 from art import *
 from copy import deepcopy
 import glob
+import pyperclip
 
 import serial
 
@@ -67,8 +68,6 @@ def main():
     parser.add_argument("-cw", "--conswidth", help="console width", default=40, type=int)
     parser.add_argument("-p", "--port", help="serial usb port", default="")
     args = parser.parse_args()
-
-    pasteBuffer = ""
 
     stdscr = curses.initscr()
     curses.start_color()
@@ -279,11 +278,11 @@ def main():
                             code = buffer.copy(st, en)
                             return code
                         if markedSection():
-                            pasteBuffer = copySection(startMarker, endMarker)
+                            pyperclip.copy(copySection(startMarker, endMarker))
                             clearMarkedSection()
                         elif outerBrackets:
-                            pasteBuffer = copySection(outerBrackets[0], outerBrackets[1])
-                        updateConsole(f"pb << {pasteBuffer}")
+                            pyperclip.copy(copySection(outerBrackets[0], outerBrackets[1]))
+                        updateConsole(f"pb << {pyperclip.paste()}")
                     elif k == 24:  # ctrl-X - cut
                         def cutSection(st, en):
                             code = buffer.copy(st, en)
@@ -291,14 +290,14 @@ def main():
                             cursor = st
                             return code
                         if markedSection():
-                            pasteBuffer = cutSection(startMarker, endMarker)
+                            pyperclip.copy(cutSection(startMarker, endMarker))
                             clearMarkedSection()
                         elif outerBrackets:
-                            pasteBuffer = cutSection(outerBrackets[0], outerBrackets[1])
-                        updateConsole(f"pbx << {pasteBuffer}")
+                            pyperclip.copy(cutSection(outerBrackets[0], outerBrackets[1]))
+                        updateConsole(f"pbx << {pyperclip.paste()}")
                     elif k == 22:  # ctrl-v - paste
-                        buffer.insert(cursor, pasteBuffer)
-                        for i in range(len(pasteBuffer)):
+                        buffer.insert(cursor, pyperclip.paste())
+                        for i in range(len(pyperclip.paste())):
                             right(window, buffer, cursor)
                     elif k == 9: #ctrl-i
                         #add statement to queue
