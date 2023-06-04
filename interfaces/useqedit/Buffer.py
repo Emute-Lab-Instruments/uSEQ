@@ -53,16 +53,22 @@ class Buffer:
 
     def delete(self, cursor):
         row, col = cursor.row, cursor.col
-        ch = self[row][col]
+        ch=""
         if (row, col) < (self.bottom, len(self[row])):
-            current = self.lines.pop(row)
-            if col < len(current):
-                new = current[:col] + current[(col + 1):]
-                self.lines.insert(row, new)
+            if len(self[row]) == col:
+                if (row+1) <= self.bottom:
+                    nextLine = self.lines.pop(row+1)
+                    self.lines[row] = self.lines[row] + nextLine
             else:
-                next = self.lines.pop(row)
-                new = current + next
-                self.lines.insert(row, new)
+                ch = self[row][col]
+                current = self.lines.pop(row)
+                if col < len(current):
+                    new = current[:col] + current[(col + 1):]
+                    self.lines.insert(row, new)
+                else:
+                    next = self.lines.pop(row)
+                    new = current + next
+                    self.lines.insert(row, new)
         return ch
 
     def copy(self, leftCursor, rightCursor):
