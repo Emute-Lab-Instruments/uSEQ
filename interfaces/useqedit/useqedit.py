@@ -3,6 +3,7 @@ import curses
 import sys
 from art import *
 from copy import deepcopy
+import glob
 
 import serial
 
@@ -64,7 +65,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("filename", help="A file to edit")
     parser.add_argument("-cw", "--conswidth", help="console width", default=40, type=int)
-    parser.add_argument("-p", "--port", help="serial usb port", default="/dev/ttyACM0")
+    parser.add_argument("-p", "--port", help="serial usb port", default="")
     args = parser.parse_args()
 
     pasteBuffer = ""
@@ -130,6 +131,11 @@ def main():
     #serial setup
     incoming = ''
     port = args.port
+    if port=="":
+        #auto detect port
+        devlist = sorted(glob.glob("/dev/ttyACM*"))  #what happens on windows?
+        if len(devlist) > 0:
+            port = devlist[0]
     cx = trySerialConnection(port, updateConsole)
     if not cx:
         updateConsole("Error connecting to uSEQ")
@@ -235,7 +241,7 @@ def main():
                     if (my < window.n_rows and mx < window.n_cols):
                         cursor.move(my, mx, buffer)
                 else:
-                    updateConsole(f"input {k}")
+                    # updateConsole(f"input {k}")
                     if k == 23: #ctrl-w
                         if cx:
                             cx.close()
@@ -308,9 +314,7 @@ def main():
                         codeQueue = []
                     elif k == 26: #ctrl-z - undo
                         if len(undoList) > 0:
-                            updateConsole([x[0].lines for x in undoList])
                             newState = undoList.pop()
-                            updateConsole(newState[0].lines)
                             buffer = deepcopy(newState[0])
                             cursor = deepcopy(newState[1])
                     elif k == 28: #ctrl-\, asciiart the current line as a  comment
@@ -334,7 +338,6 @@ def main():
                             saveUndo(buffer,cursor)
                             buffer.insert(cursor, kchar)
                             right(window, buffer, cursor)
-                            updateConsole([x[0].lines for x in undoList])
                     editor.refresh()
 
                     #save the buffer
