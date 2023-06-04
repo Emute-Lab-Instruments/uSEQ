@@ -2,6 +2,7 @@ import argparse
 import curses
 import sys
 from art import *
+from copy import deepcopy
 
 import serial
 
@@ -63,9 +64,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("filename", help="A file to edit")
     parser.add_argument("-cw", "--conswidth", help="console width", default=40, type=int)
+    parser.add_argument("-p", "--port", help="serial usb port", default="/dev/ttyACM0")
     args = parser.parse_args()
 
-    pasteBuffer=""
+    pasteBuffer = ""
 
     stdscr = curses.initscr()
     curses.start_color()
@@ -93,6 +95,7 @@ def main():
             for j, ch in enumerate(msg):
                 console.addch(i + 1, 2+j, ch, curses.color_pair(1))
         console.refresh()
+
 
     def findMatchingLeftParenthesis(buffer, cursor):
         searchCursor = Cursor.createFromCursor(cursor)
@@ -126,7 +129,7 @@ def main():
 
     #serial setup
     incoming = ''
-    port = '/dev/ttyACM0'
+    port = args.port
     cx = trySerialConnection(port, updateConsole)
     if not cx:
         updateConsole("Error connecting to uSEQ")
@@ -145,6 +148,9 @@ def main():
 
     def markedSection():
         return startMarker != None and endMarker != None
+
+    def saveUndo(buffer, cursor):
+        undoList.append([deepcopy(buffer), deepcopy(cursor)])
 
     def clearMarkedSection():
         startMarker = None
@@ -193,17 +199,19 @@ def main():
                 editor.chgat(*window.translate(rightParen), 1, curses.A_BOLD | curses.color_pair(1))
                 #find outer statement
                 highParen = findMatchingRightParenthesis(buffer, cursor, 1)
-                while highParen != None:
-                    # updateConsole(f"hp {highParen.row} {highParen.col}")
-                    nextHighParen = findMatchingRightParenthesis(buffer, highParen, 1)
-                    if not nextHighParen:
-                        editor.chgat(*window.translate(highParen), 1, curses.A_BOLD | curses.color_pair(2))
-                        leftParenCursor = findMatchingLeftParenthesis(buffer, highParen)
-                        if leftParenCursor:
-                            editor.chgat(*window.translate(leftParenCursor), 1, curses.A_BOLD | curses.color_pair(2))
-                            outerBrackets = (leftParenCursor, highParen)
-                    highParen = nextHighParen
-
+                if not highParen:
+                    outerBrackets = (leftParenCursor, rightParen)
+                else:
+                    while highParen != None:
+                        # updateConsole(f"hp {highParen.row} {highParen.col}")
+                        nextHighParen = findMatchingRightParenthesis(buffer, highParen, 1)
+                        if not nextHighParen:
+                            leftParenCursor = findMatchingLeftParenthesis(buffer, highParen)
+                            if leftParenCursor:
+                                outerBrackets = (leftParenCursor, highParen)
+                        highParen = nextHighParen
+                editor.chgat(*window.translate(outerBrackets[0]), 1, curses.A_BOLD | curses.color_pair(2))
+                editor.chgat(*window.translate(outerBrackets[1]), 1, curses.A_BOLD | curses.color_pair(2))
 
         editor.move(*window.translate(cursor))
         def sendTouSEQ(statement):
@@ -245,7 +253,6 @@ def main():
                         window.horizontal_scroll(cursor)
                     elif k == 261: #right arrow
                         right(window, buffer, cursor)
-                        undoList.append(lambda window, buffer, cursor: left(window, buffer, cursor))
                     elif k == 10: #enter
                         buffer.split(cursor)
                         right(window, buffer, cursor)
@@ -264,25 +271,25 @@ def main():
                     elif k == 3:  # ctrl-c - copy
                         def copySection(st, en):
                             code = buffer.copy(st, en)
-                            updateConsole(f"pb << {code}")
-                            pasteBuffer = code
+                            return code
                         if markedSection():
-                            copySection(startMarker, endMarker)
+                            pasteBuffer = copySection(startMarker, endMarker)
                             clearMarkedSection()
                         elif outerBrackets:
-                            copySection(outerBrackets[0], outerBrackets[1])
+                            pasteBuffer = copySection(outerBrackets[0], outerBrackets[1])
+                        updateConsole(f"pb << {pasteBuffer}")
                     elif k == 24:  # ctrl-X - cut
                         def cutSection(st, en):
                             code = buffer.copy(st, en)
-                            pasteBuffer = code
-                            updateConsole(f"pbx << {code}")
                             buffer.deleteSection(st, en)
                             cursor = st
+                            return code
                         if markedSection():
-                            cutSection(startMarker, endMarker)
+                            pasteBuffer = cutSection(startMarker, endMarker)
                             clearMarkedSection()
                         elif outerBrackets:
-                            cutSection(outerBrackets[0], outerBrackets[1])
+                            pasteBuffer = cutSection(outerBrackets[0], outerBrackets[1])
+                        updateConsole(f"pbx << {pasteBuffer}")
                     elif k == 22:  # ctrl-v - paste
                         buffer.insert(cursor, pasteBuffer)
                         for i in range(len(pasteBuffer)):
@@ -299,14 +306,13 @@ def main():
                             updateConsole(f"{i} {statement}")
                             sendTouSEQ(statement)
                         codeQueue = []
-                    elif k == 21: #ctrl-u - undo
+                    elif k == 26: #ctrl-z - undo
                         if len(undoList) > 0:
-                            for u in undoList:
-                                updateConsole(u)
-                                u(window, buffer, cursor)
-                            undoList = []
-                            None
-
+                            updateConsole([x[0].lines for x in undoList])
+                            newState = undoList.pop()
+                            updateConsole(newState[0].lines)
+                            buffer = deepcopy(newState[0])
+                            cursor = deepcopy(newState[1])
                     elif k == 28: #ctrl-\, asciiart the current line as a  comment
                         currentLine = buffer.deleteLine(cursor)
                         updateConsole(currentLine)
@@ -325,8 +331,10 @@ def main():
                     else:
                         kchar = chr(k)
                         if (kchar.isascii()):
+                            saveUndo(buffer,cursor)
                             buffer.insert(cursor, kchar)
                             right(window, buffer, cursor)
+                            updateConsole([x[0].lines for x in undoList])
                     editor.refresh()
 
                     #save the buffer
