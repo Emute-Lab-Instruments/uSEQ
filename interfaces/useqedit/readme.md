@@ -28,5 +28,9 @@ uSEQEdit saves (overwrites) the file every time you make a change.
 | Ctrl - w | Quit |
 | Ctrl - i | Add a lisp statement to the queue |
 | Ctrl - o | Send code in the queue to uSEQ |
+| Ctrl - c | Copy |
+| Ctrl - v | Paste |
+| Ctrl - x | Cut |
+| Ctrl - z | Undo |
 
 
