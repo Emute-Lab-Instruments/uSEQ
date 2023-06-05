@@ -137,7 +137,7 @@ def main():
             port = devlist[0]
         else:
             port = "/dev/ttyACM0"
-            
+
     cx = trySerialConnection(port, updateConsole)
     if not cx:
         updateConsole("Error connecting to uSEQ")
@@ -246,7 +246,7 @@ def main():
                     if (my < window.n_rows and mx < window.n_cols):
                         cursor.move(my, mx, buffer)
                 else:
-                    # updateConsole(f"input {k}")
+                    updateConsole(f"input {k}")
                     if k == 23: #ctrl-w
                         if cx:
                             cx.close()
@@ -273,12 +273,18 @@ def main():
                         if (cursor.row, cursor.col) > (0, 0):
                             left(window, buffer, cursor)
                             buffer.delete(cursor)
-                    elif k == 12: #ctrl-l
+                    elif k == 12: #ctrl-l - run, quantised
                         if outerBrackets:
                             code = buffer.copy(outerBrackets[0], outerBrackets[1])
                             sendTouSEQ(code)
                         else:
                             updateConsole("missing a bracket?")
+                    elif k == 11:  # ctrl-k - run immediately
+                            if outerBrackets:
+                                code = buffer.copy(outerBrackets[0], outerBrackets[1])
+                                sendTouSEQ('@' + code)
+                            else:
+                                updateConsole("missing a bracket?")
                     elif k == 3:  # ctrl-c - copy
                         def copySection(st, en):
                             code = buffer.copy(st, en)

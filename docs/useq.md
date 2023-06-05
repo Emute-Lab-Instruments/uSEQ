@@ -1,3 +1,26 @@
+# uSEQ timing system
+
+Most computer music systems run with a fixed quantum, but uSEQ is a bit different. It runs as fast as possible, a bit like a game will try to run at the fastest fps possible.  Timing functions take a *functional rendering* approach; they take the current time ```t``` as an argument, and react accordingly.  Much of the sequencing in uSEQ is done using *phasors*, ramps that rise from 0 to 1 in a fixed time period.
+
+
+# Code sequencing
+
+By default, code is added into a queue which will run at the start of each bar (future: this will be more configurable). It you want to run code immediately, put an '@' sign in front of it.
+
+For example
+
+```
+@(+ 1 1)
+```
+will run as soon as you send it to uSeq
+
+```
+(print bar)
+```
+
+Will run as close as possible before the start of each bar
+
+
 # Variables
 
 ## `time`
