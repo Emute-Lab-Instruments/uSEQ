@@ -2590,12 +2590,12 @@ BUILTINFUNC_VARGS(useq_gatesw,
                   ret = Value((val > 0 ? 1.0 : 0.0) * gate);
                   , 2, 3)
 
-BUILTINFUNC(useq_loopPhasor,
-            auto phasor = args[0].as_float();
-            auto loopPoint = args[1].as_float();
-            
-            ret = 
-            , 3)
+// BUILTINFUNC(useq_loopPhasor,
+//             auto phasor = args[0].as_float();
+//             auto loopPoint = args[1].as_float();
+
+//             ret = 
+//             , 3)
                   
 BUILTINFUNC(useq_setbpm,
           useq::setBpm(args[0].as_float());
@@ -3064,10 +3064,17 @@ void loop() {
   // put your main code here, to run repeatedly:
   if (Serial.available()) {
     String cmd = Serial.readString();
+    //queue or run now
     // Serial.println(cmd);
-    auto parsedCode = ::parse(cmd);
-    useq::runQueue.push_back(parsedCode);
-
+    if (cmd.charAt(0) == '@') {
+        //clear the token
+        cmd.setCharAt(0, ' ');
+        run(cmd, env);  
+    }
+    else {
+      auto parsedCode = ::parse(cmd);
+      useq::runQueue.push_back(parsedCode);
+    }
     // Serial.println(cmdts * 0.001);
     // Serial.println(test);
     // Serial.println("complete");
