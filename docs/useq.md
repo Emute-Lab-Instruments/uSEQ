@@ -361,6 +361,21 @@ Output a sequence of gates, with pulse width controlled from values in the list
 ```
 
 
+## `looph <phasor> <looppoint>`
+
+Take a phasor, and make it wrap/loop around at a certain point
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| phasor | A phasor | 0 - 1 |
+| looppoint | The point at which the phasor should wrap/loop | 0-1 |
+
+E.g. the code below will play the first half of the sequence repeatedly
+
+```
+(d2 (gatesw (quote 9 9 5 9 3 0 3 8) (looph bar 0.5) 2))
+```
+
 # MIDI functions
 
 To use MIDI functions, the firmware must be compiled with the MIDI flag(s) defined.  See the hardware documentation for info on how to extend the module with MIDI inputs and outputs

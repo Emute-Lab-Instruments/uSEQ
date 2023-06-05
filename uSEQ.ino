@@ -2590,12 +2590,13 @@ BUILTINFUNC_VARGS(useq_gatesw,
                   ret = Value((val > 0 ? 1.0 : 0.0) * gate);
                   , 2, 3)
 
-// BUILTINFUNC(useq_loopPhasor,
-//             auto phasor = args[0].as_float();
-//             auto loopPoint = args[1].as_float();
-
-//             ret = 
-//             , 3)
+BUILTINFUNC(useq_loopPhasor,
+            auto phasor = args[0].as_float();
+            auto loopPoint = args[1].as_float();
+            if (loopPoint == 0) loopPoint = 1; //avoid infinity
+            double spedupPhasor = fast(1.0/loopPoint, phasor);
+            ret = spedupPhasor * loopPoint;
+            , 2)
                   
 BUILTINFUNC(useq_setbpm,
           useq::setBpm(args[0].as_float());
@@ -2724,6 +2725,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["fromList"] = Value("fromList", builtin::useq_fromList);
   Environment::builtindefs["flatIdx"] = Value("flatIdx", builtin::useq_fromFlattenedList);
   Environment::builtindefs["flat"] = Value("flat", builtin::useq_flatten);
+  Environment::builtindefs["looph"] = Value("looph", builtin::useq_loopPhasor);
+  
   
   Environment::builtindefs["dm"] = Value("dm", builtin::useq_dm);
   Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
