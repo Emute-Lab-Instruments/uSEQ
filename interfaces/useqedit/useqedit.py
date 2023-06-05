@@ -135,6 +135,9 @@ def main():
         devlist = sorted(glob.glob("/dev/ttyACM*"))  #what happens on windows?
         if len(devlist) > 0:
             port = devlist[0]
+        else:
+            port = "/dev/ttyACM0"
+            
     cx = trySerialConnection(port, updateConsole)
     if not cx:
         updateConsole("Error connecting to uSEQ")

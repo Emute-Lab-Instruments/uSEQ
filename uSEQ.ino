@@ -2589,6 +2589,13 @@ BUILTINFUNC_VARGS(useq_gatesw,
                   double gate = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
                   ret = Value((val > 0 ? 1.0 : 0.0) * gate);
                   , 2, 3)
+
+BUILTINFUNC(useq_loopPhasor,
+            auto phasor = args[0].as_float();
+            auto loopPoint = args[1].as_float();
+            
+            ret = 
+            , 3)
                   
 BUILTINFUNC(useq_setbpm,
           useq::setBpm(args[0].as_float());
