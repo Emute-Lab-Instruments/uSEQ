@@ -156,6 +156,9 @@ def main():
 
     def saveUndo(buffer, cursor):
         undoList.append([deepcopy(buffer), deepcopy(cursor)])
+        #limit the size of the undo list
+        if sys.getsizeof(undoList) > 1024 * 1024 * 128:
+            undoList.pop(0)
 
     def clearMarkedSection():
         startMarker = None

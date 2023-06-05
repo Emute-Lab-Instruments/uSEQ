@@ -32,15 +32,15 @@
 (defun every (amt dur) (/ (% t (* amt dur)) (* amt dur)))
 
 
-(defun fromList (lst phasor)
-  (do
-   (define num-elements (len lst))
-   (define scaled-phasor (* num-elements (clamp01 phasor)))
-    (define idx (floor scaled-phasor))
-    (nth lst
-         (if (= idx num-elements)
-             (- idx 1)
-             idx))))
+;;(defun fromList (lst phasor)
+;;  (do
+;;   (define num-elements (len lst))
+;;   (define scaled-phasor (* num-elements (clamp01 phasor)))
+;;    (define idx (floor scaled-phasor))
+;;    (nth lst
+;;         (if (= idx num-elements)
+;;             (- idx 1)
+;;             idx))))
 
 ;; Outputs
 
@@ -79,6 +79,6 @@
        (+ 1 result)
       result)))
       
-(defun gates (lst ph speed pw) (* (fromList lst (fast speed ph)) (pulse (fast (* speed (len lst)) ph) pw)))
+;;(defun gates (lst ph speed pw) (* (fromList lst (fast speed ph)) (pulse (fast (* speed (len lst)) ph) pw)))
 
 
