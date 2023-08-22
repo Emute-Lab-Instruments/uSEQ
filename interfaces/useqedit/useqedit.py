@@ -228,7 +228,8 @@ def main():
         def sendTouSEQ(statement):
             # send to terminal
             if cx:
-                cx.write(statement.encode('ascii'))
+                asciiCode = statement.encode('ascii')
+                cx.write(asciiCode)
                 updateConsole(f">> {statement}")
             else:
                 updateConsole("Serial disconnected")

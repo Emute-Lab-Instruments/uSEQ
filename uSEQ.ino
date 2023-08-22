@@ -43,6 +43,7 @@
 #include <etl/string.h>
 String board(ARDUINO_BOARD);
 
+
 ////////////////////////////////////////////////////////////////////////////////
 /// LISP LIBRARY /////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -218,16 +219,16 @@ public:
   // Default constructor
   Environment()
     : parent_scope(NULL) {
-    init();
+    // init();
   }
 
   Environment(const Environment &v)
     : defs(defs) {
-    init();
+    // init();
   }
   Environment(Environment &&v)
     : defs(std::move(v.defs)) {
-    init();
+    // init();
   }
   Environment &operator=(const Environment &env2) {
     this->defs = std::move(env2.defs);
@@ -238,9 +239,9 @@ public:
   // have this atom in scope?
   // This is only used to determine which atoms to capture when
   // creating a lambda function.
-  bool has(String name) const;
+  bool has(String const &name) const;
   // Get the value associated with this name in this scope
-  Value get(String name) const;
+  Value get(const String &name) const;
   // Set the value associated with this name in this scope
   void set(String name, Value value);
   void set_global(String name, Value value);
@@ -266,11 +267,11 @@ private:
   std::map<String, Value> defs;
   // etl::unordered_map<String, Value, 1024> defs; //note can't do this yet because of forward declaration
   Environment *parent_scope;
-  mutex write_mutex;
+  // mutex write_mutex;
 
-  void init() {
-    mutex_init(&write_mutex);
-  }
+  // void init() {
+    // mutex_init(&write_mutex);
+  // }
 };
 
 
@@ -452,27 +453,31 @@ public:
   // Get this item's string value
   String as_string() const {
     // If this item is not a string, throw a cast error.
-    if (type != STRING)
-      //            throw Error(*this, Environment(), BAD_CAST);
+    if (type != STRING) {
+      Serial.print("str: ");
       Serial.println(BAD_CAST);
+      return "";
+    }
     return str;
   }
 
   // Get this item's atom value
   String as_atom() const {
     // If this item is not an atom, throw a cast error.
-    if (type != ATOM)
+    if (type != ATOM) {
+      Serial.print("atom: ");
       Serial.println(BAD_CAST);
-    // throw Error(*this, Environment(), BAD_CAST);
+      return "";
+    }
     return str;
   }
 
   // Get this item's list value
   std::vector<Value> as_list() const {
     // If this item is not a list, throw a cast error.
-    if (type != LIST)
+    if (type != LIST) {
       Serial.println(BAD_CAST);
-    // throw Error(*this, Environment(), BAD_CAST);
+    }
     return list;
   }
 
@@ -516,7 +521,7 @@ public:
       // Only ints and floats can be cast to an int
       default:
         Serial.println(BAD_CAST);
-        return Value();
+        return Value::error();
         // throw Error(*this, Environment(), BAD_CAST);
     }
   }
@@ -530,7 +535,7 @@ public:
       default:
         Serial.println(BAD_CAST);
         // throw Error(*this, Environment(), BAD_CAST);
-        return Value();
+        return Value::error();
     }
   }
 
@@ -1042,9 +1047,9 @@ String Environment::toString(Environment const &e) {
 
 void Environment::set(String name, Value value) {
   //for multicore
-  mutex_enter_blocking(&write_mutex);
+  // mutex_enter_blocking(&write_mutex);
   defs[name] = value;
-  mutex_exit(&write_mutex);
+  // mutex_exit(&write_mutex);
 }
 
 void Environment::set_global(String name, Value value) {
@@ -1097,14 +1102,7 @@ Value Value::apply(std::vector<Value> &args, Environment &env) {
         // This allows us to write special forms without syntactic sugar.
         // For functions that are not special forms, we just evaluate
         // the arguments before we run the function.
-        // int ts_res=micros();
         auto result = (stack_data.b)(args, env);
-        // ts_res = micros() - ts_res;
-        // if (millis() < 0) {
-        //   Serial.print(str);
-        //   Serial.print(": ");
-        //   Serial.println(ts_res/1000.0);
-        // }
         return result;
       }
     default:
@@ -1128,6 +1126,10 @@ Value Value::eval(Environment &env) {
       {
         ts_get = micros();
         auto atomdata = env.get(str);
+        if (atomdata == Value::error()) {
+          Serial.print("Geterr: ");
+          Serial.println(str);
+        }
         ts_get = micros() - ts_get;
         get_time += ts_get;
         return atomdata;
@@ -1137,14 +1139,14 @@ Value Value::eval(Environment &env) {
         if (list.size() < 1)
           Serial.println(EVAL_EMPTY_LIST);
         // throw Error(*this, env, EVAL_EMPTY_LIST);
-START_TIMER
+        //note: this needs to be a copy?  so original remains unevaluated?  or if not, use std::span to avoid the copy?
         args = std::vector<Value>(list.begin() + 1, list.end());
-STOP_TIMER
         // Only evaluate our arguments if it's not builtin!
         // Builtin functions can be special forms, so we
         // leave them to evaluate their arguments.
         function = list[0].eval(env);
         if (function.is_error()) {
+          Serial.print("err ");
           return Value::error();
         } else {
           //lambda?
@@ -1160,7 +1162,7 @@ STOP_TIMER
           return functionResult;
         }
       }
-
+    
     default:
       return *this;
   }
@@ -1235,7 +1237,8 @@ Value parse(String &s, int &ptr) {
     int n = 1;
     while (s[ptr + n] != '\"') {
       if (ptr + n >= int(s.length())) {
-        Serial.println(MALFORMED_PROGRAM);
+        Serial.print(MALFORMED_PROGRAM);
+        Serial.println(" 1");
         return Value::error();
         // throw std::runtime_error(MALFORMED_PROGRAM);
       }
@@ -1335,15 +1338,18 @@ Value runParsedCode(std::vector<Value> ast, Environment &env) {
     // Iterate over the expressions and evaluate them
     // in this environment.
     ts_run = micros();
-    for (size_t i = 0; i < ast.size() - 1; i++)
-      ast[i].eval(env);
+    Value result;
+    for (size_t i = 0; i < ast.size(); i++) {
+      result = ast[i].eval(env);
+    }
 
     // Return the result of the last expression.
-    auto result = ast[ast.size() - 1].eval(env);
+    // auto result = ast[ast.size() - 1].eval(env);
     run_time += (micros() - ts_run);
     return result;
   } else {
-    return Value::error();
+    // return Value::error();
+    return Value();
   }
 }
 
@@ -1356,9 +1362,16 @@ namespace builtin {
 // Special forms are just builtin functions that don't evaluate
 // their arguments. To make a regular builtin that evaluates its
 // arguments, we just call this function in our builtin definition.
-void eval_args(std::vector<Value> &args, Environment &env) {
-  for (size_t i = 0; i < args.size(); i++)
+Value eval_args(std::vector<Value> &args, Environment &env) {
+  Value ret = Value();
+  for (size_t i = 0; i < args.size(); i++) {
     args[i] = args[i].eval(env);
+    if (args[i] == Value::error()) {
+      Serial.println("eval args error");
+      ret = Value::error();
+    }
+  }
+  return ret;
 }
 
 // Create a lambda function (SPECIAL FORM)
@@ -1566,15 +1579,19 @@ Value gen_random(std::vector<Value> &args, Environment &env) {
 // Evaluate a value as code
 Value eval(std::vector<Value> &args, Environment &env) {
   // Is not a special form, so we can evaluate our args.
-  eval_args(args, env);
-
+  Value ret = eval_args(args, env);
+  if (ret == Value::error()) {
+    Serial.println("eval err");
+    return Value::error();
+  }
   if (args.size() != 1) {
     Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
     return Value();
   }
   // throw Error(Value("eval", eval), env, args.size() > 1? TOO_MANY_ARGS : TOO_FEW_ARGS);
-  else
+  else {
     return args[0].eval(env);
+  }
 }
 
 // Create a list of values
@@ -2228,8 +2245,12 @@ void updateDigitalOutputs() {
   // run("(useqdw 2 (eval d2-form))", env);
   // run("(useqdw 3 (eval d3-form))", env);
   // run("(useqdw 4 (eval d4-form))", env);
-  for (size_t i=0; i < 4; i++)
-    runParsedCode(digitalASTs[i], env);
+  for (size_t i=0; i < 4; i++) {
+    if (runParsedCode(digitalASTs[i], env) == Value::error()) {
+      Serial.println("Error in digital output function, clearing");
+      digitalASTs[i].clear();
+    }
+  }
 }
 
 void updateAnalogOutputs() {
@@ -2266,6 +2287,7 @@ void updateMidiOut() {
         // Serial.println(t_step);
         mdoArgs[0] = Value(t_step);
         Value val = midiFunction.apply(mdoArgs, env);
+
         // Serial.println(val.as_float());
         if (val > prev) {
           Serial1.write(0x99);
@@ -2404,10 +2426,11 @@ BUILTINFUNC_NOEVAL(d4,
 //midi drum out
 BUILTINFUNC(useq_mdo,
             int midiNote = args[0].as_int();
-            Serial.println(midiNote);
-            Serial.println(args[1].display());
-            //TODO: remove function if nil
-            useqMDOMap[midiNote] = args[1];
+            if (args[1] != 0) {
+              useqMDOMap[midiNote] = args[1];
+            }else{
+              useqMDOMap.erase(midiNote);
+            }
             , 2)
 #endif
 
@@ -2418,11 +2441,16 @@ BUILTINFUNC(ard_pinMode,
             , 2)
 
 BUILTINFUNC(ard_useqdw,
-            int pin = digital_out_pin(args[0].as_int());
-            int led_pin = digital_out_LED_pin(args[0].as_int());
-            int val = args[1].as_int();
-            digitalWrite(pin, val);
-            digitalWrite(led_pin, val);
+            if (args[1] == Value::error()) {
+              Serial.println("useqdw arg err");
+              ret = args[1];
+            }else{
+              int pin = digital_out_pin(args[0].as_int());
+              int led_pin = digital_out_LED_pin(args[0].as_int());
+              int val = args[1].as_int();
+              digitalWrite(pin, val);
+              digitalWrite(led_pin, val);
+            }
             , 2)
 
 BUILTINFUNC(ard_useqaw,
@@ -2676,7 +2704,7 @@ BUILTINFUNC(perf,
 
 
 // Does this environment, or its parent environment, have a variable?
-bool Environment::has(String name) const {
+bool Environment::has(String const &name) const {
   // Find the value in the map
   auto itr = defs.find(name);
   if (itr != defs.end())
@@ -2830,7 +2858,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["endl"] = Value::string("\n");
 }
 // Get the value associated with this name in this scope
-Value Environment::get(String name) const {
+Value Environment::get(const String &name) const {
   // Serial.print("Env get ");
   // Serial.println(name);
 
