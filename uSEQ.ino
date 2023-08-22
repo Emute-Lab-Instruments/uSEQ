@@ -2255,7 +2255,10 @@ void updateDigitalOutputs() {
 
 void updateAnalogOutputs() {
   for (size_t i=0; i < 2; i++)
-    runParsedCode(analogASTs[i], env);
+    if (runParsedCode(analogASTs[i], env) == Value::error()) {
+      Serial.println("Error in analog output function, clearing");
+      analogASTs[i].clear();
+    }
   // run("(useqaw 1 (eval a1-form))", env);
   // run("(useqaw 2 (eval a2-form))", env);
 }
@@ -2454,11 +2457,16 @@ BUILTINFUNC(ard_useqdw,
             , 2)
 
 BUILTINFUNC(ard_useqaw,
-            int pin = analog_out_pin(args[0].as_int());
-            int led_pin = analog_out_LED_pin(args[0].as_int());
-            int val = args[1].as_float() * 2047.0;
-            analogWrite(pin, val);
-            analogWrite(led_pin, val);
+            if (args[1] == Value::error()) {
+              Serial.println("useqaw arg err");
+              ret = args[1];
+            }else{
+              int pin = analog_out_pin(args[0].as_int());
+              int led_pin = analog_out_LED_pin(args[0].as_int());
+              int val = args[1].as_float() * 2047.0;
+              analogWrite(pin, val);
+              analogWrite(led_pin, val);
+            }
             , 2)
 
 
