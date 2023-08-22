@@ -380,6 +380,19 @@ E.g. the code below will play the first half of the sequence repeatedly
 
 To use MIDI functions, the firmware must be compiled with the MIDI flag(s) defined.  See the hardware documentation for info on how to extend the module with MIDI inputs and outputs
 
+## `mdo <note> <function>`
+
+MIDI Drum Out
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| note | The MIDI note of the drum to be triggered | 0 - 127 |
+| function | A lambda function that describes a pattern of triggers, with time as an argument | n/a |
+
+
+```
+``
+
 # System Functions
 
 ## `perf`
