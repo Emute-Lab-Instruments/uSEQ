@@ -158,6 +158,7 @@ module drawPanelWithHoles() {
 
         base = ((panelOuterHeight -panelInnerHeight) / 2) +1;
 
+
         translate([(w-28.7), base+16.5  , 0])
         cylinder(10, rMomentarySwitch,rMomentarySwitch, center=true, $fn=128);
         translate([(w-28.7), base+44.45 , 0])
@@ -236,7 +237,9 @@ module drawPanelWithHoles() {
     }
     
 }
-
+//projection(cut=false) 
+rotate([0,0,180])
 drawPanelWithHoles();
+
 
 

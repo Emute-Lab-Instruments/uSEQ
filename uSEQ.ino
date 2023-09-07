@@ -2095,9 +2095,10 @@ int analog_out_LED_pin(int out) {
   Value __name__(std::vector<Value> &args, Environment &env) { \
     eval_args(args, env); \
     Value ret = Value(); \
-    if (args.size() != __numArgs__) \
+    if (args.size() != __numArgs__) {\
       Serial.println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS); \
-    else { \
+      ret = Value::error(); \
+    } else { \
       __body__ \
     } \
     return ret; \
