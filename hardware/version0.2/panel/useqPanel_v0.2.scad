@@ -229,7 +229,7 @@ module drawPanelWithHoles() {
                     text("∏∐", size = 3.5,font="De­jaVu",spacing=0.7);
             translate([w * x,108+os, 0.5]) rotate([0,0,180])
                 linear_extrude(4)
-                    text("↦", size = 5,font="De­jaVu");
+                    text("", size = 5,font="De­jaVu");
             translate([w * x,119+os, 0.5]) rotate([0,0,180])
                 linear_extrude(4)
                     text("↦", size = 5,font="De­jaVu");
