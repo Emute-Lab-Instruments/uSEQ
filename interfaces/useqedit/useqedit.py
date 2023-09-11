@@ -127,6 +127,39 @@ def main():
                     break
         return (searchCursor if found else None)
 
+    def highlightCurrentCodeblock(buffer, cursor, editor, updateConsole, window):
+        outerBrackets = None
+        innerBrackets = None
+        leftParenCursor = cursor if buffer.getch(cursor) == '(' else None
+        # find the matching bracket
+        if (leftParenCursor == None):
+            leftParenCursor = findMatchingLeftParenthesis(buffer, cursor)
+        if leftParenCursor:
+            # leftParenCursor.right(buffer)
+            rightParen = findMatchingRightParenthesis(buffer, leftParenCursor, 1)
+            if rightParen:
+                innerBrackets = (leftParenCursor, rightParen)
+                # find outer statement
+                highParen = findMatchingRightParenthesis(buffer, cursor, 1)
+                if not highParen:
+                    outerBrackets = (leftParenCursor, rightParen)
+                else:
+                    while highParen != None:
+                        # updateConsole(f"hp {highParen.row} {highParen.col}")
+                        nextHighParen = findMatchingRightParenthesis(buffer, highParen, 1)
+                        if not nextHighParen:
+                            leftParenCursor = findMatchingLeftParenthesis(buffer, highParen)
+                            if leftParenCursor:
+                                outerBrackets = (leftParenCursor, highParen)
+                        highParen = nextHighParen
+                editor.chgat(*window.translate(outerBrackets[0]), 1, curses.A_BOLD | curses.color_pair(2))
+                editor.chgat(*window.translate(outerBrackets[1]), 1, curses.A_BOLD | curses.color_pair(2))
+                editor.chgat(*window.translate(innerBrackets[0]), 1, curses.A_BOLD | curses.color_pair(1))
+                editor.chgat(*window.translate(innerBrackets[1]), 1, curses.A_BOLD | curses.color_pair(1))
+            else:
+                updateConsole("No matching right paren")
+        return outerBrackets, innerBrackets
+
     #serial setup
     incoming = ''
     port = args.port
@@ -195,34 +228,19 @@ def main():
         editor.move(*window.translate(cursor))
 
         outerBrackets = None
+        innerBrackets = None
 
         #do highlighting
-        leftParenCursor = cursor if buffer.getch(cursor) == '(' else None
-        #     editor.chgat(*window.translate(cursor),1,curses.A_BOLD | curses.color_pair(1))
-        #find the matching bracket
-        if (leftParenCursor == None):
-            leftParenCursor = findMatchingLeftParenthesis(buffer, cursor)
-        if leftParenCursor:
-            editor.chgat(*window.translate(leftParenCursor), 1, curses.A_BOLD | curses.color_pair(1))
-            # leftParenCursor.right(buffer)
-            rightParen = findMatchingRightParenthesis(buffer, leftParenCursor, 1)
-            if rightParen:
-                editor.chgat(*window.translate(rightParen), 1, curses.A_BOLD | curses.color_pair(1))
-                #find outer statement
-                highParen = findMatchingRightParenthesis(buffer, cursor, 1)
-                if not highParen:
-                    outerBrackets = (leftParenCursor, rightParen)
-                else:
-                    while highParen != None:
-                        # updateConsole(f"hp {highParen.row} {highParen.col}")
-                        nextHighParen = findMatchingRightParenthesis(buffer, highParen, 1)
-                        if not nextHighParen:
-                            leftParenCursor = findMatchingLeftParenthesis(buffer, highParen)
-                            if leftParenCursor:
-                                outerBrackets = (leftParenCursor, highParen)
-                        highParen = nextHighParen
-                editor.chgat(*window.translate(outerBrackets[0]), 1, curses.A_BOLD | curses.color_pair(2))
-                editor.chgat(*window.translate(outerBrackets[1]), 1, curses.A_BOLD | curses.color_pair(2))
+        outerBrackets, innerBrackets = highlightCurrentCodeblock(buffer, cursor, editor, updateConsole, window)
+        # if still didn't find outerbrackets, we need to move leftwards because we might be between lisp statements
+        if outerBrackets==None:
+            searchCursor = Cursor.createFromCursor(cursor)
+            while searchCursor.left(buffer):
+                searchChar = buffer.getch(searchCursor)
+                if (searchChar == ')'):
+                    outerBrackets, innerBrackets = highlightCurrentCodeblock(buffer, searchCursor, editor, updateConsole, window)
+                    break
+
 
         editor.move(*window.translate(cursor))
         def sendTouSEQ(statement):
@@ -247,7 +265,7 @@ def main():
                     if (my < window.n_rows and mx < window.n_cols):
                         cursor.move(my, mx, buffer)
                 else:
-                    updateConsole(f"input {k}")
+                    # updateConsole(f"input {k}")
                     if k == 23: #ctrl-w
                         if cx:
                             cx.close()
@@ -379,6 +397,7 @@ def main():
 
             #save some cpu
             curses.napms(2)
+
 
 
 
