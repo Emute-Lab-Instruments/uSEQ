@@ -157,7 +157,7 @@ def main():
                 editor.chgat(*window.translate(innerBrackets[0]), 1, curses.A_BOLD | curses.color_pair(1))
                 editor.chgat(*window.translate(innerBrackets[1]), 1, curses.A_BOLD | curses.color_pair(1))
             else:
-                updateConsole("No matching right paren")
+                None
         return outerBrackets, innerBrackets
 
     #serial setup
@@ -252,6 +252,10 @@ def main():
             else:
                 updateConsole("Serial disconnected")
 
+        def cutSection(st, en):
+            code = buffer.copy(st, en)
+            buffer.deleteSection(st, en)
+            return code
 
         actionReceived=False
         while not actionReceived:
@@ -265,7 +269,7 @@ def main():
                     if (my < window.n_rows and mx < window.n_cols):
                         cursor.move(my, mx, buffer)
                 else:
-                    # updateConsole(f"input {k}")
+                    updateConsole(f"input {k}")
                     if k == 23: #ctrl-w
                         if cx:
                             cx.close()
@@ -315,16 +319,13 @@ def main():
                             pyperclip.copy(copySection(outerBrackets[0], outerBrackets[1]))
                         updateConsole(f"pb << {pyperclip.paste()}")
                     elif k == 24:  # ctrl-X - cut
-                        def cutSection(st, en):
-                            code = buffer.copy(st, en)
-                            buffer.deleteSection(st, en)
-                            cursor = st
-                            return code
                         if markedSection():
                             pyperclip.copy(cutSection(startMarker, endMarker))
                             clearMarkedSection()
+                            cursor = startMarker
                         elif outerBrackets:
                             pyperclip.copy(cutSection(outerBrackets[0], outerBrackets[1]))
+                            cursor = outerBrackets[0]
                         updateConsole(f"pbx << {pyperclip.paste()}")
                     elif k == 22:  # ctrl-v - paste
                         buffer.insert(cursor, pyperclip.paste())
@@ -358,10 +359,40 @@ def main():
                         # s = "11111\n2222222\n333\n4444\n"
                         updateConsole(s)
                         buffer.insert(cursor, s)
-                    elif k == 6: #ctrl-f
+                    elif k == 2: #ctrl-b - begin
                         startMarker = Cursor.createFromCursor(cursor)
                     elif k == 7: #ctrl-g
                         endMarker = Cursor.createFromCursor(cursor)
+                    elif k == 6:  # ctrl-f - format statement
+                        updateConsole("format")
+                        cursor = outerBrackets[0]
+                        code = cutSection(outerBrackets[0], outerBrackets[1])
+                        def indentCode(code):
+                            stack = 0
+                            pos=0
+                            while pos < len(code):
+                                if pos> 0 and code[pos] == '(' and code[pos-1] == "'":
+                                    code = code[:pos-1] + '\n' + ('\t' * stack) + code[pos-1:]
+                                    pos = pos + stack + 1
+                                    lastStack = stack
+                                    stack = stack + 1
+                                elif code[pos] == '(':
+                                    code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
+                                    pos = pos + stack + 1
+                                    stack = stack + 1
+                                elif pos > 0 and code[pos-1] == ')':
+                                    stack = stack - 1
+                                    #what's the next symbol?
+                                    lhpos=pos
+                                    nextSym=None
+                                    while lhpos < len(code) and str(code[lhpos]).isspace():
+                                        lhpos = lhpos + 1
+                                    if (code[lhpos] != ')'):
+                                        code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
+                                        pos = pos + stack + 1
+                                pos = pos + 1
+                            return code
+                        buffer.insert(cursor, indentCode(code))
                     else:
                         kchar = chr(k)
                         if (kchar.isascii()):
