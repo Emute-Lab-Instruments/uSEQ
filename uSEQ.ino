@@ -1127,7 +1127,7 @@ Value Value::eval(Environment &env) {
         ts_get = micros();
         auto atomdata = env.get(str);
         if (atomdata == Value::error()) {
-          Serial.print("Geterr: ");
+          Serial.print("Get error: ");
           Serial.println(str);
         }
         ts_get = micros() - ts_get;
@@ -1150,16 +1150,26 @@ Value Value::eval(Environment &env) {
           return Value::error();
         } else {
           //lambda?
+          bool evalError=false;
           if (!function.is_builtin()) {
             for (size_t i = 0; i < args.size(); i++) {
               args[i] = args[i].eval(env);
+              if (args[i] == Value::error()) {
+                evalError=true;
+                break;
+              }
             }
           }
 
-          auto functionResult = function.apply(
-            args,
-            env);
-          return functionResult;
+          if (evalError) {
+            return Value::error();
+          }else{
+
+            auto functionResult = function.apply(
+              args,
+              env);
+            return functionResult;
+          }
         }
       }
     
@@ -2241,11 +2251,6 @@ void resetTime() {
 }
 
 void updateDigitalOutputs() {
-  // run("(useqdw 1 (eval d1-form))", env);
-  // auto d2ast = parse("(useqdw 2 (eval d2-form))");
-  // run("(useqdw 2 (eval d2-form))", env);
-  // run("(useqdw 3 (eval d3-form))", env);
-  // run("(useqdw 4 (eval d4-form))", env);
   for (size_t i=0; i < 4; i++) {
     if (runParsedCode(digitalASTs[i], env) == Value::error()) {
       Serial.println("Error in digital output function, clearing");
@@ -2260,8 +2265,6 @@ void updateAnalogOutputs() {
       Serial.println("Error in analog output function, clearing");
       analogASTs[i].clear();
     }
-  // run("(useqaw 1 (eval a1-form))", env);
-  // run("(useqaw 2 (eval a2-form))", env);
 }
 
 #ifdef MIDIOUT
@@ -2770,7 +2773,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["gatesw"] = Value("gatesw", builtin::useq_gatesw);
   Environment::builtindefs["setbpm"] = Value("setbpm", builtin::useq_setbpm);
   Environment::builtindefs["settimesig"] = Value("settimesig", builtin::useq_settimesig);
-  
+
   Environment::builtindefs["interp"] = Value("interp", builtin::useq_interpolate);
   
 
