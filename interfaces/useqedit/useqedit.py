@@ -47,6 +47,9 @@ class Window:
     def translate(self, cursor):
         return cursor.row - self.row, cursor.col - self.col
 
+    def isInWindow(self, coords):
+        return coords[0] >= self.row and coords[0] <= self.bottom and coords[1] >= self.col and coords[1] <= self.col + self.n_cols - 1
+
 
 def left(window, buffer, cursor):
     cursor.left(buffer)
@@ -152,10 +155,19 @@ def main():
                             if leftParenCursor:
                                 outerBrackets = (leftParenCursor, highParen)
                         highParen = nextHighParen
-                editor.chgat(*window.translate(outerBrackets[0]), 1, curses.A_BOLD | curses.color_pair(2))
-                editor.chgat(*window.translate(outerBrackets[1]), 1, curses.A_BOLD | curses.color_pair(2))
-                editor.chgat(*window.translate(innerBrackets[0]), 1, curses.A_BOLD | curses.color_pair(1))
-                editor.chgat(*window.translate(innerBrackets[1]), 1, curses.A_BOLD | curses.color_pair(1))
+                leftBracketPos = window.translate(outerBrackets[0])
+                if window.isInWindow(leftBracketPos):
+                    editor.chgat(*leftBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
+                updateConsole(window.translate(outerBrackets[1]))
+                rightBracketPos = window.translate(outerBrackets[1])
+                if window.isInWindow(rightBracketPos):
+                    editor.chgat(*rightBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
+                leftInnerBracketPos = window.translate(innerBrackets[0])
+                if window.isInWindow(leftInnerBracketPos):
+                    editor.chgat(*leftInnerBracketPos, 1, curses.A_BOLD | curses.color_pair(1))
+                rightInnerBracketPos = window.translate(innerBrackets[1])
+                if window.isInWindow(rightInnerBracketPos):
+                    editor.chgat(*rightInnerBracketPos, 1, curses.A_BOLD | curses.color_pair(1))
             else:
                 None
         return outerBrackets, innerBrackets
@@ -367,6 +379,7 @@ def main():
                         updateConsole("format")
                         cursor = outerBrackets[0]
                         code = cutSection(outerBrackets[0], outerBrackets[1])
+                        #todo: better to use an s-expr parser
                         def indentCode(code):
                             stack = 0
                             pos=0
@@ -374,7 +387,6 @@ def main():
                                 if pos> 0 and code[pos] == '(' and code[pos-1] == "'":
                                     code = code[:pos-1] + '\n' + ('\t' * stack) + code[pos-1:]
                                     pos = pos + stack + 1
-                                    lastStack = stack
                                     stack = stack + 1
                                 elif code[pos] == '(':
                                     code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
@@ -387,7 +399,10 @@ def main():
                                     nextSym=None
                                     while lhpos < len(code) and str(code[lhpos]).isspace():
                                         lhpos = lhpos + 1
-                                    if (code[lhpos] != ')'):
+                                    if (code[lhpos] == '('):
+                                        code = code[:pos] + '\n' + ('\t' * stack) + code[lhpos:]
+                                        pos = pos + 1 + stack
+                                    elif (code[lhpos] != ')'):
                                         code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
                                         pos = pos + stack + 1
                                 pos = pos + 1
