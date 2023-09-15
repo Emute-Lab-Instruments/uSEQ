@@ -48,7 +48,7 @@ class Window:
         return cursor.row - self.row, cursor.col - self.col
 
     def isInWindow(self, coords):
-        return coords[0] >= self.row and coords[0] <= self.bottom and coords[1] >= self.col and coords[1] <= self.col + self.n_cols - 1
+        return coords[0] >= 0 and coords[0] <= self.n_rows - 1 and coords[1] >=0 and coords[1] < self.n_cols - 1
 
 
 def left(window, buffer, cursor):
@@ -281,7 +281,7 @@ def main():
                     if (my < window.n_rows and mx < window.n_cols):
                         cursor.move(my, mx, buffer)
                 else:
-                    updateConsole(f"input {k}")
+                    # updateConsole(f"input {k}")
                     if k == 23: #ctrl-w
                         if cx:
                             cx.close()
