@@ -278,7 +278,7 @@ def main():
 
             if (k!=-1):
                 actionReceived = True
-                updateConsole(f"key {k}")
+                # updateConsole(f"key {k}")
                 if (k == curses.KEY_MOUSE):
                     _, mx, my, _, bstate = curses.getmouse()
                     if (my < window.n_rows and mx < window.n_cols):
