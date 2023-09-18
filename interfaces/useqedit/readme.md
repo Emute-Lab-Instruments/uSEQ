@@ -33,6 +33,9 @@ uSEQEdit saves (overwrites) the file every time you make a change.
 | Ctrl - x | Cut |
 | Ctrl - z | Undo |
 
+### Troubleshooting
+
+
 
 ## Troubleshooting
 
