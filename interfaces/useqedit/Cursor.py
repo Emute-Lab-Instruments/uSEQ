@@ -12,6 +12,7 @@ class Cursor:
     def col(self):
         return self._col
 
+
     @col.setter
     def col(self, col):
         self._col = col

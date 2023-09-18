@@ -44,8 +44,11 @@ class Window:
         n_pages = cursor.col // (self.n_cols - right_margin)
         self.col = max(n_pages * self.n_cols - right_margin - left_margin, 0)
 
-    def translate(self, cursor):
+    def translateCursorToScreenCoords(self, cursor):
         return cursor.row - self.row, cursor.col - self.col
+
+    def translateScreenCoordsToCursor(self, row, col):
+        return Cursor(row + self.row, col + self.col)
 
     def isInWindow(self, coords):
         return coords[0] >= 0 and coords[0] <= self.n_rows - 1 and coords[1] >=0 and coords[1] < self.n_cols - 1
@@ -155,17 +158,17 @@ def main():
                             if leftParenCursor:
                                 outerBrackets = (leftParenCursor, highParen)
                         highParen = nextHighParen
-                leftBracketPos = window.translate(outerBrackets[0])
+                leftBracketPos = window.translateCursorToScreenCoords(outerBrackets[0])
                 if window.isInWindow(leftBracketPos):
                     editor.chgat(*leftBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
-                updateConsole(window.translate(outerBrackets[1]))
-                rightBracketPos = window.translate(outerBrackets[1])
+                updateConsole(window.translateCursorToScreenCoords(outerBrackets[1]))
+                rightBracketPos = window.translateCursorToScreenCoords(outerBrackets[1])
                 if window.isInWindow(rightBracketPos):
                     editor.chgat(*rightBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
-                leftInnerBracketPos = window.translate(innerBrackets[0])
+                leftInnerBracketPos = window.translateCursorToScreenCoords(innerBrackets[0])
                 if window.isInWindow(leftInnerBracketPos):
                     editor.chgat(*leftInnerBracketPos, 1, curses.A_BOLD | curses.color_pair(1))
-                rightInnerBracketPos = window.translate(innerBrackets[1])
+                rightInnerBracketPos = window.translateCursorToScreenCoords(innerBrackets[1])
                 if window.isInWindow(rightInnerBracketPos):
                     editor.chgat(*rightInnerBracketPos, 1, curses.A_BOLD | curses.color_pair(1))
             else:
@@ -237,7 +240,7 @@ def main():
                         editor.chgat(row, i, curses.color_pair(1))
 
             # editor.addstr(row, 0, line)
-        editor.move(*window.translate(cursor))
+        editor.move(*window.translateCursorToScreenCoords(cursor))
 
         outerBrackets = None
         innerBrackets = None
@@ -254,7 +257,7 @@ def main():
                     break
 
 
-        editor.move(*window.translate(cursor))
+        editor.move(*window.translateCursorToScreenCoords(cursor))
         def sendTouSEQ(statement):
             # send to terminal
             if cx:
@@ -279,7 +282,10 @@ def main():
                 if (k == curses.KEY_MOUSE):
                     _, mx, my, _, bstate = curses.getmouse()
                     if (my < window.n_rows and mx < window.n_cols):
-                        cursor.move(my, mx, buffer)
+                        updateConsole(f"ml, {mx} {my}")
+                        newCursor = window.translateScreenCoordsToCursor(my, mx)
+                        updateConsole(f"m, {newCursor.col}, {newCursor.row}")
+                        cursor.move(newCursor.row, newCursor.col, buffer)
                 else:
                     # updateConsole(f"input {k}")
                     if k == 23: #ctrl-w
