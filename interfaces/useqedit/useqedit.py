@@ -150,21 +150,28 @@ def main():
                 if not highParen:
                     outerBrackets = (leftParenCursor, rightParen)
                 else:
-                    while highParen != None:
+                    search=True
+                    while search:
                         # updateConsole(f"hp {highParen.row} {highParen.col}")
-                        nextHighParen = findMatchingRightParenthesis(buffer, highParen, 1)
-                        if not nextHighParen:
-                            leftParenCursor = findMatchingLeftParenthesis(buffer, highParen)
-                            if leftParenCursor:
-                                outerBrackets = (leftParenCursor, highParen)
-                        highParen = nextHighParen
-                leftBracketPos = window.translateCursorToScreenCoords(outerBrackets[0])
-                if window.isInWindow(leftBracketPos):
-                    editor.chgat(*leftBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
-                # updateConsole(window.translateCursorToScreenCoords(outerBrackets[1]))
-                rightBracketPos = window.translateCursorToScreenCoords(outerBrackets[1])
-                if window.isInWindow(rightBracketPos):
-                    editor.chgat(*rightBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
+                        leftParenCursor = findMatchingLeftParenthesis(buffer, highParen)
+                        if leftParenCursor:
+                            outerBrackets = (leftParenCursor, highParen)
+                            #try searching outward
+                            nextHighParen = findMatchingRightParenthesis(buffer, highParen, 1)
+                            if not nextHighParen:
+                                search = False
+                            else:
+                                highParen = nextHighParen
+                        else:
+                            search=False
+                if leftParenCursor:
+                    leftBracketPos = window.translateCursorToScreenCoords(outerBrackets[0])
+                    if window.isInWindow(leftBracketPos):
+                        editor.chgat(*leftBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
+                    # updateConsole(window.translateCursorToScreenCoords(outerBrackets[1]))
+                    rightBracketPos = window.translateCursorToScreenCoords(outerBrackets[1])
+                    if window.isInWindow(rightBracketPos):
+                        editor.chgat(*rightBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
                 leftInnerBracketPos = window.translateCursorToScreenCoords(innerBrackets[0])
                 if window.isInWindow(leftInnerBracketPos):
                     editor.chgat(*leftInnerBracketPos, 1, curses.A_BOLD | curses.color_pair(1))
