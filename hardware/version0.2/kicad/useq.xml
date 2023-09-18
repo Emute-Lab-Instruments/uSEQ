@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <export version="E">
   <design>
-    <source>/home/ck84/Documents/modular/cephlasonic/useq/useq.kicad_sch</source>
-    <date>Fri 05 May 2023 17:27:54 BST</date>
+    <source>/home/ck84/Arduino/uSEQ/hardware/version0.2/kicad/useq.kicad_sch</source>
+    <date>Sun 17 Sep 2023 21:26:19 BST</date>
     <tool>Eeschema 6.0.2+dfsg-1</tool>
     <sheet number="1" name="/" tstamps="/">
       <title_block>
@@ -28,6 +28,7 @@
       <value>10u</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder</footprint>
       <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -43,7 +44,7 @@
       <tstamps>2d77474f-2eb4-4e53-9a3a-1282877f2c95</tstamps>
     </comp>
     <comp ref="C3">
-      <value>4.7n</value>
+      <value>10n</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder</footprint>
       <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
       <property name="Sheetname" value=""/>
@@ -52,7 +53,7 @@
       <tstamps>022aa2dc-0c6a-4ae9-bc52-9b74eccb541b</tstamps>
     </comp>
     <comp ref="C4">
-      <value>4.7n</value>
+      <value>10n</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder</footprint>
       <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
       <property name="Sheetname" value=""/>
@@ -61,7 +62,7 @@
       <tstamps>0329ace5-c4be-4e27-a87f-e0611adbf672</tstamps>
     </comp>
     <comp ref="C5">
-      <value>(4.7n)</value>
+      <value>(10n)</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder</footprint>
       <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
       <property name="Sheetname" value=""/>
@@ -70,7 +71,7 @@
       <tstamps>684746c4-1887-4b1d-9bbf-734e8ddab14d</tstamps>
     </comp>
     <comp ref="C6">
-      <value>(4.7n)</value>
+      <value>(10n)</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder</footprint>
       <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
       <property name="Sheetname" value=""/>
@@ -79,7 +80,7 @@
       <tstamps>12027d9c-0f1e-4c18-a1b8-f862f8c90f0f</tstamps>
     </comp>
     <comp ref="C7">
-      <value>(4.7n)</value>
+      <value>(10n)</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder</footprint>
       <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
       <property name="Sheetname" value=""/>
@@ -88,7 +89,7 @@
       <tstamps>7ea96c6f-ff9b-4c7e-bd08-edebd973c830</tstamps>
     </comp>
     <comp ref="C8">
-      <value>(4.7n)</value>
+      <value>(10n)</value>
       <footprint>Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder</footprint>
       <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
       <property name="Sheetname" value=""/>
@@ -98,9 +99,10 @@
     </comp>
     <comp ref="D1">
       <value>1N5819</value>
-      <footprint>Diode_SMD:D_SOD-123</footprint>
+      <footprint>Diode_SMD:D_SOD-323</footprint>
       <datasheet>http://www.vishay.com/docs/88525/1n5817.pdf</datasheet>
       <libsource lib="Diode" part="1N5818" description="30V 1A Schottky Barrier Rectifier Diode, DO-41"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -108,9 +110,10 @@
     </comp>
     <comp ref="D2">
       <value>1N5819</value>
-      <footprint>Diode_SMD:D_SOD-123</footprint>
+      <footprint>Diode_SMD:D_SOD-323</footprint>
       <datasheet>http://www.vishay.com/docs/88525/1n5817.pdf</datasheet>
       <libsource lib="Diode" part="1N5818" description="30V 1A Schottky Barrier Rectifier Diode, DO-41"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -118,9 +121,10 @@
     </comp>
     <comp ref="D3">
       <value>1N5819</value>
-      <footprint>Diode_SMD:D_SOD-123</footprint>
+      <footprint>Diode_SMD:D_SOD-323</footprint>
       <datasheet>http://www.vishay.com/docs/88525/1n5817.pdf</datasheet>
       <libsource lib="Diode" part="1N5818" description="30V 1A Schottky Barrier Rectifier Diode, DO-41"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -128,9 +132,10 @@
     </comp>
     <comp ref="D4">
       <value>1N5819</value>
-      <footprint>Diode_SMD:D_SOD-123</footprint>
+      <footprint>Diode_SMD:D_SOD-323</footprint>
       <datasheet>http://www.vishay.com/docs/88525/1n5817.pdf</datasheet>
       <libsource lib="Diode" part="1N5818" description="30V 1A Schottky Barrier Rectifier Diode, DO-41"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -138,9 +143,10 @@
     </comp>
     <comp ref="D5">
       <value>1N5819</value>
-      <footprint>Diode_SMD:D_SOD-123</footprint>
+      <footprint>Diode_SMD:D_SOD-323</footprint>
       <datasheet>http://www.vishay.com/docs/88525/1n5817.pdf</datasheet>
       <libsource lib="Diode" part="1N5818" description="30V 1A Schottky Barrier Rectifier Diode, DO-41"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -352,6 +358,7 @@
       <property name="Description" value="TRANS NPN 40V 0.2A SOT23"/>
       <property name="Manufacturer" value="Micro Commercial Co"/>
       <property name="Status" value="Active"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -382,6 +389,7 @@
       <property name="Description" value="TRANS NPN 40V 0.2A SOT23"/>
       <property name="Manufacturer" value="Micro Commercial Co"/>
       <property name="Status" value="Active"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -391,6 +399,7 @@
       <value>100k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -400,24 +409,27 @@
       <value>100k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>00000000-0000-0000-0000-0000620e1c2b</tstamps>
     </comp>
     <comp ref="R3">
-      <value>2k2</value>
+      <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>890e1c6c-d3f6-4407-b47b-e21be733bc97</tstamps>
     </comp>
     <comp ref="R4">
-      <value>2k2</value>
+      <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -427,6 +439,7 @@
       <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -436,78 +449,87 @@
       <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>085a0af1-86df-47ed-ab5c-f2c0175e5286</tstamps>
     </comp>
     <comp ref="R7">
-      <value>910</value>
+      <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>a6b26d49-3511-4379-b51c-29b09d1a74f5</tstamps>
     </comp>
     <comp ref="R8">
-      <value>910</value>
+      <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>a6c2d0cc-9940-4040-b8da-914adad28ab7</tstamps>
     </comp>
     <comp ref="R9">
-      <value>910</value>
+      <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>3329e178-6da0-4b49-9682-85f57bdd1454</tstamps>
     </comp>
     <comp ref="R10">
-      <value>910</value>
+      <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>3282a147-3b33-480c-a0a5-0a00a314c7d9</tstamps>
     </comp>
     <comp ref="R11">
-      <value>910</value>
+      <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>76e91c31-8412-4f62-8ce9-0221b84e029d</tstamps>
     </comp>
     <comp ref="R12">
-      <value>910</value>
+      <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>aeecaf41-6f11-4a4b-822b-c321c4fb080a</tstamps>
     </comp>
     <comp ref="R13">
-      <value>910</value>
+      <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>2ab50f6a-10c5-40c1-9d6d-141c99052300</tstamps>
     </comp>
     <comp ref="R14">
-      <value>910</value>
+      <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -517,6 +539,7 @@
       <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -526,6 +549,7 @@
       <value>1k</value>
       <footprint>Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -586,6 +610,7 @@
       <property name="Description" value="SWITCH TACTILE SPST-NO 0.05A 12V"/>
       <property name="Manufacturer" value="Omron Electronics Inc-EMC Div"/>
       <property name="Status" value="Active"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>
@@ -632,6 +657,7 @@
       <footprint>Package_SO:SOIC-16_3.9x9.9mm_P1.27mm</footprint>
       <datasheet>http://www.ti.com/lit/ds/symlink/cd4504b.pdf</datasheet>
       <libsource lib="4xxx" part="4504" description="CMOS Hex Voltage-Level Shifter for TTL-to-CMOS or CMOS-to-CMOS, DIP-16/SOIC-16/TSSOP-16"/>
+      <property name="LCSC" value=""/>
       <property name="Sheetname" value=""/>
       <property name="Sheetfile" value="useq.kicad_sch"/>
       <sheetpath names="/" tstamps="/"/>

@@ -1,11 +1,26 @@
-"Id";"Designator";"Package";"Quantity";"Designation";"Supplier and ref";
-1;"U2";"SOIC-16_3.9x9.9mm_P1.27mm";1;"4504";;;
-2;"R10,R15,R3,R16,R14,R5,R12,R6,R13,R7,R11,R8,R9,R4";"R_1206_3216Metric_Pad1.30x1.75mm_HandSolder";14;"1k";;;
-3;"R2,R1";"R_1206_3216Metric_Pad1.30x1.75mm_HandSolder";2;"100k";;;
-4;"C6,C7,C8,C5";"C_1206_3216Metric_Pad1.33x1.80mm_HandSolder";4;"(10n)";;;
-5;"C3,C4";"C_1206_3216Metric_Pad1.33x1.80mm_HandSolder";2;"10n";;;
-6;"Q1,Q2";"SOT-23-3";2;"2N3904";;;
-7;"D3,D4,D2,D5,D1";"D_SOD-323";5;"1N5819";;;
-8;"C1";"C_1206_3216Metric_Pad1.33x1.80mm_HandSolder";1;"10u";;;
-9;"C2";"C_1206_3216Metric_Pad1.33x1.80mm_HandSolder";1;"100n";;;
-10;"S2";"Switch_Tactile_SMD_B3U-1000P";1;"B3U-1000P";;;
+"Source:","/home/ck84/Arduino/uSEQ/hardware/version0.2/kicad/useq.kicad_sch"
+"Date:","Sun 17 Sep 2023 21:26:19 BST"
+"Tool:","Eeschema 6.0.2+dfsg-1"
+"Generator:","/usr/share/kicad/plugins/bom_csv_grouped_by_value_with_fp.py"
+"Component Count:","58"
+"Ref","Qnty","Value","Cmp name","Footprint","Description","Vendor"
+"C1, ","1","10u","C","Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder","Unpolarized capacitor",""
+"C2, ","1","100n","C","Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder","Unpolarized capacitor",""
+"C3, C4, ","2","10n","C","Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder","Unpolarized capacitor",""
+"C5, C6, C7, C8, ","4","(10n)","C","Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder","Unpolarized capacitor",""
+"D1, D2, D3, D4, D5, ","5","1N5819","1N5818","Diode_SMD:D_SOD-323","30V 1A Schottky Barrier Rectifier Diode, DO-41",""
+"D6, D7, D8, D9, D10, D11, D12, D13, ","8","LED","LED","LED_THT:LED_D3.0mm","Light emitting diode",""
+"H1, ","1","PIN_HEADER_2x8","PIN_HEADER_2x8","Connector_IDC:IDC-Header_2x08_P2.54mm_Vertical","",""
+"J1, J2, J3, J4, J5, J6, J7, J8, ","8","AudioJack2_SwitchT","AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","Audio Jack, 2 Poles (Mono / TS), Switched T Pole (Normalling)",""
+"J9, ","1","PJ366ST","PJ366ST","w_connector:PJ366ST","2-pin audio jack receptable (stereo/TS connector) with switching contact",""
+"J10, ","1","Conn_01x03","Conn_01x03","Connector_PinSocket_2.54mm:PinSocket_1x03_P2.54mm_Vertical","Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)",""
+"J11, ","1","Conn_01x05","Conn_01x05","Connector_PinSocket_2.54mm:PinSocket_1x05_P2.54mm_Vertical","Generic connector, single row, 01x05, script generated (kicad-library-utils/schlib/autogen/connector/)",""
+"Q1, Q2, ","2","2N3904","MMBT3904-TP","digikey-footprints:SOT-23-3","TRANS NPN 40V 0.2A SOT23",""
+"R1, R2, ","2","100k","R","Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder","Resistor",""
+"R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15, R16, ","14","1k","R","Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder","Resistor",""
+"S1, ","1","PEC11R-4215F-S0024","PEC11R-4215F-S0024","digikey-footprints:Rotary_Encoder_Switched_PEC11R","ROTARY ENCODER MECHANICAL 24PPR",""
+"S2, ","1","B3U-1000P","B3U-1000P","digikey-footprints:Switch_Tactile_SMD_B3U-1000P","SWITCH TACTILE SPST-NO 0.05A 12V",""
+"SW1, SW2, ","2","SW_Push","SW_Push","Eurocad:PBS-105","Push button switch, generic, two pins",""
+"SW3, ","1","SW_SPST","SW_SPST","benjiaomodular:ToggleSwitch_MTS-101_SPST","Single Pole Single Throw (SPST) switch",""
+"U1, ","1","Pico","Pico","MCU_RaspberryPi_and_Boards:RPi_Pico_Pinheaders","",""
+"U2, ","1","4504","4504","Package_SO:SOIC-16_3.9x9.9mm_P1.27mm","CMOS Hex Voltage-Level Shifter for TTL-to-CMOS or CMOS-to-CMOS, DIP-16/SOIC-16/TSSOP-16",""
