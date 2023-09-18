@@ -34,3 +34,10 @@ uSEQEdit saves (overwrites) the file every time you make a change.
 | Ctrl - z | Undo |
 
 
+
+
+
+## Troubleshooting
+
+The editor crashed and now I can't see any text in my terminal
+: run '''reset'''
