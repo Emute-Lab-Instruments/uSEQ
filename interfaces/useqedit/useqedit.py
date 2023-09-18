@@ -278,7 +278,7 @@ def main():
 
             if (k!=-1):
                 actionReceived = True
-                # updateConsole(k)
+                updateConsole(f"key {k}")
                 if (k == curses.KEY_MOUSE):
                     _, mx, my, _, bstate = curses.getmouse()
                     if (my < window.n_rows and mx < window.n_cols):
@@ -306,9 +306,9 @@ def main():
                     elif k == 10: #enter
                         buffer.split(cursor)
                         right(window, buffer, cursor)
-                    elif k == 330: #delete
+                    elif k in [330]: #delete
                         ch = buffer.delete(cursor)
-                    elif k == 127: #backspace
+                    elif k in [127, 263]: #backspace
                         if (cursor.row, cursor.col) > (0, 0):
                             left(window, buffer, cursor)
                             buffer.delete(cursor)
