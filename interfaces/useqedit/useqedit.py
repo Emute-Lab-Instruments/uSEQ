@@ -4,7 +4,7 @@ import sys
 from art import *
 from copy import deepcopy
 import glob
-import pyperclip
+from Clipping import MultiClip
 
 import serial
 
@@ -329,23 +329,25 @@ def main():
                             code = buffer.copy(st, en)
                             return code
                         if markedSection():
-                            pyperclip.copy(copySection(startMarker, endMarker))
+                            MultiClip.copy(copySection(startMarker, endMarker))
                             clearMarkedSection()
                         elif outerBrackets:
-                            pyperclip.copy(copySection(outerBrackets[0], outerBrackets[1]))
-                        updateConsole(f"pb << {pyperclip.paste()}")
+                            sect = copySection(outerBrackets[0], outerBrackets[1])
+                            updateConsole(sect)
+                            MultiClip.copy(sect)
+                        updateConsole(f"pb << {MultiClip.paste()}")
                     elif k == 24:  # ctrl-X - cut
                         if markedSection():
-                            pyperclip.copy(cutSection(startMarker, endMarker))
+                            MultiClip.copy(cutSection(startMarker, endMarker))
                             clearMarkedSection()
                             cursor = startMarker
                         elif outerBrackets:
-                            pyperclip.copy(cutSection(outerBrackets[0], outerBrackets[1]))
+                            MultiClip.copy(cutSection(outerBrackets[0], outerBrackets[1]))
                             cursor = outerBrackets[0]
-                        updateConsole(f"pbx << {pyperclip.paste()}")
+                        updateConsole(f"pbx << {MultiClip.paste()}")
                     elif k == 22:  # ctrl-v - paste
-                        buffer.insert(cursor, pyperclip.paste())
-                        for i in range(len(pyperclip.paste())):
+                        buffer.insert(cursor, MultiClip.paste())
+                        for i in range(len(MultiClip.paste())):
                             right(window, buffer, cursor)
                     elif k == 9: #ctrl-i
                         #add statement to queue
