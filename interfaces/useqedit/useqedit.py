@@ -161,7 +161,7 @@ def main():
                 leftBracketPos = window.translateCursorToScreenCoords(outerBrackets[0])
                 if window.isInWindow(leftBracketPos):
                     editor.chgat(*leftBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
-                updateConsole(window.translateCursorToScreenCoords(outerBrackets[1]))
+                # updateConsole(window.translateCursorToScreenCoords(outerBrackets[1]))
                 rightBracketPos = window.translateCursorToScreenCoords(outerBrackets[1])
                 if window.isInWindow(rightBracketPos):
                     editor.chgat(*rightBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
@@ -282,9 +282,7 @@ def main():
                 if (k == curses.KEY_MOUSE):
                     _, mx, my, _, bstate = curses.getmouse()
                     if (my < window.n_rows and mx < window.n_cols):
-                        updateConsole(f"ml, {mx} {my}")
                         newCursor = window.translateScreenCoordsToCursor(my, mx)
-                        updateConsole(f"m, {newCursor.col}, {newCursor.row}")
                         cursor.move(newCursor.row, newCursor.col, buffer)
                 else:
                     # updateConsole(f"input {k}")
