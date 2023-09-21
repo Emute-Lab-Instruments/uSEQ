@@ -122,8 +122,8 @@ def main():
                 while searching:
                     testLeft = findMatchingLeftParenthesis(buffer, outerBrackets[0])
                     if (testLeft):
-                        # updateConsole(f"{testLeft.row}, {testLeft.col}")
-                        testRight = findMatchingRightParenthesis(buffer, testLeft)
+                        updateConsole(f"{testLeft.row}, {testLeft.col}")
+                        testRight = findMatchingRightParenthesis(buffer, testLeft,1)
                         if (testRight):
                             # updateConsole(f"{testRight.row}, {testRight.col}")
                             outerBrackets = [testLeft, testRight]
@@ -243,7 +243,7 @@ def main():
             # updateConsole(row)
             line = buffer.getLine(row)
             # updateConsole(line)
-            
+
             for match in re.finditer(r'd1|d2|d3|d4|a1|a2|a3|sqr|gatesw|\+|\-|\*\\/', line):
                 for highlightPos in range(match.start(), min(match.end(), window.col + window.n_cols)):
                     editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(3))
