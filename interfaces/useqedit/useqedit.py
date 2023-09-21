@@ -11,6 +11,9 @@ import serial
 from Buffer import Buffer
 from Cursor import Cursor
 from MessageLog import MessageLog
+from Window import Window
+
+import re
 
 
 def clamp(x, lower, upper):
@@ -19,39 +22,6 @@ def clamp(x, lower, upper):
     if x > upper:
         return upper
     return x
-
-
-class Window:
-    def __init__(self, n_rows, n_cols, row=0, col=0):
-        self.n_rows = n_rows
-        self.n_cols = n_cols
-        self.row = row
-        self.col = col
-
-    @property
-    def bottom(self):
-        return self.row + self.n_rows - 1
-
-    def up(self, cursor):
-        if cursor.row == self.row - 1 and self.row > 0:
-            self.row -= 1
-
-    def down(self, buffer, cursor):
-        if cursor.row == self.bottom + 1 and self.bottom < len(buffer) - 1:
-            self.row += 1
-
-    def horizontal_scroll(self, cursor, left_margin=5, right_margin=2):
-        n_pages = cursor.col // (self.n_cols - right_margin)
-        self.col = max(n_pages * self.n_cols - right_margin - left_margin, 0)
-
-    def translateCursorToScreenCoords(self, cursor):
-        return cursor.row - self.row, cursor.col - self.col
-
-    def translateScreenCoordsToCursor(self, row, col):
-        return Cursor(row + self.row, col + self.col)
-
-    def isInWindow(self, coords):
-        return coords[0] >= 0 and coords[0] <= self.n_rows - 1 and coords[1] >=0 and coords[1] < self.n_cols - 1
 
 
 def left(window, buffer, cursor):
@@ -81,6 +51,7 @@ def main():
     curses.mouseinterval(20)
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_WHITE)
     curses.init_pair(2, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.raw()
     consoleWidth = args.conswidth
     window = Window(curses.LINES - 1, curses.COLS - 1 - consoleWidth)
@@ -151,15 +122,15 @@ def main():
                 while searching:
                     testLeft = findMatchingLeftParenthesis(buffer, outerBrackets[0])
                     if (testLeft):
-                        updateConsole(f"{testLeft.row}, {testLeft.col}")
+                        # updateConsole(f"{testLeft.row}, {testLeft.col}")
                         testRight = findMatchingRightParenthesis(buffer, testLeft)
                         if (testRight):
-                            updateConsole(f"{testRight.row}, {testRight.col}")
+                            # updateConsole(f"{testRight.row}, {testRight.col}")
                             outerBrackets = [testLeft, testRight]
 
                     if testLeft==None or testRight==None:
                         searching=False
-                        
+
                 if innerBrackets:
                     leftInnerBracketPos = window.translateCursorToScreenCoords(innerBrackets[0])
                     if window.isInWindow(leftInnerBracketPos):
@@ -262,7 +233,23 @@ def main():
                     break
 
 
+
+
+        #highlight keywords
+        # updateConsole(len(buffer))
+        # updateConsole(window.row)
+        # updateConsole(window.bottom)
+        for row in range(window.row, min(window.bottom, len(buffer))):
+            # updateConsole(row)
+            line = buffer.getLine(row)
+            # updateConsole(line)
+            
+            for match in re.finditer(r'd1|d2|d3|d4|a1|a2|a3|sqr|gatesw|\+|\-|\*\\/', line):
+                for highlightPos in range(match.start(), min(match.end(), window.col + window.n_cols)):
+                    editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(3))
+
         editor.move(*window.translateCursorToScreenCoords(cursor))
+
         def sendTouSEQ(statement):
             # send to terminal
             if cx:
