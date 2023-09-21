@@ -49,9 +49,12 @@ def main():
     curses.start_color()
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
     curses.mouseinterval(20)
-    curses.init_pair(1, curses.COLOR_RED, curses.COLOR_WHITE)
-    curses.init_pair(2, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
+    curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_MAGENTA)
     curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    curses.init_pair(4, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    curses.init_pair(5, curses.COLOR_CYAN, curses.COLOR_BLACK)
+    curses.init_pair(6, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.raw()
     consoleWidth = args.conswidth
     window = Window(curses.LINES - 1, curses.COLS - 1 - consoleWidth)
@@ -243,10 +246,17 @@ def main():
             # updateConsole(row)
             line = buffer.getLine(row)
             # updateConsole(line)
-
-            for match in re.finditer(r'd1|d2|d3|d4|a1|a2|a3|sqr|gatesw|\+|\-|\*\\/', line):
-                for highlightPos in range(match.start(), min(match.end(), window.col + window.n_cols)):
-                    editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(3))
+            if len(line) > 0 and line[0] == "#":
+                for highlightPos in range(window.col, min(len(line), window.col + window.n_cols)):
+                    editor.chgat(row - window.row, highlightPos, 1, curses.A_DIM | curses.color_pair(6))
+            else:
+                def searchAndHighlight(regexStr, colourIdx):
+                    for match in re.finditer(regexStr, line):
+                        for highlightPos in range(match.start(), min(match.end(), window.col + window.n_cols)):
+                            editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(colourIdx))
+                searchAndHighlight(r'd1|d2|d3|d4|a1|a2|a3|a4|in1|in2',3)
+                searchAndHighlight(r'sqr|gatesw|\+|\-|\*\\/',4)
+                searchAndHighlight(r'bar|phrase|beat|section',5)
 
         editor.move(*window.translateCursorToScreenCoords(cursor))
 
