@@ -27,6 +27,17 @@
 
 // firmware build options (comment out as needed)
 
+// Not sure where the best place to put this is, needs to be accessible
+// by all interpreter functions that may need to raise it
+bool currentExprSound = false;
+
+#define USEQ_NUM_DIGITAL_OUTPUTS 4
+#define USEQ_NUM_DIGITAL_INPUTS 0
+
+#define USEQ_NUM_ANALOG_OUTPUTS 2
+#define USEQ_NUM_ANALOG_INPUTS 2
+
+
 #define MIDIOUT  // (drum sequencer implemented using (mdo note (f t)))
 //#define MIDIIN //(to be implemented)
 
@@ -456,6 +467,7 @@ public:
     if (type != STRING) {
       Serial.print("str: ");
       Serial.println(BAD_CAST);
+      currentExprSound = false;
       return "";
     }
     return str;
@@ -467,6 +479,7 @@ public:
     if (type != ATOM) {
       Serial.print("atom: ");
       Serial.println(BAD_CAST);
+      currentExprSound = false;
       return "";
     }
     return str;
@@ -476,7 +489,10 @@ public:
   std::vector<Value> as_list() const {
     // If this item is not a list, throw a cast error.
     if (type != LIST) {
+      Serial.print("list: ");
       Serial.println(BAD_CAST);
+      currentExprSound = false;
+      return {Value::error()};
     }
     return list;
   }
@@ -520,7 +536,9 @@ public:
       case FLOAT: return Value(int(stack_data.f));
       // Only ints and floats can be cast to an int
       default:
+        Serial.println("int: ");
         Serial.println(BAD_CAST);
+      currentExprSound = false;
         return Value::error();
         // throw Error(*this, Environment(), BAD_CAST);
     }
@@ -533,7 +551,9 @@ public:
       case INT: return Value(double(stack_data.i));
       // Only ints and floats can be cast to a float
       default:
+        Serial.println("float: ");
         Serial.println(BAD_CAST);
+      currentExprSound = false;
         // throw Error(*this, Environment(), BAD_CAST);
         return Value::error();
     }
@@ -1146,7 +1166,7 @@ Value Value::eval(Environment &env) {
         // leave them to evaluate their arguments.
         function = list[0].eval(env);
         if (function.is_error()) {
-          Serial.print("err ");
+          Serial.print("err: function is error");
           return Value::error();
         } else {
           //lambda?
@@ -1164,7 +1184,6 @@ Value Value::eval(Environment &env) {
           if (evalError) {
             return Value::error();
           }else{
-
             auto functionResult = function.apply(
               args,
               env);
@@ -2140,7 +2159,6 @@ int analog_out_LED_pin(int out) {
   }
 
 
-
 ///////////////////////////
 // USEQ NAMESPACE
 ///////////////////////////
@@ -2181,8 +2199,8 @@ double section = 0.0;
 
 
 
-std::vector<Value> digitalASTs[4];
-std::vector<Value> analogASTs[2];
+std::vector<Value> digitalASTs[USEQ_NUM_DIGITAL_OUTPUTS];
+std::vector<Value> analogASTs[USEQ_NUM_ANALOG_OUTPUTS];
 
 
 void updateBpmVariables() {
@@ -2250,22 +2268,9 @@ void resetTime() {
   updateTime();
 }
 
-void updateDigitalOutputs() {
-  for (size_t i=0; i < 4; i++) {
-    if (runParsedCode(digitalASTs[i], env) == Value::error()) {
-      Serial.println("Error in digital output function, clearing");
-      digitalASTs[i].clear();
-    }
-  }
-}
+void updateDigitalOutputs();
+void updateAnalogOutputs();
 
-void updateAnalogOutputs() {
-  for (size_t i=0; i < 2; i++)
-    if (runParsedCode(analogASTs[i], env) == Value::error()) {
-      Serial.println("Error in analog output function, clearing");
-      analogASTs[i].clear();
-    }
-}
 
 #ifdef MIDIOUT
 double last_midi_t = 0;
@@ -2321,12 +2326,69 @@ std::vector<Value> cqpAST;
 std::vector< std::vector<Value> > runQueue;
 
 
+void initASTs() {
+    for(int i = 0; i < USEQ_NUM_DIGITAL_OUTPUTS; i++)
+       digitalASTs[i] = {parse("(sqr beat)")[0]};
+
+    for(int i = 0; i < USEQ_NUM_ANALOG_OUTPUTS; i++)
+       analogASTs[i] = {parse("(sqr bar)")[0]};
+}
+
 void setup() {
   setBpm(defaultBpm);
   updateTime();
   // env.set_global("cqp", ::parse(cqpCode));
   // run(cqpCode, env);
   cqpAST = ::parse("(eval 'bar)");
+  initASTs();
+}
+
+void updateDigitalOutputs() {
+  for (size_t i=0; i < USEQ_NUM_DIGITAL_OUTPUTS; i++) {
+    // We assume that the expression is correct unless proven otherwise
+    currentExprSound = true;
+
+    Value result;
+    result = runParsedCode(digitalASTs[i], env);
+
+    // Check for errors
+    if (result == Value::error() || !currentExprSound) {
+      Serial.println("Error in form, clearing...");
+      digitalASTs[i] = {Value((int)0)};
+    }
+    // Write
+    else {
+      int pin = digital_out_pin(i + 1);
+      int led_pin = digital_out_LED_pin(i + 1);
+      int val = result.as_int();
+      digitalWrite(pin, val);
+      digitalWrite(led_pin, val);
+    }
+  }
+}
+
+void updateAnalogOutputs() {
+  for (size_t i=0; i < USEQ_NUM_ANALOG_OUTPUTS; i++) {
+    // We assume that the expression is correct unless proven otherwise
+    currentExprSound = true;
+
+    Value result;
+    result = runParsedCode(analogASTs[i], env);
+
+    // Check for errors
+    if (result == Value::error() || !currentExprSound) {
+      Serial.println("Error in form, clearing...");
+      analogASTs[i] = {Value((int)0)};
+    }
+    // Write
+    else {
+      int pin = analog_out_pin(i + 1);
+      int led_pin = analog_out_LED_pin(i + 1);
+      int val = result.as_float() * 2047.0;
+      analogWrite(pin, val);
+      analogWrite(led_pin, val);
+    }
+  }
 }
 
 
@@ -2361,7 +2423,7 @@ void update() {
   }
 
 
-  run("(eval q-form)", env);  
+  /* run("(eval q-form)", env);   */
   updateAnalogOutputs();
   updateDigitalOutputs();
 #ifdef MIDIOUT
@@ -2401,32 +2463,33 @@ Value fromList(std::vector<Value> &lst, double phasor, Environment &env) {
 
 
 
-BUILTINFUNC_NOEVAL(useq_q0, env.set_global("q-form", args[0]);, 1)
-BUILTINFUNC_NOEVAL(a1, 
+/* BUILTINFUNC_NOEVAL(useq_q0, env.set_global("q-form", args[0]);, 1) */
+
+BUILTINFUNC_NOEVAL(a1,
   env.set_global("a1-form", args[0]);
-  useq::analogASTs[0] = ::parse("(useqaw 1 (eval a1-form))");
+  useq::analogASTs[0] = {args[0]};
   // run("(useqaw 1 (eval a1-form))", env);
 , 1)
 BUILTINFUNC_NOEVAL(a2, 
   env.set_global("a2-form", args[0]);
-  useq::analogASTs[1] = ::parse("(useqaw 2 (eval a2-form))");
+  useq::analogASTs[1] = {args[0]};
 , 1)
 
 BUILTINFUNC_NOEVAL(d1, 
   env.set_global("d1-form", args[0]);
-  useq::digitalASTs[0] = ::parse("(useqdw 1 (eval d1-form))");
+  useq::digitalASTs[0] = {args[0]};
 , 1)
 BUILTINFUNC_NOEVAL(d2,
   env.set_global("d2-form", args[0]);
-  useq::digitalASTs[1] = ::parse("(useqdw 2 (eval d2-form))");
+  useq::digitalASTs[1] = {args[0]};
   , 1)
 BUILTINFUNC_NOEVAL(d3,
   env.set_global("d3-form", args[0]);
-  useq::digitalASTs[2] = ::parse("(useqdw 3 (eval d3-form))");
+  useq::digitalASTs[2] = {args[0]};
 , 1)
 BUILTINFUNC_NOEVAL(d4,
   env.set_global("d4-form", args[0]);
-  useq::digitalASTs[3] = ::parse("(useqdw 4 (eval d4-form))");
+  useq::digitalASTs[3] = {args[0]};
 , 1)
 
 #ifdef MIDIOUT
@@ -2741,7 +2804,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["d2"] = Value("d2", builtin::d2);
   Environment::builtindefs["d3"] = Value("d3", builtin::d3);
   Environment::builtindefs["d4"] = Value("d4", builtin::d4);
-  Environment::builtindefs["q0"] = Value("q0", builtin::useq_q0);
+  /* Environment::builtindefs["q0"] = Value("q0", builtin::useq_q0); */
 
   Environment::builtindefs["pm"] = Value("pm", builtin::ard_pinMode);
   Environment::builtindefs["dw"] = Value("dw", builtin::ard_digitalWrite);
