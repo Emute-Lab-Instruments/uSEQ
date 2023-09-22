@@ -25,13 +25,8 @@
 
 #define LED_BOARD 25
 
-#define USEQ_PIN_D1 19
-#define USEQ_PIN_D2 18
-#define USEQ_PIN_D3 17
-#define USEQ_PIN_D4 16
-
-#define USEQ_PIN_A1 21
-#define USEQ_PIN_A2 20
+const int useq_output_pins[] = {21,20,19,18,17,16};
+const int useq_output_led_pins[] = {3,2,28,27,26,22};
 
 #define USEQ_PIN_I1 8
 #define USEQ_PIN_I2 9
