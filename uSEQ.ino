@@ -25,7 +25,19 @@
 /// LISP interpreter forked from Wisp, by Adam McDaniel
 
 
+// configure the number of PWM and digital outputs (this is to reflect the hardware, each PWM out be configured with a capacitor)
+
+#define PWM_OUTS 3
+#define DIGI_OUTS (6 - PWM_OUTS)
+
+
+
+
 // firmware build options (comment out as needed)
+
+
+
+
 
 #define MIDIOUT  // (drum sequencer implemented using (mdo note (f t)))
 //#define MIDIIN //(to be implemented)
@@ -2045,59 +2057,34 @@ Value range(std::vector<Value> &args, Environment &env) {
 }
 //end of builtin namespace
 
-int digital_out_pin(int out) {
-  switch (out) {
-    case 99:
-      return LED_BOARD;
-    case 1:
-      return USEQ_PIN_D1;
-    case 2:
-      return USEQ_PIN_D2;
-    case 3:
-      return USEQ_PIN_D3;
-    case 4:
-      return USEQ_PIN_D4;
-    default:
-      return -1;
-  }
+inline int digital_out_pin(int out) {
+  int res=-1;
+  int pindex = PWM_OUTS + out;
+  if ( pindex <= 6)
+    res = useq_output_pins[pindex-1];
+  return res;
 }
 
-int digital_out_LED_pin(int out) {
-  switch (out) {
-    // Builtin LED
-    case 1:
-      return USEQ_PIN_LED_D1;
-    case 2:
-      return USEQ_PIN_LED_D2;
-    case 3:
-      return USEQ_PIN_LED_D3;
-    case 4:
-      return USEQ_PIN_LED_D4;
-    default:
-      return -1;
-  }
+inline int digital_out_LED_pin(int out) {
+  int res=-1;
+  int pindex = PWM_OUTS + out;
+  if ( pindex <= 6)
+    res = useq_output_led_pins[pindex-1];
+  return res;
 }
 
-int analog_out_pin(int out) {
-  switch (out) {
-    // Analog Pins
-    case 1:
-      return USEQ_PIN_A1;
-    case 2:
-      return USEQ_PIN_A2;
-    default: return -1;
-  }
+inline int analog_out_pin(int out) {
+  int res=-1;
+  if (out <= PWM_OUTS)
+    res = useq_output_pins[out-1];
+  return res;
 }
 
-int analog_out_LED_pin(int out) {
-  switch (out) {
-    // Analog Pins
-    case 1:
-      return USEQ_PIN_LED_A1;
-    case 2:
-      return USEQ_PIN_LED_A2;
-    default: return -1;
-  }
+inline int analog_out_LED_pin(int out) {
+  int res=-1;
+  if (out <= PWM_OUTS)
+    res = useq_output_led_pins[out-1];
+  return res;
 }
 
 
@@ -2181,8 +2168,8 @@ double section = 0.0;
 
 
 
-std::vector<Value> digitalASTs[4];
-std::vector<Value> analogASTs[2];
+std::vector<Value> analogASTs[PWM_OUTS];
+std::vector<Value> digitalASTs[DIGI_OUTS];
 
 
 void updateBpmVariables() {
@@ -2251,7 +2238,7 @@ void resetTime() {
 }
 
 void updateDigitalOutputs() {
-  for (size_t i=0; i < 4; i++) {
+  for (size_t i=0; i < DIGI_OUTS; i++) {
     if (runParsedCode(digitalASTs[i], env) == Value::error()) {
       Serial.println("Error in digital output function, clearing");
       digitalASTs[i].clear();
@@ -2260,7 +2247,7 @@ void updateDigitalOutputs() {
 }
 
 void updateAnalogOutputs() {
-  for (size_t i=0; i < 2; i++)
+  for (size_t i=0; i < PWM_OUTS; i++)
     if (runParsedCode(analogASTs[i], env) == Value::error()) {
       Serial.println("Error in analog output function, clearing");
       analogASTs[i].clear();
@@ -2403,30 +2390,77 @@ Value fromList(std::vector<Value> &lst, double phasor, Environment &env) {
 
 BUILTINFUNC_NOEVAL(useq_q0, env.set_global("q-form", args[0]);, 1)
 BUILTINFUNC_NOEVAL(a1, 
-  env.set_global("a1-form", args[0]);
-  useq::analogASTs[0] = ::parse("(useqaw 1 (eval a1-form))");
-  // run("(useqaw 1 (eval a1-form))", env);
+  if (PWM_OUTS>=1) {
+    env.set_global("a1-form", args[0]);
+    useq::analogASTs[0] = ::parse("(useqaw 1 (eval a1-form))");
+  }
 , 1)
 BUILTINFUNC_NOEVAL(a2, 
-  env.set_global("a2-form", args[0]);
-  useq::analogASTs[1] = ::parse("(useqaw 2 (eval a2-form))");
+  if (PWM_OUTS>=2) {
+    env.set_global("a2-form", args[0]);
+    useq::analogASTs[1] = ::parse("(useqaw 2 (eval a2-form))");
+  }
+, 1)
+BUILTINFUNC_NOEVAL(a3, 
+  if (PWM_OUTS>=3) {
+    env.set_global("a3-form", args[0]);
+    useq::analogASTs[2] = ::parse("(useqaw 3 (eval a3-form))");
+  }
+, 1)
+BUILTINFUNC_NOEVAL(a4, 
+  if (PWM_OUTS>=4) {
+    env.set_global("a4-form", args[0]);
+    useq::analogASTs[3] = ::parse("(useqaw 4 (eval a4-form))");
+  }
+, 1)
+BUILTINFUNC_NOEVAL(a5, 
+  if (PWM_OUTS>=5) {
+    env.set_global("a5-form", args[0]);
+    useq::analogASTs[4] = ::parse("(useqaw 5 (eval a5-form))");
+  }
+, 1)
+BUILTINFUNC_NOEVAL(a6, 
+  if (PWM_OUTS>=6) {
+    env.set_global("a6-form", args[0]);
+    useq::analogASTs[5] = ::parse("(useqaw 6 (eval a6-form))");
+  }
 , 1)
 
 BUILTINFUNC_NOEVAL(d1, 
-  env.set_global("d1-form", args[0]);
-  useq::digitalASTs[0] = ::parse("(useqdw 1 (eval d1-form))");
+  if (DIGI_OUTS>=1) {
+    env.set_global("d1-form", args[0]);
+    useq::digitalASTs[0] = ::parse("(useqdw 1 (eval d1-form))");
+  }
 , 1)
 BUILTINFUNC_NOEVAL(d2,
-  env.set_global("d2-form", args[0]);
-  useq::digitalASTs[1] = ::parse("(useqdw 2 (eval d2-form))");
+  if (DIGI_OUTS>=2) {
+    env.set_global("d2-form", args[0]);
+    useq::digitalASTs[1] = ::parse("(useqdw 2 (eval d2-form))");
+  }
   , 1)
 BUILTINFUNC_NOEVAL(d3,
-  env.set_global("d3-form", args[0]);
-  useq::digitalASTs[2] = ::parse("(useqdw 3 (eval d3-form))");
+  if (DIGI_OUTS>=3) {
+    env.set_global("d3-form", args[0]);
+    useq::digitalASTs[2] = ::parse("(useqdw 3 (eval d3-form))");
+  }
 , 1)
 BUILTINFUNC_NOEVAL(d4,
-  env.set_global("d4-form", args[0]);
-  useq::digitalASTs[3] = ::parse("(useqdw 4 (eval d4-form))");
+  if (DIGI_OUTS>=4) {
+    env.set_global("d4-form", args[0]);
+    useq::digitalASTs[3] = ::parse("(useqdw 4 (eval d4-form))");
+  }
+, 1)
+BUILTINFUNC_NOEVAL(d5,
+  if (DIGI_OUTS>=5) {
+    env.set_global("d5-form", args[0]);
+    useq::digitalASTs[4] = ::parse("(useqdw 5 (eval d5-form))");
+  }
+, 1)
+BUILTINFUNC_NOEVAL(d6,
+  if (DIGI_OUTS>=6) {
+    env.set_global("d6-form", args[0]);
+    useq::digitalASTs[5] = ::parse("(useqdw 6 (eval d6-form))");
+  }
 , 1)
 
 #ifdef MIDIOUT
@@ -2737,10 +2771,16 @@ void loadBuiltinDefs() {
   Environment::builtindefs["useqaw"] = Value("useqaw", builtin::ard_useqaw);
   Environment::builtindefs["a1"] = Value("a1", builtin::a1);
   Environment::builtindefs["a2"] = Value("a2", builtin::a2);
+  Environment::builtindefs["a3"] = Value("a3", builtin::a2);
+  Environment::builtindefs["a4"] = Value("a4", builtin::a2);
+  Environment::builtindefs["a5"] = Value("a5", builtin::a2);
+  Environment::builtindefs["a6"] = Value("a6", builtin::a2);
   Environment::builtindefs["d1"] = Value("d1", builtin::d1);
   Environment::builtindefs["d2"] = Value("d2", builtin::d2);
   Environment::builtindefs["d3"] = Value("d3", builtin::d3);
   Environment::builtindefs["d4"] = Value("d4", builtin::d4);
+  Environment::builtindefs["d5"] = Value("d5", builtin::d4);
+  Environment::builtindefs["d6"] = Value("d6", builtin::d4);
   Environment::builtindefs["q0"] = Value("q0", builtin::useq_q0);
 
   Environment::builtindefs["pm"] = Value("pm", builtin::ard_pinMode);
@@ -2902,23 +2942,17 @@ void flash_builtin_led(int num, int amt) {
   }
 }
 
-void setup_digital_outs() {
-  pinMode(USEQ_PIN_D1, OUTPUT);
-  pinMode(USEQ_PIN_D2, OUTPUT);
-  pinMode(USEQ_PIN_D3, OUTPUT);
-  pinMode(USEQ_PIN_D4, OUTPUT);
+void setup_outs() {
+  for (int i=0; i < 6; i++) {
+    pinMode(useq_output_pins[i], OUTPUT);
+  }
 }
 
 void setup_analog_outs() {
-  pinMode(USEQ_PIN_A1, OUTPUT);
-  pinMode(USEQ_PIN_A2, OUTPUT);
-
   //PWM outputs
   analogWriteFreq(30000);     //out of hearing range
   analogWriteResolution(11);  // about the best we can get for 30kHz
 
-  analogWrite(USEQ_PIN_A1, 0);
-  analogWrite(USEQ_PIN_A2, 0);
 }
 
 void setup_digital_ins() {
@@ -2931,13 +2965,17 @@ void setup_leds() {
 
   pinMode(USEQ_PIN_LED_I1, OUTPUT);
   pinMode(USEQ_PIN_LED_I2, OUTPUT);
-  pinMode(USEQ_PIN_LED_A1, OUTPUT);
-  pinMode(USEQ_PIN_LED_A2, OUTPUT);
 
-  pinMode(USEQ_PIN_LED_D1, OUTPUT);
-  pinMode(USEQ_PIN_LED_D2, OUTPUT);
-  pinMode(USEQ_PIN_LED_D3, OUTPUT);
-  pinMode(USEQ_PIN_LED_D4, OUTPUT);
+  for (int i=0; i < 6; i++) {
+    pinMode(useq_output_led_pins[i], OUTPUT);
+  }
+  // pinMode(USEQ_PIN_LED_A1, OUTPUT);
+  // pinMode(USEQ_PIN_LED_A2, OUTPUT);
+
+  // pinMode(USEQ_PIN_LED_D1, OUTPUT);
+  // pinMode(USEQ_PIN_LED_D2, OUTPUT);
+  // pinMode(USEQ_PIN_LED_D3, OUTPUT);
+  // pinMode(USEQ_PIN_LED_D4, OUTPUT);
 
   digitalWrite(LED_BOARD, 1);
 }
@@ -2991,7 +3029,7 @@ void led_animation() {
 }
 
 void setup_IO() {
-  setup_digital_outs();
+  setup_outs();
   setup_analog_outs();
   setup_digital_ins();
   setup_switches();
