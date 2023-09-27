@@ -27,6 +27,12 @@ class Buffer:
             line = self.lines[cursor.row]
         return line
 
+    def getLine(self, idx):
+        line=""
+        if idx < len(self.lines):
+            line = self.lines[idx]
+        return line
+
     def deleteLine(self, cursor):
         line=self.getLine(cursor)
         if line != "":
