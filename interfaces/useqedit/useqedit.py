@@ -5,12 +5,16 @@ from art import *
 from copy import deepcopy
 import glob
 from Clipping import MultiClip
+from Lispy import Lispy
 
 import serial
 
 from Buffer import Buffer
 from Cursor import Cursor
 from MessageLog import MessageLog
+from Window import Window
+
+import re
 
 
 def clamp(x, lower, upper):
@@ -19,39 +23,6 @@ def clamp(x, lower, upper):
     if x > upper:
         return upper
     return x
-
-
-class Window:
-    def __init__(self, n_rows, n_cols, row=0, col=0):
-        self.n_rows = n_rows
-        self.n_cols = n_cols
-        self.row = row
-        self.col = col
-
-    @property
-    def bottom(self):
-        return self.row + self.n_rows - 1
-
-    def up(self, cursor):
-        if cursor.row == self.row - 1 and self.row > 0:
-            self.row -= 1
-
-    def down(self, buffer, cursor):
-        if cursor.row == self.bottom + 1 and self.bottom < len(buffer) - 1:
-            self.row += 1
-
-    def horizontal_scroll(self, cursor, left_margin=5, right_margin=2):
-        n_pages = cursor.col // (self.n_cols - right_margin)
-        self.col = max(n_pages * self.n_cols - right_margin - left_margin, 0)
-
-    def translateCursorToScreenCoords(self, cursor):
-        return cursor.row - self.row, cursor.col - self.col
-
-    def translateScreenCoordsToCursor(self, row, col):
-        return Cursor(row + self.row, col + self.col)
-
-    def isInWindow(self, coords):
-        return coords[0] >= 0 and coords[0] <= self.n_rows - 1 and coords[1] >=0 and coords[1] < self.n_cols - 1
 
 
 def left(window, buffer, cursor):
@@ -79,8 +50,12 @@ def main():
     curses.start_color()
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
     curses.mouseinterval(20)
-    curses.init_pair(1, curses.COLOR_RED, curses.COLOR_WHITE)
-    curses.init_pair(2, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
+    curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_MAGENTA)
+    curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    curses.init_pair(4, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    curses.init_pair(5, curses.COLOR_CYAN, curses.COLOR_BLACK)
+    curses.init_pair(6, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.raw()
     consoleWidth = args.conswidth
     window = Window(curses.LINES - 1, curses.COLS - 1 - consoleWidth)
@@ -136,48 +111,46 @@ def main():
     def highlightCurrentCodeblock(buffer, cursor, editor, updateConsole, window):
         outerBrackets = None
         innerBrackets = None
-        leftParenCursor = cursor if buffer.getch(cursor) == '(' else None
-        # find the matching bracket
-        if (leftParenCursor == None):
-            leftParenCursor = findMatchingLeftParenthesis(buffer, cursor)
+        #find the nearest bracket to the left
+        leftParenCursor = cursor if buffer.getch(cursor) == '(' else findMatchingLeftParenthesis(buffer, cursor)
         if leftParenCursor:
-            # leftParenCursor.right(buffer)
+            #find the matching cursor to the right
             rightParen = findMatchingRightParenthesis(buffer, leftParenCursor, 1)
             if rightParen:
+                #we've found at least one set of brackets
                 innerBrackets = (leftParenCursor, rightParen)
-                # find outer statement
-                highParen = findMatchingRightParenthesis(buffer, cursor, 1)
-                if not highParen:
-                    outerBrackets = (leftParenCursor, rightParen)
-                else:
-                    search=True
-                    while search:
-                        # updateConsole(f"hp {highParen.row} {highParen.col}")
-                        leftParenCursor = findMatchingLeftParenthesis(buffer, highParen)
-                        if leftParenCursor:
-                            outerBrackets = (leftParenCursor, highParen)
-                            #try searching outward
-                            nextHighParen = findMatchingRightParenthesis(buffer, highParen, 1)
-                            if not nextHighParen:
-                                search = False
-                            else:
-                                highParen = nextHighParen
-                        else:
-                            search=False
-                if leftParenCursor:
-                    leftBracketPos = window.translateCursorToScreenCoords(outerBrackets[0])
-                    if window.isInWindow(leftBracketPos):
-                        editor.chgat(*leftBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
-                    # updateConsole(window.translateCursorToScreenCoords(outerBrackets[1]))
-                    rightBracketPos = window.translateCursorToScreenCoords(outerBrackets[1])
-                    if window.isInWindow(rightBracketPos):
-                        editor.chgat(*rightBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
-                leftInnerBracketPos = window.translateCursorToScreenCoords(innerBrackets[0])
-                if window.isInWindow(leftInnerBracketPos):
-                    editor.chgat(*leftInnerBracketPos, 1, curses.A_BOLD | curses.color_pair(1))
-                rightInnerBracketPos = window.translateCursorToScreenCoords(innerBrackets[1])
-                if window.isInWindow(rightInnerBracketPos):
-                    editor.chgat(*rightInnerBracketPos, 1, curses.A_BOLD | curses.color_pair(1))
+
+                #search for outermost brackets
+                outerBrackets = innerBrackets
+                searching=True
+                while searching:
+                    testLeft = findMatchingLeftParenthesis(buffer, outerBrackets[0])
+                    if (testLeft):
+                        # updateConsole(f"{testLeft.row}, {testLeft.col}")
+                        testRight = findMatchingRightParenthesis(buffer, testLeft,1)
+                        if (testRight):
+                            # updateConsole(f"{testRight.row}, {testRight.col}")
+                            outerBrackets = [testLeft, testRight]
+
+                    if testLeft==None or testRight==None:
+                        searching=False
+
+                if innerBrackets:
+                    leftInnerBracketPos = window.translateCursorToScreenCoords(innerBrackets[0])
+                    if window.isInWindow(leftInnerBracketPos):
+                        editor.chgat(*leftInnerBracketPos, 1, curses.A_BOLD | curses.color_pair(1))
+                    rightInnerBracketPos = window.translateCursorToScreenCoords(innerBrackets[1])
+                    if window.isInWindow(rightInnerBracketPos):
+                        editor.chgat(*rightInnerBracketPos, 1, curses.A_BOLD | curses.color_pair(1))
+                    if outerBrackets != innerBrackets:
+                        leftBracketPos = window.translateCursorToScreenCoords(outerBrackets[0])
+                        if window.isInWindow(leftBracketPos):
+                            editor.chgat(*leftBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
+                        # updateConsole(window.translateCursorToScreenCoords(outerBrackets[1]))
+                        rightBracketPos = window.translateCursorToScreenCoords(outerBrackets[1])
+                        if window.isInWindow(rightBracketPos):
+                            editor.chgat(*rightBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
+
             else:
                 None
         return outerBrackets, innerBrackets
@@ -264,7 +237,30 @@ def main():
                     break
 
 
+
+
+        #highlight keywords
+        # updateConsole(len(buffer))
+        # updateConsole(window.row)
+        # updateConsole(window.bottom)
+        for row in range(window.row, min(window.bottom, len(buffer))):
+            # updateConsole(row)
+            line = buffer.getLine(row)
+            # updateConsole(line)
+            if len(line) > 0 and line[0] == "#":
+                for highlightPos in range(window.col, min(len(line), window.col + window.n_cols)):
+                    editor.chgat(row - window.row, highlightPos, 1, curses.A_DIM | curses.color_pair(6))
+            else:
+                def searchAndHighlight(regexStr, colourIdx):
+                    for match in re.finditer(regexStr, line):
+                        for highlightPos in range(match.start(), min(match.end(), window.col + window.n_cols)):
+                            editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(colourIdx))
+                searchAndHighlight(r'd1|d2|d3|d4|a1|a2|a3|a4|in1|in2',3)
+                searchAndHighlight(r'sqr|gatesw|\+|\-|\*\\/',4)
+                searchAndHighlight(r'bar|phrase|beat|section',5)
+
         editor.move(*window.translateCursorToScreenCoords(cursor))
+
         def sendTouSEQ(statement):
             # send to terminal
             if cx:
@@ -285,12 +281,22 @@ def main():
 
             if (k!=-1):
                 actionReceived = True
-                # updateConsole(f"key {k}")
+                updateConsole(f"key {k}")
                 if (k == curses.KEY_MOUSE):
                     _, mx, my, _, bstate = curses.getmouse()
-                    if (my < window.n_rows and mx < window.n_cols):
-                        newCursor = window.translateScreenCoordsToCursor(my, mx)
-                        cursor.move(newCursor.row, newCursor.col, buffer)
+                    # print(f"mouse {bstate}")
+                    if bstate==1:
+                        if (my < window.n_rows and mx < window.n_cols):
+                            newCursor = window.translateScreenCoordsToCursor(my, mx)
+                            cursor.move(newCursor.row, newCursor.col, buffer)
+                    elif bstate==65536:
+                        cursor.down(buffer)
+                        window.down(buffer, cursor)
+                        window.horizontal_scroll(cursor)
+                    elif bstate==2097152:
+                        cursor.up(buffer)
+                        window.up(cursor)
+                        window.horizontal_scroll(cursor)
                 else:
                     # updateConsole(f"input {k}")
                     if k == 23: #ctrl-w
@@ -362,7 +368,7 @@ def main():
                             code = buffer.copy(outerBrackets[0], outerBrackets[1])
                             codeQueue.append(code)
                             updateConsole(f"Qd: {code}")
-                    elif k == 15:
+                    elif k == 15: #ctrl-o, send Q
                         updateConsole(f"Sending Q: {len(codeQueue)}")
                         for i, statement in enumerate(codeQueue):
                             updateConsole(f"{i} {statement}")
@@ -390,37 +396,42 @@ def main():
                         endMarker = Cursor.createFromCursor(cursor)
                     elif k == 6:  # ctrl-f - format statement
                         updateConsole("format")
-                        cursor = outerBrackets[0]
-                        code = cutSection(outerBrackets[0], outerBrackets[1])
-                        #todo: better to use an s-expr parser
-                        def indentCode(code):
-                            stack = 0
-                            pos=0
-                            while pos < len(code):
-                                if pos> 0 and code[pos] == '(' and code[pos-1] == "'":
-                                    code = code[:pos-1] + '\n' + ('\t' * stack) + code[pos-1:]
-                                    pos = pos + stack + 1
-                                    stack = stack + 1
-                                elif code[pos] == '(':
-                                    code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
-                                    pos = pos + stack + 1
-                                    stack = stack + 1
-                                elif pos > 0 and code[pos-1] == ')':
-                                    stack = stack - 1
-                                    #what's the next symbol?
-                                    lhpos=pos
-                                    nextSym=None
-                                    while lhpos < len(code) and str(code[lhpos]).isspace():
-                                        lhpos = lhpos + 1
-                                    if (code[lhpos] == '('):
-                                        code = code[:pos] + '\n' + ('\t' * stack) + code[lhpos:]
-                                        pos = pos + 1 + stack
-                                    elif (code[lhpos] != ')'):
-                                        code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
-                                        pos = pos + stack + 1
-                                pos = pos + 1
-                            return code
-                        buffer.insert(cursor, indentCode(code))
+                        if (outerBrackets):
+                            cursor = outerBrackets[0]
+                            code = cutSection(outerBrackets[0], outerBrackets[1])
+                            tokens = Lispy.tokenize_lisp(code)
+                            ast = Lispy.get_ast(tokens.copy())
+                            codestr = Lispy.astToString(ast)
+
+                        # #todo: better to use an s-expr parser
+                        # def indentCode(code):
+                        #     stack = 0
+                        #     pos=0
+                        #     while pos < len(code):
+                        #         if pos> 0 and code[pos] == '(' and code[pos-1] == "'":
+                        #             code = code[:pos-1] + '\n' + ('\t' * stack) + code[pos-1:]
+                        #             pos = pos + stack + 1
+                        #             stack = stack + 1
+                        #         elif code[pos] == '(':
+                        #             code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
+                        #             pos = pos + stack + 1
+                        #             stack = stack + 1
+                        #         elif pos > 0 and code[pos-1] == ')':
+                        #             stack = stack - 1
+                        #             #what's the next symbol?
+                        #             lhpos=pos
+                        #             nextSym=None
+                        #             while lhpos < len(code) and str(code[lhpos]).isspace():
+                        #                 lhpos = lhpos + 1
+                        #             if (code[lhpos] == '('):
+                        #                 code = code[:pos] + '\n' + ('\t' * stack) + code[lhpos:]
+                        #                 pos = pos + 1 + stack
+                        #             elif (code[lhpos] != ')'):
+                        #                 code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
+                        #                 pos = pos + stack + 1
+                        #         pos = pos + 1
+                        #     return code
+                        buffer.insert(cursor, codestr)
                     else:
                         kchar = chr(k)
                         if (kchar.isascii()):
