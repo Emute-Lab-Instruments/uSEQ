@@ -125,7 +125,7 @@ def main():
                 while searching:
                     testLeft = findMatchingLeftParenthesis(buffer, outerBrackets[0])
                     if (testLeft):
-                        updateConsole(f"{testLeft.row}, {testLeft.col}")
+                        # updateConsole(f"{testLeft.row}, {testLeft.col}")
                         testRight = findMatchingRightParenthesis(buffer, testLeft,1)
                         if (testRight):
                             # updateConsole(f"{testRight.row}, {testRight.col}")
@@ -280,12 +280,22 @@ def main():
 
             if (k!=-1):
                 actionReceived = True
-                # updateConsole(f"key {k}")
+                updateConsole(f"key {k}")
                 if (k == curses.KEY_MOUSE):
                     _, mx, my, _, bstate = curses.getmouse()
-                    if (my < window.n_rows and mx < window.n_cols):
-                        newCursor = window.translateScreenCoordsToCursor(my, mx)
-                        cursor.move(newCursor.row, newCursor.col, buffer)
+                    # print(f"mouse {bstate}")
+                    if bstate==1:
+                        if (my < window.n_rows and mx < window.n_cols):
+                            newCursor = window.translateScreenCoordsToCursor(my, mx)
+                            cursor.move(newCursor.row, newCursor.col, buffer)
+                    elif bstate==65536:
+                        cursor.down(buffer)
+                        window.down(buffer, cursor)
+                        window.horizontal_scroll(cursor)
+                    elif bstate==2097152:
+                        cursor.up(buffer)
+                        window.up(cursor)
+                        window.horizontal_scroll(cursor)
                 else:
                     # updateConsole(f"input {k}")
                     if k == 23: #ctrl-w
@@ -357,7 +367,7 @@ def main():
                             code = buffer.copy(outerBrackets[0], outerBrackets[1])
                             codeQueue.append(code)
                             updateConsole(f"Qd: {code}")
-                    elif k == 15:
+                    elif k == 15: #ctrl-o, send Q
                         updateConsole(f"Sending Q: {len(codeQueue)}")
                         for i, statement in enumerate(codeQueue):
                             updateConsole(f"{i} {statement}")
