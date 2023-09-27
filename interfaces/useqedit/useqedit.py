@@ -5,6 +5,7 @@ from art import *
 from copy import deepcopy
 import glob
 from Clipping import MultiClip
+from Lispy import Lispy
 
 import serial
 
@@ -395,37 +396,42 @@ def main():
                         endMarker = Cursor.createFromCursor(cursor)
                     elif k == 6:  # ctrl-f - format statement
                         updateConsole("format")
-                        cursor = outerBrackets[0]
-                        code = cutSection(outerBrackets[0], outerBrackets[1])
-                        #todo: better to use an s-expr parser
-                        def indentCode(code):
-                            stack = 0
-                            pos=0
-                            while pos < len(code):
-                                if pos> 0 and code[pos] == '(' and code[pos-1] == "'":
-                                    code = code[:pos-1] + '\n' + ('\t' * stack) + code[pos-1:]
-                                    pos = pos + stack + 1
-                                    stack = stack + 1
-                                elif code[pos] == '(':
-                                    code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
-                                    pos = pos + stack + 1
-                                    stack = stack + 1
-                                elif pos > 0 and code[pos-1] == ')':
-                                    stack = stack - 1
-                                    #what's the next symbol?
-                                    lhpos=pos
-                                    nextSym=None
-                                    while lhpos < len(code) and str(code[lhpos]).isspace():
-                                        lhpos = lhpos + 1
-                                    if (code[lhpos] == '('):
-                                        code = code[:pos] + '\n' + ('\t' * stack) + code[lhpos:]
-                                        pos = pos + 1 + stack
-                                    elif (code[lhpos] != ')'):
-                                        code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
-                                        pos = pos + stack + 1
-                                pos = pos + 1
-                            return code
-                        buffer.insert(cursor, indentCode(code))
+                        if (outerBrackets):
+                            cursor = outerBrackets[0]
+                            code = cutSection(outerBrackets[0], outerBrackets[1])
+                            tokens = Lispy.tokenize_lisp(code)
+                            ast = Lispy.get_ast(tokens.copy())
+                            codestr = Lispy.astToString(ast)
+
+                        # #todo: better to use an s-expr parser
+                        # def indentCode(code):
+                        #     stack = 0
+                        #     pos=0
+                        #     while pos < len(code):
+                        #         if pos> 0 and code[pos] == '(' and code[pos-1] == "'":
+                        #             code = code[:pos-1] + '\n' + ('\t' * stack) + code[pos-1:]
+                        #             pos = pos + stack + 1
+                        #             stack = stack + 1
+                        #         elif code[pos] == '(':
+                        #             code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
+                        #             pos = pos + stack + 1
+                        #             stack = stack + 1
+                        #         elif pos > 0 and code[pos-1] == ')':
+                        #             stack = stack - 1
+                        #             #what's the next symbol?
+                        #             lhpos=pos
+                        #             nextSym=None
+                        #             while lhpos < len(code) and str(code[lhpos]).isspace():
+                        #                 lhpos = lhpos + 1
+                        #             if (code[lhpos] == '('):
+                        #                 code = code[:pos] + '\n' + ('\t' * stack) + code[lhpos:]
+                        #                 pos = pos + 1 + stack
+                        #             elif (code[lhpos] != ')'):
+                        #                 code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
+                        #                 pos = pos + stack + 1
+                        #         pos = pos + 1
+                        #     return code
+                        buffer.insert(cursor, codestr)
                     else:
                         kchar = chr(k)
                         if (kchar.isascii()):
