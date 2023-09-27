@@ -2452,16 +2452,14 @@ double fast(double speed, double phasor) {
 Value fromList(std::vector<Value> &lst, double phasor, Environment &env) {
   if (phasor < 0.0) {
     phasor = 0;
-  } else if (phasor > 1) {
-    phasor = 1;
+  } else if (phasor > 1.0) {
+    phasor = 1.0;
   }
   double scaled_phasor = lst.size() * phasor;
   size_t idx = floor(scaled_phasor);
   if (idx == lst.size()) idx--;
   return lst[idx].eval(env);
 }
-
-
 
 /* BUILTINFUNC_NOEVAL(useq_q0, env.set_global("q-form", args[0]);, 1) */
 
@@ -2628,17 +2626,43 @@ BUILTINFUNC(useq_pulse,
 BUILTINFUNC(useq_sqr,
             ret = Value(args[0].as_float() < 0.5 ? 1.0 : 0.0);
             , 1)
-BUILTINFUNC(useq_fast,
-            double speed = args[0].as_float();
-            double phasor = args[1].as_float();
-            double fastPhasor = fast(speed, phasor);
-            ret = Value(fastPhasor);
+
+  // TODO D-R-Y
+BUILTINFUNC_NOEVAL(useq_fast,
+            double factor = args[0].eval(env).as_float();
+            Value expr = args[1];
+            // store the current time to reset later
+            double currentTime = env.get("time").as_float();
+            // update the interpreter's time just for this expr
+            double newTime = currentTime * factor;
+            useq::setTime((size_t)newTime);
+            double evaled_expr = expr.eval(env).as_float();
+            ret = Value(evaled_expr);
+            // restore the interpreter's time
+            useq::setTime((size_t)currentTime);
             , 2)
+
+
+BUILTINFUNC_NOEVAL(useq_slow,
+            double factor = args[0].eval(env).as_float();
+            Value expr = args[1];
+            // store the current time to reset later
+            double currentTime = env.get("time").as_float();
+            // update the interpreter's time just for this expr
+            double newTime = currentTime / factor;
+            useq::setTime((size_t)newTime);
+            double evaled_expr = expr.eval(env).as_float();
+            ret = Value(evaled_expr);
+            // restore the interpreter's time
+            useq::setTime((size_t)currentTime);
+            , 2)
+
 BUILTINFUNC(useq_fromList,
             auto lst = args[0].as_list();
             double phasor = args[1].as_float();
             ret = fromList(lst, phasor, env);
             , 2)
+
 BUILTINFUNC(useq_fromFlattenedList,
             auto lst = flatten(args[0], env).as_list();
             double phasor = args[1].as_float();
@@ -2825,6 +2849,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["pulse"] = Value("pulse", builtin::useq_pulse);
   Environment::builtindefs["sqr"] = Value("sqr", builtin::useq_sqr);
   Environment::builtindefs["fast"] = Value("fast", builtin::useq_fast);
+  Environment::builtindefs["slow"] = Value("fast", builtin::useq_slow);
   Environment::builtindefs["fromList"] = Value("fromList", builtin::useq_fromList);
   Environment::builtindefs["flatIdx"] = Value("flatIdx", builtin::useq_fromFlattenedList);
   Environment::builtindefs["flat"] = Value("flat", builtin::useq_flatten);
@@ -3134,7 +3159,6 @@ void setup() {
   setup_leds();
   led_animation();
   module_setup();
-
 
   for (int i = 0; i < LispLibrarySize; i++)
     run(LispLibrary[i], env);
