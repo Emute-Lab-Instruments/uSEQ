@@ -71,14 +71,12 @@
 ;;(defun rot () (useqGetInput 7))
 
 (defun seq (lst speed)  (fromList lst (every speed beatDur)))
-	   
+
 (defun slow (amt phasor)
 (do
   (define result (% (/ phasor amt) 1))
   (if (< result 0)
        (+ 1 result)
       result)))
-      
+
 ;;(defun gates (lst ph speed pw) (* (fromList lst (fast speed ph)) (pulse (fast (* speed (len lst)) ph) pw)))
-
-
