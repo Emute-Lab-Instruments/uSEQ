@@ -27,7 +27,7 @@
 
 // configure the number of PWM and digital outputs (this is to reflect the hardware, each PWM out be configured with a capacitor)
 
-#define PWM_OUTS 2
+#define PWM_OUTS 3
 #define DIGI_OUTS (6 - PWM_OUTS)
 
 
