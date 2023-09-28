@@ -27,29 +27,15 @@
 
 // configure the number of PWM and digital outputs (this is to reflect the hardware, each PWM out be configured with a capacitor)
 
-#define PWM_OUTS 3
+#define PWM_OUTS 2
 #define DIGI_OUTS (6 - PWM_OUTS)
 
 
-
-
-// firmware build options (comment out as needed)
-
-<<<<<<< HEAD
 // Not sure where the best place to put this is, needs to be accessible
 // by all interpreter functions that may need to raise it
 bool currentExprSound = false;
 
-#define USEQ_NUM_DIGITAL_OUTPUTS 4
-#define USEQ_NUM_DIGITAL_INPUTS 0
-
-#define USEQ_NUM_ANALOG_OUTPUTS 2
-#define USEQ_NUM_ANALOG_INPUTS 2
-=======
-
-
->>>>>>> main
-
+// firmware build options (comment out as needed)
 
 #define MIDIOUT  // (drum sequencer implemented using (mdo note (f t)))
 //#define MIDIIN //(to be implemented)
@@ -62,8 +48,8 @@ bool currentExprSound = false;
 
 #define ETL_NO_STL
 #include <Embedded_Template_Library.h> // Mandatory for Arduino IDE only
-#include <etl/map.h>  
-#include <etl/unordered_map.h>  
+#include <etl/map.h>
+#include <etl/unordered_map.h>
 #include <etl/string.h>
 String board(ARDUINO_BOARD);
 
@@ -1204,7 +1190,7 @@ Value Value::eval(Environment &env) {
           }
         }
       }
-    
+
     default:
       return *this;
   }
@@ -1390,8 +1376,8 @@ Value runParsedCode(std::vector<Value> ast, Environment &env) {
     run_time += (micros() - ts_run);
     return result;
   } else {
-    // return Value::error();
-    return Value();
+    return Value::error();
+    /* return Value(); */
   }
 }
 
@@ -2185,16 +2171,8 @@ double bar = 0.0;
 double phrase = 0.0;
 double section = 0.0;
 
-
-
-<<<<<<< HEAD
-std::vector<Value> digitalASTs[USEQ_NUM_DIGITAL_OUTPUTS];
-std::vector<Value> analogASTs[USEQ_NUM_ANALOG_OUTPUTS];
-=======
 std::vector<Value> analogASTs[PWM_OUTS];
 std::vector<Value> digitalASTs[DIGI_OUTS];
->>>>>>> main
-
 
 void updateBpmVariables() {
   env.set("bpm", Value(bpm));
@@ -2261,28 +2239,50 @@ void resetTime() {
   updateTime();
 }
 
-<<<<<<< HEAD
-void updateDigitalOutputs();
-void updateAnalogOutputs();
+const Value defaultForm_digital = parse("(fast 16 (sqr beat))")[0];
+const Value defaultForm_analog  = parse("(fast 16 beat)")[0];
 
-=======
 void updateDigitalOutputs() {
   for (size_t i=0; i < DIGI_OUTS; i++) {
-    if (runParsedCode(digitalASTs[i], env) == Value::error()) {
+    currentExprSound = true;
+    Value result = runParsedCode(digitalASTs[i], env);
+
+    if (result == Value::error() || !currentExprSound) {
       Serial.println("Error in digital output function, clearing");
-      digitalASTs[i].clear();
+      digitalASTs[i] = {defaultForm_digital};
+      currentExprSound = true;
+    }
+// Write
+    else {
+      int pin = digital_out_pin(i + 1);
+      int led_pin = digital_out_LED_pin(i + 1);
+      int val = result.as_int();
+      digitalWrite(pin, val);
+      digitalWrite(led_pin, val);
     }
   }
 }
 
 void updateAnalogOutputs() {
-  for (size_t i=0; i < PWM_OUTS; i++)
-    if (runParsedCode(analogASTs[i], env) == Value::error()) {
+  for (size_t i=0; i < PWM_OUTS; i++) {
+    currentExprSound = true;
+    Value result = runParsedCode(analogASTs[i], env);
+
+    if (result == Value::error() || !currentExprSound) {
       Serial.println("Error in analog output function, clearing");
-      analogASTs[i].clear();
+      analogASTs[i] = {defaultForm_analog};
+      currentExprSound = true;
     }
+    // Write
+    else {
+      int pin = analog_out_pin(i + 1);
+      int led_pin = analog_out_LED_pin(i + 1);
+      int val = result.as_float() * 2047.0;
+      analogWrite(pin, val);
+      analogWrite(led_pin, val);
+    }
+  }
 }
->>>>>>> main
 
 #ifdef MIDIOUT
 double last_midi_t = 0;
@@ -2330,20 +2330,19 @@ void updateMidiOut() {
 }
 #endif
 
-MovingAverageFilter cqpMA(3); //code quantising phasor 
+MovingAverageFilter cqpMA(3); //code quantising phasor
 double lastCQP = 0;
 String cqpCode = "(define cqp 'bar)";
 std::vector<Value> cqpAST;
 
-std::vector< std::vector<Value> > runQueue;
-
+std::vector< std::vector<Value>> runQueue;
 
 void initASTs() {
-    for(int i = 0; i < USEQ_NUM_DIGITAL_OUTPUTS; i++)
+    for(int i = 0; i < DIGI_OUTS; i++)
        digitalASTs[i] = {parse("(sqr beat)")[0]};
 
-    for(int i = 0; i < USEQ_NUM_ANALOG_OUTPUTS; i++)
-       analogASTs[i] = {parse("(sqr bar)")[0]};
+    for(int i = 0; i < PWM_OUTS; i++)
+       analogASTs[i] = {parse("bar")[0]};
 }
 
 void setup() {
@@ -2355,57 +2354,7 @@ void setup() {
   initASTs();
 }
 
-void updateDigitalOutputs() {
-  for (size_t i=0; i < USEQ_NUM_DIGITAL_OUTPUTS; i++) {
-    // We assume that the expression is correct unless proven otherwise
-    currentExprSound = true;
-
-    Value result;
-    result = runParsedCode(digitalASTs[i], env);
-
-    // Check for errors
-    if (result == Value::error() || !currentExprSound) {
-      Serial.println("Error in form, clearing...");
-      digitalASTs[i] = {Value((int)0)};
-    }
-    // Write
-    else {
-      int pin = digital_out_pin(i + 1);
-      int led_pin = digital_out_LED_pin(i + 1);
-      int val = result.as_int();
-      digitalWrite(pin, val);
-      digitalWrite(led_pin, val);
-    }
-  }
-}
-
-void updateAnalogOutputs() {
-  for (size_t i=0; i < USEQ_NUM_ANALOG_OUTPUTS; i++) {
-    // We assume that the expression is correct unless proven otherwise
-    currentExprSound = true;
-
-    Value result;
-    result = runParsedCode(analogASTs[i], env);
-
-    // Check for errors
-    if (result == Value::error() || !currentExprSound) {
-      Serial.println("Error in form, clearing...");
-      analogASTs[i] = {Value((int)0)};
-    }
-    // Write
-    else {
-      int pin = analog_out_pin(i + 1);
-      int led_pin = analog_out_LED_pin(i + 1);
-      int val = result.as_float() * 2047.0;
-      analogWrite(pin, val);
-      analogWrite(led_pin, val);
-    }
-  }
-}
-
-
 int ts_inputs = 0, ts_time = 0, ts_outputs = 0;
-
 
 void update() {
   ts_inputs = millis();
@@ -2424,7 +2373,7 @@ void update() {
   lastCQP = newCqpVal;
   if (newCqpVal + cqpAvgTime > 1) {
 
-    for(size_t q=0; q < runQueue.size(); q++) {    
+    for(size_t q=0; q < runQueue.size(); q++) {
       Value res;
       int cmdts = micros();
       res = runParsedCode(runQueue[q], env);
@@ -2473,110 +2422,82 @@ Value fromList(std::vector<Value> &lst, double phasor, Environment &env) {
   return lst[idx].eval(env);
 }
 
-/* BUILTINFUNC_NOEVAL(useq_q0, env.set_global("q-form", args[0]);, 1) */
-
-<<<<<<< HEAD
-BUILTINFUNC_NOEVAL(a1,
-  env.set_global("a1-form", args[0]);
-  useq::analogASTs[0] = {args[0]};
-  // run("(useqaw 1 (eval a1-form))", env);
-, 1)
-BUILTINFUNC_NOEVAL(a2, 
-  env.set_global("a2-form", args[0]);
-  useq::analogASTs[1] = {args[0]};
-, 1)
-
-BUILTINFUNC_NOEVAL(d1, 
-  env.set_global("d1-form", args[0]);
-  useq::digitalASTs[0] = {args[0]};
-, 1)
-BUILTINFUNC_NOEVAL(d2,
-  env.set_global("d2-form", args[0]);
-  useq::digitalASTs[1] = {args[0]};
-  , 1)
-BUILTINFUNC_NOEVAL(d3,
-  env.set_global("d3-form", args[0]);
-  useq::digitalASTs[2] = {args[0]};
-, 1)
-BUILTINFUNC_NOEVAL(d4,
-  env.set_global("d4-form", args[0]);
-  useq::digitalASTs[3] = {args[0]};
-=======
-
 BUILTINFUNC_NOEVAL(useq_q0, env.set_global("q-form", args[0]);, 1)
-BUILTINFUNC_NOEVAL(a1, 
+
+// ANALOG OUTS
+BUILTINFUNC_NOEVAL(a1,
   if (PWM_OUTS>=1) {
     env.set_global("a1-form", args[0]);
-    useq::analogASTs[0] = ::parse("(useqaw 1 (eval a1-form))");
+    useq::analogASTs[0] = {args[0]};
   }
 , 1)
-BUILTINFUNC_NOEVAL(a2, 
+BUILTINFUNC_NOEVAL(a2,
   if (PWM_OUTS>=2) {
     env.set_global("a2-form", args[0]);
-    useq::analogASTs[1] = ::parse("(useqaw 2 (eval a2-form))");
+    useq::analogASTs[1] = {args[0]};
   }
 , 1)
-BUILTINFUNC_NOEVAL(a3, 
+BUILTINFUNC_NOEVAL(a3,
   if (PWM_OUTS>=3) {
     env.set_global("a3-form", args[0]);
-    useq::analogASTs[2] = ::parse("(useqaw 3 (eval a3-form))");
+    useq::analogASTs[2] = {args[0]};
   }
 , 1)
-BUILTINFUNC_NOEVAL(a4, 
+BUILTINFUNC_NOEVAL(a4,
   if (PWM_OUTS>=4) {
     env.set_global("a4-form", args[0]);
-    useq::analogASTs[3] = ::parse("(useqaw 4 (eval a4-form))");
+    useq::analogASTs[3] = {args[0]};
   }
 , 1)
-BUILTINFUNC_NOEVAL(a5, 
+BUILTINFUNC_NOEVAL(a5,
   if (PWM_OUTS>=5) {
     env.set_global("a5-form", args[0]);
-    useq::analogASTs[4] = ::parse("(useqaw 5 (eval a5-form))");
+    useq::analogASTs[4] = {args[0]};
   }
 , 1)
-BUILTINFUNC_NOEVAL(a6, 
+BUILTINFUNC_NOEVAL(a6,
   if (PWM_OUTS>=6) {
     env.set_global("a6-form", args[0]);
-    useq::analogASTs[5] = ::parse("(useqaw 6 (eval a6-form))");
+    useq::analogASTs[5] = {args[0]};
   }
 , 1)
 
-BUILTINFUNC_NOEVAL(d1, 
+// DIGITAL OUTS
+BUILTINFUNC_NOEVAL(d1,
   if (DIGI_OUTS>=1) {
     env.set_global("d1-form", args[0]);
-    useq::digitalASTs[0] = ::parse("(useqdw 1 (eval d1-form))");
+    useq::digitalASTs[0] = {args[0]};
   }
 , 1)
 BUILTINFUNC_NOEVAL(d2,
   if (DIGI_OUTS>=2) {
     env.set_global("d2-form", args[0]);
-    useq::digitalASTs[1] = ::parse("(useqdw 2 (eval d2-form))");
+    useq::digitalASTs[1] = {args[0]};
   }
   , 1)
 BUILTINFUNC_NOEVAL(d3,
   if (DIGI_OUTS>=3) {
     env.set_global("d3-form", args[0]);
-    useq::digitalASTs[2] = ::parse("(useqdw 3 (eval d3-form))");
+    useq::digitalASTs[2] = {args[0]};
   }
 , 1)
 BUILTINFUNC_NOEVAL(d4,
   if (DIGI_OUTS>=4) {
     env.set_global("d4-form", args[0]);
-    useq::digitalASTs[3] = ::parse("(useqdw 4 (eval d4-form))");
+    useq::digitalASTs[3] = {args[0]};
   }
 , 1)
 BUILTINFUNC_NOEVAL(d5,
   if (DIGI_OUTS>=5) {
     env.set_global("d5-form", args[0]);
-    useq::digitalASTs[4] = ::parse("(useqdw 5 (eval d5-form))");
+    useq::digitalASTs[4] = {args[0]};
   }
 , 1)
 BUILTINFUNC_NOEVAL(d6,
   if (DIGI_OUTS>=6) {
     env.set_global("d6-form", args[0]);
-    useq::digitalASTs[5] = ::parse("(useqdw 6 (eval d6-form))");
+    useq::digitalASTs[5] = {args[0]};
   }
->>>>>>> main
 , 1)
 
 #ifdef MIDIOUT
@@ -2745,13 +2666,11 @@ BUILTINFUNC_NOEVAL(useq_slow,
             // restore the interpreter's time
             useq::setTime((size_t)currentTime);
             , 2)
-
 BUILTINFUNC(useq_fromList,
             auto lst = args[0].as_list();
             double phasor = args[1].as_float();
             ret = fromList(lst, phasor, env);
             , 2)
-
 BUILTINFUNC(useq_fromFlattenedList,
             auto lst = flatten(args[0], env).as_list();
             double phasor = args[1].as_float();
@@ -2774,7 +2693,7 @@ BUILTINFUNC(useq_interpolate,
             double v2 = lst[idx].eval(env).as_float();
             size_t idxv1 = idx == 0 ? lst.size() - 1 : idx -1;
             double v1 = lst[idxv1].eval(env).as_float();
-            double relativePosition = scaled_phasor - idx;  
+            double relativePosition = scaled_phasor - idx;
             ret = Value((v1 * relativePosition) + (v2 * (1.0-relativePosition)));
                         // ret = fromList(lst, phasor, env);
             , 2)
@@ -2813,7 +2732,7 @@ BUILTINFUNC(useq_loopPhasor,
             double spedupPhasor = fast(1.0/loopPoint, phasor);
             ret = spedupPhasor * loopPoint;
             , 2)
-                  
+
 BUILTINFUNC(useq_setbpm,
           useq::setBpm(args[0].as_float());
           ret = args[0];
@@ -2855,7 +2774,7 @@ BUILTINFUNC(useq_swt,
 BUILTINFUNC(useq_swr,
           ret = Value(useqInputValues[USEQRS1]);
           , 0)
-          
+
 BUILTINFUNC(useq_rot,
           ret = Value(useqInputValues[USEQR1]);
           , 0)
@@ -2921,13 +2840,9 @@ void loadBuiltinDefs() {
   Environment::builtindefs["d2"] = Value("d2", builtin::d2);
   Environment::builtindefs["d3"] = Value("d3", builtin::d3);
   Environment::builtindefs["d4"] = Value("d4", builtin::d4);
-<<<<<<< HEAD
-  /* Environment::builtindefs["q0"] = Value("q0", builtin::useq_q0); */
-=======
   Environment::builtindefs["d5"] = Value("d5", builtin::d4);
   Environment::builtindefs["d6"] = Value("d6", builtin::d4);
   Environment::builtindefs["q0"] = Value("q0", builtin::useq_q0);
->>>>>>> main
 
   Environment::builtindefs["pm"] = Value("pm", builtin::ard_pinMode);
   Environment::builtindefs["dw"] = Value("dw", builtin::ard_digitalWrite);
@@ -2953,8 +2868,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["flatIdx"] = Value("flatIdx", builtin::useq_fromFlattenedList);
   Environment::builtindefs["flat"] = Value("flat", builtin::useq_flatten);
   Environment::builtindefs["looph"] = Value("looph", builtin::useq_loopPhasor);
-  
-  
+
+
   Environment::builtindefs["dm"] = Value("dm", builtin::useq_dm);
   Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
   Environment::builtindefs["gatesw"] = Value("gatesw", builtin::useq_gatesw);
@@ -2962,7 +2877,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["settimesig"] = Value("settimesig", builtin::useq_settimesig);
 
   Environment::builtindefs["interp"] = Value("interp", builtin::useq_interpolate);
-  
+
 
 
 #ifdef MIDIOUT
@@ -3296,7 +3211,7 @@ void loop() {
     if (cmd.charAt(0) == '@') {
         //clear the token
         cmd.setCharAt(0, ' ');
-        run(cmd, env);  
+        run(cmd, env);
     }
     else {
       auto parsedCode = ::parse(cmd);
@@ -3310,5 +3225,3 @@ void loop() {
   }
   readRotaryEnc();
 }
-
-
