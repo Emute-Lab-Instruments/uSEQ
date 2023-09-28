@@ -240,9 +240,6 @@ def main():
 
 
         #highlight keywords
-        # updateConsole(len(buffer))
-        # updateConsole(window.row)
-        # updateConsole(window.bottom)
         for row in range(window.row, min(window.bottom, len(buffer))):
             # updateConsole(row)
             line = buffer.getLine(row)
