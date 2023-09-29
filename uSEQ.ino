@@ -2722,15 +2722,24 @@ BUILTINFUNC(useq_interpolate,
             } else if (phasor > 1) {
               phasor = 1;
             }
-            double scaled_phasor = lst.size() * phasor;
-            size_t idx = static_cast<size_t>(scaled_phasor)+1;
-            Serial.println(idx);
-            if (idx == lst.size()) idx--;
-            double v2 = lst[idx].eval(env).as_float();
-            size_t idxv1 = idx == 0 ? lst.size() - 1 : idx -1;
-            double v1 = lst[idxv1].eval(env).as_float();
-            double relativePosition = scaled_phasor - idx;
-            ret = Value((v1 * relativePosition) + (v2 * (1.0-relativePosition)));
+            float a;
+            double index = phasor * (lst.size()-1);
+            size_t pos0 = static_cast<size_t>(index);
+            if (pos0==(lst.size()-1)) pos0--;
+            a = (index - pos0) ;
+            double v2 = lst[pos0+1].eval(env).as_float();
+            double v1 = lst[pos0].eval(env).as_float();
+            ret = Value(((v2 - v1) * a) + v1);
+
+            // double scaled_phasor = lst.size() * phasor;
+            // size_t idx = static_cast<size_t>(scaled_phasor)+1;
+            // Serial.println(idx);
+            // if (idx == lst.size()) idx--;
+            // double v2 = lst[idx].eval(env).as_float();
+            // size_t idxv1 = idx == 0 ? lst.size() - 1 : idx -1;
+            // double v1 = lst[idxv1].eval(env).as_float();
+            // double relativePosition = scaled_phasor - idx;
+            // ret = Value((v1 * relativePosition) + (v2 * (1.0-relativePosition)));
                         // ret = fromList(lst, phasor, env);
             , 2)
 
