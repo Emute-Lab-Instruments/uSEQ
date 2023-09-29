@@ -2303,19 +2303,13 @@ void updateAnalogOutputs() {
     }
     // Write
     else {
-      // int pin = analog_out_pin(i + 1);
-      int led_pin = analog_out_LED_pin(i + 1);
-      int val = result.as_float() * 2047.0;
-      //leds
-      analogWrite(led_pin, val);
-      // if (i==2) {
-      //   //temp workaround, see issue #23
-      //   digitalWrite(led_pin, val > 1024);
-      // }else{
-      //   analogWrite(led_pin, val);
-      // }
       //PWM out
-      pio_pwm_set_level(i < 4 ? pio0 : pio1, i % 4, val);
+      int sigval = result.as_float() * 2047.0;
+      pio_pwm_set_level(i < 4 ? pio0 : pio1, i % 4, sigval);
+
+      //led out
+      int led_pin = analog_out_LED_pin(i + 1);  
+      analogWrite(led_pin, sigval);
     }
   }
 
