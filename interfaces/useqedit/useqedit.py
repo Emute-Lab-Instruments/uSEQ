@@ -325,12 +325,15 @@ def main():
                     # elif k == 566:  # ctrl-shift-right arrow
                     #     None
                     elif k == 10: #enter
+                        saveUndo(buffer, cursor)
                         buffer.split(cursor)
                         right(window, buffer, cursor)
                     elif k in [330]: #delete
+                        saveUndo(buffer, cursor)
                         ch = buffer.delete(cursor)
                     elif k in [127, 263]: #backspace
                         if (cursor.row, cursor.col) > (0, 0):
+                            saveUndo(buffer, cursor)
                             left(window, buffer, cursor)
                             buffer.delete(cursor)
                     elif k == 12: #ctrl-l - run, quantised
@@ -359,14 +362,17 @@ def main():
                         updateConsole(f"pb << {MultiClip.paste()}")
                     elif k == 24:  # ctrl-X - cut
                         if markedSection():
+                            saveUndo(buffer, cursor)
                             MultiClip.copy(cutSection(startMarker, endMarker))
                             clearMarkedSection()
                             cursor = startMarker
                         elif outerBrackets:
+                            saveUndo(buffer, cursor)
                             MultiClip.copy(cutSection(outerBrackets[0], outerBrackets[1]))
                             cursor = outerBrackets[0]
                         updateConsole(f"pbx << {MultiClip.paste()}")
                     elif k == 22:  # ctrl-v - paste
+                        saveUndo(buffer, cursor)
                         buffer.insert(cursor, MultiClip.paste())
                         for i in range(len(MultiClip.paste())):
                             right(window, buffer, cursor)
@@ -404,11 +410,13 @@ def main():
                         endMarker = Cursor.createFromCursor(cursor)
                     elif k == 6:  # ctrl-f - format statement
                         if (outerBrackets):
+                            saveUndo(buffer,cursor)
                             cursor = outerBrackets[0]
                             code = cutSection(outerBrackets[0], outerBrackets[1])
                             tokens = Lispy.tokenize_lisp(code)
                             ast = Lispy.get_ast(tokens.copy())
                             codestr = Lispy.astToFormattedCode(ast)
+                            buffer.insert(cursor, codestr)
 
                         # #todo: better to use an s-expr parser
                         # def indentCode(code):
@@ -438,7 +446,6 @@ def main():
                         #                 pos = pos + stack + 1
                         #         pos = pos + 1
                         #     return code
-                        buffer.insert(cursor, codestr)
                     else:
                         kchar = chr(k)
                         if (kchar.isascii()):
