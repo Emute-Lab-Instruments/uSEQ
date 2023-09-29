@@ -2303,19 +2303,15 @@ void updateAnalogOutputs() {
     }
     // Write
     else {
-      // int pin = analog_out_pin(i + 1);
-      int led_pin = analog_out_LED_pin(i + 1);
-      int val = result.as_float() * 2047.0;
-      //leds
-      analogWrite(led_pin, val);
-      // if (i==2) {
-      //   //temp workaround, see issue #23
-      //   digitalWrite(led_pin, val > 1024);
-      // }else{
-      //   analogWrite(led_pin, val);
-      // }
       //PWM out
-      pio_pwm_set_level(i < 4 ? pio0 : pio1, i % 4, val);
+      int sigval = result.as_float() * 2047.0;
+      if (sigval > 2047)
+        sigval = 2047;
+      pio_pwm_set_level(i < 4 ? pio0 : pio1, i % 4, sigval);
+
+      //led out
+      int led_pin = analog_out_LED_pin(i + 1);  
+      analogWrite(led_pin, sigval);
     }
   }
 
@@ -2726,14 +2722,24 @@ BUILTINFUNC(useq_interpolate,
             } else if (phasor > 1) {
               phasor = 1;
             }
-            double scaled_phasor = lst.size() * phasor;
-            size_t idx = static_cast<size_t>(scaled_phasor) + 1;
-            if (idx == lst.size()) idx--;
-            double v2 = lst[idx].eval(env).as_float();
-            size_t idxv1 = idx == 0 ? lst.size() - 1 : idx -1;
-            double v1 = lst[idxv1].eval(env).as_float();
-            double relativePosition = scaled_phasor - idx;
-            ret = Value((v1 * relativePosition) + (v2 * (1.0-relativePosition)));
+            float a;
+            double index = phasor * (lst.size()-1);
+            size_t pos0 = static_cast<size_t>(index);
+            if (pos0==(lst.size()-1)) pos0--;
+            a = (index - pos0) ;
+            double v2 = lst[pos0+1].eval(env).as_float();
+            double v1 = lst[pos0].eval(env).as_float();
+            ret = Value(((v2 - v1) * a) + v1);
+
+            // double scaled_phasor = lst.size() * phasor;
+            // size_t idx = static_cast<size_t>(scaled_phasor)+1;
+            // Serial.println(idx);
+            // if (idx == lst.size()) idx--;
+            // double v2 = lst[idx].eval(env).as_float();
+            // size_t idxv1 = idx == 0 ? lst.size() - 1 : idx -1;
+            // double v1 = lst[idxv1].eval(env).as_float();
+            // double relativePosition = scaled_phasor - idx;
+            // ret = Value((v1 * relativePosition) + (v2 * (1.0-relativePosition)));
                         // ret = fromList(lst, phasor, env);
             , 2)
 
@@ -3269,5 +3275,5 @@ void loop() {
   readRotaryEnc();
 
   //slow down for testing?
-  // delay(100);
+  // delay(50);
 }
