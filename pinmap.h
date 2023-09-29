@@ -25,6 +25,8 @@
 
 #define LED_BOARD 25
 
+// const int useq_output_pins[] = {21,20,0,18,17,16};
+// const int useq_output_led_pins[] = {3,2,1,27,26,22};
 const int useq_output_pins[] = {21,20,19,18,17,16};
 const int useq_output_led_pins[] = {3,2,28,27,26,22};
 
