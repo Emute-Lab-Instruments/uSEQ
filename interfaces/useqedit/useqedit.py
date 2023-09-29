@@ -253,7 +253,7 @@ def main():
                         for highlightPos in range(match.start(), min(match.end(), window.col + window.n_cols)):
                             editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(colourIdx))
                 searchAndHighlight(r'd1|d2|d3|d4|a1|a2|a3|a4|in1|in2',3)
-                searchAndHighlight(r'sqr|gatesw|\+|\-|\*\\/',4)
+                searchAndHighlight(r'fast|fromList|sqr|gatesw|\+|\-|\*|\/|perf',4)
                 searchAndHighlight(r'bar|phrase|beat|section',5)
 
         editor.move(*window.translateCursorToScreenCoords(cursor))
@@ -303,6 +303,10 @@ def main():
                         sys.exit(0)
                     elif k == 260: #left arrow
                         left(window, buffer, cursor)
+                    # elif k == 393:  # shift-left arrow
+                    #     None
+                    # elif k == 550:  # left arrow
+                    #     None
                     elif k == 258: #down arrow
                         cursor.down(buffer)
                         window.down(buffer, cursor)
@@ -313,6 +317,12 @@ def main():
                         window.horizontal_scroll(cursor)
                     elif k == 261: #right arrow
                         right(window, buffer, cursor)
+                    # elif k == 402:  # shift-right arrow
+                    #     None
+                    # elif k == 565:  # ctrl-right arrow
+                    #     None
+                    # elif k == 566:  # ctrl-shift-right arrow
+                    #     None
                     elif k == 10: #enter
                         buffer.split(cursor)
                         right(window, buffer, cursor)
@@ -392,13 +402,12 @@ def main():
                     elif k == 7: #ctrl-g
                         endMarker = Cursor.createFromCursor(cursor)
                     elif k == 6:  # ctrl-f - format statement
-                        updateConsole("format")
                         if (outerBrackets):
                             cursor = outerBrackets[0]
                             code = cutSection(outerBrackets[0], outerBrackets[1])
                             tokens = Lispy.tokenize_lisp(code)
                             ast = Lispy.get_ast(tokens.copy())
-                            codestr = Lispy.astToString(ast)
+                            codestr = Lispy.astToFormattedCode(ast)
 
                         # #todo: better to use an s-expr parser
                         # def indentCode(code):
