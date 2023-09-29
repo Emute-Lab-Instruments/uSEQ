@@ -53,7 +53,7 @@ def main():
     curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
     curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_MAGENTA)
     curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)
-    curses.init_pair(4, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    curses.init_pair(4, curses.COLOR_BLUE, curses.COLOR_WHITE)
     curses.init_pair(5, curses.COLOR_CYAN, curses.COLOR_BLACK)
     curses.init_pair(6, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.raw()
@@ -251,10 +251,11 @@ def main():
                 def searchAndHighlight(regexStr, colourIdx):
                     for match in re.finditer(regexStr, line):
                         for highlightPos in range(match.start(), min(match.end(), window.col + window.n_cols)):
-                            editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(colourIdx))
-                searchAndHighlight(r'd1|d2|d3|d4|a1|a2|a3|a4|in1|in2',3)
-                searchAndHighlight(r'fast|fromList|sqr|gatesw|\+|\-|\*|\/|perf',4)
-                searchAndHighlight(r'bar|phrase|beat|section',5)
+                            if line[highlightPos] not in ['(',')']:
+                                editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(colourIdx))
+                searchAndHighlight(r'd1|d2|d3|d4|d5|d6|a1|a2|a3|a4|a5|a6|in1|in2|swm|swt|swr|rot|q0',3)
+                searchAndHighlight(r'fast|fromList|sqr|gatesw|\+|\-|\*|\/|perf|pm|dw|dr|useqaw|useqdw|delay|delaym|millis|micros|pulse|slow|flatIdx|flat|looph|dm|gates|setbpm|settimesig|interp|mdo|sin|cos|tan|abs|min|max|pow|sqrt|scale',4)
+                searchAndHighlight(r'(\s|\()(bar|phrase|beat|section|time|t)(\s|\))',5)
 
         editor.move(*window.translateCursorToScreenCoords(cursor))
 
