@@ -2305,6 +2305,8 @@ void updateAnalogOutputs() {
     else {
       //PWM out
       int sigval = result.as_float() * 2047.0;
+      if (sigval > 2047)
+        sigval = 2047;
       pio_pwm_set_level(i < 4 ? pio0 : pio1, i % 4, sigval);
 
       //led out
@@ -2721,7 +2723,8 @@ BUILTINFUNC(useq_interpolate,
               phasor = 1;
             }
             double scaled_phasor = lst.size() * phasor;
-            size_t idx = static_cast<size_t>(scaled_phasor) + 1;
+            size_t idx = static_cast<size_t>(scaled_phasor)+1;
+            Serial.println(idx);
             if (idx == lst.size()) idx--;
             double v2 = lst[idx].eval(env).as_float();
             size_t idxv1 = idx == 0 ? lst.size() - 1 : idx -1;
@@ -3263,5 +3266,5 @@ void loop() {
   readRotaryEnc();
 
   //slow down for testing?
-  // delay(100);
+  // delay(50);
 }
