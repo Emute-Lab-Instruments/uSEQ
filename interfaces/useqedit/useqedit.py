@@ -284,9 +284,15 @@ def main():
                     _, mx, my, _, bstate = curses.getmouse()
                     # print(f"mouse {bstate}")
                     if bstate==1:
-                        if (my < window.n_rows and mx < window.n_cols):
-                            newCursor = window.translateScreenCoordsToCursor(my, mx)
-                            cursor.move(newCursor.row, newCursor.col, buffer)
+                        # if (my < window.n_rows and mx < window.n_cols):
+                        newCursor = window.translateScreenCoordsToCursor(my, mx)
+                        # updateConsole(f"{newCursor.row} {newCursor._col}")
+                        # newCursor._clamp_row(buffer)
+                        # updateConsole(f"{newCursor.row} {newCursor._col}")
+                        # newCursor._clamp_col(buffer)
+                        # updateConsole(f"{newCursor.row} {newCursor._col}")
+                        newCursor.clamp(buffer)
+                        cursor.move(newCursor.row, newCursor.col, buffer)
                     elif bstate==65536:
                         cursor.down(buffer)
                         window.down(buffer, cursor)
@@ -450,7 +456,10 @@ def main():
                         kchar = chr(k)
                         if (kchar.isascii()):
                             saveUndo(buffer,cursor)
+                            if (kchar=='('):
+                                buffer.insert(cursor, ')')
                             buffer.insert(cursor, kchar)
+
                             right(window, buffer, cursor)
                     editor.refresh()
 

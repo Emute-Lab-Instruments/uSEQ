@@ -21,6 +21,14 @@ class Cursor:
     def _clamp_col(self, buffer):
         self._col = min(self._col_hint, len(buffer[self.row]))
 
+    def _clamp_row(self, buffer):
+        self.row = min(self.row, len(buffer)-1)
+
+
+    def clamp(self, buffer):
+        self._clamp_row(buffer)
+        self._clamp_col(buffer)
+
     def move(self, newx, newy, buffer):
         self.row = newx
         self.col = newy
