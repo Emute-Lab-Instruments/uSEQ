@@ -45,6 +45,7 @@ bool currentExprSound = false;
 #include "pinmap.h"
 #include "LispLibrary.h"
 #include "MAFilter.hpp"
+#include "piopwm.h"
 
 #define ETL_NO_STL
 #include <Embedded_Template_Library.h> // Mandatory for Arduino IDE only
@@ -2139,7 +2140,26 @@ inline int analog_out_LED_pin(int out) {
 
 Environment env;
 
+// PIO pio = pio0;
+// PIO pio1 = pio1;
+// int sm = 0;
+
+void pio_pwm_set_period(PIO pio, uint sm, uint32_t period) {
+    pio_sm_set_enabled(pio, sm, false);
+    pio_sm_put_blocking(pio, sm, period);
+    pio_sm_exec(pio, sm, pio_encode_pull(false, false));
+    pio_sm_exec(pio, sm, pio_encode_out(pio_isr, 32));
+    pio_sm_set_enabled(pio, sm, true);
+}
+
+// Write `level` to TX FIFO. State machine will copy this into X.
+void pio_pwm_set_level(PIO pio, uint sm, uint32_t level) {
+    pio_sm_put_blocking(pio, sm, level);
+}
+
 namespace useq {
+
+
 
 // Meter
 double meter_numerator = 4;
@@ -2173,6 +2193,7 @@ double section = 0.0;
 
 std::vector<Value> analogASTs[PWM_OUTS];
 std::vector<Value> digitalASTs[DIGI_OUTS];
+
 
 void updateBpmVariables() {
   env.set("bpm", Value(bpm));
@@ -2239,8 +2260,11 @@ void resetTime() {
   updateTime();
 }
 
-const Value defaultForm_digital = parse("(fast 16 (sqr beat))")[0];
-const Value defaultForm_analog  = parse("(fast 16 beat)")[0];
+//just temp clearing these to make testing easier
+const Value defaultForm_digital = parse("0")[0];
+const Value defaultForm_analog  = parse("0")[0];
+// const Value defaultForm_digital = parse("(fast 16 (sqr beat))")[0];
+// const Value defaultForm_analog  = parse("(fast 16 beat)")[0];
 
 void updateDigitalOutputs() {
   for (size_t i=0; i < DIGI_OUTS; i++) {
@@ -2264,6 +2288,10 @@ void updateDigitalOutputs() {
 }
 
 void updateAnalogOutputs() {
+
+  
+
+  // for (size_t i=0; i < 1; i++) {
   for (size_t i=0; i < PWM_OUTS; i++) {
     currentExprSound = true;
     Value result = runParsedCode(analogASTs[i], env);
@@ -2275,13 +2303,22 @@ void updateAnalogOutputs() {
     }
     // Write
     else {
-      int pin = analog_out_pin(i + 1);
+      // int pin = analog_out_pin(i + 1);
       int led_pin = analog_out_LED_pin(i + 1);
       int val = result.as_float() * 2047.0;
-      analogWrite(pin, val);
+      //leds
       analogWrite(led_pin, val);
+      // if (i==2) {
+      //   //temp workaround, see issue #23
+      //   digitalWrite(led_pin, val > 1024);
+      // }else{
+      //   analogWrite(led_pin, val);
+      // }
+      //PWM out
+      pio_pwm_set_level(i < 4 ? pio0 : pio1, i % 4, val);
     }
   }
+
 }
 
 #ifdef MIDIOUT
@@ -2328,7 +2365,7 @@ void updateMidiOut() {
     last_midi_t = t;
   }
 }
-#endif
+#endif // end of MIDI OUT SECTION
 
 MovingAverageFilter cqpMA(3); //code quantising phasor
 double lastCQP = 0;
@@ -2357,6 +2394,8 @@ void setup() {
 int ts_inputs = 0, ts_time = 0, ts_outputs = 0;
 
 void update() {
+  
+
   ts_inputs = millis();
   readInputs();
   env.set("perf_in", Value(int(millis() - ts_inputs)));
@@ -2832,16 +2871,16 @@ void loadBuiltinDefs() {
   Environment::builtindefs["useqaw"] = Value("useqaw", builtin::ard_useqaw);
   Environment::builtindefs["a1"] = Value("a1", builtin::a1);
   Environment::builtindefs["a2"] = Value("a2", builtin::a2);
-  Environment::builtindefs["a3"] = Value("a3", builtin::a2);
-  Environment::builtindefs["a4"] = Value("a4", builtin::a2);
-  Environment::builtindefs["a5"] = Value("a5", builtin::a2);
-  Environment::builtindefs["a6"] = Value("a6", builtin::a2);
+  Environment::builtindefs["a3"] = Value("a3", builtin::a3);
+  Environment::builtindefs["a4"] = Value("a4", builtin::a4);
+  Environment::builtindefs["a5"] = Value("a5", builtin::a5);
+  Environment::builtindefs["a6"] = Value("a6", builtin::a6);
   Environment::builtindefs["d1"] = Value("d1", builtin::d1);
   Environment::builtindefs["d2"] = Value("d2", builtin::d2);
   Environment::builtindefs["d3"] = Value("d3", builtin::d3);
   Environment::builtindefs["d4"] = Value("d4", builtin::d4);
-  Environment::builtindefs["d5"] = Value("d5", builtin::d4);
-  Environment::builtindefs["d6"] = Value("d6", builtin::d4);
+  Environment::builtindefs["d5"] = Value("d5", builtin::d5);
+  Environment::builtindefs["d6"] = Value("d6", builtin::d6);
   Environment::builtindefs["q0"] = Value("q0", builtin::useq_q0);
 
   Environment::builtindefs["pm"] = Value("pm", builtin::ard_pinMode);
@@ -3010,10 +3049,26 @@ void setup_outs() {
   }
 }
 
+
+
 void setup_analog_outs() {
   //PWM outputs
   analogWriteFreq(30000);     //out of hearing range
   analogWriteResolution(11);  // about the best we can get for 30kHz
+
+  //set PIO PWM state machines to run PWM outputs
+  uint offset = pio_add_program(pio0, &pwm_program);
+  uint offset2 = pio_add_program(pio1, &pwm_program);
+  // printf("Loaded program at %d\n", offset);
+
+  for(int i=0; i < PWM_OUTS; i++) {
+    auto pioInstance = i < 4 ? pio0 : pio1;
+    uint pioOffset = i < 4 ? offset : offset2;
+    auto smIdx = i % 4;
+    pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_pins[i]);
+    pio_pwm_set_period(pioInstance, smIdx, (1u << 11) - 1);  
+
+  }
 
 }
 
@@ -3031,14 +3086,6 @@ void setup_leds() {
   for (int i=0; i < 6; i++) {
     pinMode(useq_output_led_pins[i], OUTPUT);
   }
-  // pinMode(USEQ_PIN_LED_A1, OUTPUT);
-  // pinMode(USEQ_PIN_LED_A2, OUTPUT);
-
-  // pinMode(USEQ_PIN_LED_D1, OUTPUT);
-  // pinMode(USEQ_PIN_LED_D2, OUTPUT);
-  // pinMode(USEQ_PIN_LED_D3, OUTPUT);
-  // pinMode(USEQ_PIN_LED_D4, OUTPUT);
-
   digitalWrite(LED_BOARD, 1);
 }
 
@@ -3089,6 +3136,7 @@ void led_animation() {
     ledDelay -= 3;
   }
 }
+
 
 void setup_IO() {
   setup_outs();
@@ -3217,11 +3265,9 @@ void loop() {
       auto parsedCode = ::parse(cmd);
       useq::runQueue.push_back(parsedCode);
     }
-    // Serial.println(cmdts * 0.001);
-    // Serial.println(test);
-    // Serial.println("complete");
-    // Serial.println(env.toString(env));
-    // Serial.println(updateSpeed);
   }
   readRotaryEnc();
+
+  //slow down for testing?
+  // delay(100);
 }
