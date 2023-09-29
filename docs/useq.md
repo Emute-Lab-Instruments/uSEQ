@@ -376,6 +376,29 @@ E.g. the code below will play the first half of the sequence repeatedly
 (d2 (gatesw (quote 9 9 5 9 3 0 3 8) (looph bar 0.5) 2))
 ```
 
+## interp
+
+Interpolate across a list, using a phasor.  This function acts as if the list of values describes a continuous envelope, and returns the value at a position in that envelope.  e.g.
+
+```
+(interp '(0 0.5 0) 0.75)
+```
+
+describes a triangle shape, and returns the value that it 75% along the triangle (0.25).
+
+```
+(a1 (interp '(1 0.5 0 0.6 1) bar))
+```
+
+makes a roughly inverted triangle, and plays it once per bar on PWM output 1
+
+```
+(a2 (interp '(0 (sin phrase) 1) section))
+```
+
+creates a slowly changing envelope that loops every section, sent to PWM output 2
+
+
 # MIDI functions
 
 To use MIDI functions, the firmware must be compiled with the MIDI flag(s) defined.  See the hardware documentation for info on how to extend the module with MIDI inputs and outputs
