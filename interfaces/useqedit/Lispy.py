@@ -76,7 +76,7 @@ class Lispy:
     @staticmethod
     def astToFormattedCode(ast):
         def renderToFormattedCode(code, v):
-            if v['sym'] in ['(', '('] and v['level'] > 0:
+            if v['sym'] in ['(', '(', "'("] and v['level'] > 0:
                 code = code + '\n' + ('\t' * v['level'])
             code = code + v['sym']
             if v['sym'] not in ['(', '(']:
