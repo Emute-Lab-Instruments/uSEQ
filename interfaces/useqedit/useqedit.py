@@ -286,7 +286,7 @@ def main():
                     if bstate==1:
                         # if (my < window.n_rows and mx < window.n_cols):
                         newCursor = window.translateScreenCoordsToCursor(my, mx)
-                        # updateConsole(f"{newCursor.row} {newCursor._col}")
+                        updateConsole(f"{newCursor.row} {newCursor._col}")
                         # newCursor._clamp_row(buffer)
                         # updateConsole(f"{newCursor.row} {newCursor._col}")
                         # newCursor._clamp_col(buffer)
