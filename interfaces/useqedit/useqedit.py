@@ -282,10 +282,12 @@ def main():
                 # updateConsole(f"key {k}")
                 if (k == curses.KEY_MOUSE):
                     _, mx, my, _, bstate = curses.getmouse()
-                    print(f"mouse {bstate}")
+                    # updateConsole(f"mouse {bstate}")
                     if bstate==1:
                         # if (my < window.n_rows and mx < window.n_cols):
                         newCursor = window.translateScreenCoordsToCursor(my, mx)
+                        my = max(0,my)
+                        mx = max(0,mx)
                         updateConsole(f"{newCursor.row} {newCursor._col} {my} {mx}")
                         # newCursor._clamp_row(buffer)
                         # updateConsole(f"{newCursor.row} {newCursor._col}")
