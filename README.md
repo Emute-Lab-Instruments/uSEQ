@@ -6,6 +6,10 @@ There's a paper on it here:
 
 Kyriakoudis, Dimitris, & Kiefer, Chris. (2023, April 19). uSEQ: A LISPy Modular Sequencer for Eurorack with a Livecodable Microcontroller. 7th International Conference on Live Coding (ICLC2023), Utrecht, The Netherlands. https://doi.org/10.5281/zenodo.7843874
 
+![uSEQ Modules](./docs/img/useqModules.jpg)
+
+![uSEQ In Use](./docs/img/useqSystem.jpg)
+
 
 ## Features:
 
