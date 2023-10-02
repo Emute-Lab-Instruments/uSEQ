@@ -27,7 +27,7 @@
 
 // configure the number of PWM and digital outputs (this is to reflect the hardware, each PWM out be configured with a capacitor)
 
-#define PWM_OUTS 3
+#define PWM_OUTS 2
 #define DIGI_OUTS (6 - PWM_OUTS)
 
 
@@ -47,6 +47,8 @@ bool currentExprSound = false;
 #include "MAFilter.hpp"
 #include "piopwm.h"
 
+#ifndef NO_ETL
+
 #define ETL_NO_STL
 #include <Embedded_Template_Library.h> // Mandatory for Arduino IDE only
 #include <etl/map.h>
@@ -54,6 +56,7 @@ bool currentExprSound = false;
 #include <etl/string.h>
 String board(ARDUINO_BOARD);
 
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 /// LISP LIBRARY /////////////////////////////////////////////////////////////
@@ -209,6 +212,8 @@ Value runParsedCode(std::vector<Value> ast, Environment &env);
 std::map<int, Value> useqMDOMap;
 #endif
 
+#ifndef NO_ETL
+
 namespace etl {
 
   template <>
@@ -223,6 +228,8 @@ namespace etl {
   };
 
 }
+
+#endif
 
 // An instance of a function's scope.
 class Environment {
@@ -268,9 +275,11 @@ public:
   // Output this scope in readable form to a stream.
   // friend std::ostream &operator<<(std::ostream &os, Environment const &v);
 
-
-  // static std::map<String, Value> builtindefs;
-  static etl::unordered_map<String, Value, 256> builtindefs;
+#ifdef NO_ETL
+ static std::map<String, Value> builtindefs;
+#else
+static etl::unordered_map<String, Value, 256> builtindefs;
+#endif
 
 private:
 
@@ -2140,10 +2149,6 @@ inline int analog_out_LED_pin(int out) {
 
 Environment env;
 
-// PIO pio = pio0;
-// PIO pio1 = pio1;
-// int sm = 0;
-
 void pio_pwm_set_period(PIO pio, uint sm, uint32_t period) {
     pio_sm_set_enabled(pio, sm, false);
     pio_sm_put_blocking(pio, sm, period);
@@ -2870,7 +2875,14 @@ bool Environment::has(String const &name) const {
 }
 
 // std::map<String, Value> Environment::builtindefs;
+// etl::unordered_map<String, Value, 256> Environment::builtindefs;
+
+#ifdef NO_ETL
+std::map<String, Value> Environment::builtindefs;
+#else
 etl::unordered_map<String, Value, 256> Environment::builtindefs;
+#endif
+
 
 void loadBuiltinDefs() {
   Environment::builtindefs["useqdw"] = Value("useqdw", builtin::ard_useqdw);
@@ -3261,7 +3273,7 @@ void loop() {
   if (Serial.available()) {
     String cmd = Serial.readString();
     //queue or run now
-    // Serial.println(cmd);
+     Serial.println(cmd);
     if (cmd.charAt(0) == '@') {
         //clear the token
         cmd.setCharAt(0, ' ');

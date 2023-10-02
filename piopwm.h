@@ -29,7 +29,7 @@ static const uint16_t pwm_program_instructions[] = {
             //     .wrap
 };
 
-#if !PICO_NO_HARDWARE
+//#if !PICO_NO_HARDWARE
 static const struct pio_program pwm_program = {
     .instructions = pwm_program_instructions,
     .length = 7,
@@ -51,4 +51,4 @@ static inline void pwm_program_init(PIO pio, uint sm, uint offset, uint pin) {
    pio_sm_init(pio, sm, offset, &c);
 }
 
-#endif
+//#endif
