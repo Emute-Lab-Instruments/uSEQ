@@ -47,18 +47,18 @@
 (define q-form 0)
 
 ;; Digital outs
-(define d1-form 0)
-(define d2-form 0)
-(define d3-form 0)
-(define d4-form 0)
+;;(define d1-form 0)
+;;(define d2-form 0)
+;;(define d3-form 0)
+;;(define d4-form 0)
 ;;(defun update-d1 () (useqdw 1 (eval d1-form)))
 ;;(defun update-d2 () (useqdw 2 (eval d2-form)))
 ;;(defun update-d3 () (useqdw 3 (eval d3-form)))
 ;;(defun update-d4 () (useqdw 4 (eval d4-form)))
 
 ;; Analog outs
-(define a1-form 0)
-(define a2-form 0)
+;;(define a1-form 0)
+;;(define a2-form 0)
 ;;(defun update-a1 () (useqaw 1 (eval a1-form)))  ;; runs on core 1
 ;;(defun update-a2 () (useqaw 2 (eval a2-form)))  ;; runs on core 1
 

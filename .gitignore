@@ -23,3 +23,5 @@ interfaces/useqedit/__pycache__/
 *.csv#
 
 hardware/version0.2/kicad/useq-backups/
+
+interfaces/virtual/cmake-build-debug/
