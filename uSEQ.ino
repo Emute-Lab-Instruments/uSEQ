@@ -2249,7 +2249,6 @@ void setTime(size_t newTimeMillis) {
   bar = fmod(t, barDur) / barDur;
   phrase = fmod(t, phraseDur) / phraseDur;
   section = fmod(t, sectionDur) / sectionDur;
-
   updateTimeVariables();
 }
 
