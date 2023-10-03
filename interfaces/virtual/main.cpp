@@ -19,6 +19,9 @@ struct DummySerial {
     void println(String s) {
         std::cout << s.c_str()<< std::endl;
     }
+    void println(int x) {
+        std::cout << x << std::endl;
+    }
     void println() {
         std::cout << std::endl;
     }
@@ -30,9 +33,6 @@ struct DummySerial {
     void setTimeout(int x){}
     bool available() {return 1;}
     String readString() {
-//        std::string cmd;
-//        std::cin >> cmd;
-//        return String(cmd.c_str());
         std::string s;
         std::getline(std::cin, s);
         return String(s.c_str());
