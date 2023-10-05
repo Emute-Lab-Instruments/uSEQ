@@ -8,6 +8,14 @@
 #include <cmath>
 #include <chrono>
 
+#include <SerialPort.h>
+#include <SerialStream.h>
+
+using namespace LibSerial ;
+
+//next: https://libserial.readthedocs.io/en/latest/tutorial.html
+
+
 using std::byte;
 
 
@@ -152,6 +160,8 @@ void readInputs();
 #include "../../uSEQ.ino"
 
 
+
+
 int main() {
     std::cout << "Hello, World!" << std::endl;
 //    String cmd;
@@ -161,5 +171,6 @@ int main() {
     while(1) {
         loop();
     }
+
     return 0;
 }
