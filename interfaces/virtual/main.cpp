@@ -10,10 +10,12 @@
 
 #include <SerialPort.h>
 #include <SerialStream.h>
+#include <csignal>
 
 using namespace LibSerial ;
 
 //next: https://libserial.readthedocs.io/en/latest/tutorial.html
+//set up virtual serial using socat
 
 
 using std::byte;
@@ -21,6 +23,15 @@ using std::byte;
 
 
 struct DummySerial {
+    DummySerial(std::string port="") {
+        if (port != "") {
+            tty.Open(port);
+        }
+    }
+    SerialPort tty;
+
+    std::string buf="";
+
     void print(String s) {
         std::cout << s.c_str();
     }
@@ -39,14 +50,27 @@ struct DummySerial {
     void setTX(int x) {}
     void begin(int x) {}
     void setTimeout(int x){}
-    bool available() {return 1;}
+    bool available() {return tty.IsDataAvailable();}
     String readString() {
+        char ch;
         std::string s;
-        std::getline(std::cin, s);
+        while (tty.IsDataAvailable()) {
+            try {
+                tty.ReadByte(ch, 1);
+                if (ch==10) {
+                    break;
+                }else{
+                    std::cout << "ch: " << int(ch) << std::endl;
+                    s+=ch;
+                }
+            }
+            catch (ReadTimeout) {
+            }
+        }
         return String(s.c_str());
     }
 };
-DummySerial Serial;
+DummySerial Serial("/dev/pts/3");
 DummySerial Serial1;
 
 uint64_t millis()
@@ -159,10 +183,20 @@ void readInputs();
 //#include "../../piopwm.h"
 #include "../../uSEQ.ino"
 
+//SerialPort testTTY("/dev/pts/3");
+
+void my_handler(int s){
+    std::cout << "Caught signal";
+//    testTTY.Close();
+    exit(1);
+
+}
 
 
 
 int main() {
+    std::signal (SIGINT,my_handler);
+    std::signal (SIGTERM,my_handler);
     std::cout << "Hello, World!" << std::endl;
 //    String cmd;
 //    std::cin >> cmd;
@@ -171,6 +205,18 @@ int main() {
     while(1) {
         loop();
     }
-
+    //test serial port
+//    while(1) {
+//        char ch;
+//        if (testTTY.IsDataAvailable()) {
+//            try {
+//                testTTY.ReadByte(ch, 2);
+//            }
+//            catch (ReadTimeout) {
+//
+//            }
+//            std::cout << "ch: " << int(ch) << std::endl;
+//        }
+//    }
     return 0;
 }
