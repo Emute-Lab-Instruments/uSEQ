@@ -1,6 +1,8 @@
 #define PROGMEM
 #define PICO_NO_HARDWARE 1
 #define NO_ETL
+#define VIRTUAL_USEQ
+
 //#include <Embedded_Template_Library.h> // Mandatory for Arduino IDE only
 #include "String.h"
 
@@ -14,7 +16,7 @@
 
 using namespace LibSerial ;
 
-//next: https://libserial.readthedocs.io/en/latest/tutorial.html
+//https://libserial.readthedocs.io/en/latest/tutorial.html
 //set up virtual serial using socat
 
 
@@ -28,15 +30,23 @@ struct DummySerial {
             tty.Open(port);
         }
     }
+    ~DummySerial() {
+        if(tty.IsOpen()) {
+            tty.Close();
+        }
+    }
+
     SerialPort tty;
 
     std::string buf="";
 
     void print(String s) {
         std::cout << s.c_str();
+        tty.Write(std::string(s.c_str()));
     }
     void println(String s) {
         std::cout << s.c_str()<< std::endl;
+        tty.Write(std::string(s.c_str()) + '\n');
     }
     void println(int x) {
         std::cout << x << std::endl;
@@ -48,7 +58,9 @@ struct DummySerial {
     void write(int x) {}
     void setRX(int x) {}
     void setTX(int x) {}
+
     void begin(int x) {}
+
     void setTimeout(int x){}
     bool available() {return tty.IsDataAvailable();}
     String readString() {
@@ -177,17 +189,11 @@ uint pio_add_program(PIO pio, const pio_program_t *program){return 0;}
 
 void readInputs();
 
-//#include "../../LispLibrary.h"
-//#include "../../MAFilter.hpp"
-//#include "../../pinmap.h"
-//#include "../../piopwm.h"
 #include "../../uSEQ.ino"
 
-//SerialPort testTTY("/dev/pts/3");
 
 void my_handler(int s){
-    std::cout << "Caught signal";
-//    testTTY.Close();
+    std::cout << "Exiting";
     exit(1);
 
 }
@@ -205,18 +211,5 @@ int main() {
     while(1) {
         loop();
     }
-    //test serial port
-//    while(1) {
-//        char ch;
-//        if (testTTY.IsDataAvailable()) {
-//            try {
-//                testTTY.ReadByte(ch, 2);
-//            }
-//            catch (ReadTimeout) {
-//
-//            }
-//            std::cout << "ch: " << int(ch) << std::endl;
-//        }
-//    }
     return 0;
 }
