@@ -165,10 +165,13 @@ def main():
             port = devlist[0]
         else:
             port = "/dev/ttyACM0"
+            devlist = sorted(glob.glob("/tmp/ttyUSEQVirtual"))  # connect to virtual uSEQ?
+            if len(devlist) > 0:
+                port = devlist[0]
 
     cx = trySerialConnection(port, updateConsole)
     if not cx:
-        updateConsole("Error connecting to uSEQ")
+        updateConsole(f"Error connecting to uSEQ at {port}")
     try:
         with open(args.filename) as f:
             buffer = Buffer(f.read().splitlines())
