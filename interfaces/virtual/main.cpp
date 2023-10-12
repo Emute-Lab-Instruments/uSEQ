@@ -25,7 +25,7 @@ using std::byte;
 
 
 struct DummySerial {
-    DummySerial(std::string port="") {
+    void openPort(std::string port="") {
         if (port != "") {
             tty.Open(port);
         }
@@ -35,6 +35,8 @@ struct DummySerial {
             tty.Close();
         }
     }
+
+
 
     SerialPort tty;
 
@@ -49,7 +51,7 @@ struct DummySerial {
         tty.Write(std::string(s.c_str()) + '\n');
     }
     void println(int x) {
-        std::cout << x << std::endl;
+        std::cout << std::to_string(x) << std::endl;
     }
     void println() {
         std::cout << std::endl;
@@ -82,7 +84,7 @@ struct DummySerial {
         return String(s.c_str());
     }
 };
-DummySerial Serial("/dev/pts/3");
+DummySerial Serial;
 DummySerial Serial1;
 
 uint64_t millis()
@@ -190,20 +192,30 @@ uint pio_add_program(PIO pio, const pio_program_t *program){return 0;}
 void readInputs();
 
 #include "../../uSEQ.ino"
-
+FILE *socatProcessFile;
 
 void my_handler(int s){
     std::cout << "Exiting";
+    pclose(socatProcessFile);
     exit(1);
 
 }
-
+#include <thread>
+#include <filesystem>
 
 
 int main() {
     std::signal (SIGINT,my_handler);
     std::signal (SIGTERM,my_handler);
-    std::cout << "Hello, World!" << std::endl;
+//    std::string popentype = "r";
+    //make a virtual com port
+    socatProcessFile = popen("socat -d -d pty,rawer,echo=0,link=/tmp/ttyUSEQVirtual pty,rawer,echo=0,link=/tmp/ttyUSEQVirtual_Server", "r");
+    while (!std::filesystem::exists("/tmp/ttyUSEQVirtual_Server")) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    Serial.openPort("/tmp/ttyUSEQVirtual_Server");
+    std::cout << "Virtual uSEQ" << std::endl;
 //    String cmd;
 //    std::cin >> cmd;
 //    std::cout << cmd << std::endl;
