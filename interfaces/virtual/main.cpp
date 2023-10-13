@@ -204,6 +204,15 @@ void my_handler(int s){
 #include <filesystem>
 
 
+#include <ftxui/dom/elements.hpp>  // for Fit, canvas, operator|, border, Element
+#include <ftxui/screen/screen.hpp>  // for Pixel, Screen
+#include <vector>                   // for vector, allocator
+
+#include "ftxui/dom/canvas.hpp"  // for Canvas
+#include "ftxui/dom/node.hpp"    // for Render
+#include "ftxui/screen/color.hpp"  // for Color, Color::Red, Color::Blue, Color::Green, ftxui
+
+
 int main() {
     std::signal (SIGINT,my_handler);
     std::signal (SIGTERM,my_handler);
@@ -215,13 +224,50 @@ int main() {
     }
 
     Serial.openPort("/tmp/ttyUSEQVirtual_Server");
-    std::cout << "Virtual uSEQ" << std::endl;
+
+    using namespace ftxui;
+
+    using namespace std::chrono_literals;
+
+    std::string reset_position;
+//    for (float percentage = 0.0f; percentage <= 1.0f; percentage += 0.002f) {
+//        std::string data_downloaded =
+//                std::to_string(int(percentage * 5000)) + "/5000";
+//        auto document = hbox({
+//                                     text("downloading:"),
+//                                     gauge(percentage) | flex,
+//                                     text(" " + data_downloaded),
+//                             });
+//        auto screen = Screen(100, 1);
+//        Render(screen, document);
+//        std::cout << reset_position;
+//        screen.Print();
+//        reset_position = screen.ResetPosition();
+//
+//        std::this_thread::sleep_for(0.01s);
+//    }
+    //    std::cout << "Virtual uSEQ" << std::endl;
 //    String cmd;
 //    std::cin >> cmd;
 //    std::cout << cmd << std::endl;
     setup();
+    float percentage = 0.4;
     while(1) {
         loop();
+        std::string data_downloaded =
+                std::to_string(int(percentage * 5000)) + "/5000";
+        auto document = hbox({
+                                     text("downloading:"),
+                                     gauge(percentage) | flex,
+                                     text(" " + data_downloaded),
+                             });
+        auto screen = Screen(100, 1);
+        Render(screen, document);
+        std::cout << reset_position;
+//        screen.Print();
+//        reset_position = screen.ResetPosition();
+
+        std::this_thread::sleep_for(0.0001s);
     }
     return 0;
 }

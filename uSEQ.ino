@@ -3276,7 +3276,9 @@ void loop() {
     if (cmd.charAt(0) == '@') {
         //clear the token
         cmd.setCharAt(0, ' ');
-        run(cmd, env);
+        auto res = run(cmd, env);
+        Serial.println(res.debug());
+
     }
     else {
       auto parsedCode = ::parse(cmd);
