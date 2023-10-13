@@ -43,11 +43,11 @@ struct DummySerial {
     std::string buf="";
 
     void print(String s) {
-        std::cout << s.c_str();
+//        std::cout << s.c_str();
         tty.Write(std::string(s.c_str()));
     }
     void println(String s) {
-        std::cout << s.c_str()<< std::endl;
+//        std::cout << s.c_str()<< std::endl;
         tty.Write(std::string(s.c_str()) + '\n');
     }
     void println(int x) {
@@ -74,7 +74,7 @@ struct DummySerial {
                 if (ch==10) {
                     break;
                 }else{
-                    std::cout << "ch: " << int(ch) << std::endl;
+//                    std::cout << "ch: " << int(ch) << std::endl;
                     s+=ch;
                 }
             }
