@@ -1249,8 +1249,15 @@ Value parse(String &s, int &ptr) {
 
     Value result = Value(std::vector<Value>());
 
-    while (s[ptr] != ')')
-      result.push(parse(s, ptr));
+    while (s[ptr] != ')') {
+        Value res = parse(s, ptr);
+        if (res == Value::error()) {
+            result = Value::error();
+            break;
+        }else {
+            result.push(res);
+        }
+    }
 
     skip_whitespace(s, ++ptr);
     return result;
