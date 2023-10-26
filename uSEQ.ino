@@ -27,7 +27,7 @@
 
 // configure the number of PWM and digital outputs (this is to reflect the hardware, each PWM out be configured with a capacitor)
 
-#define PWM_OUTS 2
+#define PWM_OUTS 3
 #define DIGI_OUTS (6 - PWM_OUTS)
 
 
@@ -39,6 +39,8 @@ bool currentExprSound = false;
 
 #define MIDIOUT  // (drum sequencer implemented using (mdo note (f t)))
 //#define MIDIIN //(to be implemented)
+
+#define SERIAL_OUTS 8
 
 // end of build options
 
@@ -1393,8 +1395,8 @@ Value runParsedCode(std::vector<Value> ast, Environment &env) {
     run_time += (micros() - ts_run);
     return result;
   } else {
-    return Value::error();
-    /* return Value(); */
+//    return Value::error();
+    return Value();
   }
 }
 
@@ -2205,6 +2207,8 @@ double section = 0.0;
 
 std::vector<Value> analogASTs[PWM_OUTS];
 std::vector<Value> digitalASTs[DIGI_OUTS];
+std::vector<Value> serialASTs[SERIAL_OUTS];
+
 
 
 void updateBpmVariables() {
@@ -2327,6 +2331,34 @@ void updateAnalogOutputs() {
   }
 
 }
+void updateSerialOutputs() {
+    for (size_t i=0; i < SERIAL_OUTS; i++) {
+        if (serialASTs[i].size() > 0) {
+            currentExprSound = true;
+            Value result = runParsedCode(serialASTs[i], env);
+
+            if (result == Value::error() || !currentExprSound) {
+                Serial.println("Error in serial output function, clearing");
+                serialASTs[i] = {};
+                currentExprSound = true;
+            }
+                // Write
+            else {
+                double val = result.as_float();
+                Serial.write((u_int8_t )31);
+                Serial.write((u_int8_t )(i + 1));
+                char *byteArray = reinterpret_cast<char *>(&val);
+                for (size_t b = 0; b < 8; b++) {
+                    Serial.write(byteArray[b]);
+//                    Serial.write(0);
+                }
+                //            digitalWrite(pin, val);
+                //            digitalWrite(led_pin, val);
+            }
+        }
+    }
+}
+
 
 #ifdef MIDIOUT
 double last_midi_t = 0;
@@ -2387,6 +2419,10 @@ void initASTs() {
 
     for(int i = 0; i < PWM_OUTS; i++)
        analogASTs[i] = {parse("bar")[0]};
+
+    for(int i = 0; i < SERIAL_OUTS; i++)
+        serialASTs[i] = {};
+
 }
 
 void setup() {
@@ -2433,6 +2469,7 @@ void update() {
   /* run("(eval q-form)", env);   */
   updateAnalogOutputs();
   updateDigitalOutputs();
+  updateSerialOutputs();
 #ifdef MIDIOUT
   updateMidiOut();
 #endif
@@ -2544,6 +2581,40 @@ BUILTINFUNC_NOEVAL(d6,
     env.set_global("d6-form", args[0]);
     useq::digitalASTs[5] = {args[0]};
   }
+, 1)
+
+
+BUILTINFUNC_NOEVAL(s1,
+   env.set_global("s1-form", args[0]);
+   useq::serialASTs[0] = {args[0]};
+, 1)
+BUILTINFUNC_NOEVAL(s2,
+   env.set_global("s2-form", args[0]);
+   useq::serialASTs[1] = {args[0]};
+, 1)
+BUILTINFUNC_NOEVAL(s3,
+   env.set_global("s3-form", args[0]);
+   useq::serialASTs[2] = {args[0]};
+, 1)
+BUILTINFUNC_NOEVAL(s4,
+   env.set_global("s4-form", args[0]);
+   useq::serialASTs[3] = {args[0]};
+, 1)
+BUILTINFUNC_NOEVAL(s5,
+   env.set_global("s5-form", args[0]);
+   useq::serialASTs[4] = {args[0]};
+, 1)
+BUILTINFUNC_NOEVAL(s6,
+   env.set_global("s6-form", args[0]);
+   useq::serialASTs[5] = {args[0]};
+, 1)
+BUILTINFUNC_NOEVAL(s7,
+   env.set_global("s7-form", args[0]);
+   useq::serialASTs[6] = {args[0]};
+, 1)
+BUILTINFUNC_NOEVAL(s8,
+   env.set_global("s8-form", args[0]);
+   useq::serialASTs[7] = {args[0]};
 , 1)
 
 #ifdef MIDIOUT
@@ -2763,23 +2834,34 @@ BUILTINFUNC(useq_dm,
 
 BUILTINFUNC_VARGS(useq_gates,
                   auto lst = args[0].as_list();
-                  double phasor = args[1].as_float();
-                  double speed = args[2].as_float();
-                  double pulseWidth = args.size() == 4 ? args[3].as_float() : 0.5;
-                  double val = fromList(lst, fast(speed, phasor), env).as_int();
-                  double gates = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
+                  const double phasor = args[1].as_float();
+                  const double speed = args[2].as_float();
+                  const double pulseWidth = args.size() == 4 ? args[3].as_float() : 0.5;
+                  const double val = fromList(lst, fast(speed, phasor), env).as_int();
+                  const double gates = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
                   ret = Value(val * gates);
                   , 3, 4)
 
 BUILTINFUNC_VARGS(useq_gatesw,
                   auto lst = args[0].as_list();
-                  double phasor = args[1].as_float();
-                  double speed = args.size() == 3 ? args[2].as_float() : 1.0;
-                  double val = fromList(lst, fast(speed, phasor), env).as_int();
-                  double pulseWidth = val / 9.0;
-                  double gate = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
+                  const double phasor = args[1].as_float();
+                  const double speed = args.size() == 3 ? args[2].as_float() : 1.0;
+                  const double val = fromList(lst, fast(speed, phasor), env).as_int();
+                  const double pulseWidth = val / 9.0;
+                  const double gate = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
                   ret = Value((val > 0 ? 1.0 : 0.0) * gate);
                   , 2, 3)
+
+BUILTINFUNC_VARGS(useq_trigs,
+                  auto lst = args[0].as_list();
+                  const double phasor = args[1].as_float();
+                  const double speed = args.size() == 3 ? args[2].as_float() : 1.0;
+                  const double val = fromList(lst, fast(speed, phasor), env).as_int();
+                  const double amp = val / 9.0;
+                  const double pulseWidth = args.size() == 4 ? args[3].as_float() : 0.1;
+                  const double gate = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
+                  ret = Value((val > 0 ? 1.0 : 0.0) * gate * amp);
+                  , 2, 4)
 
 BUILTINFUNC(useq_loopPhasor,
             auto phasor = args[0].as_float();
@@ -2907,6 +2989,15 @@ void loadBuiltinDefs() {
   Environment::builtindefs["d6"] = Value("d6", builtin::d6);
   Environment::builtindefs["q0"] = Value("q0", builtin::useq_q0);
 
+  Environment::builtindefs["s1"] = Value("s1", builtin::s1);
+  Environment::builtindefs["s2"] = Value("s2", builtin::s2);
+  Environment::builtindefs["s3"] = Value("s3", builtin::s3);
+  Environment::builtindefs["s4"] = Value("s4", builtin::s4);
+  Environment::builtindefs["s5"] = Value("s5", builtin::s5);
+  Environment::builtindefs["s6"] = Value("s6", builtin::s6);
+  Environment::builtindefs["s7"] = Value("s7", builtin::s7);
+  Environment::builtindefs["s8"] = Value("s8", builtin::s8);
+
   Environment::builtindefs["pm"] = Value("pm", builtin::ard_pinMode);
   Environment::builtindefs["dw"] = Value("dw", builtin::ard_digitalWrite);
   Environment::builtindefs["dr"] = Value("dr", builtin::ard_digitalRead);
@@ -2926,8 +3017,9 @@ void loadBuiltinDefs() {
   Environment::builtindefs["pulse"] = Value("pulse", builtin::useq_pulse);
   Environment::builtindefs["sqr"] = Value("sqr", builtin::useq_sqr);
   Environment::builtindefs["fast"] = Value("fast", builtin::useq_fast);
-  Environment::builtindefs["slow"] = Value("fast", builtin::useq_slow);
+  Environment::builtindefs["slow"] = Value("slow", builtin::useq_slow);
   Environment::builtindefs["fromList"] = Value("fromList", builtin::useq_fromList);
+  Environment::builtindefs["seq"] = Value("fromList", builtin::useq_fromList);
   Environment::builtindefs["flatIdx"] = Value("flatIdx", builtin::useq_fromFlattenedList);
   Environment::builtindefs["flat"] = Value("flat", builtin::useq_flatten);
   Environment::builtindefs["looph"] = Value("looph", builtin::useq_loopPhasor);
@@ -2936,6 +3028,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["dm"] = Value("dm", builtin::useq_dm);
   Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
   Environment::builtindefs["gatesw"] = Value("gatesw", builtin::useq_gatesw);
+  Environment::builtindefs["trigs"] = Value("trigs", builtin::useq_trigs);
   Environment::builtindefs["setbpm"] = Value("setbpm", builtin::useq_setbpm);
   Environment::builtindefs["settimesig"] = Value("settimesig", builtin::useq_settimesig);
 

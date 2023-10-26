@@ -56,8 +56,16 @@ struct DummySerial {
     void println() {
         std::cout << std::endl;
     }
-    void write(byte x) {}
-    void write(int x) {}
+    void write(char x) {
+        tty.WriteByte(x);
+    }
+    void write(byte x) {
+        write((char)x);
+    }
+    void write(int x) {
+        write((char)x);
+    }
+
     void setRX(int x) {}
     void setTX(int x) {}
 
@@ -224,6 +232,8 @@ int main() {
     }
 
     Serial.openPort("/tmp/ttyUSEQVirtual_Server");
+
+    std::cout << "double: " << sizeof(double) << std::endl;
 
     using namespace ftxui;
 

@@ -1,5 +1,6 @@
 import argparse
 import curses
+import struct
 import sys
 from art import *
 from copy import deepcopy
@@ -13,7 +14,8 @@ from Buffer import Buffer
 from Cursor import Cursor
 from MessageLog import MessageLog
 from Window import Window
-
+from midiIO import midiIO
+from SerialStreamMap import SerialStreamMap
 import re
 
 
@@ -23,7 +25,6 @@ def clamp(x, lower, upper):
     if x > upper:
         return upper
     return x
-
 
 def left(window, buffer, cursor):
     cursor.left(buffer)
@@ -36,10 +37,12 @@ def right(window, buffer, cursor):
     window.down(buffer, cursor)
     window.horizontal_scroll(cursor)
 
-
+serialIOMessage = []
+serialIOMessageCounter=-1
 
 def main():
-
+    serialIOMessage = []
+    serialIOMessageCounter = -1
     parser = argparse.ArgumentParser()
     parser.add_argument("filename", help="A file to edit")
     parser.add_argument("-cw", "--conswidth", help="console width", default=40, type=int)
@@ -76,6 +79,8 @@ def main():
             for j, ch in enumerate(msg):
                 console.addch(i + 1, 2+j, ch, curses.color_pair(1))
         console.refresh()
+        #move cursor back to editor window
+        editor.refresh()
 
 
     def findMatchingLeftParenthesis(buffer, cursor):
@@ -157,21 +162,21 @@ def main():
 
     #serial setup
     incoming = ''
-    port = args.port
-    if port=="":
+    serialPortName = args.port
+    if serialPortName=="":
         #auto detect port
         devlist = sorted(glob.glob("/dev/ttyACM*"))  #what happens on windows?
         if len(devlist) > 0:
-            port = devlist[0]
+            serialPortName = devlist[0]
         else:
-            port = "/dev/ttyACM0"
+            serialPortName = "/dev/ttyACM0"
             devlist = sorted(glob.glob("/tmp/ttyUSEQVirtual"))  # connect to virtual uSEQ?
             if len(devlist) > 0:
-                port = devlist[0]
+                serialPortName = devlist[0]
 
-    cx = trySerialConnection(port, updateConsole)
+    cx = trySerialConnection(serialPortName, updateConsole)
     if not cx:
-        updateConsole(f"Error connecting to uSEQ at {port}")
+        updateConsole(f"Error connecting to uSEQ at {serialPortName}")
     try:
         with open(args.filename) as f:
             buffer = Buffer(f.read().splitlines())
@@ -184,6 +189,30 @@ def main():
     undoList = []
     startMarker=None
     endMarker=None
+
+
+    #midi setup
+    midiIO.init()
+    updateConsole("MIDI Input Ports:")
+    for i, midiport in enumerate(midiIO.listMIDIInputs()):
+        updateConsole(f"[{i}] {midiport}")
+
+    updateConsole("MIDI Output Ports:")
+    for i, midiport in enumerate(midiIO.listMIDIOutputs()):
+        updateConsole(f"[{i}] {midiport}")
+
+    # midi output mappings
+    SerialStreamMap.init()
+    SerialStreamMap.set(0, SerialStreamMap.makeMIDITrigMap(1,9,36))
+    SerialStreamMap.set(1, SerialStreamMap.makeMIDITrigMap(1,9,42))
+    SerialStreamMap.set(2, SerialStreamMap.makeMIDITrigMap(1,9,43))
+    SerialStreamMap.set(3, SerialStreamMap.makeMIDITrigMap(1,9,32))
+    SerialStreamMap.set(4, SerialStreamMap.makeMIDITrigMap(0,9,33))
+    SerialStreamMap.set(5, SerialStreamMap.makeMIDITrigMap(0,9,34))
+    SerialStreamMap.set(6, SerialStreamMap.makeMIDITrigMap(0,9,35))
+    SerialStreamMap.set(7, SerialStreamMap.makeMIDITrigMap(0,9,36))
+
+
 
     def markedSection():
         return startMarker != None and endMarker != None
@@ -257,7 +286,7 @@ def main():
                             if line[highlightPos] not in ['(',')']:
                                 editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(colourIdx))
                 searchAndHighlight(r'd1|d2|d3|d4|d5|d6|a1|a2|a3|a4|a5|a6|in1|in2|swm|swt|swr|rot|q0',3)
-                searchAndHighlight(r'fast|fromList|sqr|gatesw|\+|\-|\*|\/|perf|pm|dw|dr|useqaw|useqdw|delay|delaym|millis|micros|pulse|slow|flatIdx|flat|looph|dm|gates|setbpm|settimesig|interp|mdo|sin|cos|tan|abs|min|max|pow|sqrt|scale',4)
+                searchAndHighlight(r'fast|fromList|sqr|gatesw|trigs|\+|\-|\*|\/|perf|pm|dw|dr|useqaw|useqdw|delay|delaym|millis|micros|pulse|slow|flatIdx|flat|looph|dm|gates|setbpm|settimesig|interp|mdo|sin|cos|tan|abs|min|max|pow|sqrt|scale',4)
                 searchAndHighlight(r'(\s|\()(bar|phrase|beat|section|time|t)(\s|\))',5)
 
         editor.move(*window.translateCursorToScreenCoords(cursor))
@@ -429,34 +458,6 @@ def main():
                             codestr = Lispy.astToFormattedCode(ast)
                             buffer.insert(cursor, codestr)
 
-                        # #todo: better to use an s-expr parser
-                        # def indentCode(code):
-                        #     stack = 0
-                        #     pos=0
-                        #     while pos < len(code):
-                        #         if pos> 0 and code[pos] == '(' and code[pos-1] == "'":
-                        #             code = code[:pos-1] + '\n' + ('\t' * stack) + code[pos-1:]
-                        #             pos = pos + stack + 1
-                        #             stack = stack + 1
-                        #         elif code[pos] == '(':
-                        #             code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
-                        #             pos = pos + stack + 1
-                        #             stack = stack + 1
-                        #         elif pos > 0 and code[pos-1] == ')':
-                        #             stack = stack - 1
-                        #             #what's the next symbol?
-                        #             lhpos=pos
-                        #             nextSym=None
-                        #             while lhpos < len(code) and str(code[lhpos]).isspace():
-                        #                 lhpos = lhpos + 1
-                        #             if (code[lhpos] == '('):
-                        #                 code = code[:pos] + '\n' + ('\t' * stack) + code[lhpos:]
-                        #                 pos = pos + 1 + stack
-                        #             elif (code[lhpos] != ')'):
-                        #                 code = code[:pos] + '\n' + ('\t' * stack) + code[pos:]
-                        #                 pos = pos + stack + 1
-                        #         pos = pos + 1
-                        #     return code
                     else:
                         kchar = chr(k)
                         if (kchar.isascii()):
@@ -477,24 +478,48 @@ def main():
                 try:
                     if (cx.in_waiting > 0):
                         byteCount = cx.in_waiting
-                        actionReceived = True
+                        # actionReceived = True
                         # updateConsole(f"reading serial {cx.in_waiting}")
                         for i in range(byteCount):
                             inchar = cx.read()
-                            if (inchar != b'\n' and inchar != b'\r'):
-                                incoming = incoming + str(chr(inchar[0]))
-                            if (inchar == b'\n' or inchar == b'\r'):
-                                if (incoming != ''):
-                                    updateConsole(incoming)
-                                incoming = ''
-                except:
+                            #serial IO message?
+                            # updateConsole(inchar)
+
+                            if (inchar == b'\x1f'):
+                                serialIOMessageCounter=9
+                                serialIOMessage=[]
+                                # updateConsole(f"SIO31  {serialIOMessageCounter}")
+                            else:
+                                if serialIOMessageCounter > 0:
+                                    serialIOMessage.append(inchar)
+                                    serialIOMessageCounter = serialIOMessageCounter - 1
+                                    if serialIOMessageCounter==0:
+                                        try:
+                                            # updateConsole(serialIOMessage)
+                                            #convert bytes to double
+                                            dblbytes = b''.join(serialIOMessage[1:])
+                                            val = struct.unpack('d',dblbytes)[0]
+                                            ch = serialIOMessage[0][0]-1
+                                            SerialStreamMap.mapSerial(ch, val)
+                                            # updateConsole(str(val))
+                                        except Exception as e:
+                                            updateConsole(e)
+                                else:
+                                    if (inchar != b'\n' and inchar != b'\r'):
+                                        incoming = incoming + str(chr(inchar[0]))
+                                    if (inchar == b'\n' or inchar == b'\r'):
+                                        if (incoming != ''):
+                                            updateConsole(incoming)
+                                        incoming = ''
+                except Exception as e:
                     cx = None
+                    updateConsole(e)
                     updateConsole("uSEQ disconnected")
             else:
-                cx = trySerialConnection(port, updateConsole)
+                cx = trySerialConnection(serialPortName, updateConsole)
 
             #save some cpu
-            curses.napms(2)
+            curses.napms(1)
 
 
 

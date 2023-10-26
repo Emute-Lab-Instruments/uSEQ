@@ -360,6 +360,21 @@ Output a sequence of gates, with pulse width controlled from values in the list
 (d2 (gatesw (quote 9 9 5 9 3 0 3 8) bar 2))
 ```
 
+## `trigs <list> <phasor> (<speed> <pulsewidth>)`
+
+Output a sequence of gates, with pulse width controlled from values in the list
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| list | A list of trigger values, varying from 0 (0% amplitude) to 9 (100% amplitude) | 0 - 9 |
+| phasor | The sequence is output once per cycle of the phasor | 0-1 |
+| speed | Optional, default: 1. Modify the speed of the phasor | >= 1 |
+| pulseWidth | Optional, default: 0.1. Modify the pulse width of the trigger | 0 - 1 |
+
+```
+(s3 (trigs (quote 0 1 9 0 1) bar 2))
+```
+
 
 ## `looph <phasor> <looppoint>`
 
