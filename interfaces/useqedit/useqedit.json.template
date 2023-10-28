@@ -1,0 +1,60 @@
+{
+  "serialMap": [
+  {
+    "serial": 1,
+    "type": "MIDITRIG",
+    "port": 1,
+    "channel": 9,
+    "note": 36
+  },
+  {
+    "serial": 2,
+    "type": "MIDITRIG",
+    "port": 1,
+    "channel": 9,
+    "note": 42
+  },
+  {
+    "serial": 3,
+    "type": "MIDITRIG",
+    "port": 1,
+    "channel": 9,
+    "note": 43
+  },
+  {
+    "serial": 4,
+    "type": "MIDITRIG",
+    "port": 1,
+    "channel": 9,
+    "note": 38
+  },
+  {
+    "serial": 5,
+    "type": "MIDITRIG",
+    "port": 1,
+    "channel": 9,
+    "note": 48
+  },
+  {
+    "serial": 6,
+    "type": "MIDITRIG",
+    "port": 1,
+    "channel": 9,
+    "note": 34
+  },
+  {
+    "serial": 7,
+    "type": "MIDITRIG",
+    "port": 1,
+    "channel": 9,
+    "note": 35
+  },
+  {
+    "serial": 8,
+    "type": "MIDITRIG",
+    "port": 1,
+    "channel": 9,
+    "note": 36
+  }
+  ]
+}

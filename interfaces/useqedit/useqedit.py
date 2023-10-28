@@ -17,7 +17,8 @@ from Window import Window
 from midiIO import midiIO
 from SerialStreamMap import SerialStreamMap
 import re
-
+import json
+import os
 
 def clamp(x, lower, upper):
     if x < lower:
@@ -203,11 +204,28 @@ def main():
 
     # midi output mappings
     SerialStreamMap.init()
+    configFile='useqedit.json'
+    if os.path.exists(configFile):
+        try:
+            with open(configFile, 'r') as f:
+                data = json.load(f)
+                if "serialMap" in data:
+                    error = SerialStreamMap.loadJSON(data["serialMap"], updateConsole)
+                    if error:
+                        updateConsole("There was a configuration error, some settings may not have been applied")
+                    else:
+                        updateConsole("Serial mappings loaded")
+
+        except Exception as e:
+            updateConsole("Error loading config")
+            updateConsole(e)
+        # SerialStreamMap.loadConfig(updateConsole);
+
     SerialStreamMap.set(0, SerialStreamMap.makeMIDITrigMap(1,9,36))
     SerialStreamMap.set(1, SerialStreamMap.makeMIDITrigMap(1,9,42))
     SerialStreamMap.set(2, SerialStreamMap.makeMIDITrigMap(1,9,43))
-    SerialStreamMap.set(3, SerialStreamMap.makeMIDITrigMap(1,9,32))
-    SerialStreamMap.set(4, SerialStreamMap.makeMIDITrigMap(0,9,33))
+    SerialStreamMap.set(3, SerialStreamMap.makeMIDITrigMap(1,9,38))
+    SerialStreamMap.set(4, SerialStreamMap.makeMIDITrigMap(1,9,48))
     SerialStreamMap.set(5, SerialStreamMap.makeMIDITrigMap(0,9,34))
     SerialStreamMap.set(6, SerialStreamMap.makeMIDITrigMap(0,9,35))
     SerialStreamMap.set(7, SerialStreamMap.makeMIDITrigMap(0,9,36))
