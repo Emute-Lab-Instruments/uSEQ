@@ -47,6 +47,7 @@ bool currentExprSound = false;
 #include "pinmap.h"
 #include "LispLibrary.h"
 #include "MAFilter.hpp"
+#include "tempoEstimator.h"
 #include "piopwm.h"
 
 #ifndef NO_ETL
@@ -93,6 +94,7 @@ enum useqInputNames {
 };
 
 int useqInputValues[8];
+tempoEstimator tempoI1, tempoI2;
 
 
 #define NO_LIBM_SUPPORT "no libm support"
@@ -2208,6 +2210,7 @@ double section = 0.0;
 std::vector<Value> analogASTs[PWM_OUTS];
 std::vector<Value> digitalASTs[DIGI_OUTS];
 std::vector<Value> serialASTs[SERIAL_OUTS];
+std::vector<Value> q0AST;
 
 
 
@@ -2304,8 +2307,6 @@ void updateDigitalOutputs() {
 
 void updateAnalogOutputs() {
 
-  
-
   // for (size_t i=0; i < 1; i++) {
   for (size_t i=0; i < PWM_OUTS; i++) {
     currentExprSound = true;
@@ -2331,6 +2332,18 @@ void updateAnalogOutputs() {
   }
 
 }
+
+void updateQ0() {
+  currentExprSound = true;
+  Value result = runParsedCode(q0AST, env);
+
+  if (result == Value::error() || !currentExprSound) {
+    Serial.println("Error in q0 output function, clearing");
+    q0AST = {};
+    currentExprSound = true;
+  }
+}
+
 void updateSerialOutputs() {
     for (size_t i=0; i < SERIAL_OUTS; i++) {
         if (serialASTs[i].size() > 0) {
@@ -2350,10 +2363,7 @@ void updateSerialOutputs() {
                 char *byteArray = reinterpret_cast<char *>(&val);
                 for (size_t b = 0; b < 8; b++) {
                     Serial.write(byteArray[b]);
-//                    Serial.write(0);
                 }
-                //            digitalWrite(pin, val);
-                //            digitalWrite(led_pin, val);
             }
         }
     }
@@ -2415,10 +2425,12 @@ std::vector< std::vector<Value>> runQueue;
 
 void initASTs() {
     for(int i = 0; i < DIGI_OUTS; i++)
-       digitalASTs[i] = {parse("(sqr beat)")[0]};
+      //  digitalASTs[i] = {parse("(sqr beat)")[0]};
+       digitalASTs[i] = {0};
 
     for(int i = 0; i < PWM_OUTS; i++)
-       analogASTs[i] = {parse("bar")[0]};
+      //  analogASTs[i] = {parse("bar")[0]};
+       analogASTs[i] = {0};
 
     for(int i = 0; i < SERIAL_OUTS; i++)
         serialASTs[i] = {};
@@ -2448,13 +2460,10 @@ void update() {
   ts_outputs = millis();
 
   //check code quant phasor
-  // double newCqpVal = run("(eval bar)", env).as_float();
   double newCqpVal = runParsedCode(cqpAST, env).as_float();
-  double cqpAvgTime = cqpMA.process(newCqpVal - lastCQP);
-  // Serial.println(newCqpVal);
-  lastCQP = newCqpVal;
-  if (newCqpVal + cqpAvgTime > 1) {
-
+  // double cqpAvgTime = cqpMA.process(newCqpVal - lastCQP);
+  if (newCqpVal < lastCQP) {
+    updateQ0();
     for(size_t q=0; q < runQueue.size(); q++) {
       Value res;
       int cmdts = micros();
@@ -2464,7 +2473,8 @@ void update() {
     }
     runQueue.clear();
   }
-
+  lastCQP = newCqpVal;
+  
 
   /* run("(eval q-form)", env);   */
   updateAnalogOutputs();
@@ -2505,7 +2515,10 @@ Value fromList(std::vector<Value> &lst, double phasor, Environment &env) {
   return lst[idx].eval(env);
 }
 
-BUILTINFUNC_NOEVAL(useq_q0, env.set_global("q-form", args[0]);, 1)
+BUILTINFUNC_NOEVAL(useq_q0, 
+  env.set_global("q-form", args[0]);
+  useq::q0AST = {args[0]};
+  ,1)
 
 // ANALOG OUTS
 BUILTINFUNC_NOEVAL(a1,
@@ -2876,6 +2889,17 @@ BUILTINFUNC(useq_setbpm,
           ret = args[0];
           , 1)
 
+BUILTINFUNC(useq_getbpm,
+          int index = args[0].as_int();
+          if (index==1) {
+            ret = tempoI1.avgBPM;
+          }
+          else if (index==1) {
+            ret = tempoI2.avgBPM;
+          }else{
+            ret = 0;            
+          }
+         , 1)
 
 BUILTINFUNC(useq_settimesig,
           useq::setTimeSignature(args[0].as_float(), args[1].as_float());
@@ -3030,6 +3054,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["gatesw"] = Value("gatesw", builtin::useq_gatesw);
   Environment::builtindefs["trigs"] = Value("trigs", builtin::useq_trigs);
   Environment::builtindefs["setbpm"] = Value("setbpm", builtin::useq_setbpm);
+  Environment::builtindefs["getbpm"] = Value("getbpm", builtin::useq_getbpm);
   Environment::builtindefs["settimesig"] = Value("settimesig", builtin::useq_settimesig);
 
   Environment::builtindefs["interp"] = Value("interp", builtin::useq_interpolate);
@@ -3307,10 +3332,20 @@ void readRotaryEnc() {
 
 void readInputs() {
   //inputs are input_pullup, so invert
-  useqInputValues[USEQI1] = 1 - digitalRead(USEQ_PIN_I1);
-  useqInputValues[USEQI2] = 1 - digitalRead(USEQ_PIN_I2);
-  digitalWrite(USEQ_PIN_LED_I1, useqInputValues[USEQI1]);
-  digitalWrite(USEQ_PIN_LED_I2, useqInputValues[USEQI2]);
+  auto now=millis();
+  const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
+  const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
+  useqInputValues[USEQI1] = input1;
+  useqInputValues[USEQI2] = input2;
+
+  digitalWrite(USEQ_PIN_LED_I1, input1);
+  digitalWrite(USEQ_PIN_LED_I2, input2);
+
+  //tempo estimates
+  tempoI1.averageBPM(input1, now);
+  tempoI2.averageBPM(input2, now);
+  
+
   useqInputValues[USEQRS1] = 1 - digitalRead(USEQ_PIN_SWITCH_R1);
 
   useqInputValues[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
@@ -3368,7 +3403,6 @@ void loop() {
   env.set("perf_run", Value(float(run_time * 0.001)));
   env.set("perf_ts1", Value(float(ts_total * 0.001)));
 
-  // put your main code here, to run repeatedly:
   if (Serial.available()) {
     String cmd = Serial.readString();
     //queue or run now

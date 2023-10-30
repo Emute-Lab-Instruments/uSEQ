@@ -1,3 +1,6 @@
+#ifndef MAFILTER
+#define MAFILTER
+
 #include <vector>
 
 class MovingAverageFilter
@@ -34,3 +37,4 @@ private:
     double sum_;
 };
 
+#endif
