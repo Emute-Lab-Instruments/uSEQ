@@ -2227,17 +2227,19 @@ void updateBpmVariables() {
   env.set("sectionDur", Value(sectionDur));
 }
 
-void setBpm(double newBpm) {
-  bpm = newBpm;
-  bps = bpm / 60.0;
+void setBpm(double newBpm, double changeThreshold = 0) {
+  if (fabs(newBpm - bpm) >= changeThreshold) {
+    bpm = newBpm;
+    bps = bpm / 60.0;
 
-  beatDur = 1000000.0 / bps;
-  barDur = beatDur * (4.0/meter_denominator) * meter_numerator;
-  phraseDur = barDur * barsPerPhrase;
-  sectionDur = phraseDur * phrasesPerSection;
+    beatDur = 1000000.0 / bps;
+    barDur = beatDur * (4.0/meter_denominator) * meter_numerator;
+    phraseDur = barDur * barsPerPhrase;
+    sectionDur = phraseDur * phrasesPerSection;
 
 
-  updateBpmVariables();
+    updateBpmVariables();
+  }
 }
 
 void setTimeSignature(double numerator, double denominator) {
@@ -2888,10 +2890,12 @@ BUILTINFUNC(useq_loopPhasor,
             ret = spedupPhasor * loopPoint;
             , 2)
 
-BUILTINFUNC(useq_setbpm,
-          useq::setBpm(args[0].as_float());
+BUILTINFUNC_VARGS(useq_setbpm,
+          double newBpm = args[0].as_float();
+          double thresh = args.size() == 2 ? args[1].as_float() : 0;
+          useq::setBpm(newBpm, thresh);
           ret = args[0];
-          , 1)
+          , 1, 2)
 
 BUILTINFUNC(useq_getbpm,
           int index = args[0].as_int();
