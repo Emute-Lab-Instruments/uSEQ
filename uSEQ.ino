@@ -2231,7 +2231,7 @@ void setBpm(double newBpm) {
   bpm = newBpm;
   bps = bpm / 60.0;
 
-  beatDur = 1000.0 / bps;
+  beatDur = 1000000.0 / bps;
   barDur = beatDur * (4.0/meter_denominator) * meter_numerator;
   phraseDur = barDur * barsPerPhrase;
   sectionDur = phraseDur * phrasesPerSection;
@@ -2259,10 +2259,10 @@ void updateTimeVariables() {
 
 // Set the module's "transport" to a specified value in microseconds
 // and update all derrivative variables
-void setTime(size_t newTimeMillis) {
-  time = newTimeMillis;
+void setTime(size_t newTimeMicros) {
+  time = newTimeMicros;
   // last_t = t;
-  t = newTimeMillis - lastResetTime;
+  t = newTimeMicros - lastResetTime;
   beat = fmod(t, beatDur) / beatDur;
   bar = fmod(t, barDur) / barDur;
   phrase = fmod(t, phraseDur) / phraseDur;
@@ -2274,11 +2274,11 @@ void setTime(size_t newTimeMillis) {
 // Update time to the current value of `micros()`
 // and update each variable that's derrived from it
 void updateTime() {
-  setTime(millis());
+  setTime(micros());
 }
 
 void resetTime() {
-  lastResetTime = millis();
+  lastResetTime = micros();
   updateTime();
 }
 
