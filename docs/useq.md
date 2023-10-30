@@ -123,13 +123,14 @@ Print to the serial terminal
 
 # Timing functions
 
-## `setbpm <bpm>`
+## `setbpm <bpm> (<change threshold>)`
 
 Set the speed of the sequencer in beats per minute
 
 | Parameter | Description | Range |
 | --- | --- | --- |
 | bpm | beats per minute | any |
+| change threshold | the bpm will only change if the difference between the current bpm and the new bpm is more than this threshold. Use this to help stabilise the bpm when it is tracked from an external source using getbpm, as small changes in bpm get disrupt phasors and patterns. | >=0 |
 
 ## `getbpm <input>`
 
