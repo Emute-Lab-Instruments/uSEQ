@@ -3336,7 +3336,7 @@ void readRotaryEnc() {
 
 void readInputs() {
   //inputs are input_pullup, so invert
-  auto now=millis();
+  auto now=micros();
   const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
   const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
   useqInputValues[USEQI1] = input1;
