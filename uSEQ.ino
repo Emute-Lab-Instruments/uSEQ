@@ -27,6 +27,7 @@
 
 // configure the number of PWM and digital outputs (this is to reflect the hardware, each PWM out be configured with a capacitor)
 
+
 #define PWM_OUTS 3
 #define DIGI_OUTS (6 - PWM_OUTS)
 
@@ -49,6 +50,9 @@ bool currentExprSound = false;
 #include "MAFilter.hpp"
 #include "tempoEstimator.h"
 #include "piopwm.h"
+
+#include "pico/stdlib.h"
+#include "hardware/vreg.h"
 
 #ifndef NO_ETL
 
@@ -3361,7 +3365,12 @@ int test = 0;
 bool setupComplete = false;
 
 void setup() {
-  // put your setup code here, to run once:
+  //doesn't work properly 
+  // vreg_set_voltage(VREG_VOLTAGE_1_30);
+  // delay(1000);
+  // set_sys_clock_khz(360000, true);
+
+
   Serial.begin(115200);
   Serial.setTimeout(2);
   randomSeed(analogRead(0));
