@@ -25,3 +25,5 @@ interfaces/useqedit/__pycache__/
 hardware/version0.2/kicad/useq-backups/
 
 interfaces/virtual/cmake-build-debug/
+
+interfaces/useqedit/useqedit.json

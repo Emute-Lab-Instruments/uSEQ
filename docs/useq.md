@@ -131,6 +131,20 @@ Set the speed of the sequencer in beats per minute
 | --- | --- | --- |
 | bpm | beats per minute | any |
 
+## `getbpm <input>`
+
+Set the speed of the sequencer in beats per minute
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| input | get the estimated BPM of the signal on either input 1 or 2, based on the average time between pulses | 1 or 2 |
+
+Use this to get the bpm of the uSEQs sequencing engine:
+
+```
+(q0 (setbpm (getbpm 1)))
+```
+
 ## `settimesig <numerator> <denominator>`
 
 Set the time signature of the sequencer
@@ -144,7 +158,7 @@ Set the time signature of the sequencer
 
 ## `q0 <form>`
 
-Specify a function to run at the start of each quantum
+Specify a function to run at the start of each quantisation period (by default, each bar)
 
 ```
 (q0 (print bar))
