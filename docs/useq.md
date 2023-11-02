@@ -375,7 +375,7 @@ Output a sequence of gates, with pulse width controlled from values in the list
 (d2 (gatesw (quote 9 9 5 9 3 0 3 8) bar 2))
 ```
 
-## `trigs <list> <phasor> (<speed> <pulsewidth>)`
+## `trigs <list> <phasor> (<speed>) (<pulsewidth>)`
 
 Output a sequence of gates, with pulse width controlled from values in the list
 
@@ -406,7 +406,7 @@ E.g. the code below will play the first half of the sequence repeatedly
 (d2 (gatesw (quote 9 9 5 9 3 0 3 8) (looph bar 0.5) 2))
 ```
 
-## interp <list> <phasor>
+## `interp <list> <phasor>`
 
 Interpolate across a list, using a phasor.  This function acts as if the list of values describes a continuous envelope, and returns the value at a position in that envelope.  e.g.
 
@@ -433,7 +433,7 @@ makes a roughly inverted triangle, and plays it once per bar on PWM output 1
 
 creates a slowly changing envelope that loops every section, sent to PWM output 2
 
-## step <phasor> <count> (<offset>)
+## `step <phasor> <count> (<offset>)`
 
 Turn a phasor into an integer counter
 
@@ -444,7 +444,7 @@ Turn a phasor into an integer counter
 | offset | the point to start the counter from | any |
 
 
-## euclid <phasor> <n> <k> (<offset>)
+## `euclid <phasor> <n> <k> (<offset>)`
 
 Generate a sequence of gates based on euclidean sequencing.
 
