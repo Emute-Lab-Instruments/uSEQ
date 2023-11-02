@@ -123,7 +123,7 @@ Print to the serial terminal
 
 # Timing functions
 
-## `setbpm <bpm> (<change threshold>)`
+## `setbpm <bpm> (<change threshold> = 0)`
 
 Set the speed of the sequencer in beats per minute
 
@@ -341,7 +341,7 @@ This is a shortcut, equivelant to
 (fromList (flat list), position)
 ```
 
-## `gates <list> <phasor> <speed> (<pulse width>)`
+## `gates <list> <phasor> <speed> (<pulse width> = 0.5)`
 
 Output a sequence of gates, with variable pulse width.
 
@@ -361,7 +361,7 @@ Output a sequence of gates, with variable pulse width.
 (d2 (gates (quote 0 1 1 0 1 0 0 (swt 1) ) bar 2 0.5)))
 ```
 
-## `gatesw <list> <phasor> (<speed>)`
+## `gatesw <list> <phasor> (<speed> = 1)`
 
 Output a sequence of gates, with pulse width controlled from values in the list
 
@@ -433,7 +433,7 @@ makes a roughly inverted triangle, and plays it once per bar on PWM output 1
 
 creates a slowly changing envelope that loops every section, sent to PWM output 2
 
-## `step <phasor> <count> (<offset>)`
+## `step <phasor> <count> (<offset> = 0)`
 
 Turn a phasor into an integer counter
 
@@ -441,10 +441,10 @@ Turn a phasor into an integer counter
 | --- | --- | --- |
 | phasor | A phasor | 0 - 1 |
 | count | the number of divisions to divide the phasor into | >0 |
-| offset | the point to start the counter from | any |
+| offset | Optional. the point to start the counter from | any |
 
 
-## `euclid <phasor> <n> <k> (<offset>)`
+## `euclid <phasor> <n> <k> (<offset> = 0) (<pulseWidth> = 0.5)`
 
 Generate a sequence of gates based on euclidean sequencing.
 
@@ -457,11 +457,12 @@ Demaine, E.D., Gomez-Martin, F., Meijer, H., Rappaport, D., Taslakian, P., Touss
 | phasor | A phasor | 0 - 1 |
 | n | the number of beats to fit into the period of the phasor | >0 |
 | k | the number of beats to fit, equally spaced, into n beats | >0 |
-| offset | a phase offset, measured in beats | >0 |
+| offset | Optional. A phase offset, measured in beats | >0 |
+| pulseWidth | Optional. Width of the gates | >0 and <1 |
 
 ```
 (d1 (euclid bar 16 (step phrase 4 4) 2))
-(d2 (euclid bar 32 8 4))
+(d2 (euclid bar 32 8 4 0.1))
 (d3 (euclid bar 16 6 (step (fast 4 phrase) 4)))
 ```
 
