@@ -406,9 +406,14 @@ E.g. the code below will play the first half of the sequence repeatedly
 (d2 (gatesw (quote 9 9 5 9 3 0 3 8) (looph bar 0.5) 2))
 ```
 
-## interp
+## interp <list> <phasor>
 
 Interpolate across a list, using a phasor.  This function acts as if the list of values describes a continuous envelope, and returns the value at a position in that envelope.  e.g.
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| values | A list of values | any list |
+| phasor | A phasor | 0 - 1 |
 
 ```
 (interp '(0 0.5 0) 0.75)
@@ -427,6 +432,38 @@ makes a roughly inverted triangle, and plays it once per bar on PWM output 1
 ```
 
 creates a slowly changing envelope that loops every section, sent to PWM output 2
+
+## step <phasor> <count> (<offset>)
+
+Turn a phasor into an integer counter
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| phasor | A phasor | 0 - 1 |
+| count | the number of divisions to divide the phasor into | >0 |
+| offset | the point to start the counter from | any |
+
+
+## euclid <phasor> <n> <k> (<offset>)
+
+Generate a sequence of gates based on euclidean sequencing.
+
+For more info: https://erikdemaine.org/papers/DeepRhythms_CGTA/paper.pdf
+
+Demaine, E.D., Gomez-Martin, F., Meijer, H., Rappaport, D., Taslakian, P., Toussaint, G.T., Winograd, T. and Wood, D.R., 2009. The distance geometry of music. Computational geometry, 42(5), pp.429-454.
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| phasor | A phasor | 0 - 1 |
+| n | the number of beats to fit into the period of the phasor | >0 |
+| k | the number of beats to fit, equally spaced, into n beats | >0 |
+| offset | a phase offset, measured in beats | >0 |
+
+```
+(d1 (euclid bar 16 (step phrase 4 4) 2))
+(d2 (euclid bar 32 8 4))
+(d3 (euclid bar 16 6 (step (fast 4 phrase) 4)))
+```
 
 
 # MIDI functions
