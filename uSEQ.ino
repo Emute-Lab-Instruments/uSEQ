@@ -2843,6 +2843,17 @@ BUILTINFUNC_VARGS(useq_step,
       ret = Value(val + offset);
 , 2, 3)
 
+// (euclid <phasor> <n> <k> (<offset>))
+BUILTINFUNC_VARGS(useq_euclidean,
+  const double phasor = args[0].as_float();
+  const int n = args[1].as_int();
+  const int k = args[2].as_int();
+  const int offset = (args.size() == 4) ? args[3].as_int() : 0;
+  int i = static_cast<int>(phasor * n);
+  if (i == n) { i--; }
+  const int idx =((i+n-offset) * k) % n;
+  ret = Value(idx < k ? 1 : 0);
+, 3, 4)
 
 BUILTINFUNC(useq_dm,
             auto index = args[0].as_int();
@@ -3063,7 +3074,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["getbpm"] = Value("getbpm", builtin::useq_getbpm);
   Environment::builtindefs["settimesig"] = Value("settimesig", builtin::useq_settimesig);
   Environment::builtindefs["interp"] = Value("interp", builtin::useq_interpolate);
-  Environment::builtindefs["step"] = Value("step", builtin::useq_step);
+    Environment::builtindefs["step"] = Value("step", builtin::useq_step);
+    Environment::builtindefs["euclid"] = Value("euclid", builtin::useq_euclidean);
 
 
 
