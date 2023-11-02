@@ -51,8 +51,8 @@ bool currentExprSound = false;
 #include "tempoEstimator.h"
 #include "piopwm.h"
 
-#include "pico/stdlib.h"
-#include "hardware/vreg.h"
+//#include "pico/stdlib.h"
+//#include "hardware/vreg.h"
 
 #ifndef NO_ETL
 
@@ -2831,18 +2831,18 @@ BUILTINFUNC(useq_interpolate,
             double v2 = lst[pos0+1].eval(env).as_float();
             double v1 = lst[pos0].eval(env).as_float();
             ret = Value(((v2 - v1) * a) + v1);
-
-            // double scaled_phasor = lst.size() * phasor;
-            // size_t idx = static_cast<size_t>(scaled_phasor)+1;
-            // Serial.println(idx);
-            // if (idx == lst.size()) idx--;
-            // double v2 = lst[idx].eval(env).as_float();
-            // size_t idxv1 = idx == 0 ? lst.size() - 1 : idx -1;
-            // double v1 = lst[idxv1].eval(env).as_float();
-            // double relativePosition = scaled_phasor - idx;
-            // ret = Value((v1 * relativePosition) + (v2 * (1.0-relativePosition)));
-                        // ret = fromList(lst, phasor, env);
             , 2)
+
+// (step <phasor> <count> (<offset>))
+BUILTINFUNC_VARGS(useq_step,
+      const double phasor = args[0].as_float();
+      const int count = args[1].as_int();
+      const double offset = (args.size() == 3) ? args[2].as_float() : 0;
+      double val = static_cast<int>(phasor * count);
+      if (val == count) val--;
+      ret = Value(val + offset);
+, 2, 3)
+
 
 BUILTINFUNC(useq_dm,
             auto index = args[0].as_int();
@@ -3055,8 +3055,6 @@ void loadBuiltinDefs() {
   Environment::builtindefs["flatIdx"] = Value("flatIdx", builtin::useq_fromFlattenedList);
   Environment::builtindefs["flat"] = Value("flat", builtin::useq_flatten);
   Environment::builtindefs["looph"] = Value("looph", builtin::useq_loopPhasor);
-
-
   Environment::builtindefs["dm"] = Value("dm", builtin::useq_dm);
   Environment::builtindefs["gates"] = Value("gates", builtin::useq_gates);
   Environment::builtindefs["gatesw"] = Value("gatesw", builtin::useq_gatesw);
@@ -3064,8 +3062,9 @@ void loadBuiltinDefs() {
   Environment::builtindefs["setbpm"] = Value("setbpm", builtin::useq_setbpm);
   Environment::builtindefs["getbpm"] = Value("getbpm", builtin::useq_getbpm);
   Environment::builtindefs["settimesig"] = Value("settimesig", builtin::useq_settimesig);
-
   Environment::builtindefs["interp"] = Value("interp", builtin::useq_interpolate);
+  Environment::builtindefs["step"] = Value("step", builtin::useq_step);
+
 
 
 
