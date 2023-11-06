@@ -2774,20 +2774,26 @@ BUILTINFUNC(useq_sqr,
             , 1)
 
   // TODO D-R-Y
-BUILTINFUNC_NOEVAL(useq_fast,
-            double factor = args[0].eval(env).as_float();
-            Value expr = args[1];
-            // store the current time to reset later
-            double currentTime = env.get("time").as_float();
-            // update the interpreter's time just for this expr
-            double newTime = currentTime * factor;
-            useq::setTime((size_t)newTime);
-            double evaled_expr = expr.eval(env).as_float();
-            ret = Value(evaled_expr);
-            // restore the interpreter's time
-            useq::setTime((size_t)currentTime);
+  //this version doesn't work properly with phasors - freezes at >2x speedup
+// BUILTINFUNC_NOEVAL(useq_fast,
+//             double factor = args[0].eval(env).as_float();
+//             Value expr = args[1];
+//             // store the current time to reset later
+//             double currentTime = env.get("time").as_float();
+//             // update the interpreter's time just for this expr
+//             double newTime = currentTime * factor;
+//             useq::setTime((size_t)newTime);
+//             double evaled_expr = expr.eval(env).as_float();
+//             ret = Value(evaled_expr);
+//             // restore the interpreter's time
+//             useq::setTime((size_t)currentTime);
+//             , 2)
+BUILTINFUNC(useq_fast,
+            double speed = args[0].as_float();
+            double phasor = args[1].as_float();
+            double fastPhasor = fast(speed, phasor);
+            ret = Value(fastPhasor);
             , 2)
-
 
 BUILTINFUNC_NOEVAL(useq_slow,
             double factor = args[0].eval(env).as_float();
@@ -2802,11 +2808,17 @@ BUILTINFUNC_NOEVAL(useq_slow,
             // restore the interpreter's time
             useq::setTime((size_t)currentTime);
             , 2)
-BUILTINFUNC(useq_fromList,
+BUILTINFUNC_VARGS(useq_fromList,
             auto lst = args[0].as_list();
-            double phasor = args[1].as_float();
+            const double phasor = args[1].as_float();
             ret = fromList(lst, phasor, env);
-            , 2)
+            if (args.size() == 3) {
+              double scale = args[2].as_float();
+              if (scale != 0) {
+                ret = Value(ret / scale);
+              }
+            }
+            , 2,3)
 BUILTINFUNC(useq_fromFlattenedList,
             auto lst = flatten(args[0], env).as_list();
             double phasor = args[1].as_float();
@@ -2838,9 +2850,9 @@ BUILTINFUNC_VARGS(useq_step,
       const double phasor = args[0].as_float();
       const int count = args[1].as_int();
       const double offset = (args.size() == 3) ? args[2].as_float() : 0;
-      double val = static_cast<int>(phasor * count);
+      double val = static_cast<int>(phasor * abs(count));
       if (val == count) val--;
-      ret = Value(val + offset);
+      ret = Value((count > 0 ? val : count - 1 -val) + offset);
 , 2, 3)
 
 // (euclid <phasor> <n> <k> (<offset>) (<pulsewidth>)
@@ -2848,7 +2860,7 @@ BUILTINFUNC_VARGS(useq_euclidean,
   const double phasor = args[0].as_float();
   const int n = args[1].as_int();
   const int k = args[2].as_int();
-  const int offset = (args.size() == 4) ? args[3].as_int() : 0;
+  const int offset = (args.size() >= 4) ? args[3].as_int() : 0;
   const float pulseWidth = (args.size() == 5) ? args[4].as_float() : 0.5;
   const float fi = phasor * n;
   int i = static_cast<int>(fi);
@@ -3077,8 +3089,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["getbpm"] = Value("getbpm", builtin::useq_getbpm);
   Environment::builtindefs["settimesig"] = Value("settimesig", builtin::useq_settimesig);
   Environment::builtindefs["interp"] = Value("interp", builtin::useq_interpolate);
-    Environment::builtindefs["step"] = Value("step", builtin::useq_step);
-    Environment::builtindefs["euclid"] = Value("euclid", builtin::useq_euclidean);
+  Environment::builtindefs["step"] = Value("step", builtin::useq_step);
+  Environment::builtindefs["euclid"] = Value("euclid", builtin::useq_euclidean);
 
 
 

@@ -48,6 +48,7 @@ def main():
     parser.add_argument("filename", help="A file to edit")
     parser.add_argument("-cw", "--conswidth", help="console width", default=40, type=int)
     parser.add_argument("-p", "--port", help="serial usb port", default="")
+    parser.add_argument("-lm", "--listmidi", help="show midi ports", action='store_true')
     args = parser.parse_args()
 
     stdscr = curses.initscr()
@@ -194,13 +195,15 @@ def main():
 
     #midi setup
     midiIO.init()
-    updateConsole("MIDI Input Ports:")
-    for i, midiport in enumerate(midiIO.listMIDIInputs()):
-        updateConsole(f"[{i}] {midiport}")
 
-    updateConsole("MIDI Output Ports:")
-    for i, midiport in enumerate(midiIO.listMIDIOutputs()):
-        updateConsole(f"[{i}] {midiport}")
+    if args.listmidi:
+        updateConsole("MIDI Input Ports:")
+        for i, midiport in enumerate(midiIO.listMIDIInputs()):
+            updateConsole(f"[{i}] {midiport}")
+
+        updateConsole("MIDI Output Ports:")
+        for i, midiport in enumerate(midiIO.listMIDIOutputs()):
+            updateConsole(f"[{i}] {midiport}")
 
     # midi output mappings
     SerialStreamMap.init()
@@ -213,8 +216,8 @@ def main():
                     error = SerialStreamMap.loadJSON(data["serialMap"], updateConsole)
                     if error:
                         updateConsole("There was a configuration error, some settings may not have been applied")
-                    else:
-                        updateConsole("Serial mappings loaded")
+                    # else:
+                    #     updateConsole("Serial mappings loaded")
 
         except Exception as e:
             updateConsole("Error loading config")
@@ -303,8 +306,8 @@ def main():
                         for highlightPos in range(match.start(), min(match.end(), window.col + window.n_cols)):
                             if line[highlightPos] not in ['(',')']:
                                 editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(colourIdx))
-                searchAndHighlight(r'd1|d2|d3|d4|d5|d6|a1|a2|a3|a4|a5|a6|in1|in2|swm|swt|swr|rot|q0',3)
-                searchAndHighlight(r'fast|fromList|sqr|gatesw|trigs|\+|\-|\*|\/|perf|pm|dw|dr|useqaw|useqdw|delay|delaym|millis|micros|pulse|slow|flatIdx|flat|looph|dm|gates|setbpm|settimesig|interp|mdo|sin|cos|tan|abs|min|max|pow|sqrt|scale',4)
+                searchAndHighlight(r'd1|d2|d3|d4|d5|d6|a1|a2|a3|a4|a5|a6|in1|in2|swm|swt|swr|rot|q0|s1|s2|s3|s4|s5|s6|s7|s8',3)
+                searchAndHighlight(r'fast|fromList|sqr|gatesw|trigs|\+|\-|\*|\/|perf|pm|dw|dr|useqaw|useqdw|delay|delaym|millis|micros|pulse|slow|flatIdx|flat|looph|dm|gates|setbpm|settimesig|interp|mdo|sin|cos|tan|abs|min|max|pow|sqrt|scale|seq|step|euclid',4)
                 searchAndHighlight(r'(\s|\()(bar|phrase|beat|section|time|t)(\s|\))',5)
 
         editor.move(*window.translateCursorToScreenCoords(cursor))
@@ -314,7 +317,7 @@ def main():
             if cx:
                 asciiCode = statement.encode('ascii')
                 cx.write(asciiCode)
-                updateConsole(f">> {statement}")
+                # updateConsole(f">> {statement}")
             else:
                 updateConsole("Serial disconnected")
 
@@ -485,7 +488,7 @@ def main():
                             buffer.insert(cursor, kchar)
 
                             right(window, buffer, cursor)
-                    editor.refresh()
+                            editor.refresh()
 
                     #save the buffer
                     with open(args.filename, "w") as f:
