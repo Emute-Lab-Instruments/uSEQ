@@ -269,7 +269,7 @@ Digital mapping.
 (d2 (gates (quote 0 1 1 0) bar (dm (swt 1) 2 6) 0.5)))
 ```
 
-## `fromList <list> <position>`
+## `fromList <list> <position> (<scale>)`  (alias: `seq`)
 
 Read an item from a list, using a normalised index.  
 
@@ -279,6 +279,7 @@ Items in the list are evaluated before being returned, so you can use functions 
 | --- | --- | --- |
 | list | A list of values | any |
 | position | A normalised index | 0-1 |
+| scale | Divide all numbers by this value | !=0 |
 
 Examples:
 
