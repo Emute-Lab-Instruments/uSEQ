@@ -17,6 +17,7 @@ uSEQEdit saves (overwrites) the file every time you make a change.
 | Key | Description |
 | --- | --- |
 | -cw, --conswidth | Specify the width of the console in characters |
+| -lm --listmidi | List MIDI input and output devices in the console window when starting up |
 
 
 

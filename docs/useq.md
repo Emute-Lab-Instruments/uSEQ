@@ -234,6 +234,15 @@ Specify a function to calculate the value of digital output 4, calculated every 
 (d4 0)
 ```
 
+## `s[x] <form>`
+
+(where x is a number between 1 and 8)
+
+Send a sequence over the USB serial connection.  This sequence can be decoded by your USB client software.  To differentiate from other text send by the module, serial data is send in a 10 byte message in the following format:
+[31][index of serial stream][8 bytes representing a double]
+
+The useqedit app can decode these messages and forward them as MIDI or OSC.
+
 # Sequence Generation and Manipulation
 
 ## `sqr <phasor>`
