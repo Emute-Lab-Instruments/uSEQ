@@ -7,7 +7,7 @@ The app runs in a linux/unix terminal, and requires Python 3.
 To install the relevant packages, run 
 
 ```
-python -m pip install -r requirements.txt
+pip3 install pyperclip pyserial mido python-rtmidi art
 ```
 
 
@@ -27,6 +27,7 @@ uSEQ Edit saves (overwrites) the file every time you make a change.
 | --- | --- |
 | -cw, --conswidth | Specify the width of the console in characters |
 | -lm --listmidi | List MIDI input and output devices in the console window when starting up |
+| -p, --port | specify the USB serial port to connect to e.g. /dev/ttyACM0. The app will automatically search for a port if one isn't specified.|
 
 
 
