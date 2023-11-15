@@ -35,6 +35,8 @@ see the [library documentation](docs/useq.md)
 
 ## Building the Firmware
 
+The firmware is in the [uSEQ](./uSEQ/) folder.
+
 Build the firmware in Arduino IDE, using the [Earle Philhower Pico core](https://github.com/earlephilhower/arduino-pico).  Overclock the Pico at 250Mhz and set the optimisation level to -O3.
 
 ## Building a uSEQ module
