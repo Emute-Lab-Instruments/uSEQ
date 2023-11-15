@@ -27,7 +27,7 @@ uSEQ Edit saves (overwrites) the file every time you make a change.
 | --- | --- |
 | -cw, --conswidth | Specify the width of the console in characters |
 | -lm --listmidi | List MIDI input and output devices in the console window when starting up |
-| -p, --port | specify the USB serial port to connect to e.g. /dev/ttyACM0. The app will automatically search for a port if one isn't specified.|
+| -p, --port | Specify the USB serial port to connect to e.g. /dev/ttyACM0. The app will automatically search for a port if one isn't specified.|
 
 
 
