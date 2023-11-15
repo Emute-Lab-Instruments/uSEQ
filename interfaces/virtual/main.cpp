@@ -199,7 +199,7 @@ uint pio_add_program(PIO pio, const pio_program_t *program){return 0;}
 
 void readInputs();
 
-#include "../../uSEQ.ino"
+#include "../../uSEQ/uSEQ.ino"
 FILE *socatProcessFile;
 
 void my_handler(int s){

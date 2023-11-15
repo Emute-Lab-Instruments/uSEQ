@@ -23,8 +23,8 @@ endif()
 
 
 set(CMAKE_CXX_STANDARD 17)
-add_executable(virtual itoa.h itoa.cpp main.cpp String.cpp String.h Common.cpp Common.h   ../../uSEQ.ino ../../piopwm.h ../../tempoEstimator.h ../../tempoEstimator.cpp
-        ../../uSEQ.ino)
+add_executable(virtual itoa.h itoa.cpp main.cpp String.cpp String.h Common.cpp Common.h   ../../uSEQ/uSEQ.ino ../../uSEQ/piopwm.h ../../uSEQ/tempoEstimator.h ../../uSEQ/tempoEstimator.cpp
+        ../../uSEQ/uSEQ.ino)
 target_include_directories(virtual PRIVATE .)
 target_include_directories(virtual PRIVATE /usr/include/libserial)
 
