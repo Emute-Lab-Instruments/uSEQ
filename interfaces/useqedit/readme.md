@@ -1,6 +1,6 @@
 # uSEQ Edit
 
-uSEQ editor is a text editor specially designed for livecoding uSEQ modules.  You can talk to uSEQ in many ways (anything with a serial connection), but this editor provides controls that are specialised for livecoding.
+uSEQ Edit is a text editor specially designed for livecoding uSEQ modules.  You can talk to uSEQ in many ways (anything with a serial connection), but this editor provides controls that are specialised for livecoding.
 
 The app runs in a linux/unix terminal, and requires Python 3.
 
@@ -18,7 +18,7 @@ python useqedit.py [name of the file]
 ```
 
 
-uSEQEdit saves (overwrites) the file every time you make a change.
+uSEQ Edit saves (overwrites) the file every time you make a change.
 
 
 ## Command Line Options
