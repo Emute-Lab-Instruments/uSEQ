@@ -171,7 +171,7 @@ def main():
         if len(devlist) > 0:
             serialPortName = devlist[0]
         else:
-            devlist = sorted(glob.glob("/dev/tty.usbmodem147*"))  # connect to virtual uSEQ?
+            devlist = sorted(glob.glob("/dev/tty.usbmodem*"))  # connect to virtual uSEQ?
             if len(devlist) > 0:
                 serialPortName = devlist[0]
             else:
