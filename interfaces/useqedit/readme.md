@@ -63,9 +63,9 @@ sends the bar phasor over channel 7
 
 uSEQ edit receives these signals and can be configured to forward them over with MIDI or OSC (the OSC part is still in development)
 
-The configuration for this is done in the file useqedit.json.  If this file exists, the app will load the settings from it on startup.  There is a template file `useqedit.json.template` which can be copied and used as a starting point.
+The configuration for this is done in the file `useqedit.json`.  If this file exists, the app will load the settings from it on startup.  There is a template file `useqedit.json.template` which can be copied and used as a starting point.
 
-The coniguration file contains an entry `serialMap` which is an array of configurations for each serial channel.  There are three types of MIDI configuration:
+The configuration file contains an entry `serialMap` which is an array of configurations for each serial channel.  There are three types of MIDI configuration:
 
 ### Midi Trigger
 
@@ -96,6 +96,19 @@ When the waveform on the serial bus transitions from 0 to any value above zero, 
 ```
 
 Values between 0 and 1 in the waveform are translated to the value of the controller between 0 and 127.
+
+### MIDI Note
+
+```
+{
+    "serial": [serial channel number],
+    "type": "MIDINOTE",
+    "port": [index of the serial port],
+    "channel": [midi channel],
+}
+```
+
+When a waveform transitions from 0 to above 0 a note is sent. The pitch is determined by the amplitude of the waveform, divided by 127 and rounded to the nearest integer.
 
 
 ## Troubleshooting
