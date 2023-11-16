@@ -45,7 +45,57 @@ uSEQ Edit saves (overwrites) the file every time you make a change.
 | Ctrl - z | Undo |
 
 
+## Serial USB Mappings
 
+uSEQ will send a waveform back to the client computer over USB when you use the outputs s1-8. For example
+
+```
+(s1 (euclid bar 13 4))
+```
+sends a euclidean gate sequence on serial channel 1
+
+or
+
+```
+(s7 bar)
+```
+sends the bar phasor over channel 7
+
+uSEQ edit receives these signals and can be configured to forward them over with MIDI or OSC (the OSC part is still in development)
+
+The configuration for this is done in the file useqedit.json.  If this file exists, the app will load the settings from it on startup.  There is a template file `useqedit.json.template` which can be copied and used as a starting point.
+
+The coniguration file contains an entry `serialMap` which is an array of configurations for each serial channel.  There are three types of MIDI configuration:
+
+### Midi Trigger
+
+Use this for drums or samples
+
+```
+  {
+    "serial": [serial channel number],
+    "type": "MIDITRIG",
+    "port": [index of the serial port],
+    "channel": [midi channel],
+    "note": [midi note number]
+  }
+```
+
+When the waveform on the serial bus transitions from 0 to any value above zero, a note is sent out.
+
+### MIDI Controllers
+
+```
+{
+    "serial": [serial channel number],
+    "type": "MIDICTL",
+    "port": [index of the serial port],
+    "channel": [midi channel],
+    "ctl": [midi controller number]
+}
+```
+
+Values between 0 and 1 in the waveform are translated to the value of the controller between 0 and 127.
 
 
 ## Troubleshooting
