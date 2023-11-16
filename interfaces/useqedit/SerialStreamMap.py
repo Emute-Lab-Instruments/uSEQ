@@ -56,10 +56,10 @@ class SerialStreamMap:
                     midiIO.outports[mapping[1]].send(msg)
             elif mapping[0]==cls.MIDINOTE:
                 if cls.lastvals[ch] < 1/127.0 and val > 1/127.0:
-                    msg = mido.Message('note_on', channel=mapping[2], note=int(val * 127), velocity=127)
+                    msg = mido.Message('note_on', channel=mapping[2], note=round(val * 127), velocity=127)
                     midiIO.outports[mapping[1]].send(msg)
                 elif cls.lastvals[ch] > 1/127.0 and val < 1/127.0:
-                    msg = mido.Message('note_off', channel=mapping[2], note=int(cls.lastvals[ch] * 127))
+                    msg = mido.Message('note_off', channel=mapping[2], note=round(cls.lastvals[ch] * 127))
                     midiIO.outports[mapping[1]].send(msg)
 
             cls.lastvals[ch] = val
