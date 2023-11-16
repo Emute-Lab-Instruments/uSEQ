@@ -217,7 +217,7 @@ def main():
                 data = json.load(f)
                 if "serialMap" in data:
                     error = SerialStreamMap.loadJSON(data["serialMap"], updateConsole)
-                    updateConsole(SerialStreamMap.map)
+                    # updateConsole(SerialStreamMap.map)
                     if error:
                         updateConsole("There was a configuration error, some settings may not have been applied")
                     # else:
