@@ -217,6 +217,7 @@ def main():
                 data = json.load(f)
                 if "serialMap" in data:
                     error = SerialStreamMap.loadJSON(data["serialMap"], updateConsole)
+                    updateConsole(SerialStreamMap.map)
                     if error:
                         updateConsole("There was a configuration error, some settings may not have been applied")
                     # else:
@@ -225,17 +226,18 @@ def main():
         except Exception as e:
             updateConsole("Error loading config")
             updateConsole(e)
-        # SerialStreamMap.loadConfig(updateConsole);
 
-    SerialStreamMap.set(0, SerialStreamMap.makeMIDITrigMap(1,9,36))
-    SerialStreamMap.set(1, SerialStreamMap.makeMIDITrigMap(1,9,42))
-    SerialStreamMap.set(2, SerialStreamMap.makeMIDITrigMap(1,9,43))
-    SerialStreamMap.set(3, SerialStreamMap.makeMIDITrigMap(1,9,38))
-    SerialStreamMap.set(4, SerialStreamMap.makeMIDITrigMap(1,9,48))
-    SerialStreamMap.set(5, SerialStreamMap.makeMIDITrigMap(0,9,34))
-    SerialStreamMap.set(6, SerialStreamMap.makeMIDITrigMap(0,9,35))
-    SerialStreamMap.set(7, SerialStreamMap.makeMIDITrigMap(0,9,36))
-
+        # SerialStreamMap.loadConfig(updateConsole)
+    #
+    # SerialStreamMap.set(0, SerialStreamMap.makeMIDITrigMap(1,9,36))
+    # SerialStreamMap.set(1, SerialStreamMap.makeMIDITrigMap(1,9,42))
+    # SerialStreamMap.set(2, SerialStreamMap.makeMIDITrigMap(1,9,43))
+    # SerialStreamMap.set(3, SerialStreamMap.makeMIDITrigMap(1,9,38))
+    # SerialStreamMap.set(4, SerialStreamMap.makeMIDITrigMap(1,9,48))
+    # SerialStreamMap.set(5, SerialStreamMap.makeMIDITrigMap(0,9,34))
+    # SerialStreamMap.set(6, SerialStreamMap.makeMIDITrigMap(0,9,35))
+    # SerialStreamMap.set(7, SerialStreamMap.makeMIDITrigMap(0,9,36))
+    #
 
 
     def markedSection():
@@ -524,7 +526,7 @@ def main():
                                             dblbytes = b''.join(serialIOMessage[1:])
                                             val = struct.unpack('d',dblbytes)[0]
                                             ch = serialIOMessage[0][0]-1
-                                            SerialStreamMap.mapSerial(ch, val)
+                                            SerialStreamMap.mapSerial(ch, val, updateConsole)
                                             # updateConsole(str(val))
                                         except Exception as e:
                                             updateConsole(e)
