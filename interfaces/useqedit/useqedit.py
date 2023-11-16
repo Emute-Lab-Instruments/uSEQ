@@ -181,7 +181,7 @@ def main():
 
     cx = trySerialConnection(serialPortName, updateConsole)
     if not cx:
-        updateConsole(f"Error connecting to uSEQ at {serialPortName}")
+        updateConsole(f"Error connecting to uSEQ")
     try:
         with open(args.filename) as f:
             buffer = Buffer(f.read().splitlines())
