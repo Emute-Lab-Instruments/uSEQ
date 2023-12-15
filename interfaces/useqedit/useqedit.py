@@ -76,10 +76,11 @@ def main():
         if (msg):
             msglog.addMessage(msg)
         console.erase()
+        console.attroff(curses.color_pair(1))
         console.border()
+        console.attron(curses.color_pair(1))
         for i, msg in enumerate(msglog):
-            for j, ch in enumerate(msg):
-                console.addch(i + 1, 2+j, ch, curses.color_pair(1))
+            console.addstr(i+1, 2, msg)
         console.refresh()
         #move cursor back to editor window
         editor.refresh()
