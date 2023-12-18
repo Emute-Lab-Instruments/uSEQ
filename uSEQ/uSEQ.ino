@@ -3424,6 +3424,7 @@ int updateSpeed = 0;
 
 
 void loop() {
+  
   updateSpeed = micros() - ts;
   env.set("fps", Value(1000000.0 / updateSpeed));
   env.set("qt", Value(updateSpeed * 0.001));
