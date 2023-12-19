@@ -3424,7 +3424,7 @@ int updateSpeed = 0;
 
 
 void loop() {
-  
+
   updateSpeed = micros() - ts;
   env.set("fps", Value(1000000.0 / updateSpeed));
   env.set("qt", Value(updateSpeed * 0.001));
@@ -3464,3 +3464,23 @@ void loop() {
   //slow down for testing?
   // delay(50);
 }
+
+
+//test - make white noise on core 1, output 
+// double a;
+
+// void setup1() {
+//   a=0;
+// }
+
+// //https://arduino-pico.readthedocs.io/en/latest/multicore.html
+// void loop1() {
+//   // rp2040.idleOtherCore();
+//   a = a + 0.01;
+//   if (a>=1.0) {
+//     a =0;
+//   }
+//   analogWrite(useq_output_pins[1], rand() % 2000);
+//   // rp2040.resumeOtherCore();
+//   // delay(1);
+// }
