@@ -497,8 +497,10 @@ def main():
                             editor.refresh()
 
                     #save the buffer
-                    with open(args.filename, "w") as f:
-                        [f.write(x + '\n') for x in buffer]
+                    if buffer.hasNewChanges():
+                        with open(args.filename, "w") as f:
+                            [f.write(x + '\n') for x in buffer]
+                        buffer.resetNewChanges()
 
             ##read serial if available
             if cx:
