@@ -1,4 +1,5 @@
 import re
+from Console import Console
 
 class Lispy:
     @staticmethod
@@ -10,13 +11,15 @@ class Lispy:
         row, col = 1, 1  # Initialize row and column positions
         for match in re.finditer(pattern, expression):
             token = match.group()
-            # print(list(token))
+            # Console.post(list(token))
             if token:
                 if token == '\n':
                     row += 1
                     col = 1
                 elif token == ' ':
                     col += 1
+                elif token == '\t':
+                    pass #ignore tabs
                 else:
                     tokens.append([str(token), row, col])
                     col += len(token)
@@ -84,6 +87,17 @@ class Lispy:
             return code
 
         return Lispy.collectAST(ast, renderToFormattedCode, "")
+
+    @staticmethod
+    def astToOneLineCode(ast):
+        def renderToSingleLineCode(code, v):
+            # Console.post(v['sym'])
+            code = code + v['sym']
+            if v['sym'] not in ['(', '(']:
+                code = code + ' '
+            return code
+
+        return Lispy.collectAST(ast, renderToSingleLineCode, "")
 
     # @staticmethod
     # def astToString(ast, prevSym=''):

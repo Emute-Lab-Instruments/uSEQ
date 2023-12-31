@@ -2,6 +2,8 @@ import serial
 import glob
 from SerialStreamMap import SerialStreamMap
 from Console import Console
+import struct
+
 
 class SerialIO:
     serialIOMessage = []
@@ -56,6 +58,7 @@ class SerialIO:
             cls.cx.write(asciiCode)
             ok=True
         return ok
+
     @classmethod
     def close(cls):
         if cls.cx:

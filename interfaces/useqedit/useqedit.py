@@ -1,6 +1,5 @@
 import argparse
 import curses
-# import struct
 import sys
 from art import *
 from copy import deepcopy
@@ -207,7 +206,7 @@ def main():
     redrawFlag = True
 
     while True:
-        # editor.refresh()
+        editor.refresh()
         if redrawFlag:
             # stdscr.erase()
             # console.erase()
@@ -272,20 +271,22 @@ def main():
             editor.move(*window.translateCursorToScreenCoords(cursor))
             redrawFlag=False
 
-        def sendTouSEQ(statement):
-            if not SerialIO.sendTouSEQ(statement):
+        def sendTouSEQ(codestr, prefix=''):
+            #reformat to single line
+            tokens = Lispy.tokenize_lisp(codestr)
+            ast = Lispy.get_ast(tokens.copy())
+            codestr = Lispy.astToOneLineCode(ast)
+
+            if not SerialIO.sendTouSEQ(prefix + codestr):
                 Console.post("uSEQ disconnected")
         def cutSection(st, en):
             code = buffer.copy(st, en)
             buffer.deleteSection(st, en)
             return code
 
-        # actionReceived=False
-        # while not actionReceived:
         k = editor.getch()
 
         if (k!=-1):
-            # actionReceived = True
             redrawFlag=True
             # Console.post(f"key {k}")
             if (k == curses.KEY_MOUSE):
@@ -360,7 +361,7 @@ def main():
                 elif k == 11:  # ctrl-k - run immediately
                         if outerBrackets:
                             code = buffer.copy(outerBrackets[0], outerBrackets[1])
-                            sendTouSEQ('@' + code)
+                            sendTouSEQ(code, '@')
                         else:
                             Console.post("missing a bracket?")
                 elif k == 3:  # ctrl-c - copy
