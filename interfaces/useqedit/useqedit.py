@@ -1,15 +1,11 @@
 import argparse
 import curses
-import struct
+# import struct
 import sys
 from art import *
 from copy import deepcopy
-import glob
 from Clipping import MultiClip
 from Lispy import Lispy
-
-import serial
-
 from Buffer import Buffer
 from Cursor import Cursor
 from MessageLog import MessageLog
@@ -19,6 +15,8 @@ from SerialStreamMap import SerialStreamMap
 import re
 import json
 import os
+from SerialIO import SerialIO
+
 
 def clamp(x, lower, upper):
     if x < lower:
@@ -38,12 +36,8 @@ def right(window, buffer, cursor):
     window.down(buffer, cursor)
     window.horizontal_scroll(cursor)
 
-serialIOMessage = []
-serialIOMessageCounter=-1
 
 def main():
-    serialIOMessage = []
-    serialIOMessageCounter = -1
     parser = argparse.ArgumentParser()
     parser.add_argument("filename", help="A file to edit")
     parser.add_argument("-cw", "--conswidth", help="console width", default=40, type=int)
@@ -160,29 +154,12 @@ def main():
                             editor.chgat(*rightBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
 
             else:
-                None
+                pass
         return outerBrackets, innerBrackets
 
     #serial setup
-    incoming = ''
-    serialPortName = args.port
-    if serialPortName=="":
-        #auto detect port
-        devlist = sorted(glob.glob("/dev/ttyACM*"))  #what happens on windows?
-        if len(devlist) > 0:
-            serialPortName = devlist[0]
-        else:
-            devlist = sorted(glob.glob("/dev/tty.usbmodem*"))  # connect to virtual uSEQ?
-            if len(devlist) > 0:
-                serialPortName = devlist[0]
-            else:
-                devlist = sorted(glob.glob("/tmp/ttyUSEQVirtual"))  # connect to virtual uSEQ?
-                if len(devlist) > 0:
-                    serialPortName = devlist[0]
+    SerialIO.openSerialCx(args.port, updateConsole)
 
-    cx = trySerialConnection(serialPortName, updateConsole)
-    if not cx:
-        updateConsole(f"Error connecting to uSEQ")
     try:
         with open(args.filename) as f:
             buffer = Buffer(f.read().splitlines())
@@ -228,19 +205,6 @@ def main():
             updateConsole("Error loading config")
             updateConsole(e)
 
-        # SerialStreamMap.loadConfig(updateConsole)
-    #
-    # SerialStreamMap.set(0, SerialStreamMap.makeMIDITrigMap(1,9,36))
-    # SerialStreamMap.set(1, SerialStreamMap.makeMIDITrigMap(1,9,42))
-    # SerialStreamMap.set(2, SerialStreamMap.makeMIDITrigMap(1,9,43))
-    # SerialStreamMap.set(3, SerialStreamMap.makeMIDITrigMap(1,9,38))
-    # SerialStreamMap.set(4, SerialStreamMap.makeMIDITrigMap(1,9,48))
-    # SerialStreamMap.set(5, SerialStreamMap.makeMIDITrigMap(0,9,34))
-    # SerialStreamMap.set(6, SerialStreamMap.makeMIDITrigMap(0,9,35))
-    # SerialStreamMap.set(7, SerialStreamMap.makeMIDITrigMap(0,9,36))
-    #
-
-
     def markedSection():
         return startMarker != None and endMarker != None
 
@@ -257,7 +221,7 @@ def main():
     while True:
         stdscr.erase()
         # console.erase()
-        editor.erase();
+        editor.erase()
 
         # console.border(1)
         updateConsole()
@@ -313,20 +277,14 @@ def main():
                             if line[highlightPos] not in ['(',')']:
                                 editor.chgat(row-window.row, highlightPos, 1, curses.color_pair(colourIdx))
                 searchAndHighlight(r'd1|d2|d3|d4|d5|d6|a1|a2|a3|a4|a5|a6|in1|in2|swm|swt|swr|rot|q0|s1|s2|s3|s4|s5|s6|s7|s8',3)
-                searchAndHighlight(r'fast|fromList|sqr|gatesw|trigs|\+|\-|\*|\/|perf|pm|dw|dr|useqaw|useqdw|delay|delaym|millis|micros|pulse|slow|flatIdx|flat|looph|dm|gates|setbpm|settimesig|interp|mdo|sin|cos|tan|abs|min|max|pow|sqrt|scale|seq|step|euclid',4)
+                searchAndHighlight(r'fast|fromList|sqr|gatesw|trigs|\+|\-|\*|\/|perf|pm|dw|dr|useqaw|useqdw|delay|delaym|millis|micros|pulse|slow|flatIdx|flat|looph|dm|gates|setbpm|settimesig|interp|mdo|sin|cos|tan|abs|min|max|pow|sqrt|scale|seq|step|euclid|defun',4)
                 searchAndHighlight(r'(\s|\()(bar|phrase|beat|section|time|t)(\s|\))',5)
 
         editor.move(*window.translateCursorToScreenCoords(cursor))
 
         def sendTouSEQ(statement):
-            # send to terminal
-            if cx:
-                asciiCode = statement.encode('ascii')
-                cx.write(asciiCode)
-                # updateConsole(f">> {statement}")
-            else:
-                updateConsole("Serial disconnected")
-
+            if not SerialIO.sendTouSEQ(statement):
+                updateConsole("uSEQ disconnected")
         def cutSection(st, en):
             code = buffer.copy(st, en)
             buffer.deleteSection(st, en)
@@ -365,8 +323,7 @@ def main():
                 else:
                     # updateConsole(f"input {k}")
                     if k == 23: #ctrl-w
-                        if cx:
-                            cx.close()
+                        SerialIO.close()
                         curses.endwin()
                         sys.exit(0)
                     elif k == 260: #left arrow
@@ -502,64 +459,15 @@ def main():
                             [f.write(x + '\n') for x in buffer]
                         buffer.resetNewChanges()
 
-            ##read serial if available
-            if cx:
-                try:
-                    if (cx.in_waiting > 0):
-                        byteCount = cx.in_waiting
-                        # actionReceived = True
-                        # updateConsole(f"reading serial {cx.in_waiting}")
-                        for i in range(byteCount):
-                            inchar = cx.read()
-                            #serial IO message?
-                            # updateConsole(inchar)
 
-                            if (inchar == b'\x1f'):
-                                serialIOMessageCounter=9
-                                serialIOMessage=[]
-                                # updateConsole(f"SIO31  {serialIOMessageCounter}")
-                            else:
-                                if serialIOMessageCounter > 0:
-                                    serialIOMessage.append(inchar)
-                                    serialIOMessageCounter = serialIOMessageCounter - 1
-                                    if serialIOMessageCounter==0:
-                                        try:
-                                            # updateConsole(serialIOMessage)
-                                            #convert bytes to double
-                                            dblbytes = b''.join(serialIOMessage[1:])
-                                            val = struct.unpack('d',dblbytes)[0]
-                                            ch = serialIOMessage[0][0]-1
-                                            SerialStreamMap.mapSerial(ch, val, updateConsole)
-                                            # updateConsole(str(val))
-                                        except Exception as e:
-                                            updateConsole(e)
-                                else:
-                                    if (inchar != b'\n' and inchar != b'\r'):
-                                        incoming = incoming + str(chr(inchar[0]))
-                                    if (inchar == b'\n' or inchar == b'\r'):
-                                        if (incoming != ''):
-                                            updateConsole(incoming)
-                                        incoming = ''
-                except Exception as e:
-                    cx = None
-                    updateConsole(e)
-                    updateConsole("uSEQ disconnected")
-            else:
-                cx = trySerialConnection(serialPortName, updateConsole)
+            SerialIO.readSerial(updateConsole)
 
             #save some cpu
-            curses.napms(1)
+            curses.napms(20)
 
 
 
 
-def trySerialConnection(port, updateConsole):
-    try:
-        cx = serial.Serial(port, baudrate=115200)
-        updateConsole(f"Connected to uSEQ on {port}")
-    except serial.SerialException:
-        cx = None
-    return cx
 
 
 if __name__ == "__main__":
