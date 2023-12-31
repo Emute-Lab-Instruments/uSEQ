@@ -35,7 +35,7 @@ uSEQ Edit saves (overwrites) the file every time you make a change.
 
 | Key | Description |
 | --- | --- |
-| Ctrl - l | Send the current LISP statement to uSEQ (within the highlighted outer brackets) |
+| Ctrl - l | Send the current LISP statement to uSEQ (defined by the highlighted outer brackets) |
 | Ctrl - w | Quit |
 | Ctrl - i | Add a lisp statement to the queue |
 | Ctrl - o | Send code in the queue to uSEQ |
@@ -43,6 +43,9 @@ uSEQ Edit saves (overwrites) the file every time you make a change.
 | Ctrl - v | Paste |
 | Ctrl - x | Cut |
 | Ctrl - z | Undo |
+| Ctrl - f | Reformat statement as multiline and indented|
+| Alt - f  | Reformat statement to a single line |
+
 
 
 ## Serial USB Mappings
