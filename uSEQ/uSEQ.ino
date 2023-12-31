@@ -2326,14 +2326,15 @@ void updateAnalogOutputs() {
     // Write
     else {
       //PWM out
-      int sigval = result.as_float() * 2047.0;
-      if (sigval > 2047)
-        sigval = 2047;
+      const double maxpwm = 8191.0;
+      int sigval = result.as_float() * maxpwm;
+      if (sigval > maxpwm)
+        sigval = maxpwm;
       pio_pwm_set_level(i < 4 ? pio0 : pio1, i % 4, sigval);
 
       //led out
       int led_pin = analog_out_LED_pin(i + 1);  
-      analogWrite(led_pin, sigval);
+      analogWrite(led_pin, sigval>>2); //shift to 11 bit range for the LED
     }
   }
 
@@ -3242,7 +3243,7 @@ void setup_analog_outs() {
     uint pioOffset = i < 4 ? offset : offset2;
     auto smIdx = i % 4;
     pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_pins[i]);
-    pio_pwm_set_period(pioInstance, smIdx, (1u << 11) - 1);  
+    pio_pwm_set_period(pioInstance, smIdx, (1u << 13) - 1);  
 
   }
 

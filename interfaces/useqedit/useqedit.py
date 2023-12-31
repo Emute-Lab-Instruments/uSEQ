@@ -288,7 +288,7 @@ def main():
 
         if (k!=-1):
             redrawFlag=True
-            Console.post(f"key {k}")
+            # Console.post(f"key {k}")
             if (k == curses.KEY_MOUSE):
                 _, mx, my, _, bstate = curses.getmouse()
                 # Console.post(f"mouse {bstate}")
@@ -445,7 +445,7 @@ def main():
                             ast = Lispy.get_ast(tokens.copy())
                             codestr = Lispy.astToOneLineCode(ast)
                             buffer.insert(cursor, codestr)
-                            
+
                 else:
                     kchar = chr(k)
                     if (kchar.isascii()):
