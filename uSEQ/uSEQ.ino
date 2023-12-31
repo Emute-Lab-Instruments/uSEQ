@@ -2334,7 +2334,9 @@ void updateAnalogOutputs() {
 
       //led out
       int led_pin = analog_out_LED_pin(i + 1);  
-      analogWrite(led_pin, sigval>>2); //shift to 11 bit range for the LED
+      int ledsigval = sigval>>2; //shift to 11 bit range for the LED
+      ledsigval = (ledsigval * ledsigval) >> 11; //cheap way to square and get a exp curve
+      analogWrite(led_pin, ledsigval); 
     }
   }
 
