@@ -1,6 +1,6 @@
 from  midiIO import midiIO
 import mido
-
+from Console import Console
 
 MIDICONTINUOUS = 0
 
@@ -40,7 +40,7 @@ class SerialStreamMap:
             cls.map[index] = mapping
 
     @classmethod
-    def mapSerial(cls, ch, val, log):
+    def mapSerial(cls, ch, val):
         if ch>=0 and ch <8 and cls.map[ch] != None:
             mapping = cls.map[ch]
             # log(f"{ch} {mapping}")
@@ -69,7 +69,7 @@ class SerialStreamMap:
         pass
 
     @classmethod
-    def loadJSON(cls, data, log):
+    def loadJSON(cls, data):
         error = False
         for d in data:
             if "type" in d and 'serial' in d:
@@ -77,29 +77,29 @@ class SerialStreamMap:
                     if 'port' in d and 'channel' in d and 'note' in d:
                         cls.set(d['serial']-1, SerialStreamMap.makeMIDITrigMap(d['port'], d['channel'], d['note']))
                     else:
-                        log("Error, key missing in: ")
-                        log(d)
+                        Console.post("Error, key missing in: ")
+                        Console.post(d)
                         error=True
                 elif d['type'] == "MIDINOTE":
                     if 'port' in d and 'channel' in d and 'note' in d:
                         cls.set(d['serial'] - 1,
                                 SerialStreamMap.makeMIDINoteMap(d['port'], d['channel']))
                     else:
-                        log("Error, key missing in: ")
-                        log(d)
+                        Console.post("Error, key missing in: ")
+                        Console.post(d)
                         error = True
                 elif d['type'] == "MIDICTL":
                     if 'port' in d and 'channel' in d and 'ctl' in d:
                         cls.set(d['serial']-1, SerialStreamMap.makeMIDIContinuousMap(d['port'], d['channel'], d['ctl']))
                     else:
-                        log("Error, key missing in: ")
-                        log(d)
+                        Console.post("Error, key missing in: ")
+                        Console.post(d)
                         error = True
                 else:
-                    log(f"Error: unrecognised configuration type: {d['type']}")
+                    Console.post(f"Error: unrecognised configuration type: {d['type']}")
             else:
-                log("Error, 'type' missing in: ")
-                log(d)
+                Console.post("Error, 'type' missing in: ")
+                Console.post(d)
                 error=True
         return error
 
