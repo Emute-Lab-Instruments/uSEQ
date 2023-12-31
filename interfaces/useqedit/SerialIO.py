@@ -1,6 +1,7 @@
 import serial
 import glob
 from SerialStreamMap import SerialStreamMap
+from Console import Console
 
 class SerialIO:
     serialIOMessage = []
@@ -10,14 +11,14 @@ class SerialIO:
     serialPortName=''
 
     @classmethod
-    def openSerialCx(cls, serialPortName, updateConsole):
+    def openSerialCx(cls, serialPortName):
         cls.serialPortName = serialPortName
         if cls.serialPortName == "":
             cls.serialPortName = SerialIO.autoDetectSerialPort()
 
-        connected = SerialIO.trySerialConnection(cls.serialPortName, updateConsole)
+        connected = SerialIO.trySerialConnection(cls.serialPortName)
         if not connected:
-            updateConsole(f"Error connecting to uSEQ")
+            Console.post(f"Error connecting to uSEQ")
 
     @classmethod
     def autoDetectSerialPort(cls):
@@ -36,11 +37,11 @@ class SerialIO:
         return serialPortName
 
     @classmethod
-    def trySerialConnection(cls,port, updateConsole):
+    def trySerialConnection(cls,port):
         ok=False
         try:
             cls.cx = serial.Serial(port, baudrate=115200)
-            updateConsole(f"Connected to uSEQ on {port}")
+            Console.post(f"Connected to uSEQ on {port}")
             ok=True
         except serial.SerialException:
             cls.cx = None
@@ -62,7 +63,7 @@ class SerialIO:
 
 
     @classmethod
-    def readSerial(cls,updateConsole):
+    def readSerial(cls):
         ##read serial if available
         if cls.cx:
             try:
@@ -88,21 +89,21 @@ class SerialIO:
                                         dblbytes = b''.join(cls.serialIOMessage[1:])
                                         val = struct.unpack('d', dblbytes)[0]
                                         ch = cls.serialIOMessage[0][0] - 1
-                                        SerialStreamMap.mapSerial(ch, val, updateConsole)
+                                        SerialStreamMap.mapSerial(ch, val)
                                         # updateConsole(str(val))
                                     except Exception as e:
-                                        updateConsole(e)
+                                        Console.post(e)
                             else:
                                 if (inchar != b'\n' and inchar != b'\r'):
                                     cls.incoming = cls.incoming + str(chr(inchar[0]))
                                 if (inchar == b'\n' or inchar == b'\r'):
                                     if (cls.incoming != ''):
-                                        updateConsole(cls.incoming)
+                                        Console.post(cls.incoming)
                                     cls.incoming = ''
             except Exception as e:
                 cx = None
-                updateConsole(e)
-                updateConsole("uSEQ disconnected")
+                Console.post(e)
+                Console.post("uSEQ disconnected")
         else:
-            SerialIO.trySerialConnection(cls.serialPortName, updateConsole)
+            SerialIO.trySerialConnection(cls.serialPortName)
 
