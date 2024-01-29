@@ -60,6 +60,12 @@ class SerialIO:
         return ok
 
     @classmethod
+    def sendBytes(cls, data):
+        if cls.cx:
+            cls.cx.write(data)
+
+
+    @classmethod
     def close(cls):
         if cls.cx:
             cls.cx.close()

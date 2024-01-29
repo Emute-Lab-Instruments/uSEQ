@@ -2917,9 +2917,6 @@ BUILTINFUNC_NOEVAL(useq_schedule,
 
 BUILTINFUNC(useq_unschedule,
     const String id = args[0].as_string();
-
-
-
     auto is_item = [id](useq::scheduledItem &v) { return v.id==id;};
 
     if (auto it = std::find_if(begin(useq::scheduledItems), end(useq::scheduledItems), is_item); it != std::end(useq::scheduledItems)) {
@@ -3506,20 +3503,45 @@ void loop() {
   env.set("perf_ts1", Value(float(ts_total * 0.001)));
 
   if (Serial.available()) {
-    String cmd = Serial.readString();
-    //queue or run now
-     Serial.println(cmd);
-    if (cmd.charAt(0) == '@') {
-        //clear the token
-        cmd.setCharAt(0, ' ');
+      int b = Serial.read();
+      if (b==31) {
+          //incoming serial stream
+          Serial.println("serialstream");
+          size_t channel = Serial.read();
+          Serial.println((int)channel);
+          char buffer[8];
+          Serial.readBytes(buffer,8);
+          double v =0;
+          memcpy(&v, buffer, 8);
+          Serial.println("v:");
+          Serial.println(v);
+      }else if (b == '@') {
+          //run now
+        String cmd = Serial.readString();
         auto res = run(cmd, env);
         Serial.println(res.debug());
-
-    }
-    else {
-      auto parsedCode = ::parse(cmd);
-      useq::runQueue.push_back(parsedCode);
-    }
+      }else{
+          String cmd = Serial.readString();
+          cmd = String((char)b) + cmd;
+          Serial.println(cmd);
+          auto parsedCode = ::parse(cmd);
+          useq::runQueue.push_back(parsedCode);
+      }
+//    String cmd = Serial.readString();
+//    //queue or run now
+////    Serial.println((int)cmd.charAt(0));
+//    Serial.println(cmd);
+//    if (cmd.charAt(0) == '@') {
+//        //clear the token
+//        cmd.setCharAt(0, ' ');
+//        auto res = run(cmd, env);
+//        Serial.println(res.debug());
+//
+//    }
+//    else {
+//      auto parsedCode = ::parse(cmd);
+//      useq::runQueue.push_back(parsedCode);
+//    }
   }
   readRotaryEnc();
 

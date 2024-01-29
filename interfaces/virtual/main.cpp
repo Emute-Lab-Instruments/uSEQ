@@ -13,6 +13,7 @@
 #include <SerialPort.h>
 #include <SerialStream.h>
 #include <csignal>
+#include <sstream>
 
 using namespace LibSerial ;
 
@@ -51,7 +52,14 @@ struct DummySerial {
         tty.Write(std::string(s.c_str()) + '\n');
     }
     void println(int x) {
-        std::cout << std::to_string(x) << std::endl;
+        std::stringstream ss;
+        ss << x << '\n';
+        tty.Write(ss.str());
+    }
+    void println(double x) {
+        std::stringstream ss;
+        ss << x << '\n';
+        tty.Write(ss.str());
     }
     void println() {
         std::cout << std::endl;
@@ -73,6 +81,27 @@ struct DummySerial {
 
     void setTimeout(int x){}
     bool available() {return tty.IsDataAvailable();}
+
+    int read() {
+        char ch=0;
+        if (tty.IsDataAvailable()) {
+            tty.ReadByte(ch,1);
+        }
+        return (int)ch;
+    }
+
+    size_t readBytes(char *buffer, size_t length)
+    {
+        char c;
+        size_t count = 0;
+        while (count < length) {
+            tty.ReadByte(c, 1);
+            *buffer++ = c;
+            count++;
+        }
+        return count;
+    }
+
     String readString() {
         char ch;
         std::string s;
