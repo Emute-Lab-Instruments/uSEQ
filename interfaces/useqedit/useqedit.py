@@ -470,7 +470,7 @@ def main():
         SerialIO.readSerial()
         SerialOutMappings.process()
         #save some cpu
-        curses.napms(5)
+        curses.napms(10)
 
 
 

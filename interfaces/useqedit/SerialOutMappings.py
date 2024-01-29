@@ -15,13 +15,31 @@ import struct
 
 
 class SerialOutMappings:
+
+    channels = [0]
+
     @classmethod
     def process(cls):
+        #flip back to zero after triggering
+        if (cls.channels[0] == 1.0):
+            cls.channels[0] = 0.0
+            cls.sendSerialValue(1, 0.0)
+
         for port in midiIO.inports:
             for msg in port.iter_pending():
-                Console.post(msg)
-                msgBegin = [31, 1,]
-                SerialIO.sendBytes(bytearray(msgBegin))
-                v = 1.238421
-                valueBytes = struct.pack('d',v)
-                SerialIO.sendBytes(bytearray(valueBytes))
+                # Console.post(msg.dict())
+                if msg.dict()['type'] == 'note_on':
+                    if msg.dict()['note'] == 36:
+                        cls.channels[0] = 1.0
+                        cls.sendSerialValue(1, cls.channels[0])
+
+                # v = 1
+                # channel = 1
+                # cls.sendSerialValue(channel, v)
+
+    @classmethod
+    def sendSerialValue(cls, channel, v):
+        msgBegin = [31, channel ]
+        SerialIO.sendBytes(bytearray(msgBegin))
+        valueBytes = struct.pack('d', v)
+        SerialIO.sendBytes(bytearray(valueBytes))
