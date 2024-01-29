@@ -120,6 +120,7 @@ tempoEstimator tempoI1, tempoI2;
 #include <map>
 // #include <unordered_map>
 #include <vector>
+#include <algorithm>
 
 
 
@@ -2914,6 +2915,22 @@ BUILTINFUNC_NOEVAL(useq_schedule,
     ret = Value(0);
 , 3)
 
+BUILTINFUNC(useq_unschedule,
+    const String id = args[0].as_string();
+
+
+
+    auto is_item = [id](useq::scheduledItem &v) { return v.id==id;};
+
+    if (auto it = std::find_if(begin(useq::scheduledItems), end(useq::scheduledItems), is_item); it != std::end(useq::scheduledItems)) {
+        useq::scheduledItems.erase(it);
+        Serial.println("Item removed");
+    }
+    else {
+        Serial.println("Item not found");
+    }
+, 1 )
+
 BUILTINFUNC(useq_dm,
             auto index = args[0].as_int();
             auto v1 = args[1].as_float();
@@ -3136,6 +3153,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["step"] = Value("step", builtin::useq_step);
   Environment::builtindefs["euclid"] = Value("euclid", builtin::useq_euclidean);
   Environment::builtindefs["schedule"] = Value("schedule", builtin::useq_schedule);
+  Environment::builtindefs["unschedule"] = Value("unschedule", builtin::useq_unschedule);
 
 
 
