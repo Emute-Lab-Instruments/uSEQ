@@ -1,4 +1,6 @@
 import mido
+from Console import Console
+
 class midiIO:
 
     inports = []
@@ -10,6 +12,7 @@ class midiIO:
             # cls.vmidi = mido.open_output("uSEQ", virtual=True)
             #open all the outports
             cls.outports = [mido.open_output(x) for x in mido.get_output_names()]
+            cls.inports = [mido.open_input(x) for x in mido.get_input_names()]
         except:
             None
 
@@ -19,5 +22,13 @@ class midiIO:
     @classmethod
     def listMIDIInputs(cls):
         return mido.get_input_names()
+
+
+    # @classmethod
+    # def midiInputCallback(cls, msg):
+    #     # if msg.dict()['type']=='note_on':
+    #     Console.qpost(msg)
+
+
 
 

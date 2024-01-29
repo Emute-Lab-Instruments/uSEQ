@@ -54,10 +54,16 @@ class SerialIO:
         # send to terminal
         ok=False
         if cls.cx:
-            asciiCode = statement.encode('ascii')
+            asciiCode = (statement + '\n').encode('ascii')
             cls.cx.write(asciiCode)
             ok=True
         return ok
+
+    @classmethod
+    def sendBytes(cls, data):
+        if cls.cx:
+            cls.cx.write(data)
+
 
     @classmethod
     def close(cls):

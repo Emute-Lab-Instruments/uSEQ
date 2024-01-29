@@ -27,3 +27,19 @@ hardware/version0.2/kicad/useq-backups/
 interfaces/virtual/cmake-build-debug/
 
 interfaces/useqedit/useqedit.json
+
+hardware/version0.2/fr4panel/fr4panel/fr4panel-backups/
+
+hardware/version1.0/fr4panel/fr4panel/fr4panel-backups/
+
+hardware/version1.0/fr4panel/fr4panel/jlcpcb/gerber/
+
+hardware/version1.0/fr4panel/fr4panel/jlcpcb/production_files/
+
+hardware/version1.0/fr4panel/fr4panel/jlcpcb/
+
+hardware/version1.0/useq1/jlcpcb/
+
+hardware/version1.0/useq1/useq-backups/
+
+hardware/version1.0/useq1/useq1-backups/

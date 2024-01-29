@@ -15,6 +15,7 @@ import json
 import os
 from SerialIO import SerialIO
 from Console import Console
+from SerialOutMappings import SerialOutMappings
 
 
 
@@ -284,6 +285,8 @@ def main():
             buffer.deleteSection(st, en)
             return code
 
+        Console.postQueuedMessages()
+
         k = editor.getch()
 
         if (k!=-1):
@@ -465,7 +468,7 @@ def main():
 
 
         SerialIO.readSerial()
-
+        SerialOutMappings.process()
         #save some cpu
         curses.napms(10)
 
