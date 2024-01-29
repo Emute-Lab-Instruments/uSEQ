@@ -2216,6 +2216,15 @@ std::vector<Value> digitalASTs[DIGI_OUTS];
 std::vector<Value> serialASTs[SERIAL_OUTS];
 std::vector<Value> q0AST;
 
+struct scheduledItem {
+//    Value statement;
+    std::vector<Value> ast;
+    size_t period;
+    size_t lastRun;
+    String id;
+};
+
+std::vector<scheduledItem> scheduledItems;
 
 
 void updateBpmVariables() {
@@ -2455,6 +2464,21 @@ void setup() {
   initASTs();
 }
 
+void runScheduledItems() {
+    for(size_t i=0; i < scheduledItems.size(); i++) {
+        //run the statement once every period
+        size_t run = static_cast<size_t>(bar * scheduledItems[i].period);
+//        size_t run_norm = run > scheduledItems[i].lastRun ? run : run + scheduledItems[i].period;
+        size_t numRuns = run >= scheduledItems[i].lastRun ? run - scheduledItems[i].lastRun : scheduledItems[i].period - scheduledItems[i].lastRun;
+        for(size_t j=0; j < numRuns; j++) {
+            //run the statement
+            Serial.println(scheduledItems[i].id);
+            runParsedCode(scheduledItems[i].ast, env);
+        }
+        scheduledItems[i].lastRun = run;
+    }
+}
+
 int ts_inputs = 0, ts_time = 0, ts_outputs = 0;
 
 void update() {
@@ -2483,7 +2507,8 @@ void update() {
     runQueue.clear();
   }
   lastCQP = newCqpVal;
-  
+
+  runScheduledItems();
 
   /* run("(eval q-form)", env);   */
   updateAnalogOutputs();
@@ -2873,6 +2898,22 @@ BUILTINFUNC_VARGS(useq_euclidean,
   ret = Value(idx < k && rem < pulseWidth ? 1 : 0);
 , 3, 5)
 
+
+// (schedule <name> <statement> <period>)
+BUILTINFUNC_NOEVAL(useq_schedule,
+    const auto itemName = args[0].as_string();
+    const auto ast = args[1];
+    const auto period = args[2].as_float();
+    useq::scheduledItem v;
+    v.id = itemName;
+    v.period = period;
+    v.lastRun = 0;
+//    v.statement = statement;
+    v.ast = {ast};
+    useq::scheduledItems.push_back(v);
+    ret = Value(0);
+, 3)
+
 BUILTINFUNC(useq_dm,
             auto index = args[0].as_int();
             auto v1 = args[1].as_float();
@@ -3094,7 +3135,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["interp"] = Value("interp", builtin::useq_interpolate);
   Environment::builtindefs["step"] = Value("step", builtin::useq_step);
   Environment::builtindefs["euclid"] = Value("euclid", builtin::useq_euclidean);
-
+  Environment::builtindefs["schedule"] = Value("schedule", builtin::useq_schedule);
 
 
 
