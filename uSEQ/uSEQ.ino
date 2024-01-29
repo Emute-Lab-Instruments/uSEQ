@@ -1873,9 +1873,8 @@ Value remove(std::vector<Value> &args, Environment &env) {
   int i = args[1].as_int();
   if (list.empty() || i >= (int)list.size())
     Serial.println(INDEX_OUT_OF_RANGE);
-  //  throw Error(list, env, INDEX_OUT_OF_RANGE);
-
-  list.erase(list.begin() + i);
+  else
+    list.erase(list.begin() + i);
   return Value(list);
 }
 
