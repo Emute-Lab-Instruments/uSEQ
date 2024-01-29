@@ -4,6 +4,8 @@ from MessageLog import MessageLog
 class Console:
     console=None
     redraw=False
+    postQueue = []
+
     @classmethod
     def init(cls, consoleWidth):
         cls.console = curses.newwin(curses.LINES - 1, consoleWidth - 1, 0, curses.COLS - consoleWidth)
@@ -21,6 +23,18 @@ class Console:
             cls.console.addstr(i+1, 2, msg)
         cls.console.refresh()
         redraw = True
+
+    #asynchronous post
+    @classmethod
+    def qpost(cls, msg=None):
+        cls.postQueue.append(msg)
+
+    @classmethod
+    def postQueuedMessages(cls):
+        if len(cls.postQueue) > 0:
+            for msg in cls.postQueue:
+                cls.post(msg)
+        cls.postQueue = []
 
     @classmethod
     def isRedraw(cls):

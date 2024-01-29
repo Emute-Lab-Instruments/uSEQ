@@ -42,6 +42,7 @@ bool currentExprSound = false;
 //#define MIDIIN //(to be implemented)
 
 #define SERIAL_OUTS 8
+#define SERIAL_INS 32
 
 // end of build options
 
@@ -1854,9 +1855,8 @@ Value insert(std::vector<Value> &args, Environment &env) {
   int i = args[1].as_int();
   if (i > (int)list.size())
     Serial.println(INDEX_OUT_OF_RANGE);
-  // throw Error(list, env, INDEX_OUT_OF_RANGE);
-
-  list.insert(list.begin() + args[1].as_int(), args[2].as_int());
+  else
+      list.insert(list.begin() + args[1].as_int(), args[2].as_int());
   return Value(list);
 }
 
@@ -2216,6 +2216,7 @@ std::vector<Value> analogASTs[PWM_OUTS];
 std::vector<Value> digitalASTs[DIGI_OUTS];
 std::vector<Value> serialASTs[SERIAL_OUTS];
 std::vector<Value> q0AST;
+std::vector<double> serialInputStreams(SERIAL_INS,0);
 
 struct scheduledItem {
 //    Value statement;
@@ -2917,9 +2918,6 @@ BUILTINFUNC_NOEVAL(useq_schedule,
 
 BUILTINFUNC(useq_unschedule,
     const String id = args[0].as_string();
-
-
-
     auto is_item = [id](useq::scheduledItem &v) { return v.id==id;};
 
     if (auto it = std::find_if(begin(useq::scheduledItems), end(useq::scheduledItems), is_item); it != std::end(useq::scheduledItems)) {
@@ -3008,15 +3006,23 @@ BUILTINFUNC(useq_in2,
           ret = Value(useqInputValues[USEQI2]);
           , 0)
 
+
+BUILTINFUNC(useq_ssin,
+    int index = args[0].as_int();
+    if(index >0 && index <= SERIAL_INS) {
+        ret = Value(useq::serialInputStreams[index-1]);
+        }
+, 1)
+
 BUILTINFUNC(useq_swm,
-          int index = args[0].as_int();
-          if (index == 1) {
-            ret = Value(useqInputValues[USEQM1]);
-          }
-          else {
-            ret = Value(useqInputValues[USEQM2]);
-          }
-          , 1)
+            int index = args[0].as_int();
+                    if (index == 1) {
+                        ret = Value(useqInputValues[USEQM1]);
+                    }
+                    else {
+                        ret = Value(useqInputValues[USEQM2]);
+                    }
+, 1)
 
 BUILTINFUNC(useq_swt,
           int index = args[0].as_int();
@@ -3131,6 +3137,7 @@ void loadBuiltinDefs() {
   Environment::builtindefs["swt"] = Value("swt", builtin::useq_swt);
   Environment::builtindefs["swr"] = Value("swr", builtin::useq_swr);
   Environment::builtindefs["rot"] = Value("rot", builtin::useq_rot);
+  Environment::builtindefs["ssin"] = Value("ssin", builtin::useq_ssin);
 
   //sequencing
   Environment::builtindefs["pulse"] = Value("pulse", builtin::useq_pulse);
@@ -3506,20 +3513,48 @@ void loop() {
   env.set("perf_ts1", Value(float(ts_total * 0.001)));
 
   if (Serial.available()) {
-    String cmd = Serial.readString();
-    //queue or run now
-     Serial.println(cmd);
-    if (cmd.charAt(0) == '@') {
-        //clear the token
-        cmd.setCharAt(0, ' ');
+      int b = Serial.read();
+      if (b==31) {
+          //incoming serial stream
+          size_t channel = Serial.read();
+          char buffer[8];
+          Serial.readBytes(buffer,8);
+          if (channel > 0 && channel <= SERIAL_INS) {
+              double v = 0;
+              memcpy(&v, buffer, 8);
+              useq::serialInputStreams.at(channel - 1) = v;
+          }
+      }else if (b == '@') {
+          //run now
+        String cmd = Serial.readStringUntil('\n');
+        // for(size_t k=0; k < cmd.length(); k++) {
+        //   Serial.println((int)cmd.charAt(k));
+        // }
+        // Serial.println(cmd);
         auto res = run(cmd, env);
         Serial.println(res.debug());
-
-    }
-    else {
-      auto parsedCode = ::parse(cmd);
-      useq::runQueue.push_back(parsedCode);
-    }
+      }else{
+          String cmd = Serial.readStringUntil('\n');
+          cmd = String((char)b) + cmd;
+          Serial.println(cmd);
+          auto parsedCode = ::parse(cmd);
+          useq::runQueue.push_back(parsedCode);
+      }
+//    String cmd = Serial.readString();
+//    //queue or run now
+////    Serial.println((int)cmd.charAt(0));
+//    Serial.println(cmd);
+//    if (cmd.charAt(0) == '@') {
+//        //clear the token
+//        cmd.setCharAt(0, ' ');
+//        auto res = run(cmd, env);
+//        Serial.println(res.debug());
+//
+//    }
+//    else {
+//      auto parsedCode = ::parse(cmd);
+//      useq::runQueue.push_back(parsedCode);
+//    }
   }
   readRotaryEnc();
 
