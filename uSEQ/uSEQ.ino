@@ -55,6 +55,8 @@ bool currentExprSound = false;
 //#include "pico/stdlib.h"
 //#include "hardware/vreg.h"
 
+#include "drum-model-1.h"
+
 #ifndef NO_ETL
 
 #define ETL_NO_STL
@@ -2473,7 +2475,7 @@ void runScheduledItems() {
         size_t numRuns = run >= scheduledItems[i].lastRun ? run - scheduledItems[i].lastRun : scheduledItems[i].period - scheduledItems[i].lastRun;
         for(size_t j=0; j < numRuns; j++) {
             //run the statement
-            Serial.println(scheduledItems[i].id);
+//            Serial.println(scheduledItems[i].id);
             runParsedCode(scheduledItems[i].ast, env);
         }
         scheduledItems[i].lastRun = run;
@@ -2928,6 +2930,23 @@ BUILTINFUNC(useq_unschedule,
     }
 , 1 )
 
+//(drum-predict <input-pattern>) -> list
+BUILTINFUNC(useq_drumpredict,
+    const std::vector<Value> inputs = args[0].as_list();
+    std::vector<char> invec(32,1);
+    for(size_t i=0; i < 32; i++) {
+        invec[i] = inputs[i].as_int();
+    }
+    std::vector<int> outvec(8,0);
+    apply_logic_gate_net_singleval(invec.data(), outvec.data());
+    std::vector<Value> result(8);
+    for(size_t i=0; i < 8; i++) {
+      result[i] = Value(outvec[i]);
+    }
+    ret = Value(result);
+, 1 )
+
+
 BUILTINFUNC(useq_dm,
             auto index = args[0].as_int();
             auto v1 = args[1].as_float();
@@ -3069,7 +3088,14 @@ BUILTINFUNC(perf,
             ret = Value();
             , 0)
 
+    BUILTINFUNC(zeros,
+                int length = args[0].as_int();
+                        std::vector<Value> zeroList(length, Value(0));
+                        ret = Value(zeroList);
+    , 1)
 }
+
+
 
 
 // Does this environment, or its parent environment, have a variable?
@@ -3162,6 +3188,8 @@ void loadBuiltinDefs() {
   Environment::builtindefs["unschedule"] = Value("unschedule", builtin::useq_unschedule);
 
 
+  Environment::builtindefs["drum-predict"] = Value("drum-predict", builtin::useq_drumpredict);
+
 
 #ifdef MIDIOUT
   Environment::builtindefs["mdo"] = Value("mdo", builtin::useq_mdo);
@@ -3227,6 +3255,11 @@ void loadBuiltinDefs() {
   Environment::builtindefs["first"] = Value("first", builtin::head);
   Environment::builtindefs["last"] = Value("last", builtin::pop);
   Environment::builtindefs["range"] = Value("range", builtin::range);
+
+  // List generators
+
+  Environment::builtindefs["zeros"] = Value("zeros", builtin::zeros);
+
 
   // Functional operations
   Environment::builtindefs["map"] = Value("map", builtin::map_list);
