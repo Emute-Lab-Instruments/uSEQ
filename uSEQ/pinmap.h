@@ -25,8 +25,6 @@
 
 #define LED_BOARD 25
 
-// const int useq_output_pins[] = {21,20,0,18,17,16};
-// const int useq_output_led_pins[] = {3,2,1,27,26,22};
 const int useq_output_pins[] = {21,20,19,18,17,16};
 const int useq_output_led_pins[] = {3,2,28,27,26,22};
 
@@ -35,7 +33,6 @@ const int useq_output_led_pins[] = {3,2,28,27,26,22};
 
 #define USEQ_PIN_LED_I1 5
 #define USEQ_PIN_LED_I2 4
-
 #define USEQ_PIN_LED_A1 3
 #define USEQ_PIN_LED_A2 2
 
@@ -49,7 +46,6 @@ const int useq_output_led_pins[] = {3,2,28,27,26,22};
 
 #define USEQ_PIN_SWITCH_T1 14
 #define USEQ_PIN_SWITCH_T2 15
-
 #define USEQ_PIN_SWITCH_R1 7
 
 #define USEQ_PIN_ROTARYENC_A 13

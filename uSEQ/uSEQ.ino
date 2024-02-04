@@ -55,7 +55,7 @@ bool currentExprSound = false;
 //#include "pico/stdlib.h"
 //#include "hardware/vreg.h"
 
-#include "drum-model-1.h"
+#include "drum-model-4.h"
 
 #ifndef NO_ETL
 
@@ -2930,6 +2930,15 @@ BUILTINFUNC(useq_unschedule,
     }
 , 1 )
 
+//(timeit <function>) - returns time take to run in microseconds
+BUILTINFUNC_NOEVAL(timeit,
+  unsigned long ts = micros();
+  args[0].eval(env);
+  ts = micros() - ts;
+  ret = Value(static_cast<int>(ts));
+, 1)
+
+
 //(drum-predict <input-pattern>) -> list
 BUILTINFUNC(useq_drumpredict,
     const std::vector<Value> inputs = args[0].as_list();
@@ -2937,11 +2946,11 @@ BUILTINFUNC(useq_drumpredict,
     for(size_t i=0; i < 32; i++) {
         invec[i] = inputs[i].as_int();
     }
-    std::vector<int> outvec(8,0);
+    std::vector<int> outvec(14,0);
     apply_logic_gate_net_singleval(invec.data(), outvec.data());
-    std::vector<Value> result(8);
-    for(size_t i=0; i < 8; i++) {
-      result[i] = Value(outvec[i]);
+    std::vector<Value> result(14);
+    for(size_t i=0; i < 14; i++) {
+      result.at(i) = Value(outvec.at(i));
     }
     ret = Value(result);
 , 1 )
@@ -3265,6 +3274,10 @@ void loadBuiltinDefs() {
   Environment::builtindefs["map"] = Value("map", builtin::map_list);
   Environment::builtindefs["filter"] = Value("filter", builtin::filter_list);
   Environment::builtindefs["reduce"] = Value("reduce", builtin::reduce_list);
+
+  //utility
+  Environment::builtindefs["timeit"] = Value("timeit", builtin::timeit);
+
 
 // IO operations
 #ifdef USE_STD
