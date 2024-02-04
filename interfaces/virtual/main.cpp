@@ -120,6 +120,23 @@ struct DummySerial {
         }
         return String(s.c_str());
     }
+    String readStringUntil(char terminator) {
+        char ch;
+        std::string s;
+        while (tty.IsDataAvailable()) {
+            try {
+                tty.ReadByte(ch, 1);
+                if (ch==terminator) {
+                    break;
+                }else{
+                    s+=ch;
+                }
+            }
+            catch (ReadTimeout) {
+            }
+        }
+        return String(s.c_str());
+    }
 };
 DummySerial Serial;
 DummySerial Serial1;

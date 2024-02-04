@@ -521,8 +521,6 @@ MIDI Drum Out
 | function | A lambda function that describes a pattern of triggers, with time as an argument | n/a |
 
 
-```
-``
 
 # System Functions
 
@@ -530,3 +528,16 @@ MIDI Drum Out
 
 Returns information on system performance and free memory
 
+
+## `timeit <statement>`
+
+Returns the amount if time it took run evaluate <statement> in microseconds
+
+| Parameter | Description | Range |
+| --- | --- | --- |
+| statement | Any LISP statement | - |
+
+
+```
+(timeit (+ 1 1))
+```
