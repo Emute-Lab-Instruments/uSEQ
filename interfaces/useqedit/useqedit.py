@@ -127,6 +127,7 @@ def main():
                     if testLeft==None or testRight==None:
                         searching=False
 
+
                 if innerBrackets:
                     leftInnerBracketPos = window.translateCursorToScreenCoords(innerBrackets[0])
                     if window.isInWindow(leftInnerBracketPos):
@@ -141,6 +142,12 @@ def main():
                         rightBracketPos = window.translateCursorToScreenCoords(outerBrackets[1])
                         if window.isInWindow(rightBracketPos):
                             editor.chgat(*rightBracketPos, 1, curses.A_BOLD | curses.color_pair(2))
+                        codestr = buffer.copy(outerBrackets[0], outerBrackets[1])
+                        tokens = Lispy.tokenize_lisp(codestr)
+                        ast = Lispy.get_ast(tokens.copy())
+                        def doHighlights(v):
+                            Console.post(v)
+                        # Lispy.traverseAST(tokens, doHighlights)
 
             else:
                 pass
@@ -205,6 +212,16 @@ def main():
         endMarker = None
 
     redrawFlag = True
+
+
+    # Console.post(curses.has_colors());
+    # Console.post(curses.COLORS);
+    #make gradiented colors for brackets
+    #todo: check if terminal has enough colors
+    import colorsys
+    for i in range(25):
+        rgb = colorsys.hsv_to_rgb(0.3, i/25, 1.0)
+        curses.init_color(200+i,  int(rgb[0]*1000), int(rgb[1]*1000), int(rgb[2]*1000))
 
     while True:
         editor.refresh()
