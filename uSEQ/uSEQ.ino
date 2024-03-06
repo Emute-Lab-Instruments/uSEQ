@@ -28,8 +28,6 @@
 // configure the number of PWM and digital outputs (this is to reflect the hardware, each PWM out be configured with a capacitor)
 
 
-#define PWM_OUTS 3
-#define DIGI_OUTS (6 - PWM_OUTS)
 
 
 // Not sure where the best place to put this is, needs to be accessible
@@ -38,7 +36,7 @@ bool currentExprSound = false;
 
 // firmware build options (comment out as needed)
 
-#define MIDIOUT  // (drum sequencer implemented using (mdo note (f t)))
+// #define MIDIOUT  // (drum sequencer implemented using (mdo note (f t)))
 //#define MIDIIN //(to be implemented)
 
 #define SERIAL_OUTS 8
@@ -3334,7 +3332,7 @@ void flash_builtin_led(int num, int amt) {
 }
 
 void setup_outs() {
-  for (int i=0; i < 6; i++) {
+  for (int i=0; i < PWM_OUTS + DIGI_OUTS; i++) {
     pinMode(useq_output_pins[i], OUTPUT);
   }
 }
@@ -3368,10 +3366,14 @@ void setup_digital_ins() {
 }
 
 void setup_leds() {
-  pinMode(LED_BOARD, OUTPUT);  //test LED
 
+#ifndef MUSICTHING
+  pinMode(LED_BOARD, OUTPUT);  //test LED
+  digitalWrite(LED_BOARD, 1);
   pinMode(USEQ_PIN_LED_I1, OUTPUT);
   pinMode(USEQ_PIN_LED_I2, OUTPUT);
+#endif
+
 
 #ifdef USEQHARDWARE_1_0
   pinMode(USEQ_PIN_LED_AI1, OUTPUT);
@@ -3381,7 +3383,6 @@ void setup_leds() {
   for (int i=0; i < 6; i++) {
     pinMode(useq_output_led_pins[i], OUTPUT);
   }
-  digitalWrite(LED_BOARD, 1);
 }
 
 void setup_switches() {
@@ -3550,6 +3551,10 @@ void readRotaryEnc() {
 void readInputs() {
   //inputs are input_pullup, so invert
   auto now=micros();
+
+#ifdef MUSICTHING
+
+#else  
   const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
   const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
   useqInputValues[USEQI1] = input1;
@@ -3565,6 +3570,7 @@ void readInputs() {
 
   useqInputValues[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
   useqInputValues[USEQT1] = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
+#endif
 
 #ifdef USEQHARDWARE_0_2
   useqInputValues[USEQRS1] = 1 - digitalRead(USEQ_PIN_SWITCH_R1);
