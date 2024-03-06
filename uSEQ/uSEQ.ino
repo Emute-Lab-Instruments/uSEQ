@@ -52,9 +52,6 @@ bool currentExprSound = false;
 #include "tempoEstimator.h"
 #include "piopwm.h"
 
-//#include "pico/stdlib.h"
-//#include "hardware/vreg.h"
-
 #include "drum-model-4.h"
 
 #ifndef NO_ETL
@@ -97,10 +94,13 @@ enum useqInputNames {
   USEQT2 = 5,
   //rotary enoder
   USEQRS1 = 6,  //switch
-  USEQR1 = 7    //encoder
+  USEQR1 = 7,    //encoder
+  //analog ins
+  USEQAI1 = 8,
+  USEQAI2 = 9
 };
 
-int useqInputValues[8];
+int useqInputValues[10];
 tempoEstimator tempoI1, tempoI2;
 
 
@@ -3373,6 +3373,11 @@ void setup_leds() {
   pinMode(USEQ_PIN_LED_I1, OUTPUT);
   pinMode(USEQ_PIN_LED_I2, OUTPUT);
 
+#ifdef USEQHARDWARE_1_0
+  pinMode(USEQ_PIN_LED_AI1, OUTPUT);
+  pinMode(USEQ_PIN_LED_AI2, OUTPUT);
+#endif
+
   for (int i=0; i < 6; i++) {
     pinMode(useq_output_led_pins[i], OUTPUT);
   }
@@ -3380,22 +3385,41 @@ void setup_leds() {
 }
 
 void setup_switches() {
+#ifdef USEQHARDWARE_1_0
+  pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);
+
+  pinMode(USEQ_PIN_SWITCH_T1, INPUT_PULLUP);
+#endif
+#ifdef USEQHARDWARE_0_2
   pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);
   pinMode(USEQ_PIN_SWITCH_M2, INPUT_PULLUP);
 
   pinMode(USEQ_PIN_SWITCH_T1, INPUT_PULLUP);
   pinMode(USEQ_PIN_SWITCH_T2, INPUT_PULLUP);
+#endif
+
 }
 
+#ifdef USEQHARDWARE_0_2
 void setup_rotary_encoder() {
   pinMode(USEQ_PIN_SWITCH_R1, INPUT_PULLUP);
   pinMode(USEQ_PIN_ROTARYENC_A, INPUT_PULLUP);
   pinMode(USEQ_PIN_ROTARYENC_B, INPUT_PULLUP);
   useqInputValues[USEQR1] = 0;
 }
+#endif
+
+#ifdef USEQHARDWARE_1_0
+void setup_analog_ins() {
+  analogReadResolution(12);  
+  pinMode(USEQ_PIN_AI1, INPUT);
+  pinMode(USEQ_PIN_AI2, INPUT);
+}
+#endif
 
 void led_animation() {
   int ledDelay = 30;
+#ifdef USEQHARDWARE_0_2
   for (int i = 0; i < 8; i++) {
     digitalWrite(USEQ_PIN_LED_I1, 1);
     delay(ledDelay);
@@ -3425,6 +3449,44 @@ void led_animation() {
     delay(ledDelay);
     ledDelay -= 3;
   }
+#endif
+#ifdef USEQHARDWARE_1_0
+  for (int i = 0; i < 8; i++) {
+    digitalWrite(USEQ_PIN_LED_AI1, 1);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_AI2, 1);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_A1, 1);
+    digitalWrite(USEQ_PIN_LED_AI1, 0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_A2, 1);
+    digitalWrite(USEQ_PIN_LED_AI2, 0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_A3, 1);
+    digitalWrite(USEQ_PIN_LED_A1, 0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_D3, 1);
+    digitalWrite(USEQ_PIN_LED_A2, 0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_D2, 1);
+    digitalWrite(USEQ_PIN_LED_A3, 0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_D1, 1);
+    digitalWrite(USEQ_PIN_LED_D3, 0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_I2, 1);
+    digitalWrite(USEQ_PIN_LED_D2, 0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_I1, 1);
+    digitalWrite(USEQ_PIN_LED_D1, 0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_I2, 0);
+    delay(ledDelay);
+    digitalWrite(USEQ_PIN_LED_I1, 0);
+    delay(ledDelay);
+    ledDelay -= 3;
+  }
+#endif
 }
 
 
@@ -3433,7 +3495,12 @@ void setup_IO() {
   setup_analog_outs();
   setup_digital_ins();
   setup_switches();
+#ifdef USEQHARDWARE_0_2  
   setup_rotary_encoder();
+#endif
+#ifdef USEQHARDWARE_1_0
+  setup_analog_ins();  
+#endif
 
 #ifdef MIDIOUT
   Serial1.setRX(1);
@@ -3449,6 +3516,7 @@ void module_setup() {
 static uint8_t prevNextCode = 0;
 static uint16_t store = 0;
 
+#ifdef USEQHARDWARE_0_2
 int8_t read_rotary() {
   static int8_t rot_enc_table[] = { 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0 };
 
@@ -3477,6 +3545,7 @@ void readRotaryEnc() {
     // Serial.print(c);Serial.print(" ");
   }
 }
+#endif
 
 void readInputs() {
   //inputs are input_pullup, so invert
@@ -3494,12 +3563,26 @@ void readInputs() {
   tempoI2.averageBPM(input2, now);
   
 
-  useqInputValues[USEQRS1] = 1 - digitalRead(USEQ_PIN_SWITCH_R1);
-
   useqInputValues[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
-  useqInputValues[USEQM2] = 1 - digitalRead(USEQ_PIN_SWITCH_M2);
   useqInputValues[USEQT1] = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
+
+#ifdef USEQHARDWARE_0_2
+  useqInputValues[USEQRS1] = 1 - digitalRead(USEQ_PIN_SWITCH_R1);
+  useqInputValues[USEQM2] = 1 - digitalRead(USEQ_PIN_SWITCH_M2);
   useqInputValues[USEQT2] = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
+#endif
+
+#ifdef USEQHARDWARE_1_0
+  auto v_ai1 = analogRead(USEQ_PIN_AI1);
+  auto v_ai1_11  = v_ai1 >> 1; //scale from 12 bit to 11 bit range
+  v_ai1_11 = (v_ai1_11 * v_ai1_11) >> 11; //sqr to get exp curve
+  analogWrite(USEQ_PIN_LED_AI1, v_ai1_11); 
+  // useqInputValues[USEQAI1] = v_ai1
+  auto v_ai2 = analogRead(USEQ_PIN_AI2);
+  auto v_ai2_11  = v_ai2 >> 1;
+  v_ai2_11 = (v_ai2_11 * v_ai2_11) >> 11;
+  analogWrite(USEQ_PIN_LED_AI2, v_ai2_11 >> 1); 
+#endif
 }
 
 
@@ -3601,7 +3684,10 @@ void loop() {
 //      useq::runQueue.push_back(parsedCode);
 //    }
   }
+
+#ifdef USEQHARDWARE_0_2
   readRotaryEnc();
+#endif
 
   //slow down for testing?
   // delay(50);

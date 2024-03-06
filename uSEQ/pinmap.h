@@ -23,16 +23,58 @@
 #ifndef PINMAP_H
 #define PINMAP_H
 
-#define LED_BOARD 25
+// #define USEQHARDWARE_0_2
+#define USEQHARDWARE_1_0
+
+#ifdef USEQHARDWARE_1_0
+
+#define LED_BOARD 6
+
+#define USEQ_PIN_I1 8
+#define USEQ_PIN_I2 9
+
+#define USEQ_PIN_AI1 26
+#define USEQ_PIN_AI2 27
+
+#define USEQ_PIN_LED_I1 5
+#define USEQ_PIN_LED_I2 4
+
+#define USEQ_PIN_LED_AI1 25
+#define USEQ_PIN_LED_AI2 24
+
+#define USEQ_PIN_LED_A1 3
+#define USEQ_PIN_LED_A2 2
+#define USEQ_PIN_LED_A3 11
+
+#define USEQ_PIN_LED_D1 12
+#define USEQ_PIN_LED_D2 13
+#define USEQ_PIN_LED_D3 22
 
 const int useq_output_pins[] = {21,20,19,18,17,16};
-const int useq_output_led_pins[] = {3,2,28,27,26,22};
+const int useq_output_led_pins[] = {USEQ_PIN_LED_A1,USEQ_PIN_LED_A2, USEQ_PIN_LED_A3,USEQ_PIN_LED_D1,USEQ_PIN_LED_D2,USEQ_PIN_LED_D3};
+
+
+#define USEQ_PIN_SWITCH_M1 10
+
+#define USEQ_PIN_SWITCH_T1 14
+
+
+#endif
+
+
+
+
+
+#ifdef USEQHARDWARE_0_2
+
+#define LED_BOARD 25
 
 #define USEQ_PIN_I1 8
 #define USEQ_PIN_I2 9
 
 #define USEQ_PIN_LED_I1 5
 #define USEQ_PIN_LED_I2 4
+
 #define USEQ_PIN_LED_A1 3
 #define USEQ_PIN_LED_A2 2
 
@@ -40,6 +82,10 @@ const int useq_output_led_pins[] = {3,2,28,27,26,22};
 #define USEQ_PIN_LED_D2 27
 #define USEQ_PIN_LED_D3 26
 #define USEQ_PIN_LED_D4 22
+
+const int useq_output_pins[] = {21,20,19,18,17,16};
+const int useq_output_led_pins[] = {USEQ_PIN_LED_A1,USEQ_PIN_LED_A2,USEQ_PIN_LED_D1,USEQ_PIN_LED_D2,USEQ_PIN_LED_D3,USEQ_PIN_LED_D4};
+
 
 #define USEQ_PIN_SWITCH_M1 10
 #define USEQ_PIN_SWITCH_M2 11
@@ -50,5 +96,7 @@ const int useq_output_led_pins[] = {3,2,28,27,26,22};
 
 #define USEQ_PIN_ROTARYENC_A 13
 #define USEQ_PIN_ROTARYENC_B 12
+
+#endif
 
 #endif

@@ -1,5 +1,6 @@
 import re
 from Console import Console
+from bigtree import Node
 
 class Lispy:
     @staticmethod
