@@ -72,6 +72,7 @@ const int useq_output_led_pins[] = {10,11,12,13,14,15};
 #define PWM_OUTS 2
 #define DIGI_OUTS 2
 
+#define DIGI_OUT_INVERT
 
 
 #endif

@@ -2315,7 +2315,12 @@ void updateDigitalOutputs() {
       int pin = digital_out_pin(i + 1);
       int led_pin = digital_out_LED_pin(i + 1);
       int val = result.as_int();
+      //TODO: this is repeat of ard_useqdw, should rationalise
+#ifdef DIGI_OUT_INVERT
+      digitalWrite(pin, 1-val);
+#else
       digitalWrite(pin, val);
+#endif
       digitalWrite(led_pin, val);
     }
   }
@@ -2691,7 +2696,11 @@ BUILTINFUNC(ard_useqdw,
               int pin = digital_out_pin(args[0].as_int());
               int led_pin = digital_out_LED_pin(args[0].as_int());
               int val = args[1].as_int();
-              digitalWrite(pin, val);
+#ifdef DIGI_OUT_INVERT
+      digitalWrite(pin, 1-val);
+#else
+      digitalWrite(pin, val);
+#endif
               digitalWrite(led_pin, val);
             }
             , 2)
