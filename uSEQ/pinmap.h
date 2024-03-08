@@ -55,6 +55,8 @@
 const int useq_output_pins[] = {23,22, 8,9};
 const int useq_output_led_pins[] = {10,11,12,13,14,15};
 
+#define AUDIO_IN_1 26
+#define AUDIO_IN_2 27
 #define MUX_IN_1 28
 #define MUX_IN_2 29
 
