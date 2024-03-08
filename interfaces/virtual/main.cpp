@@ -281,6 +281,9 @@ int main() {
 
     std::cout << "double: " << sizeof(double) << std::endl;
 
+    std::cout << "To connect, do something like python useqedit.py ~/Music/useq/deleteme.useq -p /tmp/ttyUSEQVirtual" << std::endl;
+
+
     using namespace ftxui;
 
     using namespace std::chrono_literals;

@@ -39,12 +39,18 @@ bool currentExprSound = false;
 // #define MIDIOUT  // (drum sequencer implemented using (mdo note (f t)))
 //#define MIDIIN //(to be implemented)
 
+#include "pinmap.h"
+
 #define SERIAL_OUTS 8
 #define SERIAL_INS 32
 
+#if defined(MUSICTHING) || defined(USEQHARDWARE_1_0)
+#define ANALOG_INPUTS 
+#endif
+
+
 // end of build options
 
-#include "pinmap.h"
 #include "LispLibrary.h"
 #include "MAFilter.hpp"
 #include "tempoEstimator.h"
@@ -95,10 +101,15 @@ enum useqInputNames {
   USEQR1 = 7,    //encoder
   //analog ins
   USEQAI1 = 8,
-  USEQAI2 = 9
+  USEQAI2 = 9,
+  //
+  MTMAINKNOB = 10,
+  MTXKNOB = 11,
+  MTYKNOB = 12,
+  MTZSWITCH = 13,
 };
 
-int useqInputValues[10];
+double useqInputValues[14];
 tempoEstimator tempoI1, tempoI2;
 
 
@@ -3040,6 +3051,21 @@ BUILTINFUNC(useq_in2,
           ret = Value(useqInputValues[USEQI2]);
           , 0)
 
+#ifdef MUSICTHING
+BUILTINFUNC(useq_mt_knob,
+          ret = Value(useqInputValues[MTMAINKNOB]);
+          , 0)
+BUILTINFUNC(useq_mt_knobx,
+          ret = Value(useqInputValues[MTXKNOB]);
+          , 0)
+BUILTINFUNC(useq_mt_knoby,
+          ret = Value(useqInputValues[MTYKNOB]);
+          , 0)
+BUILTINFUNC(useq_mt_swz,
+          ret = Value(useqInputValues[MTZSWITCH]);
+          , 0)
+#endif          
+
 
 BUILTINFUNC(useq_ssin,
     int index = args[0].as_int();
@@ -3179,6 +3205,13 @@ void loadBuiltinDefs() {
   Environment::builtindefs["swr"] = Value("swr", builtin::useq_swr);
   Environment::builtindefs["rot"] = Value("rot", builtin::useq_rot);
   Environment::builtindefs["ssin"] = Value("ssin", builtin::useq_ssin);
+
+#ifdef MUSICTHING
+  Environment::builtindefs["knob"] = Value("knob", builtin::useq_mt_knob);
+  Environment::builtindefs["knobx"] = Value("knobx", builtin::useq_mt_knobx);
+  Environment::builtindefs["knoby"] = Value("knoby", builtin::useq_mt_knoby);
+  Environment::builtindefs["swz"] = Value("swz", builtin::useq_mt_swz);
+#endif
 
   //sequencing
   Environment::builtindefs["pulse"] = Value("pulse", builtin::useq_pulse);
@@ -3344,6 +3377,12 @@ void setup_outs() {
   for (int i=0; i < PWM_OUTS + DIGI_OUTS; i++) {
     pinMode(useq_output_pins[i], OUTPUT);
   }
+
+#ifdef MUSICTHING
+  pinMode(MUX_LOGIC_A, OUTPUT);
+  pinMode(MUX_LOGIC_B, OUTPUT);
+#endif
+
 }
 
 
@@ -3419,16 +3458,49 @@ void setup_rotary_encoder() {
 }
 #endif
 
-#ifdef USEQHARDWARE_1_0
+#ifdef ANALOG_INPUTS
 void setup_analog_ins() {
   analogReadResolution(12);  
+#ifdef USEQHARDWARE_1_0
   pinMode(USEQ_PIN_AI1, INPUT);
   pinMode(USEQ_PIN_AI2, INPUT);
+#endif
+#ifdef MUSICTHING
+  pinMode(MUX_IN_1, INPUT);
+  pinMode(MUX_IN_2, INPUT);
+  pinMode(AUDIO_IN_1, INPUT);
+  pinMode(AUDIO_IN_2, INPUT);
+#endif
 }
 #endif
 
 void led_animation() {
   int ledDelay = 30;
+#ifdef MUSICTHING
+  ledDelay = 40;
+  for (int i = 0; i < 8; i++) {
+    digitalWrite(useq_output_led_pins[0], 1);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[2], 1);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[4], 1);
+    digitalWrite(useq_output_led_pins[0], 0);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[5], 1);
+    digitalWrite(useq_output_led_pins[2], 0);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[3], 1);
+    digitalWrite(useq_output_led_pins[4], 0);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[1], 1);
+    digitalWrite(useq_output_led_pins[5], 0);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[3], 0);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[1], 0);
+    ledDelay -= 3;
+  }
+#endif
 #ifdef USEQHARDWARE_0_2
   for (int i = 0; i < 8; i++) {
     digitalWrite(USEQ_PIN_LED_I1, 1);
@@ -3508,7 +3580,7 @@ void setup_IO() {
 #ifdef USEQHARDWARE_0_2  
   setup_rotary_encoder();
 #endif
-#ifdef USEQHARDWARE_1_0
+#ifdef ANALOG_INPUTS
   setup_analog_ins();  
 #endif
 
@@ -3555,13 +3627,56 @@ void readRotaryEnc() {
     // Serial.print(c);Serial.print(" ");
   }
 }
-#endif
+#endif //useq 0.2 rotary
 
 void readInputs() {
   //inputs are input_pullup, so invert
   auto now=micros();
-
+  const double recp4096 = 0.000244141; //1/4096
 #ifdef MUSICTHING
+  const size_t muxdelay=2;
+  //unroll loop for efficiency
+  digitalWrite(MUX_LOGIC_A,0);
+  digitalWrite(MUX_LOGIC_B,0);
+  delayMicroseconds(muxdelay);
+  useqInputValues[MTMAINKNOB] = analogRead(MUX_IN_1) * recp4096;
+  useqInputValues[USEQAI1] = analogRead(MUX_IN_2) * recp4096;
+  digitalWrite(MUX_LOGIC_A,0);
+  digitalWrite(MUX_LOGIC_B,1);
+  delayMicroseconds(muxdelay);
+  useqInputValues[MTYKNOB] = analogRead(MUX_IN_1) * recp4096;
+  digitalWrite(MUX_LOGIC_A,1);
+  digitalWrite(MUX_LOGIC_B,0);
+  delayMicroseconds(muxdelay);
+  useqInputValues[MTXKNOB] = analogRead(MUX_IN_1) * recp4096;
+  useqInputValues[USEQAI2] = analogRead(MUX_IN_2) * recp4096;
+  digitalWrite(MUX_LOGIC_A,1);
+  digitalWrite(MUX_LOGIC_B,1);
+  delayMicroseconds(muxdelay);
+  int switchVal = analogRead(MUX_IN_1);
+  if (switchVal < 100) {
+    switchVal = 0;
+  }else if (switchVal > 3500) {
+    switchVal = 2;
+  }else {
+    switchVal = 1;
+  }
+  useqInputValues[MTZSWITCH] = switchVal;
+
+  // Serial.print(useqInputValues[MTMAINKNOB]);
+  // Serial.print("\t");
+  // Serial.print(useqInputValues[MTXKNOB]);
+  // Serial.print("\t");
+  // Serial.print(useqInputValues[MTYKNOB]);
+  // Serial.print("\t");
+  // Serial.println(useqInputValues[MTZSWITCH]);
+
+  const int input1 = 1 - digitalRead(USEQ_PIN_I1);
+  const int input2 = 1 - digitalRead(USEQ_PIN_I2);
+  digitalWrite(useq_output_led_pins[4], input1);
+  digitalWrite(useq_output_led_pins[5], input2);
+  useqInputValues[USEQI1] = input1;
+  useqInputValues[USEQI2] = input2;
 
 #else  
   const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
