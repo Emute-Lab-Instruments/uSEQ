@@ -48,6 +48,9 @@ bool currentExprSound = false;
 #define ANALOG_INPUTS 
 #endif
 
+#if defined(USEQHARDWARE_1_0)
+#include <Wire.h>
+#endif
 
 // end of build options
 
@@ -3588,6 +3591,11 @@ void setup_IO() {
   Serial1.setRX(1);
   Serial1.setTX(0);
   Serial1.begin(31250);
+#endif
+
+#ifdef USEQHARDWARE_1_0
+  Wire.setSDA(0);
+  Wire.setSCL(1);
 #endif
 }
 

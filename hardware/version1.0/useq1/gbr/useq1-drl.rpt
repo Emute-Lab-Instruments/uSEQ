@@ -1,0 +1,34 @@
+Drill report for useq1.kicad_pcb
+Created on Wed 13 Mar 2024 10:21:08 GMT
+
+Copper Layer Stackup:
+    =============================================================
+    L1 :  F.Cu                      front
+    L2 :  B.Cu                      back
+
+
+Drill file 'useq1-PTH.drl' contains
+    plated through holes:
+    =============================================================
+    T1  0.200mm  0.0079"  (4 holes)
+    T2  0.300mm  0.0118"  (1 hole)
+    T3  0.350mm  0.0138"  (186 holes)
+    T4  0.350mm  0.0138"  (9 holes)
+    T5  0.500mm  0.0197"  (12 holes)  (with 4 slots)
+    T6  0.600mm  0.0236"  (4 holes)  (with 4 slots)
+    T7  0.700mm  0.0276"  (6 holes)
+    T8  0.900mm  0.0354"  (22 holes)  (with 2 slots)
+    T9  1.000mm  0.0394"  (13 holes)
+    T10  1.220mm  0.0480"  (10 holes)
+    T11  1.420mm  0.0559"  (10 holes)
+    T12  1.430mm  0.0563"  (10 holes)
+    T13  1.800mm  0.0709"  (4 holes)
+
+    Total plated holes count 291
+
+
+Drill file 'useq1-NPTH.drl' contains
+    unplated through holes:
+    =============================================================
+
+    Total unplated holes count 0

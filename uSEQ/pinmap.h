@@ -24,8 +24,8 @@
 #define PINMAP_H
 
 // #define USEQHARDWARE_0_2
-//  #define USEQHARDWARE_1_0
-#define MUSICTHING
+ #define USEQHARDWARE_1_0
+// #define MUSICTHING
 
 
 /*
