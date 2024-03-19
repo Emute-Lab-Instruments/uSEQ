@@ -8721,6 +8721,31 @@
     )
   )
 
+  (symbol (lib_id "power:+3V3") (at 422.91 48.514 180) (unit 1)
+    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
+    (uuid 718f6a65-3fba-411f-9b1e-2ba2d5a50259)
+    (property "Reference" "#PWR058" (at 422.91 44.704 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Value" "+3V3" (at 422.91 52.6471 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "" (at 422.91 48.514 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "" (at 422.91 48.514 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (pin "1" (uuid 5725b972-0a4e-4074-a2bf-6f1330d34fc4))
+    (instances
+      (project "useq1"
+        (path "/7d928d56-093a-4ca8-aed1-414b7e703b45"
+          (reference "#PWR058") (unit 1)
+        )
+      )
+    )
+  )
+
   (symbol (lib_id "power:GND") (at 376.047 363.474 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 71d4b420-d353-4973-b643-7dee57a52ea7)
@@ -9303,31 +9328,6 @@
       (project "useq1"
         (path "/7d928d56-093a-4ca8-aed1-414b7e703b45"
           (reference "R16") (unit 1)
-        )
-      )
-    )
-  )
-
-  (symbol (lib_id "power:GND") (at 435.61 48.514 0) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
-    (uuid 82e7b06b-9c99-4f0e-b5ca-493b0db2b6ce)
-    (property "Reference" "#PWR078" (at 435.61 54.864 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (property "Value" "GND" (at 435.61 52.6471 0)
-      (effects (font (size 1.27 1.27)))
-    )
-    (property "Footprint" "" (at 435.61 48.514 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (property "Datasheet" "" (at 435.61 48.514 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (pin "1" (uuid 1039d6e6-7fdb-497a-95c2-69a2231d78e9))
-    (instances
-      (project "useq1"
-        (path "/7d928d56-093a-4ca8-aed1-414b7e703b45"
-          (reference "#PWR078") (unit 1)
         )
       )
     )
@@ -9932,31 +9932,6 @@
       (project "useq1"
         (path "/7d928d56-093a-4ca8-aed1-414b7e703b45"
           (reference "#PWR038") (unit 1)
-        )
-      )
-    )
-  )
-
-  (symbol (lib_id "power:GND") (at 422.91 48.514 0) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
-    (uuid 99d6ca9a-bc2a-459e-86a3-abda1603dc07)
-    (property "Reference" "#PWR074" (at 422.91 54.864 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (property "Value" "GND" (at 422.91 52.6471 0)
-      (effects (font (size 1.27 1.27)))
-    )
-    (property "Footprint" "" (at 422.91 48.514 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (property "Datasheet" "" (at 422.91 48.514 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (pin "1" (uuid 0b861aa2-97fa-469e-97bf-c06d9e230434))
-    (instances
-      (project "useq1"
-        (path "/7d928d56-093a-4ca8-aed1-414b7e703b45"
-          (reference "#PWR074") (unit 1)
         )
       )
     )
@@ -12983,6 +12958,31 @@
       (project "useq1"
         (path "/7d928d56-093a-4ca8-aed1-414b7e703b45"
           (reference "#PWR064") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "power:+3V3") (at 435.61 48.514 180) (unit 1)
+    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
+    (uuid f7e9c3e8-a150-40b4-b608-c68bf5d6a075)
+    (property "Reference" "#PWR074" (at 435.61 44.704 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Value" "+3V3" (at 435.61 52.6471 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "" (at 435.61 48.514 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "" (at 435.61 48.514 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (pin "1" (uuid 9e138669-8d44-415c-be93-3174fa70c3e9))
+    (instances
+      (project "useq1"
+        (path "/7d928d56-093a-4ca8-aed1-414b7e703b45"
+          (reference "#PWR074") (unit 1)
         )
       )
     )
