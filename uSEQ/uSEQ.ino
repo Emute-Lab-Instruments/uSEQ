@@ -2514,11 +2514,11 @@ void update() {
     uint8_t data[sizeof(double)];
   } doubleArray;
 
-  doubleArray.v = t;
-  Wire.beginTransmission(4);
-  // Wire.write(&doubleArray.data[0], sizeof(double));
-  Wire.write(17);
-  Wire.endTransmission();
+  // doubleArray.v = t;
+  // Wire.beginTransmission(4);
+  // // Wire.write(&doubleArray.data[0], sizeof(double));
+  // Wire.write(17);
+  // Wire.endTransmission();
 
   //check code quant phasor
   double newCqpVal = runParsedCode(cqpAST, env).as_float();
@@ -3079,6 +3079,12 @@ BUILTINFUNC(useq_in1,
 BUILTINFUNC(useq_in2,
             ret = Value(useqInputValues[USEQI2]);
             , 0)
+BUILTINFUNC(useq_ain1,
+            ret = Value(useqInputValues[USEQAI1]);
+            , 0)
+BUILTINFUNC(useq_ain2,
+            ret = Value(useqInputValues[USEQAI2]);
+            , 0)
 
 #ifdef MUSICTHING
 BUILTINFUNC(useq_mt_knob,
@@ -3230,6 +3236,10 @@ void loadBuiltinDefs() {
   Environment::builtindefs["perf"] = Value("perf", builtin::perf);
   Environment::builtindefs["in1"] = Value("in1", builtin::useq_in1);
   Environment::builtindefs["in2"] = Value("in2", builtin::useq_in2);
+  Environment::builtindefs["gin1"] = Value("gin1", builtin::useq_in1);
+  Environment::builtindefs["gin2"] = Value("gin2", builtin::useq_in2);
+  Environment::builtindefs["ain1"] = Value("ain1", builtin::useq_ain1);
+  Environment::builtindefs["ain2"] = Value("ain2", builtin::useq_ain2);
   Environment::builtindefs["swm"] = Value("swm", builtin::useq_swm);
   Environment::builtindefs["swt"] = Value("swt", builtin::useq_swt);
   Environment::builtindefs["swr"] = Value("swr", builtin::useq_swr);
@@ -3624,7 +3634,7 @@ void setup_IO() {
   // Wire.onReceive(receiveEvent);
 
   //controller
-  Wire.begin();
+  // Wire.begin();
 #endif
 }
 
@@ -3769,11 +3779,12 @@ void readInputs() {
   auto v_ai1_11 = v_ai1 >> 1;              //scale from 12 bit to 11 bit range
   v_ai1_11 = (v_ai1_11 * v_ai1_11) >> 11;  //sqr to get exp curve
   analogWrite(USEQ_PIN_LED_AI1, v_ai1_11);
-  // useqInputValues[USEQAI1] = v_ai1
   auto v_ai2 = analogRead(USEQ_PIN_AI2);
   auto v_ai2_11 = v_ai2 >> 1;
   v_ai2_11 = (v_ai2_11 * v_ai2_11) >> 11;
   analogWrite(USEQ_PIN_LED_AI2, v_ai2_11 >> 1);
+  useqInputValues[USEQAI1] = v_ai1 * recp4096;
+  useqInputValues[USEQAI2] = v_ai2 * recp4096;
 #endif
 }
 
