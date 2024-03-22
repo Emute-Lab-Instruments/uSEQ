@@ -28,8 +28,6 @@
 // configure the number of PWM and digital outputs (this is to reflect the hardware, each PWM out be configured with a capacitor)
 
 
-#define PWM_OUTS 3
-#define DIGI_OUTS (6 - PWM_OUTS)
 
 
 // Not sure where the best place to put this is, needs to be accessible
@@ -38,15 +36,24 @@ bool currentExprSound = false;
 
 // firmware build options (comment out as needed)
 
-#define MIDIOUT  // (drum sequencer implemented using (mdo note (f t)))
+// #define MIDIOUT  // (drum sequencer implemented using (mdo note (f t)))
 //#define MIDIIN //(to be implemented)
+
+#include "pinmap.h"
 
 #define SERIAL_OUTS 8
 #define SERIAL_INS 32
 
+#if defined(MUSICTHING) || defined(USEQHARDWARE_1_0)
+#define ANALOG_INPUTS
+#endif
+
+#if defined(USEQHARDWARE_1_0)
+#include <Wire.h>
+#endif
+
 // end of build options
 
-#include "pinmap.h"
 #include "LispLibrary.h"
 #include "MAFilter.hpp"
 #include "tempoEstimator.h"
@@ -57,7 +64,7 @@ bool currentExprSound = false;
 #ifndef NO_ETL
 
 #define ETL_NO_STL
-#include <Embedded_Template_Library.h> // Mandatory for Arduino IDE only
+#include <Embedded_Template_Library.h>  // Mandatory for Arduino IDE only
 #include <etl/map.h>
 #include <etl/unordered_map.h>
 #include <etl/string.h>
@@ -94,13 +101,18 @@ enum useqInputNames {
   USEQT2 = 5,
   //rotary enoder
   USEQRS1 = 6,  //switch
-  USEQR1 = 7,    //encoder
+  USEQR1 = 7,   //encoder
   //analog ins
   USEQAI1 = 8,
-  USEQAI2 = 9
+  USEQAI2 = 9,
+  //
+  MTMAINKNOB = 10,
+  MTXKNOB = 11,
+  MTYKNOB = 12,
+  MTZSWITCH = 13,
 };
 
-int useqInputValues[10];
+double useqInputValues[14];
 tempoEstimator tempoI1, tempoI2;
 
 
@@ -228,16 +240,14 @@ std::map<int, Value> useqMDOMap;
 
 namespace etl {
 
-  template <>
-  struct hash<String>
-  {
-    std::size_t operator()(const String& k) const
-    {
-      using etl::hash;
-      etl::string<3> firstThree(k.substring(0,3).c_str());
-      return hash<etl::string<3> >()(firstThree);
-    }
-  };
+template<>
+struct hash<String> {
+  std::size_t operator()(const String &k) const {
+    using etl::hash;
+    etl::string<3> firstThree(k.substring(0, 3).c_str());
+    return hash<etl::string<3> >()(firstThree);
+  }
+};
 
 }
 
@@ -288,9 +298,9 @@ public:
   // friend std::ostream &operator<<(std::ostream &os, Environment const &v);
 
 #ifdef NO_ETL
- static std::map<String, Value> builtindefs;
+  static std::map<String, Value> builtindefs;
 #else
-static etl::unordered_map<String, Value, 256> builtindefs;
+  static etl::unordered_map<String, Value, 256> builtindefs;
 #endif
 
 private:
@@ -302,7 +312,7 @@ private:
   // mutex write_mutex;
 
   // void init() {
-    // mutex_init(&write_mutex);
+  // mutex_init(&write_mutex);
   // }
 };
 
@@ -463,7 +473,7 @@ public:
     return type == ERROR;
   }
 
-  bool is_list () const {
+  bool is_list() const {
     return type == LIST;
   }
 
@@ -513,7 +523,7 @@ public:
       Serial.print("list: ");
       Serial.println(BAD_CAST);
       currentExprSound = false;
-      return {Value::error()};
+      return { Value::error() };
     }
     return list;
   }
@@ -559,7 +569,7 @@ public:
       default:
         Serial.println("int: ");
         Serial.println(BAD_CAST);
-      currentExprSound = false;
+        currentExprSound = false;
         return Value::error();
         // throw Error(*this, Environment(), BAD_CAST);
     }
@@ -574,7 +584,7 @@ public:
       default:
         Serial.println("float: ");
         Serial.println(BAD_CAST);
-      currentExprSound = false;
+        currentExprSound = false;
         // throw Error(*this, Environment(), BAD_CAST);
         return Value::error();
     }
@@ -1191,12 +1201,12 @@ Value Value::eval(Environment &env) {
           return Value::error();
         } else {
           //lambda?
-          bool evalError=false;
+          bool evalError = false;
           if (!function.is_builtin()) {
             for (size_t i = 0; i < args.size(); i++) {
               args[i] = args[i].eval(env);
               if (args[i] == Value::error()) {
-                evalError=true;
+                evalError = true;
                 break;
               }
             }
@@ -1204,7 +1214,7 @@ Value Value::eval(Environment &env) {
 
           if (evalError) {
             return Value::error();
-          }else{
+          } else {
             auto functionResult = function.apply(
               args,
               env);
@@ -1262,13 +1272,13 @@ Value parse(String &s, int &ptr) {
     Value result = Value(std::vector<Value>());
 
     while (s[ptr] != ')') {
-        Value res = parse(s, ptr);
-        if (res == Value::error()) {
-            result = Value::error();
-            break;
-        }else {
-            result.push(res);
-        }
+      Value res = parse(s, ptr);
+      if (res == Value::error()) {
+        result = Value::error();
+        break;
+      } else {
+        result.push(res);
+      }
     }
 
     skip_whitespace(s, ++ptr);
@@ -1405,7 +1415,7 @@ Value runParsedCode(std::vector<Value> ast, Environment &env) {
     run_time += (micros() - ts_run);
     return result;
   } else {
-//    return Value::error();
+    //    return Value::error();
     return Value();
   }
 }
@@ -1858,7 +1868,7 @@ Value insert(std::vector<Value> &args, Environment &env) {
   if (i > (int)list.size())
     Serial.println(INDEX_OUT_OF_RANGE);
   else
-      list.insert(list.begin() + args[1].as_int(), args[2].as_int());
+    list.insert(list.begin() + args[1].as_int(), args[2].as_int());
   return Value(list);
 }
 
@@ -1949,23 +1959,23 @@ Value tail(std::vector<Value> &args, Environment &env) {
 }
 
 Value flatten(Value &val, Environment &env) {
-    std::vector<Value> flattened;
-    if (!val.is_list()) {
-      flattened.push_back(val);
-    }else{
-      auto valList = val.as_list();
-      for(size_t i=0; i < valList.size(); i++) {
-        Value evaluatedElement = valList[i].eval(env);
-        if(evaluatedElement.is_list()) {
-          auto flattenedElement = flatten(evaluatedElement, env).as_list();
-          flattened.insert(flattened.end(), flattenedElement.begin(), flattenedElement.end());
-        }else{
-          flattened.push_back(evaluatedElement);
-        }
+  std::vector<Value> flattened;
+  if (!val.is_list()) {
+    flattened.push_back(val);
+  } else {
+    auto valList = val.as_list();
+    for (size_t i = 0; i < valList.size(); i++) {
+      Value evaluatedElement = valList[i].eval(env);
+      if (evaluatedElement.is_list()) {
+        auto flattenedElement = flatten(evaluatedElement, env).as_list();
+        flattened.insert(flattened.end(), flattenedElement.begin(), flattenedElement.end());
+      } else {
+        flattened.push_back(evaluatedElement);
       }
     }
-    return Value(flattened);
   }
+  return Value(flattened);
+}
 
 
 Value parse(std::vector<Value> &args, Environment &env) {
@@ -2091,32 +2101,32 @@ Value range(std::vector<Value> &args, Environment &env) {
 //end of builtin namespace
 
 inline int digital_out_pin(int out) {
-  int res=-1;
+  int res = -1;
   int pindex = PWM_OUTS + out;
-  if ( pindex <= 6)
-    res = useq_output_pins[pindex-1];
+  if (pindex <= 6)
+    res = useq_output_pins[pindex - 1];
   return res;
 }
 
 inline int digital_out_LED_pin(int out) {
-  int res=-1;
+  int res = -1;
   int pindex = PWM_OUTS + out;
-  if ( pindex <= 6)
-    res = useq_output_led_pins[pindex-1];
+  if (pindex <= 6)
+    res = useq_output_led_pins[pindex - 1];
   return res;
 }
 
 inline int analog_out_pin(int out) {
-  int res=-1;
+  int res = -1;
   if (out <= PWM_OUTS)
-    res = useq_output_pins[out-1];
+    res = useq_output_pins[out - 1];
   return res;
 }
 
 inline int analog_out_LED_pin(int out) {
-  int res=-1;
+  int res = -1;
   if (out <= PWM_OUTS)
-    res = useq_output_led_pins[out-1];
+    res = useq_output_led_pins[out - 1];
   return res;
 }
 
@@ -2125,7 +2135,7 @@ inline int analog_out_LED_pin(int out) {
   Value __name__(std::vector<Value> &args, Environment &env) { \
     eval_args(args, env); \
     Value ret = Value(); \
-    if (args.size() != __numArgs__) {\
+    if (args.size() != __numArgs__) { \
       Serial.println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS); \
       ret = Value::error(); \
     } else { \
@@ -2167,16 +2177,16 @@ inline int analog_out_LED_pin(int out) {
 Environment env;
 
 void pio_pwm_set_period(PIO pio, uint sm, uint32_t period) {
-    pio_sm_set_enabled(pio, sm, false);
-    pio_sm_put_blocking(pio, sm, period);
-    pio_sm_exec(pio, sm, pio_encode_pull(false, false));
-    pio_sm_exec(pio, sm, pio_encode_out(pio_isr, 32));
-    pio_sm_set_enabled(pio, sm, true);
+  pio_sm_set_enabled(pio, sm, false);
+  pio_sm_put_blocking(pio, sm, period);
+  pio_sm_exec(pio, sm, pio_encode_pull(false, false));
+  pio_sm_exec(pio, sm, pio_encode_out(pio_isr, 32));
+  pio_sm_set_enabled(pio, sm, true);
 }
 
 // Write `level` to TX FIFO. State machine will copy this into X.
 void pio_pwm_set_level(PIO pio, uint sm, uint32_t level) {
-    pio_sm_put_blocking(pio, sm, level);
+  pio_sm_put_blocking(pio, sm, level);
 }
 
 namespace useq {
@@ -2217,14 +2227,14 @@ std::vector<Value> analogASTs[PWM_OUTS];
 std::vector<Value> digitalASTs[DIGI_OUTS];
 std::vector<Value> serialASTs[SERIAL_OUTS];
 std::vector<Value> q0AST;
-std::vector<double> serialInputStreams(SERIAL_INS,0);
+std::vector<double> serialInputStreams(SERIAL_INS, 0);
 
 struct scheduledItem {
-//    Value statement;
-    std::vector<Value> ast;
-    size_t period;
-    size_t lastRun;
-    String id;
+  //    Value statement;
+  std::vector<Value> ast;
+  size_t period;
+  size_t lastRun;
+  String id;
 };
 
 std::vector<scheduledItem> scheduledItems;
@@ -2245,7 +2255,7 @@ void setBpm(double newBpm, double changeThreshold = 0) {
     bps = bpm / 60.0;
 
     beatDur = 1000000.0 / bps;
-    barDur = beatDur * (4.0/meter_denominator) * meter_numerator;
+    barDur = beatDur * (4.0 / meter_denominator) * meter_numerator;
     phraseDur = barDur * barsPerPhrase;
     sectionDur = phraseDur * phrasesPerSection;
 
@@ -2298,26 +2308,31 @@ void resetTime() {
 
 //just temp clearing these to make testing easier
 const Value defaultForm_digital = parse("0")[0];
-const Value defaultForm_analog  = parse("0")[0];
+const Value defaultForm_analog = parse("0")[0];
 // const Value defaultForm_digital = parse("(fast 16 (sqr beat))")[0];
 // const Value defaultForm_analog  = parse("(fast 16 beat)")[0];
 
 void updateDigitalOutputs() {
-  for (size_t i=0; i < DIGI_OUTS; i++) {
+  for (size_t i = 0; i < DIGI_OUTS; i++) {
     currentExprSound = true;
     Value result = runParsedCode(digitalASTs[i], env);
 
     if (result == Value::error() || !currentExprSound) {
       Serial.println("Error in digital output function, clearing");
-      digitalASTs[i] = {defaultForm_digital};
+      digitalASTs[i] = { defaultForm_digital };
       currentExprSound = true;
     }
-// Write
+    // Write
     else {
       int pin = digital_out_pin(i + 1);
       int led_pin = digital_out_LED_pin(i + 1);
       int val = result.as_int();
+      //TODO: this is repeat of ard_useqdw, should rationalise
+#ifdef DIGI_OUT_INVERT
+      digitalWrite(pin, 1 - val);
+#else
       digitalWrite(pin, val);
+#endif
       digitalWrite(led_pin, val);
     }
   }
@@ -2326,13 +2341,13 @@ void updateDigitalOutputs() {
 void updateAnalogOutputs() {
 
   // for (size_t i=0; i < 1; i++) {
-  for (size_t i=0; i < PWM_OUTS; i++) {
+  for (size_t i = 0; i < PWM_OUTS; i++) {
     currentExprSound = true;
     Value result = runParsedCode(analogASTs[i], env);
 
     if (result == Value::error() || !currentExprSound) {
       Serial.println("Error in analog output function, clearing");
-      analogASTs[i] = {defaultForm_analog};
+      analogASTs[i] = { defaultForm_analog };
       currentExprSound = true;
     }
     // Write
@@ -2345,13 +2360,12 @@ void updateAnalogOutputs() {
       pio_pwm_set_level(i < 4 ? pio0 : pio1, i % 4, sigval);
 
       //led out
-      int led_pin = analog_out_LED_pin(i + 1);  
-      int ledsigval = sigval>>2; //shift to 11 bit range for the LED
-      ledsigval = (ledsigval * ledsigval) >> 11; //cheap way to square and get a exp curve
-      analogWrite(led_pin, ledsigval); 
+      int led_pin = analog_out_LED_pin(i + 1);
+      int ledsigval = sigval >> 2;                //shift to 11 bit range for the LED
+      ledsigval = (ledsigval * ledsigval) >> 11;  //cheap way to square and get a exp curve
+      analogWrite(led_pin, ledsigval);
     }
   }
-
 }
 
 void updateQ0() {
@@ -2366,28 +2380,28 @@ void updateQ0() {
 }
 
 void updateSerialOutputs() {
-    for (size_t i=0; i < SERIAL_OUTS; i++) {
-        if (serialASTs[i].size() > 0) {
-            currentExprSound = true;
-            Value result = runParsedCode(serialASTs[i], env);
+  for (size_t i = 0; i < SERIAL_OUTS; i++) {
+    if (serialASTs[i].size() > 0) {
+      currentExprSound = true;
+      Value result = runParsedCode(serialASTs[i], env);
 
-            if (result == Value::error() || !currentExprSound) {
-                Serial.println("Error in serial output function, clearing");
-                serialASTs[i] = {};
-                currentExprSound = true;
-            }
-                // Write
-            else {
-                double val = result.as_float();
-                Serial.write((u_int8_t )31);
-                Serial.write((u_int8_t )(i + 1));
-                char *byteArray = reinterpret_cast<char *>(&val);
-                for (size_t b = 0; b < 8; b++) {
-                    Serial.write(byteArray[b]);
-                }
-            }
+      if (result == Value::error() || !currentExprSound) {
+        Serial.println("Error in serial output function, clearing");
+        serialASTs[i] = {};
+        currentExprSound = true;
+      }
+      // Write
+      else {
+        double val = result.as_float();
+        Serial.write((u_int8_t)31);
+        Serial.write((u_int8_t)(i + 1));
+        char *byteArray = reinterpret_cast<char *>(&val);
+        for (size_t b = 0; b < 8; b++) {
+          Serial.write(byteArray[b]);
         }
+      }
     }
+  }
 }
 
 
@@ -2435,9 +2449,9 @@ void updateMidiOut() {
     last_midi_t = t;
   }
 }
-#endif // end of MIDI OUT SECTION
+#endif  // end of MIDI OUT SECTION
 
-MovingAverageFilter cqpMA(3); //code quantising phasor
+MovingAverageFilter cqpMA(3);  //code quantising phasor
 double lastCQP = 0;
 String cqpCode = "(define cqp 'bar)";
 std::vector<Value> cqpAST;
@@ -2445,17 +2459,16 @@ std::vector<Value> cqpAST;
 std::vector< std::vector<Value>> runQueue;
 
 void initASTs() {
-    for(int i = 0; i < DIGI_OUTS; i++)
-      //  digitalASTs[i] = {parse("(sqr beat)")[0]};
-       digitalASTs[i] = {0};
+  for (int i = 0; i < DIGI_OUTS; i++)
+    //  digitalASTs[i] = {parse("(sqr beat)")[0]};
+    digitalASTs[i] = { 0 };
 
-    for(int i = 0; i < PWM_OUTS; i++)
-      //  analogASTs[i] = {parse("bar")[0]};
-       analogASTs[i] = {0};
+  for (int i = 0; i < PWM_OUTS; i++)
+    //  analogASTs[i] = {parse("bar")[0]};
+    analogASTs[i] = { 0 };
 
-    for(int i = 0; i < SERIAL_OUTS; i++)
-        serialASTs[i] = {};
-
+  for (int i = 0; i < SERIAL_OUTS; i++)
+    serialASTs[i] = {};
 }
 
 void setup() {
@@ -2468,24 +2481,24 @@ void setup() {
 }
 
 void runScheduledItems() {
-    for(size_t i=0; i < scheduledItems.size(); i++) {
-        //run the statement once every period
-        size_t run = static_cast<size_t>(bar * scheduledItems[i].period);
-//        size_t run_norm = run > scheduledItems[i].lastRun ? run : run + scheduledItems[i].period;
-        size_t numRuns = run >= scheduledItems[i].lastRun ? run - scheduledItems[i].lastRun : scheduledItems[i].period - scheduledItems[i].lastRun;
-        for(size_t j=0; j < numRuns; j++) {
-            //run the statement
-//            Serial.println(scheduledItems[i].id);
-            runParsedCode(scheduledItems[i].ast, env);
-        }
-        scheduledItems[i].lastRun = run;
+  for (size_t i = 0; i < scheduledItems.size(); i++) {
+    //run the statement once every period
+    size_t run = static_cast<size_t>(bar * scheduledItems[i].period);
+    //        size_t run_norm = run > scheduledItems[i].lastRun ? run : run + scheduledItems[i].period;
+    size_t numRuns = run >= scheduledItems[i].lastRun ? run - scheduledItems[i].lastRun : scheduledItems[i].period - scheduledItems[i].lastRun;
+    for (size_t j = 0; j < numRuns; j++) {
+      //run the statement
+      //            Serial.println(scheduledItems[i].id);
+      runParsedCode(scheduledItems[i].ast, env);
     }
+    scheduledItems[i].lastRun = run;
+  }
 }
 
 int ts_inputs = 0, ts_time = 0, ts_outputs = 0;
 
 void update() {
-  
+
 
   ts_inputs = millis();
   readInputs();
@@ -2495,12 +2508,24 @@ void update() {
   env.set("perf_time", Value(int(millis() - ts_time)));
   ts_outputs = millis();
 
+  //I2C share clock
+  union {
+    double v;
+    uint8_t data[sizeof(double)];
+  } doubleArray;
+
+  // doubleArray.v = t;
+  // Wire.beginTransmission(4);
+  // // Wire.write(&doubleArray.data[0], sizeof(double));
+  // Wire.write(17);
+  // Wire.endTransmission();
+
   //check code quant phasor
   double newCqpVal = runParsedCode(cqpAST, env).as_float();
   // double cqpAvgTime = cqpMA.process(newCqpVal - lastCQP);
   if (newCqpVal < lastCQP) {
     updateQ0();
-    for(size_t q=0; q < runQueue.size(); q++) {
+    for (size_t q = 0; q < runQueue.size(); q++) {
       Value res;
       int cmdts = micros();
       res = runParsedCode(runQueue[q], env);
@@ -2552,131 +2577,144 @@ Value fromList(std::vector<Value> &lst, double phasor, Environment &env) {
   return lst[idx].eval(env);
 }
 
-BUILTINFUNC_NOEVAL(useq_q0, 
-  env.set_global("q-form", args[0]);
-  useq::q0AST = {args[0]};
-  ,1)
+BUILTINFUNC_NOEVAL(useq_q0,
+                   env.set_global("q-form", args[0]);
+                   useq::q0AST = { args[0] };
+                   , 1)
 
 // ANALOG OUTS
-BUILTINFUNC_NOEVAL(a1,
-  if (PWM_OUTS>=1) {
+BUILTINFUNC_NOEVAL(
+  a1,
+  if (PWM_OUTS >= 1) {
     env.set_global("a1-form", args[0]);
-    useq::analogASTs[0] = {args[0]};
-  }
-, 1)
-BUILTINFUNC_NOEVAL(a2,
-  if (PWM_OUTS>=2) {
+    useq::analogASTs[0] = { args[0] };
+  },
+  1)
+BUILTINFUNC_NOEVAL(
+  a2,
+  if (PWM_OUTS >= 2) {
     env.set_global("a2-form", args[0]);
-    useq::analogASTs[1] = {args[0]};
-  }
-, 1)
-BUILTINFUNC_NOEVAL(a3,
-  if (PWM_OUTS>=3) {
+    useq::analogASTs[1] = { args[0] };
+  },
+  1)
+BUILTINFUNC_NOEVAL(
+  a3,
+  if (PWM_OUTS >= 3) {
     env.set_global("a3-form", args[0]);
-    useq::analogASTs[2] = {args[0]};
-  }
-, 1)
-BUILTINFUNC_NOEVAL(a4,
-  if (PWM_OUTS>=4) {
+    useq::analogASTs[2] = { args[0] };
+  },
+  1)
+BUILTINFUNC_NOEVAL(
+  a4,
+  if (PWM_OUTS >= 4) {
     env.set_global("a4-form", args[0]);
-    useq::analogASTs[3] = {args[0]};
-  }
-, 1)
-BUILTINFUNC_NOEVAL(a5,
-  if (PWM_OUTS>=5) {
+    useq::analogASTs[3] = { args[0] };
+  },
+  1)
+BUILTINFUNC_NOEVAL(
+  a5,
+  if (PWM_OUTS >= 5) {
     env.set_global("a5-form", args[0]);
-    useq::analogASTs[4] = {args[0]};
-  }
-, 1)
-BUILTINFUNC_NOEVAL(a6,
-  if (PWM_OUTS>=6) {
+    useq::analogASTs[4] = { args[0] };
+  },
+  1)
+BUILTINFUNC_NOEVAL(
+  a6,
+  if (PWM_OUTS >= 6) {
     env.set_global("a6-form", args[0]);
-    useq::analogASTs[5] = {args[0]};
-  }
-, 1)
+    useq::analogASTs[5] = { args[0] };
+  },
+  1)
 
 // DIGITAL OUTS
-BUILTINFUNC_NOEVAL(d1,
-  if (DIGI_OUTS>=1) {
+BUILTINFUNC_NOEVAL(
+  d1,
+  if (DIGI_OUTS >= 1) {
     env.set_global("d1-form", args[0]);
-    useq::digitalASTs[0] = {args[0]};
-  }
-, 1)
-BUILTINFUNC_NOEVAL(d2,
-  if (DIGI_OUTS>=2) {
+    useq::digitalASTs[0] = { args[0] };
+  },
+  1)
+BUILTINFUNC_NOEVAL(
+  d2,
+  if (DIGI_OUTS >= 2) {
     env.set_global("d2-form", args[0]);
-    useq::digitalASTs[1] = {args[0]};
-  }
-  , 1)
-BUILTINFUNC_NOEVAL(d3,
-  if (DIGI_OUTS>=3) {
+    useq::digitalASTs[1] = { args[0] };
+  },
+  1)
+BUILTINFUNC_NOEVAL(
+  d3,
+  if (DIGI_OUTS >= 3) {
     env.set_global("d3-form", args[0]);
-    useq::digitalASTs[2] = {args[0]};
-  }
-, 1)
-BUILTINFUNC_NOEVAL(d4,
-  if (DIGI_OUTS>=4) {
+    useq::digitalASTs[2] = { args[0] };
+  },
+  1)
+BUILTINFUNC_NOEVAL(
+  d4,
+  if (DIGI_OUTS >= 4) {
     env.set_global("d4-form", args[0]);
-    useq::digitalASTs[3] = {args[0]};
-  }
-, 1)
-BUILTINFUNC_NOEVAL(d5,
-  if (DIGI_OUTS>=5) {
+    useq::digitalASTs[3] = { args[0] };
+  },
+  1)
+BUILTINFUNC_NOEVAL(
+  d5,
+  if (DIGI_OUTS >= 5) {
     env.set_global("d5-form", args[0]);
-    useq::digitalASTs[4] = {args[0]};
-  }
-, 1)
-BUILTINFUNC_NOEVAL(d6,
-  if (DIGI_OUTS>=6) {
+    useq::digitalASTs[4] = { args[0] };
+  },
+  1)
+BUILTINFUNC_NOEVAL(
+  d6,
+  if (DIGI_OUTS >= 6) {
     env.set_global("d6-form", args[0]);
-    useq::digitalASTs[5] = {args[0]};
-  }
-, 1)
+    useq::digitalASTs[5] = { args[0] };
+  },
+  1)
 
 
 BUILTINFUNC_NOEVAL(s1,
-   env.set_global("s1-form", args[0]);
-   useq::serialASTs[0] = {args[0]};
-, 1)
+                   env.set_global("s1-form", args[0]);
+                   useq::serialASTs[0] = { args[0] };
+                   , 1)
 BUILTINFUNC_NOEVAL(s2,
-   env.set_global("s2-form", args[0]);
-   useq::serialASTs[1] = {args[0]};
-, 1)
+                   env.set_global("s2-form", args[0]);
+                   useq::serialASTs[1] = { args[0] };
+                   , 1)
 BUILTINFUNC_NOEVAL(s3,
-   env.set_global("s3-form", args[0]);
-   useq::serialASTs[2] = {args[0]};
-, 1)
+                   env.set_global("s3-form", args[0]);
+                   useq::serialASTs[2] = { args[0] };
+                   , 1)
 BUILTINFUNC_NOEVAL(s4,
-   env.set_global("s4-form", args[0]);
-   useq::serialASTs[3] = {args[0]};
-, 1)
+                   env.set_global("s4-form", args[0]);
+                   useq::serialASTs[3] = { args[0] };
+                   , 1)
 BUILTINFUNC_NOEVAL(s5,
-   env.set_global("s5-form", args[0]);
-   useq::serialASTs[4] = {args[0]};
-, 1)
+                   env.set_global("s5-form", args[0]);
+                   useq::serialASTs[4] = { args[0] };
+                   , 1)
 BUILTINFUNC_NOEVAL(s6,
-   env.set_global("s6-form", args[0]);
-   useq::serialASTs[5] = {args[0]};
-, 1)
+                   env.set_global("s6-form", args[0]);
+                   useq::serialASTs[5] = { args[0] };
+                   , 1)
 BUILTINFUNC_NOEVAL(s7,
-   env.set_global("s7-form", args[0]);
-   useq::serialASTs[6] = {args[0]};
-, 1)
+                   env.set_global("s7-form", args[0]);
+                   useq::serialASTs[6] = { args[0] };
+                   , 1)
 BUILTINFUNC_NOEVAL(s8,
-   env.set_global("s8-form", args[0]);
-   useq::serialASTs[7] = {args[0]};
-, 1)
+                   env.set_global("s8-form", args[0]);
+                   useq::serialASTs[7] = { args[0] };
+                   , 1)
 
 #ifdef MIDIOUT
 //midi drum out
-BUILTINFUNC(useq_mdo,
-            int midiNote = args[0].as_int();
-            if (args[1] != 0) {
-              useqMDOMap[midiNote] = args[1];
-            }else{
-              useqMDOMap.erase(midiNote);
-            }
-            , 2)
+BUILTINFUNC(
+  useq_mdo,
+  int midiNote = args[0].as_int();
+  if (args[1] != 0) {
+    useqMDOMap[midiNote] = args[1];
+  } else {
+    useqMDOMap.erase(midiNote);
+  },
+  2)
 #endif
 
 BUILTINFUNC(ard_pinMode,
@@ -2685,31 +2723,37 @@ BUILTINFUNC(ard_pinMode,
             pinMode(pinNumber, onOff);
             , 2)
 
-BUILTINFUNC(ard_useqdw,
-            if (args[1] == Value::error()) {
-              Serial.println("useqdw arg err");
-              ret = args[1];
-            }else{
-              int pin = digital_out_pin(args[0].as_int());
-              int led_pin = digital_out_LED_pin(args[0].as_int());
-              int val = args[1].as_int();
-              digitalWrite(pin, val);
-              digitalWrite(led_pin, val);
-            }
-            , 2)
+BUILTINFUNC(
+  ard_useqdw,
+  if (args[1] == Value::error()) {
+    Serial.println("useqdw arg err");
+    ret = args[1];
+  } else {
+    int pin = digital_out_pin(args[0].as_int());
+    int led_pin = digital_out_LED_pin(args[0].as_int());
+    int val = args[1].as_int();
+#ifdef DIGI_OUT_INVERT
+    digitalWrite(pin, 1 - val);
+#else
+    digitalWrite(pin, val);
+#endif
+    digitalWrite(led_pin, val);
+  },
+  2)
 
-BUILTINFUNC(ard_useqaw,
-            if (args[1] == Value::error()) {
-              Serial.println("useqaw arg err");
-              ret = args[1];
-            }else{
-              int pin = analog_out_pin(args[0].as_int());
-              int led_pin = analog_out_LED_pin(args[0].as_int());
-              int val = args[1].as_float() * 2047.0;
-              analogWrite(pin, val);
-              analogWrite(led_pin, val);
-            }
-            , 2)
+BUILTINFUNC(
+  ard_useqaw,
+  if (args[1] == Value::error()) {
+    Serial.println("useqaw arg err");
+    ret = args[1];
+  } else {
+    int pin = analog_out_pin(args[0].as_int());
+    int led_pin = analog_out_LED_pin(args[0].as_int());
+    int val = args[1].as_float() * 2047.0;
+    analogWrite(pin, val);
+    analogWrite(led_pin, val);
+  },
+  2)
 
 
 
@@ -2804,8 +2848,8 @@ BUILTINFUNC(useq_sqr,
             ret = Value(args[0].as_float() < 0.5 ? 1.0 : 0.0);
             , 1)
 
-  // TODO D-R-Y
-  //this version doesn't work properly with phasors - freezes at >2x speedup
+// TODO D-R-Y
+//this version doesn't work properly with phasors - freezes at >2x speedup
 // BUILTINFUNC_NOEVAL(useq_fast,
 //             double factor = args[0].eval(env).as_float();
 //             Value expr = args[1];
@@ -2827,29 +2871,30 @@ BUILTINFUNC(useq_fast,
             , 2)
 
 BUILTINFUNC_NOEVAL(useq_slow,
-            double factor = args[0].eval(env).as_float();
-            Value expr = args[1];
-            // store the current time to reset later
-            double currentTime = env.get("time").as_float();
-            // update the interpreter's time just for this expr
-            double newTime = currentTime / factor;
-            useq::setTime((size_t)newTime);
-            double evaled_expr = expr.eval(env).as_float();
-            ret = Value(evaled_expr);
-            // restore the interpreter's time
-            useq::setTime((size_t)currentTime);
-            , 2)
-BUILTINFUNC_VARGS(useq_fromList,
-            auto lst = args[0].as_list();
-            const double phasor = args[1].as_float();
-            ret = fromList(lst, phasor, env);
-            if (args.size() == 3) {
-              double scale = args[2].as_float();
-              if (scale != 0) {
-                ret = Value(ret / scale);
-              }
-            }
-            , 2,3)
+                   double factor = args[0].eval(env).as_float();
+                   Value expr = args[1];
+                   // store the current time to reset later
+                   double currentTime = env.get("time").as_float();
+                   // update the interpreter's time just for this expr
+                   double newTime = currentTime / factor;
+                   useq::setTime((size_t)newTime);
+                   double evaled_expr = expr.eval(env).as_float();
+                   ret = Value(evaled_expr);
+                   // restore the interpreter's time
+                   useq::setTime((size_t)currentTime);
+                   , 2)
+BUILTINFUNC_VARGS(
+  useq_fromList,
+  auto lst = args[0].as_list();
+  const double phasor = args[1].as_float();
+  ret = fromList(lst, phasor, env);
+  if (args.size() == 3) {
+    double scale = args[2].as_float();
+    if (scale != 0) {
+      ret = Value(ret / scale);
+    }
+  },
+  2, 3)
 BUILTINFUNC(useq_fromFlattenedList,
             auto lst = flatten(args[0], env).as_list();
             double phasor = args[1].as_float();
@@ -2858,36 +2903,37 @@ BUILTINFUNC(useq_fromFlattenedList,
 BUILTINFUNC(useq_flatten,
             ret = flatten(args[0], env);
             , 1)
-BUILTINFUNC(useq_interpolate,
-            auto lst = args[0].as_list();
-            double phasor = args[1].as_float();
-            if (phasor < 0.0) {
-              phasor = 0;
-            } else if (phasor > 1) {
-              phasor = 1;
-            }
-            float a;
-            double index = phasor * (lst.size()-1);
-            size_t pos0 = static_cast<size_t>(index);
-            if (pos0==(lst.size()-1)) pos0--;
-            a = (index - pos0) ;
-            double v2 = lst[pos0+1].eval(env).as_float();
-            double v1 = lst[pos0].eval(env).as_float();
-            ret = Value(((v2 - v1) * a) + v1);
-            , 2)
+BUILTINFUNC(
+  useq_interpolate,
+  auto lst = args[0].as_list();
+  double phasor = args[1].as_float();
+  if (phasor < 0.0) {
+    phasor = 0;
+  } else if (phasor > 1) {
+    phasor = 1;
+  } float a;
+  double index = phasor * (lst.size() - 1);
+  size_t pos0 = static_cast<size_t>(index);
+  if (pos0 == (lst.size() - 1)) pos0--;
+  a = (index - pos0);
+  double v2 = lst[pos0 + 1].eval(env).as_float();
+  double v1 = lst[pos0].eval(env).as_float();
+  ret = Value(((v2 - v1) * a) + v1);
+  , 2)
 
 // (step <phasor> <count> (<offset>))
 BUILTINFUNC_VARGS(useq_step,
-      const double phasor = args[0].as_float();
-      const int count = args[1].as_int();
-      const double offset = (args.size() == 3) ? args[2].as_float() : 0;
-      double val = static_cast<int>(phasor * abs(count));
-      if (val == count) val--;
-      ret = Value((count > 0 ? val : count - 1 -val) + offset);
-, 2, 3)
+                  const double phasor = args[0].as_float();
+                  const int count = args[1].as_int();
+                  const double offset = (args.size() == 3) ? args[2].as_float() : 0;
+                  double val = static_cast<int>(phasor * abs(count));
+                  if (val == count) val--;
+                  ret = Value((count > 0 ? val : count - 1 - val) + offset);
+                  , 2, 3)
 
 // (euclid <phasor> <n> <k> (<offset>) (<pulsewidth>)
-BUILTINFUNC_VARGS(useq_euclidean,
+BUILTINFUNC_VARGS(
+  useq_euclidean,
   const double phasor = args[0].as_float();
   const int n = args[1].as_int();
   const int k = args[2].as_int();
@@ -2896,64 +2942,65 @@ BUILTINFUNC_VARGS(useq_euclidean,
   const float fi = phasor * n;
   int i = static_cast<int>(fi);
   const float rem = fi - i;
-  if (i == n) { i--; }
-  const int idx =((i+n-offset) * k) % n;
+  if (i == n) { i--; } const int idx = ((i + n - offset) * k) % n;
   ret = Value(idx < k && rem < pulseWidth ? 1 : 0);
-, 3, 5)
+  , 3, 5)
 
 
 // (schedule <name> <statement> <period>)
 BUILTINFUNC_NOEVAL(useq_schedule,
-    const auto itemName = args[0].as_string();
-    const auto ast = args[1];
-    const auto period = args[2].as_float();
-    useq::scheduledItem v;
-    v.id = itemName;
-    v.period = period;
-    v.lastRun = 0;
-//    v.statement = statement;
-    v.ast = {ast};
-    useq::scheduledItems.push_back(v);
-    ret = Value(0);
-, 3)
+                   const auto itemName = args[0].as_string();
+                   const auto ast = args[1];
+                   const auto period = args[2].as_float();
+                   useq::scheduledItem v;
+                   v.id = itemName;
+                   v.period = period;
+                   v.lastRun = 0;
+                   //    v.statement = statement;
+                   v.ast = { ast };
+                   useq::scheduledItems.push_back(v);
+                   ret = Value(0);
+                   , 3)
 
-BUILTINFUNC(useq_unschedule,
-    const String id = args[0].as_string();
-    auto is_item = [id](useq::scheduledItem &v) { return v.id==id;};
+BUILTINFUNC(
+  useq_unschedule,
+  const String id = args[0].as_string();
+  auto is_item = [id](useq::scheduledItem &v) {
+    return v.id == id;
+  };
 
-    if (auto it = std::find_if(begin(useq::scheduledItems), end(useq::scheduledItems), is_item); it != std::end(useq::scheduledItems)) {
-        useq::scheduledItems.erase(it);
-        Serial.println("Item removed");
-    }
-    else {
-        Serial.println("Item not found");
-    }
-, 1 )
+  if (auto it = std::find_if(begin(useq::scheduledItems), end(useq::scheduledItems), is_item); it != std::end(useq::scheduledItems)) {
+    useq::scheduledItems.erase(it);
+    Serial.println("Item removed");
+  } else {
+    Serial.println("Item not found");
+  },
+  1)
 
 //(timeit <function>) - returns time take to run in microseconds
 BUILTINFUNC_NOEVAL(timeit,
-  unsigned long ts = micros();
-  args[0].eval(env);
-  ts = micros() - ts;
-  ret = Value(static_cast<int>(ts));
-, 1)
+                   unsigned long ts = micros();
+                   args[0].eval(env);
+                   ts = micros() - ts;
+                   ret = Value(static_cast<int>(ts));
+                   , 1)
 
 
 //(drum-predict <input-pattern>) -> list
-BUILTINFUNC(useq_drumpredict,
-    const std::vector<Value> inputs = args[0].as_list();
-    std::vector<char> invec(32,1);
-    for(size_t i=0; i < 32; i++) {
-        invec[i] = inputs[i].as_int();
-    }
-    std::vector<int> outvec(14,0);
-    apply_logic_gate_net_singleval(invec.data(), outvec.data());
-    std::vector<Value> result(14);
-    for(size_t i=0; i < 14; i++) {
-      result.at(i) = Value(outvec.at(i));
-    }
-    ret = Value(result);
-, 1 )
+BUILTINFUNC(
+  useq_drumpredict,
+  const std::vector<Value> inputs = args[0].as_list();
+  std::vector<char> invec(32, 1);
+  for (size_t i = 0; i < 32; i++) {
+    invec[i] = inputs[i].as_int();
+  } std::vector<int>
+    outvec(14, 0);
+  apply_logic_gate_net_singleval(invec.data(), outvec.data());
+  std::vector<Value> result(14);
+  for (size_t i = 0; i < 14; i++) {
+    result.at(i) = Value(outvec.at(i));
+  } ret = Value(result);
+  , 1)
 
 
 BUILTINFUNC(useq_dm,
@@ -2997,77 +3044,99 @@ BUILTINFUNC_VARGS(useq_trigs,
 BUILTINFUNC(useq_loopPhasor,
             auto phasor = args[0].as_float();
             auto loopPoint = args[1].as_float();
-            if (loopPoint == 0) loopPoint = 1; //avoid infinity
-            double spedupPhasor = fast(1.0/loopPoint, phasor);
+            if (loopPoint == 0) loopPoint = 1;  //avoid infinity
+            double spedupPhasor = fast(1.0 / loopPoint, phasor);
             ret = spedupPhasor * loopPoint;
             , 2)
 
 BUILTINFUNC_VARGS(useq_setbpm,
-          double newBpm = args[0].as_float();
-          double thresh = args.size() == 2 ? args[1].as_float() : 0;
-          useq::setBpm(newBpm, thresh);
-          ret = args[0];
-          , 1, 2)
+                  double newBpm = args[0].as_float();
+                  double thresh = args.size() == 2 ? args[1].as_float() : 0;
+                  useq::setBpm(newBpm, thresh);
+                  ret = args[0];
+                  , 1, 2)
 
-BUILTINFUNC(useq_getbpm,
-          int index = args[0].as_int();
-          if (index==1) {
-            ret = tempoI1.avgBPM;
-          }
-          else if (index==1) {
-            ret = tempoI2.avgBPM;
-          }else{
-            ret = 0;            
-          }
-         , 1)
+BUILTINFUNC(
+  useq_getbpm,
+  int index = args[0].as_int();
+  if (index == 1) {
+    ret = tempoI1.avgBPM;
+  } else if (index == 1) {
+    ret = tempoI2.avgBPM;
+  } else {
+    ret = 0;
+  },
+  1)
 
 BUILTINFUNC(useq_settimesig,
-          useq::setTimeSignature(args[0].as_float(), args[1].as_float());
-          ret = Value(1);
-          , 2)
+            useq::setTimeSignature(args[0].as_float(), args[1].as_float());
+            ret = Value(1);
+            , 2)
 
 BUILTINFUNC(useq_in1,
-          ret = Value(useqInputValues[USEQI1]);
-          , 0)
+            ret = Value(useqInputValues[USEQI1]);
+            , 0)
 BUILTINFUNC(useq_in2,
-          ret = Value(useqInputValues[USEQI2]);
-          , 0)
+            ret = Value(useqInputValues[USEQI2]);
+            , 0)
+BUILTINFUNC(useq_ain1,
+            ret = Value(useqInputValues[USEQAI1]);
+            , 0)
+BUILTINFUNC(useq_ain2,
+            ret = Value(useqInputValues[USEQAI2]);
+            , 0)
+
+#ifdef MUSICTHING
+BUILTINFUNC(useq_mt_knob,
+            ret = Value(useqInputValues[MTMAINKNOB]);
+            , 0)
+BUILTINFUNC(useq_mt_knobx,
+            ret = Value(useqInputValues[MTXKNOB]);
+            , 0)
+BUILTINFUNC(useq_mt_knoby,
+            ret = Value(useqInputValues[MTYKNOB]);
+            , 0)
+BUILTINFUNC(useq_mt_swz,
+            ret = Value(useqInputValues[MTZSWITCH]);
+            , 0)
+#endif
 
 
-BUILTINFUNC(useq_ssin,
-    int index = args[0].as_int();
-    if(index >0 && index <= SERIAL_INS) {
-        ret = Value(useq::serialInputStreams[index-1]);
-        }
-, 1)
+BUILTINFUNC(
+  useq_ssin,
+  int index = args[0].as_int();
+  if (index > 0 && index <= SERIAL_INS) {
+    ret = Value(useq::serialInputStreams[index - 1]);
+  },
+  1)
 
-BUILTINFUNC(useq_swm,
-            int index = args[0].as_int();
-                    if (index == 1) {
-                        ret = Value(useqInputValues[USEQM1]);
-                    }
-                    else {
-                        ret = Value(useqInputValues[USEQM2]);
-                    }
-, 1)
+BUILTINFUNC(
+  useq_swm,
+  int index = args[0].as_int();
+  if (index == 1) {
+    ret = Value(useqInputValues[USEQM1]);
+  } else {
+    ret = Value(useqInputValues[USEQM2]);
+  },
+  1)
 
-BUILTINFUNC(useq_swt,
-          int index = args[0].as_int();
-          if (index == 1) {
-            ret = Value(useqInputValues[USEQT1]);
-          }
-          else {
-            ret = Value(useqInputValues[USEQT2]);
-          }
-          , 1)
+BUILTINFUNC(
+  useq_swt,
+  int index = args[0].as_int();
+  if (index == 1) {
+    ret = Value(useqInputValues[USEQT1]);
+  } else {
+    ret = Value(useqInputValues[USEQT2]);
+  },
+  1)
 
 BUILTINFUNC(useq_swr,
-          ret = Value(useqInputValues[USEQRS1]);
-          , 0)
+            ret = Value(useqInputValues[USEQRS1]);
+            , 0)
 
 BUILTINFUNC(useq_rot,
-          ret = Value(useqInputValues[USEQR1]);
-          , 0)
+            ret = Value(useqInputValues[USEQR1]);
+            , 0)
 
 BUILTINFUNC(perf,
 
@@ -3097,11 +3166,11 @@ BUILTINFUNC(perf,
             ret = Value();
             , 0)
 
-    BUILTINFUNC(zeros,
-                int length = args[0].as_int();
-                        std::vector<Value> zeroList(length, Value(0));
-                        ret = Value(zeroList);
-    , 1)
+BUILTINFUNC(zeros,
+            int length = args[0].as_int();
+            std::vector<Value> zeroList(length, Value(0));
+            ret = Value(zeroList);
+            , 1)
 }
 
 
@@ -3167,11 +3236,22 @@ void loadBuiltinDefs() {
   Environment::builtindefs["perf"] = Value("perf", builtin::perf);
   Environment::builtindefs["in1"] = Value("in1", builtin::useq_in1);
   Environment::builtindefs["in2"] = Value("in2", builtin::useq_in2);
+  Environment::builtindefs["gin1"] = Value("gin1", builtin::useq_in1);
+  Environment::builtindefs["gin2"] = Value("gin2", builtin::useq_in2);
+  Environment::builtindefs["ain1"] = Value("ain1", builtin::useq_ain1);
+  Environment::builtindefs["ain2"] = Value("ain2", builtin::useq_ain2);
   Environment::builtindefs["swm"] = Value("swm", builtin::useq_swm);
   Environment::builtindefs["swt"] = Value("swt", builtin::useq_swt);
   Environment::builtindefs["swr"] = Value("swr", builtin::useq_swr);
   Environment::builtindefs["rot"] = Value("rot", builtin::useq_rot);
   Environment::builtindefs["ssin"] = Value("ssin", builtin::useq_ssin);
+
+#ifdef MUSICTHING
+  Environment::builtindefs["knob"] = Value("knob", builtin::useq_mt_knob);
+  Environment::builtindefs["knobx"] = Value("knobx", builtin::useq_mt_knobx);
+  Environment::builtindefs["knoby"] = Value("knoby", builtin::useq_mt_knoby);
+  Environment::builtindefs["swz"] = Value("swz", builtin::useq_mt_swz);
+#endif
 
   //sequencing
   Environment::builtindefs["pulse"] = Value("pulse", builtin::useq_pulse);
@@ -3334,9 +3414,14 @@ void flash_builtin_led(int num, int amt) {
 }
 
 void setup_outs() {
-  for (int i=0; i < 6; i++) {
+  for (int i = 0; i < PWM_OUTS + DIGI_OUTS; i++) {
     pinMode(useq_output_pins[i], OUTPUT);
   }
+
+#ifdef MUSICTHING
+  pinMode(MUX_LOGIC_A, OUTPUT);
+  pinMode(MUX_LOGIC_B, OUTPUT);
+#endif
 }
 
 
@@ -3351,15 +3436,13 @@ void setup_analog_outs() {
   uint offset2 = pio_add_program(pio1, &pwm_program);
   // printf("Loaded program at %d\n", offset);
 
-  for(int i=0; i < PWM_OUTS; i++) {
+  for (int i = 0; i < PWM_OUTS; i++) {
     auto pioInstance = i < 4 ? pio0 : pio1;
     uint pioOffset = i < 4 ? offset : offset2;
     auto smIdx = i % 4;
     pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_pins[i]);
-    pio_pwm_set_period(pioInstance, smIdx, (1u << 13) - 1);  
-
+    pio_pwm_set_period(pioInstance, smIdx, (1u << 13) - 1);
   }
-
 }
 
 void setup_digital_ins() {
@@ -3368,20 +3451,23 @@ void setup_digital_ins() {
 }
 
 void setup_leds() {
-  pinMode(LED_BOARD, OUTPUT);  //test LED
 
+#ifndef MUSICTHING
+  pinMode(LED_BOARD, OUTPUT);  //test LED
+  digitalWrite(LED_BOARD, 1);
   pinMode(USEQ_PIN_LED_I1, OUTPUT);
   pinMode(USEQ_PIN_LED_I2, OUTPUT);
+#endif
+
 
 #ifdef USEQHARDWARE_1_0
   pinMode(USEQ_PIN_LED_AI1, OUTPUT);
   pinMode(USEQ_PIN_LED_AI2, OUTPUT);
 #endif
 
-  for (int i=0; i < 6; i++) {
+  for (int i = 0; i < 6; i++) {
     pinMode(useq_output_led_pins[i], OUTPUT);
   }
-  digitalWrite(LED_BOARD, 1);
 }
 
 void setup_switches() {
@@ -3397,7 +3483,6 @@ void setup_switches() {
   pinMode(USEQ_PIN_SWITCH_T1, INPUT_PULLUP);
   pinMode(USEQ_PIN_SWITCH_T2, INPUT_PULLUP);
 #endif
-
 }
 
 #ifdef USEQHARDWARE_0_2
@@ -3409,16 +3494,49 @@ void setup_rotary_encoder() {
 }
 #endif
 
-#ifdef USEQHARDWARE_1_0
+#ifdef ANALOG_INPUTS
 void setup_analog_ins() {
-  analogReadResolution(12);  
+  analogReadResolution(12);
+#ifdef USEQHARDWARE_1_0
   pinMode(USEQ_PIN_AI1, INPUT);
   pinMode(USEQ_PIN_AI2, INPUT);
+#endif
+#ifdef MUSICTHING
+  pinMode(MUX_IN_1, INPUT);
+  pinMode(MUX_IN_2, INPUT);
+  pinMode(AUDIO_IN_1, INPUT);
+  pinMode(AUDIO_IN_2, INPUT);
+#endif
 }
 #endif
 
 void led_animation() {
   int ledDelay = 30;
+#ifdef MUSICTHING
+  ledDelay = 40;
+  for (int i = 0; i < 8; i++) {
+    digitalWrite(useq_output_led_pins[0], 1);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[2], 1);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[4], 1);
+    digitalWrite(useq_output_led_pins[0], 0);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[5], 1);
+    digitalWrite(useq_output_led_pins[2], 0);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[3], 1);
+    digitalWrite(useq_output_led_pins[4], 0);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[1], 1);
+    digitalWrite(useq_output_led_pins[5], 0);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[3], 0);
+    delay(ledDelay);
+    digitalWrite(useq_output_led_pins[1], 0);
+    ledDelay -= 3;
+  }
+#endif
 #ifdef USEQHARDWARE_0_2
   for (int i = 0; i < 8; i++) {
     digitalWrite(USEQ_PIN_LED_I1, 1);
@@ -3495,11 +3613,11 @@ void setup_IO() {
   setup_analog_outs();
   setup_digital_ins();
   setup_switches();
-#ifdef USEQHARDWARE_0_2  
+#ifdef USEQHARDWARE_0_2
   setup_rotary_encoder();
 #endif
-#ifdef USEQHARDWARE_1_0
-  setup_analog_ins();  
+#ifdef ANALOG_INPUTS
+  setup_analog_ins();
 #endif
 
 #ifdef MIDIOUT
@@ -3507,6 +3625,42 @@ void setup_IO() {
   Serial1.setTX(0);
   Serial1.begin(31250);
 #endif
+
+#ifdef USEQHARDWARE_1_0
+  Wire.setSDA(0);
+  Wire.setSCL(1);
+  //peripheral
+  // Wire.begin(4);
+  // Wire.onReceive(receiveEvent);
+
+  //controller
+  // Wire.begin();
+#endif
+}
+
+
+void receiveEvent(int howMany) {
+  // union {
+  //   double v;
+  //   uint8_t data[sizeof(double)];
+  // } doubleArray;
+
+  // if (howMany > sizeof(double)) {
+  //   //drop everything except the last double if there's extra
+  //   for (size_t i = 0; i < howMany - sizeof(double); i++) {
+  //     Wire.read();
+  //   }
+
+  //   //read a double
+  //   for (size_t i = 0; i < sizeof(double); i++) {
+  //     doubleArray.data[i] = Wire.read();
+  //   }
+
+  //   Serial.println(doubleArray.v);
+  // }
+  for(int i=0; i < howMany; i++) {
+    Serial.println(Wire.read());
+  }
 }
 
 void module_setup() {
@@ -3545,11 +3699,58 @@ void readRotaryEnc() {
     // Serial.print(c);Serial.print(" ");
   }
 }
-#endif
+#endif  //useq 0.2 rotary
 
 void readInputs() {
   //inputs are input_pullup, so invert
-  auto now=micros();
+  auto now = micros();
+  const double recp4096 = 0.000244141;  //1/4096
+#ifdef MUSICTHING
+  const size_t muxdelay = 2;
+  //unroll loop for efficiency
+  digitalWrite(MUX_LOGIC_A, 0);
+  digitalWrite(MUX_LOGIC_B, 0);
+  delayMicroseconds(muxdelay);
+  useqInputValues[MTMAINKNOB] = analogRead(MUX_IN_1) * recp4096;
+  useqInputValues[USEQAI1] = analogRead(MUX_IN_2) * recp4096;
+  digitalWrite(MUX_LOGIC_A, 0);
+  digitalWrite(MUX_LOGIC_B, 1);
+  delayMicroseconds(muxdelay);
+  useqInputValues[MTYKNOB] = analogRead(MUX_IN_1) * recp4096;
+  digitalWrite(MUX_LOGIC_A, 1);
+  digitalWrite(MUX_LOGIC_B, 0);
+  delayMicroseconds(muxdelay);
+  useqInputValues[MTXKNOB] = analogRead(MUX_IN_1) * recp4096;
+  useqInputValues[USEQAI2] = analogRead(MUX_IN_2) * recp4096;
+  digitalWrite(MUX_LOGIC_A, 1);
+  digitalWrite(MUX_LOGIC_B, 1);
+  delayMicroseconds(muxdelay);
+  int switchVal = analogRead(MUX_IN_1);
+  if (switchVal < 100) {
+    switchVal = 0;
+  } else if (switchVal > 3500) {
+    switchVal = 2;
+  } else {
+    switchVal = 1;
+  }
+  useqInputValues[MTZSWITCH] = switchVal;
+
+  // Serial.print(useqInputValues[MTMAINKNOB]);
+  // Serial.print("\t");
+  // Serial.print(useqInputValues[MTXKNOB]);
+  // Serial.print("\t");
+  // Serial.print(useqInputValues[MTYKNOB]);
+  // Serial.print("\t");
+  // Serial.println(useqInputValues[MTZSWITCH]);
+
+  const int input1 = 1 - digitalRead(USEQ_PIN_I1);
+  const int input2 = 1 - digitalRead(USEQ_PIN_I2);
+  digitalWrite(useq_output_led_pins[4], input1);
+  digitalWrite(useq_output_led_pins[5], input2);
+  useqInputValues[USEQI1] = input1;
+  useqInputValues[USEQI2] = input2;
+
+#else
   const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
   const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
   useqInputValues[USEQI1] = input1;
@@ -3561,10 +3762,11 @@ void readInputs() {
   //tempo estimates
   tempoI1.averageBPM(input1, now);
   tempoI2.averageBPM(input2, now);
-  
+
 
   useqInputValues[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
   useqInputValues[USEQT1] = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
+#endif
 
 #ifdef USEQHARDWARE_0_2
   useqInputValues[USEQRS1] = 1 - digitalRead(USEQ_PIN_SWITCH_R1);
@@ -3574,14 +3776,15 @@ void readInputs() {
 
 #ifdef USEQHARDWARE_1_0
   auto v_ai1 = analogRead(USEQ_PIN_AI1);
-  auto v_ai1_11  = v_ai1 >> 1; //scale from 12 bit to 11 bit range
-  v_ai1_11 = (v_ai1_11 * v_ai1_11) >> 11; //sqr to get exp curve
-  analogWrite(USEQ_PIN_LED_AI1, v_ai1_11); 
-  // useqInputValues[USEQAI1] = v_ai1
+  auto v_ai1_11 = v_ai1 >> 1;              //scale from 12 bit to 11 bit range
+  v_ai1_11 = (v_ai1_11 * v_ai1_11) >> 11;  //sqr to get exp curve
+  analogWrite(USEQ_PIN_LED_AI1, v_ai1_11);
   auto v_ai2 = analogRead(USEQ_PIN_AI2);
-  auto v_ai2_11  = v_ai2 >> 1;
+  auto v_ai2_11 = v_ai2 >> 1;
   v_ai2_11 = (v_ai2_11 * v_ai2_11) >> 11;
-  analogWrite(USEQ_PIN_LED_AI2, v_ai2_11 >> 1); 
+  analogWrite(USEQ_PIN_LED_AI2, v_ai2_11 >> 1);
+  useqInputValues[USEQAI1] = v_ai1 * recp4096;
+  useqInputValues[USEQAI2] = v_ai2 * recp4096;
 #endif
 }
 
@@ -3592,7 +3795,7 @@ int test = 0;
 bool setupComplete = false;
 
 void setup() {
-  //doesn't work properly 
+  //doesn't work properly
   // vreg_set_voltage(VREG_VOLTAGE_1_30);
   // delay(1000);
   // set_sys_clock_khz(360000, true);
@@ -3641,48 +3844,48 @@ void loop() {
   env.set("perf_ts1", Value(float(ts_total * 0.001)));
 
   if (Serial.available()) {
-      int b = Serial.read();
-      if (b==31) {
-          //incoming serial stream
-          size_t channel = Serial.read();
-          char buffer[8];
-          Serial.readBytes(buffer,8);
-          if (channel > 0 && channel <= SERIAL_INS) {
-              double v = 0;
-              memcpy(&v, buffer, 8);
-              useq::serialInputStreams.at(channel - 1) = v;
-          }
-      }else if (b == '@') {
-          //run now
-        String cmd = Serial.readStringUntil('\n');
-        // for(size_t k=0; k < cmd.length(); k++) {
-        //   Serial.println((int)cmd.charAt(k));
-        // }
-        // Serial.println(cmd);
-        auto res = run(cmd, env);
-        Serial.println(res.debug());
-      }else{
-          String cmd = Serial.readStringUntil('\n');
-          cmd = String((char)b) + cmd;
-          Serial.println(cmd);
-          auto parsedCode = ::parse(cmd);
-          useq::runQueue.push_back(parsedCode);
+    int b = Serial.read();
+    if (b == 31) {
+      //incoming serial stream
+      size_t channel = Serial.read();
+      char buffer[8];
+      Serial.readBytes(buffer, 8);
+      if (channel > 0 && channel <= SERIAL_INS) {
+        double v = 0;
+        memcpy(&v, buffer, 8);
+        useq::serialInputStreams.at(channel - 1) = v;
       }
-//    String cmd = Serial.readString();
-//    //queue or run now
-////    Serial.println((int)cmd.charAt(0));
-//    Serial.println(cmd);
-//    if (cmd.charAt(0) == '@') {
-//        //clear the token
-//        cmd.setCharAt(0, ' ');
-//        auto res = run(cmd, env);
-//        Serial.println(res.debug());
-//
-//    }
-//    else {
-//      auto parsedCode = ::parse(cmd);
-//      useq::runQueue.push_back(parsedCode);
-//    }
+    } else if (b == '@') {
+      //run now
+      String cmd = Serial.readStringUntil('\n');
+      // for(size_t k=0; k < cmd.length(); k++) {
+      //   Serial.println((int)cmd.charAt(k));
+      // }
+      // Serial.println(cmd);
+      auto res = run(cmd, env);
+      Serial.println(res.debug());
+    } else {
+      String cmd = Serial.readStringUntil('\n');
+      cmd = String((char)b) + cmd;
+      Serial.println(cmd);
+      auto parsedCode = ::parse(cmd);
+      useq::runQueue.push_back(parsedCode);
+    }
+    //    String cmd = Serial.readString();
+    //    //queue or run now
+    ////    Serial.println((int)cmd.charAt(0));
+    //    Serial.println(cmd);
+    //    if (cmd.charAt(0) == '@') {
+    //        //clear the token
+    //        cmd.setCharAt(0, ' ');
+    //        auto res = run(cmd, env);
+    //        Serial.println(res.debug());
+    //
+    //    }
+    //    else {
+    //      auto parsedCode = ::parse(cmd);
+    //      useq::runQueue.push_back(parsedCode);
+    //    }
   }
 
 #ifdef USEQHARDWARE_0_2
@@ -3694,7 +3897,7 @@ void loop() {
 }
 
 
-//test - make white noise on core 1, output 
+//test - make white noise on core 1, output
 // double a;
 
 // void setup1() {

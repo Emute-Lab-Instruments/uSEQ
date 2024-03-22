@@ -110,7 +110,7 @@ class SerialIO:
                                         Console.post(cls.incoming)
                                     cls.incoming = ''
             except Exception as e:
-                cx = None
+                cls.cx = None
                 Console.post(e)
                 Console.post("uSEQ disconnected")
         else:
