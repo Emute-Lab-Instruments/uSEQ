@@ -294,9 +294,9 @@ def main():
             tokens = Lispy.tokenize_lisp(codestr)
             ast = Lispy.get_ast(tokens.copy())
             codestr = Lispy.astToOneLineCode(ast)
-
             if not SerialIO.sendTouSEQ(prefix + codestr):
                 Console.post("uSEQ disconnected")
+                SerialIO.openSerialCx(args.port)
         def cutSection(st, en):
             code = buffer.copy(st, en)
             buffer.deleteSection(st, en)
@@ -487,7 +487,7 @@ def main():
         SerialIO.readSerial()
         SerialOutMappings.process()
         #save some cpu
-        curses.napms(10)
+        curses.napms(5)
 
 
 
