@@ -63,6 +63,24 @@ Example: to echo digital input 2 to digital output 1
 (d1 (in2))
 ```
 
+## `ain1`
+
+Returns the value of analogue input 1
+
+Example: to echo analogue input 1 to analogue output 1
+```
+(a1 (ain1))
+```
+
+## `ain2`
+
+Returns the value of analogue input 2
+
+Example: to echo analogue input 2 to analogue output 2
+```
+(a2 (ain2))
+```
+
 ## `swm <index>`
 
 Read the value of a momentary switch
@@ -93,7 +111,7 @@ Control the speed of a square wave with toggle switch 2
 
 ## `swr`
 
-Read the value of the rotary encoder switch
+Read the value of the rotary encoder switch (if present)
 
 ```
 (q0 (print (swr)))
@@ -102,7 +120,7 @@ Read the value of the rotary encoder switch
 
 ## `rot`
 
-Read the value of the rotary encoder
+Read the value of the rotary encoder (if present)
 
 ```
 (q0 (print (rot)))
