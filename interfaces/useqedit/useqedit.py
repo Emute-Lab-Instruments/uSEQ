@@ -17,6 +17,9 @@ from SerialIO import SerialIO
 from Console import Console
 from SerialOutMappings import SerialOutMappings
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 def clamp(x, lower, upper):
@@ -44,6 +47,9 @@ redrawFlag = True
 def main():
 
     global redrawFlag
+
+    logging.basicConfig(filename='useqedit.log', level=logging.DEBUG)
+    logger.info("Editor started")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("filename", help="A file to edit")

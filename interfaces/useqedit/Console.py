@@ -1,6 +1,10 @@
 import curses
 from MessageLog import MessageLog
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 class Console:
     console=None
     redraw=False
@@ -15,6 +19,7 @@ class Console:
     def post(cls,msg=None):
         if (msg):
             cls.msglog.addMessage(msg)
+        logger.info(msg)
         cls.console.erase()
         cls.console.attroff(curses.color_pair(1))
         cls.console.border()
