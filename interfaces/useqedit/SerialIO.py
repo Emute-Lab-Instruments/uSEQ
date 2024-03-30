@@ -4,6 +4,8 @@ from SerialStreamMap import SerialStreamMap
 from Console import Console
 import struct
 
+import logging
+logger = logging.getLogger(__name__)
 
 class SerialIO:
     serialIOMessage = []
@@ -110,6 +112,8 @@ class SerialIO:
                                         Console.post(cls.incoming)
                                     cls.incoming = ''
             except Exception as e:
+                logger.error("readSerial error")
+                logger.error(e)
                 cls.cx = None
                 Console.post(e)
                 Console.post("uSEQ disconnected")
