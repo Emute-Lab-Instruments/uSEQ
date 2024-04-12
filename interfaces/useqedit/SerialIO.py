@@ -103,6 +103,9 @@ class SerialIO:
                                         SerialStreamMap.mapSerial(ch, val)
                                         # updateConsole(str(val))
                                     except Exception as e:
+                                        logger.error("byte conversion error")
+                                        logger.error(e)
+                                        logger.error(cls.serialIOMessage)
                                         Console.post(e)
                             else:
                                 if (inchar != b'\n' and inchar != b'\r'):
@@ -114,6 +117,7 @@ class SerialIO:
             except Exception as e:
                 logger.error("readSerial error")
                 logger.error(e)
+                logger.error(cls.serialIOMessage)
                 cls.cx = None
                 Console.post(e)
                 Console.post("uSEQ disconnected")

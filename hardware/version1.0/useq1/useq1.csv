@@ -1,77 +1,84 @@
-"Id";"Designator";"Footprint";"Quantity";"Designation";"Supplier and ref";
-1;"U6,U5,U12";"SOT-23";3;"CJ431 SOT-23";;;
-2;"R26,R28,R35,R27,R33,R65,R34,R23,R32,R24,R25";"R_0603_1608Metric";11;"820";;;
-3;"R14,R13";"R_0402_1005Metric";2;"33k";;;
-4;"R63,R59,R61,R60,R29,R62,R64";"R_0402_1005Metric";7;"1k";;;
-5;"FB2,FB1";"R_0805_2012Metric";2;"FerriteBead GZ2012D101TF";;;
-6;"R5,R12,R7,R8,R4,R10,R9,R1,R11,R2";"R_0402_1005Metric";10;"100k";;;
-7;"R3,R6";"R_0402_1005Metric";2;"5.1k";;;
-8;"C25,C40,C22,C39,C30,C31,C29,C42,C23,C19,C41,C32,C26";"C_0603_1608Metric";13;"100n";;;
-9;"U10,U2,U9,U8";"SO-8_3.9x4.9mm_P1.27mm";4;"TL072";;;
-10;"R39,R38,R40";"R_0603_1608Metric";3;"12k";;;
-11;"C20,C10,C18,C11,C24,C33,C16,C37,C14,C21,C17";"C_0402_1005Metric";11;"100n";;;
-12;"J15";"PinHeader_1x03_P2.54mm_Vertical";1;"SWD";;;
-13;"R17,R19,R16,R20,R67,R68";"R_0402_1005Metric";6;"5.1k 1%";;;
-14;"R66,R15";"R_0603_1608Metric";2;"1.8, >24mW";;;
-15;"R51,R52,R54,R53,R50,R55";"R_0603_1608Metric";6;"47k";;;
-16;"C7,C6";"C_0402_1005Metric";2;"1nF";;;
-17;"TP9,TP3";"TestPoint_Pad_1.5x1.5mm";2;"5V reference";;;
-18;"C36,C34,C35";"C_0402_1005Metric";3;"10n";;;
-19;"R45,R44,R46";"R_0603_1608Metric";3;"33k";;;
-20;"R48,R49,R47";"R_0603_1608Metric";3;"51k";;;
-21;"TP1";"TestPoint_Pad_1.5x1.5mm";1;"RP2040 Power";;;
-22;"Q1,Q2";"SOT-23";2;"MMBT3904";;;
-23;"U7";"RP2040-QFN-56";1;"RP2040";;;
-24;"TP5";"TestPoint_Pad_1.5x1.5mm";1;"CVIn";;;
-25;"TP7";"TestPoint_Pad_1.5x1.5mm";1;"Digital Out";;;
-26;"R18";"R_0603_1608Metric";1;"4.7k";;;
-27;"TP6";"TestPoint_Pad_1.5x1.5mm";1;"CV Out";;;
-28;"C4,C3";"C_0805_2012Metric";2;"22u";;;
-29;"D2,D1";"D_SOD-123";2;"1N4148W";;;
-30;"R42,R43,R41";"R_0603_1608Metric";3;"1.2k";;;
-31;"R36";"R_0603_1608Metric";1;"1k";;;
-32;"R56,R57,R58";"R_0603_1608Metric";3;"27k";;;
-33;"H1";"PinHeader_2x05_P2.54mm_Vertical_SMD";1;"PIN_HEADER_2x5 POWER";;;
-34;"J8,J7";"PinHeader_1x02_P2.54mm_Vertical";2;"Conn_02x01";;;
-35;"C8,C2";"C_0805_2012Metric_Pad1.18x1.45mm_HandSolder";2;"22u 0805 ";;;
-36;"R31,R37";"R_0603_1608Metric";2;"1.5k";;;
-37;"C12,C15";"C_0402_1005Metric";2;"1u";;;
-38;"R22,R21";"C_0402_1005Metric";2;"27";;;
-39;"U4,U1";"WSON-6-1EP_2x2mm_P0.65mm_EP1x1.6mm_ThermalVias";2;"TLV76733DRVR";;;
-40;"U3";"MSOP-8_3x3mm_P0.65mm";1;"MCP6002-xMS";;;
-41;"D15";"LED_0603_1608Metric";1;"LED Test";;;
-42;"Y1";"Crystal_SMD_3225-4Pin_3.2x2.5mm";1;"YXC X322512MSB4SI";;;
-43;"C1,C5";"C_0603_1608Metric_Pad1.08x0.95mm_HandSolder";2;"1u";;;
-44;"C13,C38,C9";"C_0603_1608Metric";3;"10u";;;
-45;"D3,D4";"D_SOD-323";2;"1N5819";;;
-46;"C28,C27";"C_0402_1005Metric";2;"30p";;;
-47;"TP2";"TestPoint_Pad_1.5x1.5mm";1;"Analog Power";;;
-48;"TP4";"TestPoint_Pad_1.5x1.5mm";1;"-5V Ref";;;
-49;"R30";"C_0805_2012Metric";1;"DNF";;;
-50;"U11";"SOIC-8_5.23x5.23mm_P1.27mm";1;"W25Q128JVS";;;
-51;"SW2";"ToggleSwitch_MTS-101_SPST";1;"SW_SPST";;;
-52;"D9";"LED_D3.0mm_FlatTop";1;"LED CV In 1";;;
-53;"J11";"Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles";1;"Out A3";;;
-54;"D13";"LED_D3.0mm_FlatTop";1;"LED D2";;;
-55;"J13";"Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles";1;"Out D2";;;
-56;"TP8";"TestPoint_Pad_1.5x1.5mm";1;"1V1";;;
-57;"S2,S1";"Switch_Tactile_SMD_B3U-1000P";2;"B3U-1000P";;;
-58;"D10";"LED_D3.0mm_FlatTop";1;"LED CV In 2";;;
-59;"D5";"LED_D3.0mm_FlatTop";1;"LED Gate In 1";;;
-60;"J5";"Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles";1;"CV In 2";;;
-61;"J10";"Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles";1;"Out A2";;;
-62;"SW1";"GPBS850N";1;"SW_Push";;;
-63;"D14";"LED_D3.0mm_FlatTop";1;"LED D3";;;
-64;"J9";"Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles";1;"Out A1";;;
-65;"D6";"LED_D3.0mm_FlatTop";1;"LED Gate In 2";;;
-66;"D8";"LED_D3.0mm_FlatTop";1;"LED A2";;;
-67;"RV2,RV1";"Alpha9mmPot";2;"100k";;;
-68;"J2";"Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles";1;"Gate In 1";;;
-69;"D12";"LED_D3.0mm_FlatTop";1;"LED D1";;;
-70;"J12";"Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles";1;"Out D1";;;
-71;"J1";"USB-C-TH_MC-110LD-L137-A";1;"Hanbo_USB_C_Receptacle_USB2.0_MC-110LD-L137";;;
-72;"D11";"LED_D3.0mm_FlatTop";1;"LED A3";;;
-73;"J14";"Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles";1;"Out D3";;;
-74;"J4";"Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles";1;"CV In 1";;;
-75;"J3";"Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles";1;"Gate In 2";;;
-76;"D7";"LED_D3.0mm_FlatTop";1;"LED A1";;;
+"Source:","/home/ck84/Arduino/uSEQ/hardware/version1.0/useq1/useq1.kicad_sch"
+"Date:","Fri 12 Apr 2024 17:08:13 BST"
+"Tool:","Eeschema 7.0.10-7.0.10~ubuntu22.04.1"
+"Generator:","/usr/share/kicad/plugins/bom_csv_grouped_by_value.py"
+"Component Count:","172"
+
+"Collated Components:"
+
+"Item","Qty","Reference(s)","Value","LibPart","Footprint","Datasheet","DNP","Category","DK_Datasheet_Link","DK_Detail_Page","Description","Digi-Key_PN","Family","Height","Link","MPN","Manufacturer","Manufacturer_Name","Manufacturer_Part_Number","Mouser Part Number","Mouser Price/Stock","Sim.Device","Sim.Pins","Status"
+"1","2","C1, C5","1u","Device:C","Capacitor_SMD:C_0603_1608Metric_Pad1.08x0.95mm_HandSolder","~","","","","","","","","","","","","","","","","","",""
+"2","2","C2, C8","22u 0805 ","Device:C","Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder","~","","","","","","","","","","","","","","","","","",""
+"3","2","C3, C4","22u","Device:C","Capacitor_SMD:C_0805_2012Metric","~","","","","","","","","","","","","","","","","","",""
+"4","2","C6, C7","1nF","Device:C","Capacitor_SMD:C_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"5","3","C9, C13, C38","10u","Device:C","Capacitor_SMD:C_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"6","11","C10, C11, C14, C16, C17, C18, C20, C21, C24, C33, C37","100n","Device:C","Capacitor_SMD:C_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"7","2","C12, C15","1u","Device:C","Capacitor_SMD:C_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"8","13","C19, C22, C23, C25, C26, C29, C30, C31, C32, C39, C40, C41, C42","100n","Device:C","Capacitor_SMD:C_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"9","2","C27, C28","30p","Device:C","Capacitor_SMD:C_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"10","3","C34, C35, C36","10n","Device:C","Capacitor_SMD:C_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"11","2","D1, D2","1N4148W","Diode:1N4148W","Diode_SMD:D_SOD-123","https://www.vishay.com/docs/85748/1n4148w.pdf","","","","","","","","","","","","","","","","D","1=K 2=A",""
+"12","2","D3, D4","1N5819","Diode:1N5818","Diode_SMD:D_SOD-323","http://www.vishay.com/docs/88525/1n5817.pdf","","","","","","","","","","","","","","","","","",""
+"13","1","D5","LED Gate In 1","Device:LED","LED_THT:LED_D3.0mm_FlatTop","~","","","","","","","","","","","","","","","","","",""
+"14","1","D6","LED Gate In 2","Device:LED","LED_THT:LED_D3.0mm_FlatTop","~","","","","","","","","","","","","","","","","","",""
+"15","1","D7","LED A1","Device:LED","LED_THT:LED_D3.0mm_FlatTop","~","","","","","","","","","","","","","","","","","",""
+"16","1","D8","LED A2","Device:LED","LED_THT:LED_D3.0mm_FlatTop","~","","","","","","","","","","","","","","","","","",""
+"17","1","D9","LED CV In 1","Device:LED","LED_THT:LED_D3.0mm_FlatTop","~","","","","","","","","","","","","","","","","","",""
+"18","1","D10","LED CV In 2","Device:LED","LED_THT:LED_D3.0mm_FlatTop","~","","","","","","","","","","","","","","","","","",""
+"19","1","D11","LED A3","Device:LED","LED_THT:LED_D3.0mm_FlatTop","~","","","","","","","","","","","","","","","","","",""
+"20","1","D12","LED D1","Device:LED","LED_THT:LED_D3.0mm_FlatTop","~","","","","","","","","","","","","","","","","","",""
+"21","1","D13","LED D2","Device:LED","LED_THT:LED_D3.0mm_FlatTop","~","","","","","","","","","","","","","","","","","",""
+"22","1","D14","LED D3","Device:LED","LED_THT:LED_D3.0mm_FlatTop","~","","","","","","","","","","","","","","","","","",""
+"23","1","D15","LED Test","Device:LED","LED_SMD:LED_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"24","2","FB1, FB2","FerriteBead GZ2012D101TF","Device:FerriteBead","Resistor_SMD:R_0805_2012Metric","~","","","","","","","","","","","","","","","","","",""
+"25","1","H1","PIN_HEADER_2x5 POWER","eurocad:PIN_HEADER_2x5","Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical_SMD","","","","","","","","","","","","","","","","","","",""
+"26","1","J1","Hanbo_USB_C_Receptacle_USB2.0_MC-110LD-L137","emutelab:Hanbo_USB_C_Receptacle_USB2.0_MC-110LD-L137","emutelab:USB-C-TH_MC-110LD-L137-A","https://www.lcsc.com/product-detail/USB-Connectors_Hanbo-Electronic-MC-110LD-L137_C2962416.html","","","","","","","","","","","","","","","","","",""
+"27","1","J2","Gate In 1","Connector:AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","~","","","","","","","","","","","","","","","","","",""
+"28","1","J3","Gate In 2","Connector:AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","~","","","","","","","","","","","","","","","","","",""
+"29","1","J4","CV In 1","Connector:AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","~","","","","","","","","","","","","","","","","","",""
+"30","1","J5","CV In 2","Connector:AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","~","","","","","","","","","","","","","","","","","",""
+"31","2","J7, J8","Conn_02x01","Connector_Generic:Conn_02x01","Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical","~","","","","","","","","","","","","","","","","","",""
+"32","1","J9","Out A1","Connector:AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","~","","","","","","","","","","","","","","","","","",""
+"33","1","J10","Out A2","Connector:AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","~","","","","","","","","","","","","","","","","","",""
+"34","1","J11","Out A3","Connector:AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","~","","","","","","","","","","","","","","","","","",""
+"35","1","J12","Out D1","Connector:AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","~","","","","","","","","","","","","","","","","","",""
+"36","1","J13","Out D2","Connector:AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","~","","","","","","","","","","","","","","","","","",""
+"37","1","J14","Out D3","Connector:AudioJack2_SwitchT","Connector_Audio:Jack_3.5mm_QingPu_WQP-PJ398SM_Vertical_CircularHoles","~","","","","","","","","","","","","","","","","","",""
+"38","1","J15","SWD","Connector_Generic:Conn_01x03","Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical","~","","","","","","","","","","","","","","","","","",""
+"39","2","Q1, Q2","MMBT3904","dk_Transistors-Bipolar-BJT-Single:MMBT3904-TP","Package_TO_SOT_SMD:SOT-23","https://www.mccsemi.com/pdf/Products/MMBT3904(SOT-23).pdf","","Discrete Semiconductor Products","https://www.mccsemi.com/pdf/Products/MMBT3904(SOT-23).pdf","/product-detail/en/micro-commercial-co/MMBT3904-TP/MMBT3904TPMSCT-ND/717395","TRANS NPN 40V 0.2A SOT23","MMBT3904TPMSCT-ND","Transistors - Bipolar (BJT) - Single","","","MMBT3904-TP","Micro Commercial Co","","","","","","","Active"
+"40","10","R1, R2, R4, R5, R7, R8, R9, R10, R11, R12","100k","Device:R","Resistor_SMD:R_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"41","2","R3, R6","5.1k","Device:R","Resistor_SMD:R_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"42","2","R13, R14","33k","Device:R","Resistor_SMD:R_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"43","2","R15, R66","1.8, >24mW","Device:R","Resistor_SMD:R_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"44","6","R16, R17, R19, R20, R67, R68","5.1k 1%","Device:R","Resistor_SMD:R_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"45","1","R18","4.7k","Device:R","Resistor_SMD:R_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"46","2","R21, R22","27","Device:R","Capacitor_SMD:C_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"47","13","R23, R24, R25, R26, R27, R28, R31, R32, R33, R34, R35, R37, R65","1.5k","Device:R","Resistor_SMD:R_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"48","7","R29, R59, R60, R61, R62, R63, R64","1k","Device:R","Resistor_SMD:R_0402_1005Metric","~","","","","","","","","","","","","","","","","","",""
+"49","1","R30","DNF","Device:R","Capacitor_SMD:C_0805_2012Metric","~","","","","","","","","","","","","","","","","","",""
+"50","1","R36","1k","Device:R","Resistor_SMD:R_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"51","3","R38, R39, R40","12k","Device:R","Resistor_SMD:R_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"52","3","R41, R42, R43","1.2k","Device:R","Resistor_SMD:R_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"53","3","R44, R45, R46","33k","Device:R","Resistor_SMD:R_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"54","3","R47, R48, R49","51k","Device:R","Resistor_SMD:R_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"55","6","R50, R51, R52, R53, R54, R55","47k","Device:R","Resistor_SMD:R_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"56","3","R56, R57, R58","27k","Device:R","Resistor_SMD:R_0603_1608Metric","~","","","","","","","","","","","","","","","","","",""
+"57","2","RV1, RV2","100k","Device:R_Potentiometer","Eurocad:Alpha9mmPot","~","","","","","","","","","","","","","","","","","",""
+"58","2","S1, S2","B3U-1000P","dk_Tactile-Switches:B3U-1000P","digikey-footprints:Switch_Tactile_SMD_B3U-1000P","https://omronfs.omron.com/en_US/ecb/products/pdf/en-b3u.pdf","","Switches","https://omronfs.omron.com/en_US/ecb/products/pdf/en-b3u.pdf","/product-detail/en/omron-electronics-inc-emc-div/B3U-1000P/SW1020CT-ND/1534357","SWITCH TACTILE SPST-NO 0.05A 12V","SW1020CT-ND","Tactile Switches","","","B3U-1000P","Omron Electronics Inc-EMC Div","","","","","","","Active"
+"59","1","SW1","SW_Push","GPBS-850N:GPBS-850N","GPBS850N","http://switches-connectors-custom.cwind.com/Asset/GPBS850NR1.pdf","","","","","","","","14.2","","","","CW Industries","GPBS-850N","629-GPBS-850N","https://www.mouser.co.uk/ProductDetail/CW-Industries/GPBS-850N?qs=sajaCoHCXPRZB3tbc1cuTA%3D%3D","","",""
+"60","1","SW3","SW_SPDT","Switch:SW_SPDT","emutelab:Thonk DWB2","~","","","","","","","","","","","","","","","","","",""
+"61","1","TP1","RP2040 Power","Connector:TestPoint_Probe","TestPoint:TestPoint_Pad_1.5x1.5mm","~","","","","","","","","","","","","","","","","","",""
+"62","1","TP2","Analog Power","Connector:TestPoint_Probe","TestPoint:TestPoint_Pad_1.5x1.5mm","~","","","","","","","","","","","","","","","","","",""
+"63","2","TP3, TP9","5V reference","Connector:TestPoint_Probe","TestPoint:TestPoint_Pad_1.5x1.5mm","~","","","","","","","","","","","","","","","","","",""
+"64","1","TP4","-5V Ref","Connector:TestPoint_Probe","TestPoint:TestPoint_Pad_1.5x1.5mm","~","","","","","","","","","","","","","","","","","",""
+"65","1","TP5","CVIn","Connector:TestPoint_Probe","TestPoint:TestPoint_Pad_1.5x1.5mm","~","","","","","","","","","","","","","","","","","",""
+"66","1","TP6","CV Out","Connector:TestPoint_Probe","TestPoint:TestPoint_Pad_1.5x1.5mm","~","","","","","","","","","","","","","","","","","",""
+"67","1","TP7","Digital Out","Connector:TestPoint_Probe","TestPoint:TestPoint_Pad_1.5x1.5mm","~","","","","","","","","","","","","","","","","","",""
+"68","1","TP8","1V1","Connector:TestPoint_Probe","TestPoint:TestPoint_Pad_1.5x1.5mm","~","","","","","","","","","","","","","","","","","",""
+"69","2","U1, U4","TLV76733DRVR","Regulator_Linear:TLV76733DRVx","Package_SON:WSON-6-1EP_2x2mm_P0.65mm_EP1x1.6mm_ThermalVias","www.ti.com/lit/gpn/TLV767","","","","","","","","","https://jlcpcb.com/partdetail/TexasInstruments-TLV76733DRVR/C2848334","","","","","","","","",""
+"70","4","U2, U8, U9, U10","TL072","Amplifier_Operational:TL072","Package_SO:SO-8_3.9x4.9mm_P1.27mm","http://www.ti.com/lit/ds/symlink/tl071.pdf","","","","","","","","","","","","","","","","","",""
+"71","1","U3","MCP6002-xMS","Amplifier_Operational:MCP6002-xMS","Package_SO:MSOP-8_3x3mm_P0.65mm","http://ww1.microchip.com/downloads/en/DeviceDoc/21733j.pdf","","","","","","","","","","","","","","","","","",""
+"72","3","U5, U6, U12","CJ431 SOT-23","emutelab:CJ431 SOT-23","Package_TO_SOT_SMD:SOT-23","http://www.ti.com/lit/ds/symlink/tl431.pdf","","","","","","","","","","","","","","","","","",""
+"73","1","U7","RP2040","MCU_RaspberryPi_RP2040:RP2040","emutelab:RP2040-QFN-56","","","","","","","","","","","","","","","","","","",""
+"74","1","U11","W25Q128JVS","Memory_Flash:W25Q128JVS","Package_SO:SOIC-8_5.23x5.23mm_P1.27mm","http://www.winbond.com/resource-files/w25q128jv_dtr%20revc%2003272018%20plus.pdf","","","","","","","","","","","","","","","","","",""
+"75","1","Y1","YXC X322512MSB4SI","Device:Crystal_GND24","Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm","~","","","","","","","","","","","","","","","","","",""
