@@ -3475,6 +3475,9 @@ void setup_switches() {
   pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);
 
   pinMode(USEQ_PIN_SWITCH_T1, INPUT_PULLUP);
+#ifdef USEQ_1_0_c
+  pinMode(USEQ_PIN_SWITCH_T2, INPUT_PULLUP);
+#endif
 #endif
 #ifdef USEQHARDWARE_0_2
   pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);
@@ -3765,7 +3768,22 @@ void readInputs() {
 
 
   useqInputValues[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
+#ifdef USEQ_1_0_c
+  const int ts_a = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
+  const int ts_b = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
+  if ((ts_a == 0) && (ts_b==0)) {
+    useqInputValues[USEQT1] = 1;
+  }else{
+    if (ts_a == 1) {
+      useqInputValues[USEQT1] = 2;
+    }else{
+      useqInputValues[USEQT1] = 0;
+    }
+  }
+#else
   useqInputValues[USEQT1] = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
+#endif
+
 #endif
 
 #ifdef USEQHARDWARE_0_2
