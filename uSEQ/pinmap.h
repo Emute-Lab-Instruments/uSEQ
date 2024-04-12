@@ -28,6 +28,10 @@
 // #define MUSICTHING
 
 
+// #define USEQ_1_0_b
+#define USEQ_1_0_c
+
+
 /*
 
 
@@ -134,6 +138,7 @@ const int useq_output_led_pins[] = {USEQ_PIN_LED_A1,USEQ_PIN_LED_A2, USEQ_PIN_LE
 #define USEQ_PIN_SWITCH_M1 10
 
 #define USEQ_PIN_SWITCH_T1 14
+#define USEQ_PIN_SWITCH_T2 23
 
 #define PWM_OUTS 3
 #define DIGI_OUTS (6 - PWM_OUTS)
