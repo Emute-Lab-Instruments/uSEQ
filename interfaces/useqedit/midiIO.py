@@ -24,6 +24,15 @@ class midiIO:
         return mido.get_input_names()
 
 
+
+    @classmethod
+    def getOutputLike(cls, term):
+        namelist = [x for x in mido.get_output_names() if x.find(term) >= 0]
+        if len(namelist)>0:
+            return mido.get_output_names().index(namelist[0])
+        else:
+            return False
+
     # @classmethod
     # def midiInputCallback(cls, msg):
     #     # if msg.dict()['type']=='note_on':

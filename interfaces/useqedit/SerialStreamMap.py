@@ -73,30 +73,37 @@ class SerialStreamMap:
         error = False
         for d in data:
             if "type" in d and 'serial' in d:
-                if d['type'] == "MIDITRIG":
-                    if 'port' in d and 'channel' in d and 'note' in d:
-                        cls.set(d['serial']-1, SerialStreamMap.makeMIDITrigMap(d['port'], d['channel'], d['note']))
+                if 'port' in d:
+                    portName = midiIO.getOutputLike(d['port'])
+                    if portName != False:
+                        if d['type'] == "MIDITRIG":
+                            if 'channel' in d and 'note' in d:
+                                cls.set(d['serial']-1, SerialStreamMap.makeMIDITrigMap(portName, d['channel'], d['note']))
+                            else:
+                                Console.post("Error, key missing in: ")
+                                Console.post(d)
+                                error=True
+                        elif d['type'] == "MIDINOTE":
+                            if 'channel' in d:
+                                cls.set(d['serial'] - 1,
+                                        SerialStreamMap.makeMIDINoteMap(portName, d['channel']))
+                            else:
+                                Console.post("Error, key missing in: ")
+                                Console.post(d)
+                                error = True
+                        elif d['type'] == "MIDICTL":
+                            if 'channel' in d and 'ctl' in d:
+                                cls.set(d['serial']-1, SerialStreamMap.makeMIDIContinuousMap(portName, d['channel'], d['ctl']))
+                            else:
+                                Console.post("Error, key missing in: ")
+                                Console.post(d)
+                                error = True
+                        else:
+                            Console.post(f"Error: unrecognised configuration type: {d['type']}")
                     else:
-                        Console.post("Error, key missing in: ")
-                        Console.post(d)
-                        error=True
-                elif d['type'] == "MIDINOTE":
-                    if 'port' in d and 'channel' in d and 'note' in d:
-                        cls.set(d['serial'] - 1,
-                                SerialStreamMap.makeMIDINoteMap(d['port'], d['channel']))
-                    else:
-                        Console.post("Error, key missing in: ")
-                        Console.post(d)
-                        error = True
-                elif d['type'] == "MIDICTL":
-                    if 'port' in d and 'channel' in d and 'ctl' in d:
-                        cls.set(d['serial']-1, SerialStreamMap.makeMIDIContinuousMap(d['port'], d['channel'], d['ctl']))
-                    else:
-                        Console.post("Error, key missing in: ")
-                        Console.post(d)
-                        error = True
+                        Console.post(f"couldn't find the port name: {d['port']}")
                 else:
-                    Console.post(f"Error: unrecognised configuration type: {d['type']}")
+                    Console.post(f"Error: port missing")
             else:
                 Console.post("Error, 'type' missing in: ")
                 Console.post(d)
