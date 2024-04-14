@@ -78,7 +78,7 @@ Use this for drums or samples
   {
     "serial": [serial channel number],
     "type": "MIDITRIG",
-    "port": [index of the serial port],
+    "port": [partial or full name of the port],
     "channel": [midi channel],
     "note": [midi note number]
   }
@@ -92,7 +92,7 @@ When the waveform on the serial bus transitions from 0 to any value above zero, 
 {
     "serial": [serial channel number],
     "type": "MIDICTL",
-    "port": [index of the serial port],
+    "port": [partial or full name of the port],
     "channel": [midi channel],
     "ctl": [midi controller number]
 }
@@ -106,13 +106,16 @@ Values between 0 and 1 in the waveform are translated to the value of the contro
 {
     "serial": [serial channel number],
     "type": "MIDINOTE",
-    "port": [index of the serial port],
+    "port": [partial or full name of the port],
     "channel": [midi channel],
 }
 ```
 
 When a waveform transitions from 0 to above 0 a note is sent. The pitch is determined by the amplitude of the waveform, divided by 127 and rounded to the nearest integer.
 
+### Notes
+
+Port names can be given partially or fully, and the editor will search for them e.g if you interface is called "Arturia DrumBrute 17_2:0", you can just use the term 'Drum' to identify it.
 
 ## Troubleshooting
 
