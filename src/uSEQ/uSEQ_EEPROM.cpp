@@ -20,8 +20,8 @@
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include "uSEQ_EEPROM.h"
 #include <Arduino.h>
-#include "EEPROM.h"
 #include <hardware/flash.h>
 #include <hardware/sync.h>
 
@@ -36,22 +36,20 @@
 
 extern "C" uint8_t _EEPROM_start;
 
-EEPROMClass::EEPROMClass(void)
-    : _sector(&_EEPROM_start) {
-}
+uSEQ_EEPROMClass::uSEQ_EEPROMClass(void) : _sector(&_EEPROM_start) {}
 
-void EEPROMClass::begin(size_t size) {
-    if ((size <= 0) || (size > 4096)) {
-        size = 4096;
-    }
-
-    size = (size + 255) & (~255);  // Flash writes limited to 256 byte boundaries
+void uSEQ_EEPROMClass::begin(size_t size)
+{
+    size = (size + 255) & (~255); // Flash writes limited to 256 byte boundaries
 
     // In case begin() is called a 2nd+ time, don't reallocate if size is the same
-    if (_data && size != _size) {
+    if (_data && size != _size)
+    {
         delete[] _data;
         _data = new uint8_t[size];
-    } else if (!_data) {
+    }
+    else if (!_data)
+    {
         _data = new uint8_t[size];
     }
 
@@ -59,68 +57,82 @@ void EEPROMClass::begin(size_t size) {
 
     memcpy(_data, _sector, _size);
 
-    _dirty = false; //make sure dirty is cleared in case begin() is called 2nd+ time
+    _dirty = false; // make sure dirty is cleared in case begin() is called 2nd+ time
 }
 
-bool EEPROMClass::end() {
+bool uSEQ_EEPROMClass::end()
+{
     bool retval;
 
-    if (!_size) {
+    if (!_size)
+    {
         return false;
     }
 
     retval = commit();
-    if (_data) {
+    if (_data)
+    {
         delete[] _data;
     }
-    _data = 0;
-    _size = 0;
+    _data  = 0;
+    _size  = 0;
     _dirty = false;
 
     return retval;
 }
 
-uint8_t EEPROMClass::read(int const address) {
-    if (address < 0 || (size_t)address >= _size) {
+uint8_t uSEQ_EEPROMClass::read(int const address)
+{
+    if (address < 0 || (size_t)address >= _size)
+    {
         return 0;
     }
-    if (!_data) {
+    if (!_data)
+    {
         return 0;
     }
 
     return _data[address];
 }
 
-void EEPROMClass::write(int const address, uint8_t const value) {
-    if (address < 0 || (size_t)address >= _size) {
+void uSEQ_EEPROMClass::write(int const address, uint8_t const value)
+{
+    if (address < 0 || (size_t)address >= _size)
+    {
         return;
     }
-    if (!_data) {
+    if (!_data)
+    {
         return;
     }
 
     // Optimise _dirty. Only flagged if data written is different.
     uint8_t* pData = &_data[address];
-    if (*pData != value) {
+    if (*pData != value)
+    {
         *pData = value;
         _dirty = true;
     }
 }
 
-bool EEPROMClass::commit() {
-    if (!_size) {
+bool uSEQ_EEPROMClass::commit()
+{
+    if (!_size)
+    {
         return false;
     }
-    if (!_dirty) {
+    if (!_dirty)
+    {
         return true;
     }
-    if (!_data) {
+    if (!_data)
+    {
         return false;
     }
 
     noInterrupts();
     rp2040.idleOtherCore();
-    flash_range_erase((intptr_t)_sector - (intptr_t)XIP_BASE, 4096);
+    flash_range_erase((intptr_t)_sector - (intptr_t)XIP_BASE, _size);
     flash_range_program((intptr_t)_sector - (intptr_t)XIP_BASE, _data, _size);
     rp2040.resumeOtherCore();
     interrupts();
@@ -129,13 +141,12 @@ bool EEPROMClass::commit() {
     return true;
 }
 
-uint8_t * EEPROMClass::getDataPtr() {
+uint8_t* uSEQ_EEPROMClass::getDataPtr()
+{
     _dirty = true;
     return &_data[0];
 }
 
-uint8_t const * EEPROMClass::getConstDataPtr() const {
-    return &_data[0];
-}
+uint8_t const* uSEQ_EEPROMClass::getConstDataPtr() const { return &_data[0]; }
 
-EEPROMClass EEPROM;
+uSEQ_EEPROMClass uSEQ_EEPROM;

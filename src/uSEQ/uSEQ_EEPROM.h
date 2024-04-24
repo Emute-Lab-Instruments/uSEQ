@@ -25,9 +25,10 @@
 #include <stdint.h>
 #include <string.h>
 
-class EEPROMClass {
+class uSEQ_EEPROMClass
+{
 public:
-    EEPROMClass(void);
+    uSEQ_EEPROMClass(void);
 
     void begin(size_t size);
     uint8_t read(int const address);
@@ -35,25 +36,30 @@ public:
     bool commit();
     bool end();
 
-    uint8_t * getDataPtr();
-    uint8_t const * getConstDataPtr() const;
+    uint8_t* getDataPtr();
+    uint8_t const* getConstDataPtr() const;
 
-    template<typename T>
-    T &get(int const address, T &t) {
-        if (address < 0 || address + sizeof(T) > _size) {
+    template <typename T>
+    T& get(int const address, T& t)
+    {
+        if (address < 0 || address + sizeof(T) > _size)
+        {
             return t;
         }
 
-        memcpy((uint8_t*) &t, _data + address, sizeof(T));
+        memcpy((uint8_t*)&t, _data + address, sizeof(T));
         return t;
     }
 
-    template<typename T>
-    const T &put(int const address, const T &t) {
-        if (address < 0 || address + sizeof(T) > _size) {
+    template <typename T>
+    const T& put(int const address, const T& t)
+    {
+        if (address < 0 || address + sizeof(T) > _size)
+        {
             return t;
         }
-        if (memcmp(_data + address, (const uint8_t*)&t, sizeof(T)) != 0) {
+        if (memcmp(_data + address, (const uint8_t*)&t, sizeof(T)) != 0)
+        {
             _dirty = true;
             memcpy(_data + address, (const uint8_t*)&t, sizeof(T));
         }
@@ -61,26 +67,21 @@ public:
         return t;
     }
 
-    template<typename T>
-    const T &update(int const address, const T &t) {
+    template <typename T>
+    const T& update(int const address, const T& t)
+    {
         return put(address, t);
     }
-    size_t length() {
-        return _size;
-    }
+    size_t length() { return _size; }
 
-    uint8_t& operator[](int const address) {
-        return getDataPtr()[address];
-    }
-    uint8_t const & operator[](int const address) const {
-        return getConstDataPtr()[address];
-    }
+    uint8_t& operator[](int const address) { return getDataPtr()[address]; }
+    uint8_t const& operator[](int const address) const { return getConstDataPtr()[address]; }
 
 protected:
     uint8_t* _sector;
     uint8_t* _data = nullptr;
-    size_t _size = 0;
-    bool _dirty = false;
+    size_t _size   = 0;
+    bool _dirty    = false;
 };
 
-extern EEPROMClass EEPROM;
+extern uSEQ_EEPROMClass uSEQ_EEPROM;
