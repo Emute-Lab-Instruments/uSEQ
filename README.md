@@ -42,7 +42,18 @@ see the [library documentation](docs/useq.md)
 
 The firmware is in the [uSEQ](./uSEQ/) folder.
 
-Build the firmware in Arduino IDE, using the [Earle Philhower Pico core](https://github.com/earlephilhower/arduino-pico).  Overclock the Pico at 250Mhz and set the optimisation level to -O3.
+Build the firmware in Arduino IDE, using the [Earle Philhower Pico core](https://github.com/earlephilhower/arduino-pico).  
+Settings:
+
+| Setting  | Value |
+| ------------- | ------------- |
+| Board  | Generic RP2040  |
+| Boot Stage 2  | W25Q128JV QSPI /4  |
+| Flash Size | 8MB (Sketch 1MB, FS: 7MB) |
+| CPU Speed | 250MHz (Overclock) |
+| Optimize | Optimize Even More (-O3) |
+
+Overclock the Pico at 250Mhz and set the optimisation level to -O3.
 
 ## Building a uSEQ module
 
