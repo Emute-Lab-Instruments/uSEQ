@@ -2,8 +2,8 @@
 <export version="E">
   <design>
     <source>/home/ck84/Arduino/uSEQ/hardware/version1.0/useq1/useq1.kicad_sch</source>
-    <date>Fri 12 Apr 2024 17:08:13 BST</date>
-    <tool>Eeschema 7.0.10-7.0.10~ubuntu22.04.1</tool>
+    <date>Fri 26 Apr 2024 09:10:29 BST</date>
+    <tool>Eeschema 7.0.11-7.0.11~ubuntu22.04.1</tool>
     <sheet number="1" name="/" tstamps="/">
       <title_block>
         <title/>
@@ -1166,7 +1166,7 @@
       <tstamps>8ba16ef7-38d4-4250-a7b7-357f14a375ac</tstamps>
     </comp>
     <comp ref="R23">
-      <value>1.5k</value>
+      <value>18k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
       <property name="LCSC" value=""/>
@@ -1178,7 +1178,7 @@
       <tstamps>a6b26d49-3511-4379-b51c-29b09d1a74f5</tstamps>
     </comp>
     <comp ref="R24">
-      <value>1.5k</value>
+      <value>18k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
       <property name="LCSC" value=""/>
@@ -1190,7 +1190,7 @@
       <tstamps>a6c2d0cc-9940-4040-b8da-914adad28ab7</tstamps>
     </comp>
     <comp ref="R25">
-      <value>1.5k</value>
+      <value>9.1k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
       <property name="LCSC" value=""/>
@@ -1202,7 +1202,7 @@
       <tstamps>3329e178-6da0-4b49-9682-85f57bdd1454</tstamps>
     </comp>
     <comp ref="R26">
-      <value>1.5k</value>
+      <value>9.1k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
       <property name="LCSC" value=""/>
@@ -1214,7 +1214,7 @@
       <tstamps>3282a147-3b33-480c-a0a5-0a00a314c7d9</tstamps>
     </comp>
     <comp ref="R27">
-      <value>1.5k</value>
+      <value>9.1k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
       <property name="LCSC" value=""/>
@@ -1226,7 +1226,7 @@
       <tstamps>156af294-97d9-44e4-abde-c85757852d25</tstamps>
     </comp>
     <comp ref="R28">
-      <value>1.5k</value>
+      <value>9.1k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
       <property name="LCSC" value=""/>
@@ -1271,7 +1271,7 @@
       <tstamps>dceeb258-6325-46a2-b973-79e5ab5dd749</tstamps>
     </comp>
     <comp ref="R32">
-      <value>1.5k</value>
+      <value>9.1k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
       <property name="LCSC" value=""/>
@@ -1283,7 +1283,7 @@
       <tstamps>76e91c31-8412-4f62-8ce9-0221b84e029d</tstamps>
     </comp>
     <comp ref="R33">
-      <value>1.5k</value>
+      <value>18k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
       <property name="LCSC" value=""/>
@@ -1295,7 +1295,7 @@
       <tstamps>aeecaf41-6f11-4a4b-822b-c321c4fb080a</tstamps>
     </comp>
     <comp ref="R34">
-      <value>1.5k</value>
+      <value>18k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
       <property name="LCSC" value=""/>
@@ -1307,7 +1307,7 @@
       <tstamps>2ab50f6a-10c5-40c1-9d6d-141c99052300</tstamps>
     </comp>
     <comp ref="R35">
-      <value>1.5k</value>
+      <value>18k</value>
       <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
       <libsource lib="Device" part="R" description="Resistor"/>
       <property name="LCSC" value=""/>
