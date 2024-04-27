@@ -1166,7 +1166,7 @@ Value Value::apply(std::vector<Value> &args, Environment &env) {
 
 int ts_get = 0;
 int get_time = 0;
-Value Value::eval(Environment &env) {
+Value __not_in_flash_func(Value::eval)(Environment &env) {
   std::vector<Value> args;
   Value function;
   // Environment e;
@@ -1400,7 +1400,7 @@ Value run(String code, Environment &env) {
   }
 }
 
-Value runParsedCode(std::vector<Value> ast, Environment &env) {
+Value __not_in_flash_func(runParsedCode)(std::vector<Value> ast, Environment &env) {
   if (ast.size() > 0) {
     // Iterate over the expressions and evaluate them
     // in this environment.
@@ -3806,7 +3806,6 @@ void readInputs() {
 #endif
 }
 
-
 int test = 0;
 
 
@@ -3841,7 +3840,7 @@ int ts = 0;
 int updateSpeed = 0;
 
 
-void loop() {
+ void loop() {
 
   updateSpeed = micros() - ts;
   env.set("fps", Value(1000000.0 / updateSpeed));
