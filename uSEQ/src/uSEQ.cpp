@@ -276,14 +276,11 @@ void uSEQ::start_loop_blocking()
 
 void uSEQ::update_Q0()
 {
-    // currentExprSound = true;
     Value result = eval(m_q0AST);
-
-    if (result == Value::error())
+    if (result.is_error())
     {
         Serial.println("Error in q0 output function, clearing");
         m_q0AST = {};
-        // currentExprSound = true;
     }
 }
 
@@ -325,7 +322,7 @@ void uSEQ::tick()
     // Re-run & cache output signal forms
     update_signals();
     // // Write cached output signals to hardware & software outputs
-    update_outputs();
+    update_outs();
     // // Check for new code and eval
     check_and_handle_user_input();
     m_num_tick_ends += 1;
@@ -585,17 +582,17 @@ void uSEQ::check_and_handle_user_input()
     {
         int first_byte = Serial.read();
         // SERIAL
-        if (first_byte == 31)
+        if (first_byte == m_serial_stream_begin_marker /*31*/)
         {
             // incoming serial stream
             size_t channel = Serial.read();
             char buffer[8];
             Serial.readBytes(buffer, 8);
-            if (channel > 0 && channel <= NUM_SERIAL_INS)
+            if (channel > 0 && channel <= m_num_serial_ins)
             {
                 double v = 0;
                 memcpy(&v, buffer, 8);
-                m_serialInputStreams[(channel - 1)] = v;
+                m_serial_input_streams[(channel - 1)] = v;
             }
         }
         else
@@ -608,7 +605,7 @@ void uSEQ::check_and_handle_user_input()
                 m_should_quit = true;
             }
             // EXECUTE NOW
-            if (first_byte == '@')
+            if (first_byte == m_execute_now_marker /*'@'*/)
             {
                 String result = eval(m_last_received_code);
                 print("==> ");
@@ -687,16 +684,17 @@ void uSEQ::update_signals()
     update_serial_signals();
 }
 
-void uSEQ::update_outputs()
+void uSEQ::update_outs()
 {
-    DBG("uSEQ::update_outputs");
-    update_continuous_outs();
+    DBG("uSEQ::update_outs");
+    // FIXME: if the order is flipped and binary goes
+    // after continuous, then all LEDs behave like binary
     update_binary_outs();
-    // update_serial_outs();
+    update_continuous_outs();
+    update_serial_outs();
 
 #ifdef MIDIOUT
-    dbg("midi");
-    updateMidiOut();
+    update_midi_out();
 #endif
 }
 
@@ -769,7 +767,7 @@ void uSEQ::set_time(size_t new_time_micros)
 
 void uSEQ::update_lisp_time_variables()
 {
-    DBG("uSEQ::update_time_variables");
+    DBG("uSEQ::update_lisp_time_variables");
 
     // These should appear as seconds in Lisp-land
     double time_s = (double)time * 1e-6;
@@ -906,6 +904,7 @@ void uSEQ::updateMidiOut()
 
 void uSEQ::setup_outs()
 {
+    DBG("uSEQ::setup_outs");
     for (int i = 0; i < NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS; i++)
     {
         pinMode(useq_output_pins[i], OUTPUT);
@@ -986,6 +985,8 @@ void uSEQ::setup_analog_ins()
 
 void uSEQ::setup_IO()
 {
+    DBG("uSEQ::setup_IO");
+
     setup_outs();
     setup_analog_outs();
     setup_digital_ins();
@@ -1021,13 +1022,13 @@ void uSEQ::init_ASTs()
 
     for (int i = 0; i < m_num_binary_outs; i++)
     {
-        m_binary_ASTs.push_back(default_binary_form);
+        m_binary_ASTs.push_back(default_binary_expr);
         m_binary_vals.push_back(0);
     }
 
     for (int i = 0; i < m_num_continuous_outs; i++)
     {
-        m_continuous_ASTs.push_back(default_continuous_form);
+        m_continuous_ASTs.push_back(default_continuous_expr);
         m_continuous_vals.push_back(0.0);
     }
 
@@ -1035,7 +1036,7 @@ void uSEQ::init_ASTs()
     {
         // TODO
         // m_continuous_ASTs.push_back(default_continuous_form);
-        m_serial_ASTs.push_back(default_serial_form);
+        m_serial_ASTs.push_back(default_serial_expr);
         m_serial_vals.push_back(0.0);
     }
 }
@@ -1053,6 +1054,7 @@ size_t bpm_to_micros_per_beat(double bpm)
 void uSEQ::set_bpm(double newBpm, double changeThreshold = 0.0)
 {
     DBG("uSEQ::setBPM");
+
     if (fabs(newBpm - m_bpm) >= changeThreshold)
     {
         m_bpm = newBpm;
@@ -1113,7 +1115,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a5,
     if (NUM_CONTINUOUS_OUTS >= 5) {
-        set("a5-form", args[0]);
+        set("a5-expr", args[0]);
         m_continuous_ASTs[4] = { args[0] };
     },
     1)
@@ -1121,7 +1123,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a6,
     if (NUM_CONTINUOUS_OUTS >= 6) {
-        set("a6-form", args[0]);
+        set("a6-expr", args[0]);
         m_continuous_ASTs[5] = { args[0] };
     },
     1)
@@ -1130,61 +1132,61 @@ BUILTINFUNC_NOEVAL_MEMBER(
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d1,
     if (NUM_BINARY_OUTS >= 1) {
-        set("d1-form", args[0]);
+        set("d1-expr", args[0]);
         m_binary_ASTs[0] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d2,
     if (NUM_BINARY_OUTS >= 2) {
-        set("d2-form", args[0]);
+        set("d2-expr", args[0]);
         m_binary_ASTs[1] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d3,
     if (NUM_BINARY_OUTS >= 3) {
-        set("d3-form", args[0]);
+        set("d3-expr", args[0]);
         m_binary_ASTs[2] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d4,
     if (NUM_BINARY_OUTS >= 4) {
-        set("d4-form", args[0]);
+        set("d4-expr", args[0]);
         m_binary_ASTs[3] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d5,
     if (NUM_BINARY_OUTS >= 5) {
-        set("d5-form", args[0]);
+        set("d5-expr", args[0]);
         m_binary_ASTs[4] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d6,
     if (NUM_BINARY_OUTS >= 6) {
-        set("d6-form", args[0]);
+        set("d6-expr", args[0]);
         m_binary_ASTs[5] = { args[0] };
     },
     1)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set("s1-form", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set("s1-expr", args[0]);
                           m_serial_ASTs[0] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s2, set("s2-form", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s2, set("s2-expr", args[0]);
                           m_serial_ASTs[1] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s3, set("s3-form", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s3, set("s3-expr", args[0]);
                           m_serial_ASTs[2] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s4, set("s4-form", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s4, set("s4-expr", args[0]);
                           m_serial_ASTs[3] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s5, set("s5-form", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s5, set("s5-expr", args[0]);
                           m_serial_ASTs[4] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s6, set("s6-form", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s6, set("s6-expr", args[0]);
                           m_serial_ASTs[5] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s7, set("s7-form", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s7, set("s7-expr", args[0]);
                           m_serial_ASTs[6] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set("s8-form", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set("s8-expr", args[0]);
                           m_serial_ASTs[7] = { args[0] };, 1)
 
 double fast(double speed, double phasor)
@@ -1265,7 +1267,7 @@ BUILTINFUNC_MEMBER(
                                                1)
 
 BUILTINFUNC_MEMBER(useq_settimesig,
-                   setTimeSignature(args[0].as_float(), args[1].as_float());
+                   set_time_signature(args[0].as_float(), args[1].as_float());
                    ret = Value(1);, 2)
 
 BUILTINFUNC_MEMBER(useq_in1, ret = Value(m_input_vals[USEQI1]);, 0)
@@ -1282,8 +1284,8 @@ BUILTINFUNC_MEMBER(useq_mt_swz, ret = Value(m_input_vals[MTZSWITCH]);, 0)
 
 BUILTINFUNC_MEMBER(
     useq_ssin, int index = args[0].as_int();
-    if (index > 0 && index <= NUM_SERIAL_INS) {
-        ret = Value(m_serialInputStreams[index - 1]);
+    if (index > 0 && index <= m_num_serial_ins) {
+        ret = Value(m_serial_input_streams[index - 1]);
     },
     1)
 
@@ -1447,7 +1449,7 @@ BUILTINFUNC_VARGS_MEMBER(
     double val = static_cast<int>(phasor * abs(count)); if (val == count) val--;
     ret        = Value((count > 0 ? val : count - 1 - val) + offset);, 2, 3)
 
-void uSEQ::setTimeSignature(double numerator, double denominator)
+void uSEQ::set_time_signature(double numerator, double denominator)
 {
     meter_denominator = denominator;
     meter_numerator   = numerator;
@@ -1496,8 +1498,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("s6", useq_s6);
 
     // These are not class methods, so they can be inserted normally
-    Environment::builtindefs["useqdw"] = Value("useqdw", ard_useqdw);
-    Environment::builtindefs["useqaw"] = Value("useqaw", ard_useqaw);
+    INSERT_BUILTINDEF("useqaw", ard_useqaw);
+    INSERT_BUILTINDEF("useqdw", ard_useqdw);
 
     // These are all class methods
     INSERT_BUILTINDEF("swm", useq_swm);

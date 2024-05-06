@@ -58,7 +58,7 @@ Value eval_args(std::vector<Value>& args, Environment& env)
     for (size_t i = 0; i < args.size(); i++)
     {
         args[i] = args[i].eval(env);
-        if (args[i] == Value::error())
+        if (args[i].is_error())
         {
             Serial.println("eval args error");
             ret = Value::error();
@@ -297,7 +297,7 @@ Value eval(std::vector<Value>& args, Environment& env)
 {
     // Is not a special form, so we can evaluate our args.
     Value ret = eval_args(args, env);
-    if (ret == Value::error())
+    if (ret.is_error())
     {
         Serial.println("eval err");
         return Value::error();
@@ -891,7 +891,7 @@ void Interpreter::eval_args(std::vector<Value>& args, Environment& env)
     for (size_t i = 0; i < args.size(); i++)
     {
         args[i] = Interpreter::eval_in(args[i], env);
-        if (args[i] == Value::error())
+        if (args[i].is_error())
         {
             error("eval args error");
         }
@@ -944,7 +944,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
         dbg("atom");
         // ts_get = micros();
         auto atomdata = env.get(v.str);
-        if (atomdata == Value::error())
+        if (atomdata.is_error())
         {
             error("Get error: ");
             println(v.str);
@@ -985,7 +985,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
                 {
                     Value expr       = args[i];
                     Value evaled_arg = eval_in(expr, env);
-                    if (evaled_arg == Value::error())
+                    if (evaled_arg.is_error())
                     {
                         evalError = true;
                         error("Arg number " + String(i) + " is error:\n" +
