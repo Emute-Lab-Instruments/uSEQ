@@ -5,6 +5,9 @@ tmp/
 
 build/
 out/
+# Let's leave this checked in for now,
+# helps users skip a step when building the firmware
+# LispLibrary.h
 
 .vscode
 

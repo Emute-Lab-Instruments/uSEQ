@@ -33,16 +33,14 @@ uSEQ modules set up within eurorack performance systems
 * Stream waveforms back over USB serial to a computer, and route it to MIDI or OSC, linking the modular with software and external hardware
 * Livecoding engine with flexible timing and varied options for creating gate and CV patterns (from basic waveforms to euclidean sequencing) and structuring arrangements
 
-
-## Library
-
-see the [library documentation](docs/useq.md)
-
+  
+## [Library & API Documentation](docs/useq.md)
+## [Developer notes](docs/dev.md)
 ## Building the Firmware
 
 The firmware is in the [uSEQ](./uSEQ/) folder.
 
-Build the firmware in Arduino IDE, using the [Earle Philhower Pico core](https://github.com/earlephilhower/arduino-pico).  
+Build the firmware in Arduino IDE, using the [Earle Philhower Pico core](https://github.com/earlephilhower/arduino-pico).
 
 | Setting  | Value |
 | ------------- | ------------- |
@@ -59,10 +57,5 @@ Overclock the Pico at 250Mhz and set the optimisation level to -O3.
 Contact @chriskiefer (https://ravenation.club/@luuma) for PCBs
 
 
-## Developer notes
-
-lisplibrary.py is used to convert LispLibrary.lisp into LispLibrary.h
 
 We welcome pull requests.
-
-
