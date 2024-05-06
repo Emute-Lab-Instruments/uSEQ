@@ -365,35 +365,28 @@ int digital_out_pin(int out)
     return res;
 }
 
-BUILTINFUNC(
+BUILTINFUNC_MEMBER(
     ard_useqdw,
-    if (args[1] == Value::error()) {
-        println("useqdw arg err");
-        ret = args[1];
+    if (evalled_args_contain_errors(args)) {
+        error("useqdw has an error in one or more of its args");
     } else {
-        int pin     = digital_out_pin(args[0].as_int());
-        int led_pin = digital_out_LED_pin(args[0].as_int());
-        int val     = args[1].as_int();
-#ifdef DIGI_OUT_INVERT
-        digitalWrite(pin, 1 - val);
-#else
-        digitalWrite(pin, val);
-#endif
-        digitalWrite(led_pin, val);
+        int out = args[0].as_int();
+        int val = args[1].as_int();
+        digital_write_with_led(out, val);
     },
     2)
 
-BUILTINFUNC(
+BUILTINFUNC_MEMBER(
     ard_useqaw,
-    if (args[1] == Value::error()) {
-        println("useqaw arg err");
-        ret = args[1];
+    if (evalled_args_contain_errors(args)) {
+        error("useqaw has an error in one or more of its args");
     } else {
-        int pin     = analog_out_pin(args[0].as_int());
-        int led_pin = analog_out_LED_pin(args[0].as_int());
-        int val     = args[1].as_float() * 2047.0;
-        analogWrite(pin, val);
-        analogWrite(led_pin, val);
+        analog_write_with_led(args[0].as_int(), args[1].as_float());
+        // int pin     = analog_out_pin();
+        // int led_pin = analog_out_LED_pin(args[0].as_int());
+        // int val     = args[1].as_float() * 2047.0;
+        // analogWrite(pin, val);
+        // analogWrite(led_pin, val);
     },
     2)
 
@@ -635,18 +628,17 @@ void uSEQ::update_continuous_signals()
         Value expr = m_continuous_ASTs[i];
         dbg("Evalling: " + expr.display());
         Value result = eval(expr);
-        if (result == Value::error() /*|| !currentExprSound*/)
+        if (!result.is_number())
         {
-            dbg("");
-            error("Error in analog output function, clearing");
-            m_continuous_ASTs[i] = { default_continuous_form };
-            // currentExprSound     = true;
-            m_continuous_vals[i] = 0;
+            error("Expression specified for a" + String(i + 1) +
+                  " does not result in a number - resetting to default.");
+            error("Expression: \n" + expr.display());
+            m_continuous_ASTs[i] = default_continuous_expr;
+            m_continuous_vals[i] = 0.0;
         }
         else
         {
-            double n             = result.as_float();
-            m_continuous_vals[i] = n;
+            m_continuous_vals[i] = result.as_float();
         }
     }
 }
@@ -654,25 +646,50 @@ void uSEQ::update_continuous_signals()
 void uSEQ::update_binary_signals()
 {
     DBG("uSEQ::update_binary_signals");
+
     for (int i = 0; i < m_num_binary_outs; i++)
     {
         Value expr = m_binary_ASTs[i];
         dbg("Evalling: " + expr.display());
-        Value v          = eval(expr);
-        int n            = v.as_int();
-        m_binary_vals[i] = n;
+        Value result = eval(expr);
+
+        if (!result.is_number())
+        {
+            error("Expression specified for d" + String(i + 1) +
+                  " does not eval to a number - resetting to default.");
+            error("Expression: \n" + expr.display());
+            m_binary_ASTs[i] = default_binary_expr;
+            m_binary_vals[i] = 0;
+        }
+        else
+        {
+            m_binary_vals[i] = result.as_int();
+        }
     }
 }
 
 void uSEQ::update_serial_signals()
 {
     DBG("uSEQ::update_serial_signals");
+
     for (int i = 0; i < m_num_serial_outs; i++)
     {
         Value expr = m_serial_ASTs[i];
         dbg("Evalling: " + expr.display());
-        Value result     = eval(expr);
-        m_serial_vals[i] = result.as_float();
+        Value result = eval(expr);
+
+        if (!result.is_number())
+        {
+            error("Expression specified for d" + String(i + 1) +
+                  " does not eval to a number - resetting to default.");
+            error("Expression: \n" + expr.display());
+            m_serial_ASTs[i] = default_serial_expr;
+            m_serial_vals[i] = 0.0;
+        }
+        else
+        {
+            m_serial_vals[i] = result.as_float();
+        }
     }
 }
 
@@ -702,30 +719,10 @@ void uSEQ::update_continuous_outs()
 {
     DBG("uSEQ::update_continuous_outs");
 
-    for (size_t i = 0; i < NUM_CONTINUOUS_OUTS; i++)
+    for (size_t i = 0; i < m_num_continuous_outs; i++)
     {
         dbg(String(i));
-        Value val           = m_continuous_vals[i];
-        const double maxpwm = 8191.0;
-        int sigval          = val.as_float() * maxpwm;
-        if (sigval > maxpwm)
-        {
-            sigval = maxpwm;
-        }
-        if (sigval < 0)
-        {
-            dbg("less than 0");
-            sigval = 0;
-        }
-        pio_pwm_set_level(i < 4 ? pio0 : pio1, i % 4, sigval);
-
-        // led out
-        int led_pin   = analog_out_LED_pin(i + 1);
-        int ledsigval = sigval >> 2; // shift to 11 bit range for the LED
-        ledsigval =
-            (ledsigval * ledsigval) >> 11; // cheap way to square and get a exp curve
-        dbg("writing");
-        analogWrite(led_pin, ledsigval);
+        analog_write_with_led(i, m_continuous_vals[i]);
     }
 }
 
@@ -733,27 +730,17 @@ void uSEQ::update_binary_outs()
 {
     DBG("uSEQ::update_binary_outs");
 
-    for (size_t i = 0; i < NUM_BINARY_OUTS; i++)
+    for (size_t i = 0; i < m_num_binary_outs; i++)
     {
-        Value result = m_continuous_vals[i]; // runParsedCode(analogASTs[i], env);
-
-        int pin     = digital_out_pin(i + 1);
-        int led_pin = digital_out_LED_pin(i + 1);
-        int val     = result.as_int();
-        // TODO: this is repeat of ard_useqdw, should rationalise
-#ifdef DIGI_OUT_INVERT
-        digitalWrite(pin, 1 - val);
-#else
-        digitalWrite(pin, val);
-#endif
-        digitalWrite(led_pin, val);
+        dbg(String(i));
+        digital_write_with_led(i, m_binary_vals[i]);
     }
 }
 
 /// UPDATE methods
 void uSEQ::set_time(size_t new_time_micros)
 {
-    DBG("uSEQ::setTime");
+    DBG("uSEQ::set_time");
 
     time = new_time_micros;
     // last_t = t;
@@ -813,44 +800,35 @@ void uSEQ::update_bpm_variables()
     set("sectionDur", Value(m_section_length * 1e-6));
 }
 
+void uSEQ::serial_write(int out, double val)
+{
+    DBG("uSEQ::serial_write");
+
+    Serial.write(m_serial_stream_begin_marker);
+    Serial.write((u_int8_t)(out + 1));
+    char* byteArray = reinterpret_cast<char*>(&val);
+    for (size_t b = 0; b < 8; b++)
+    {
+        Serial.write(byteArray[b]);
+    }
+}
+
 void uSEQ::update_serial_outs()
 {
     DBG("uSEQ::update_serial_outs");
 
-    for (size_t i = 0; i < NUM_SERIAL_OUTS; i++)
+    for (size_t i = 0; i < m_num_serial_outs; i++)
     {
-        dbg("i = " + String(i));
-        Value expr = m_serial_ASTs[i];
-
-        dbg("Evalling: " + expr.display());
-        Value result = eval(expr);
-
-        // NOTE: since we're using .as_float() on the result,
-        // we need to make sure it's a number too
-        if (result == Value::error() || !result.is_number())
-        {
-            error("Error in serial output function, clearing");
-            m_serial_ASTs[i] = default_serial_form;
-        }
-        // Write
-        else
-        {
-            double val = result.as_float();
-            Serial.write((u_int8_t)31);
-            Serial.write((u_int8_t)(i + 1));
-            char* byteArray = reinterpret_cast<char*>(&val);
-            for (size_t b = 0; b < 8; b++)
-            {
-                Serial.write(byteArray[b]);
-            }
-        }
+        dbg(String(i));
+        serial_write(i, m_serial_vals[i]);
     }
 }
 
 #ifdef MIDIOUT
 double last_midi_t = 0;
-void uSEQ::updateMidiOut()
+void uSEQ::update_midi_out()
 {
+    DBG("uSEQ::update_midi_out");
     const double midiRes        = 48 * meter_numerator * 1;
     const double timeUnitMillis = (barDur / midiRes);
 
@@ -1069,45 +1047,98 @@ void uSEQ::set_bpm(double newBpm, double changeThreshold = 0.0)
     }
 }
 
-#if defined(USE_ARDUINO_PIO)
-bool analog_write_with_led(int pin, int led_pin, int val)
+// NOTE: outputs are 0-indexed,
+void uSEQ::analog_write_with_led(int output, double val)
 {
-    analogWrite(pin, val);
-    // TODO this should be different val?
-    analogWrite(led_pin, val);
+    DBG("uSEQ::analog_write_with_led");
 
-    // TODO return correct bool, e.g. to indicate errors with writing
-    return true;
+    constexpr double maxpwm = 8191.0;
+
+    int scaled_val = val * maxpwm;
+    dbg("scaled_val (before clamping) = " + String(scaled_val));
+
+    // clamping
+    if (scaled_val > maxpwm)
+    {
+        dbg("over maxpwm, clamping");
+        scaled_val = maxpwm;
+    }
+    if (scaled_val < 0)
+    {
+        dbg("less than 0, clamping");
+        scaled_val = 0;
+    }
+
+    // led
+    int led_pin   = analog_out_LED_pin(output + 1);
+    int ledsigval = scaled_val >> 2; // shift to 11 bit range for the LED
+    ledsigval =
+        (ledsigval * ledsigval) >> 11; // cheap way to square and get a exp curve
+
+    dbg("output = " + String(output));
+    dbg("pin = " + String(pin));
+    dbg("led pin = " + String(led_pin));
+    dbg("val = " + String(val));
+    dbg("scaled_val = " + String(scaled_val));
+
+    // write pwm
+    pio_pwm_set_level(output < 4 ? pio0 : pio1, output % 4, scaled_val);
+    // write led
+    analogWrite(led_pin, ledsigval);
 }
-#endif
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-form", args[0]); m_q0AST = { args[0] };, 1)
+// NOTE: outputs are 0-indexed,
+void uSEQ::digital_write_with_led(int output, int val)
+{
+    DBG("uSEQ::digital_write_with_led");
+
+    int pin     = digital_out_pin(output + 1);
+    int led_pin = digital_out_LED_pin(output + 1);
+
+    dbg("output = " + String(output));
+    dbg("pin = " + String(pin));
+    dbg("led pin = " + String(led_pin));
+    dbg("val = " + String(val));
+
+#ifdef DIGI_OUT_INVERT
+    digitalWrite(pin, 1 - val);
+#else
+    digitalWrite(output, val);
+#endif
+    digitalWrite(led_pin, val);
+}
+
+BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = { args[0] };, 1)
+
+// TODO: there is potentially a lot of duplicated/wasted memory by storing
+// the exprs in both the environment and the class member vectors
+// especially once the exprs get more and more complex
 
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a1,
     if (NUM_CONTINUOUS_OUTS >= 1) {
-        set("a1-form", args[0]);
+        set("a1-expr", args[0]);
         m_continuous_ASTs[0] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a2,
     if (NUM_CONTINUOUS_OUTS >= 2) {
-        set("a2-form", args[0]);
+        set("a2-expr", args[0]);
         m_continuous_ASTs[1] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a3,
     if (NUM_CONTINUOUS_OUTS >= 3) {
-        set("a3-form", args[0]);
+        set("a3-expr", args[0]);
         m_continuous_ASTs[2] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a4,
     if (NUM_CONTINUOUS_OUTS >= 4) {
-        set("a4-form", args[0]);
+        set("a4-expr", args[0]);
         m_continuous_ASTs[3] = { args[0] };
     },
     1)

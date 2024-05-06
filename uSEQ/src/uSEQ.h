@@ -44,11 +44,6 @@ public:
 private:
     // IO m_io;
 
-    void check_and_handle_user_input();
-    void update_inputs();
-    void update_signals();
-    void update_outputs();
-
     //     std::vector<Output> m_outputs;
     // std::vector<Input> m_inputs;
 
@@ -72,13 +67,13 @@ private:
     Value m_q0AST;
 
     std::vector<Value> m_continuous_ASTs;
-    std::vector<double> m_continuous_vals;
+    std::vector<SERIAL_OUTPUT_VALUE_TYPE> m_continuous_vals;
 
     std::vector<Value> m_binary_ASTs;
-    std::vector<int> m_binary_vals;
+    std::vector<BINARY_INPUT_VALUE_TYPE> m_binary_vals;
 
     std::vector<Value> m_serial_ASTs;
-    std::vector<int> m_serial_vals;
+    std::vector<SERIAL_OUTPUT_VALUE_TYPE> m_serial_vals;
     // // std::vector<double> m_serialInputStreams(MISC_INS, 0.0);
 
     // Timing
@@ -112,29 +107,33 @@ private:
     double m_defaultBPM = 90;
     double m_bpm        = 130.0;
 
-    //// METHODS
-    void execute_code(String code);
-    void execute_code(String code, Environment& env);
-
-    // UPDATE methods
+    //// UPDATE methods
+    // main user interaction logic
+    void check_and_handle_user_input();
+    void update_inputs();
+    // timing-related stuff
     void update_time();
     void update_lisp_time_variables();
     void update_bpm_variables();
+    // updating the (cached) outputs of stored forms
+    void update_signals();
     void update_continuous_signals();
     void update_binary_signals();
     void update_serial_signals();
+    // updating (i.e. writing to) the actual outputs
+    void update_outs();
     void update_continuous_outs();
     void update_binary_outs();
     void update_serial_outs();
     void update_Q0();
 
-    Value default_continuous_form = parse("(sine t)");
-    Value default_binary_form     = parse("(square bar)");
-    Value default_serial_form     = parse("0.0");
+    Value default_continuous_expr = parse("(sine t)");
+    Value default_binary_expr     = parse("(square bar)");
+    Value default_serial_expr     = parse("(sine t)");
 
     String m_last_received_code = "";
 
-    // form updating methods
+    // expr-updating methods
     // a
     LISP_FUNC_DECL(useq_a1);
     LISP_FUNC_DECL(useq_a2);
@@ -201,15 +200,22 @@ private:
     LISP_FUNC_DECL(useq_flatten);
     LISP_FUNC_DECL(useq_interpolate);
 
+    LISP_FUNC_DECL(ard_useqaw);
+    LISP_FUNC_DECL(ard_useqdw);
+
+    void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val);
+    void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
+    void serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val);
+
     // // TODO confirm
     // std::vector<scheduledItem> m_scheduled_items;
     double m_input_vals[14];
     // NOTE this was a std vector before, init with 0
-    double m_serialInputStreams[NUM_SERIAL_INS];
+    double m_serial_input_streams[NUM_SERIAL_INS];
 
     tempoEstimator tempoI1, tempoI2;
 
-    void setTimeSignature(double, double);
+    void set_time_signature(double, double);
 
     std::vector<Value> m_runQueue;
     Value m_cqpAST = parse("bar");
@@ -232,7 +238,7 @@ private:
     double m_last_CQP;
 
 #ifdef MIDIOUT
-    void updateMidiOut();
+    void update_midi_out();
     std::map<int, Value> useqMDOMap;
 
     LISP_FUNC_DECL(useq_mdo);
@@ -263,6 +269,9 @@ private:
 
     int m_num_tick_starts = 0;
     int m_num_tick_ends   = 0;
+
+    static constexpr u_int8_t m_serial_stream_begin_marker = 31;
+    static constexpr char m_execute_now_marker             = '@';
 };
 
 #endif // USEQ_H_
