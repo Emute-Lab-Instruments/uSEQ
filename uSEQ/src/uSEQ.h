@@ -172,6 +172,7 @@ private:
     LISP_FUNC_DECL(useq_ain1);
     LISP_FUNC_DECL(useq_ain2);
 
+
 #ifdef MUSICTHING
     LISP_FUNC_DECL(useq_mt_knob);
     LISP_FUNC_DECL(useq_mt_knobx);
@@ -236,6 +237,11 @@ private:
     void check_code_quant_phasor();
 
     double m_last_CQP;
+
+    //performance
+    int ts = 0;
+    int updateSpeed = 0;
+
 
 #ifdef MIDIOUT
     void update_midi_out();

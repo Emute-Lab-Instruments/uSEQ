@@ -305,11 +305,17 @@ void uSEQ::check_code_quant_phasor()
     m_last_CQP = newCqpVal;
 }
 
+
 // TODO does order matter?
 // e.g. when user code is evaluated, does it make
 // a difference if the inputs have been updated already?
 void uSEQ::tick()
 {
+    updateSpeed = micros() - ts;
+    set("fps", Value(1000000.0 / updateSpeed));
+    set("qt", Value(updateSpeed * 0.001));
+    ts = micros();
+    
     DBG("uSEQ::tick");
     m_num_tick_starts += 1;
     dbg("tick starts: " + String(m_num_tick_starts));
@@ -389,6 +395,8 @@ BUILTINFUNC_MEMBER(
         // analogWrite(led_pin, val);
     },
     2)
+
+
 
 static uint8_t prevNextCode = 0;
 static uint16_t store       = 0;
@@ -1569,6 +1577,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("flat", useq_flatten);
     INSERT_BUILTINDEF("interp", useq_interpolate);
     INSERT_BUILTINDEF("step", useq_step);
+
 
     // TODO
 #ifdef MUSICTHING
