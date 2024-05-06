@@ -32,7 +32,6 @@ void init_random()
 #endif
 }
 
-
 uSEQ u;
 
 void setup()
@@ -42,7 +41,4 @@ void setup()
     u.init();
 }
 
-void loop()
-{
-    u.tick();
-}
+void loop() { u.tick(); }
