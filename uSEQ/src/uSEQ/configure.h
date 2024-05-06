@@ -6,10 +6,16 @@
 // NOTE: this ideally should be specified in uSEQ.ino
 /* #define MUSICTHING */
 /* #define USEQHARDWARE_0_1 */
-#define USEQHARDWARE_0_2
+
+// #define USEQHARDWARE_0_2
+#define USEQHARDWARE_1_0 
+/* #define MUSICTHING */
 
 // NOTE: this needs to be included after the above define
 #include "pinmap.h"
+
+#define NUM_SERIAL_INS 32
+#define NUM_SERIAL_OUTS 8
 
 // TODO move definitions regarding num of IO here,
 // leave mapping of pins to pinmap.h
@@ -18,12 +24,14 @@
 // TODO restore num ins
 /* #define NUM_CONTINUOUS_INS 0 */
 /* #define NUM_BINARY_INS 0 */
-#define NUM_SERIAL_INS 32
 
 #define NUM_CONTINUOUS_OUTS 2
 #define NUM_BINARY_OUTS (6 - NUM_CONTINUOUS_OUTS)
-#define NUM_SERIAL_OUTS 8
 
+#endif
+
+#if defined(MUSICTHING) || defined(USEQHARDWARE_1_0)
+#define ANALOG_INPUTS
 #endif
 
 /* // NUM OUTS */
