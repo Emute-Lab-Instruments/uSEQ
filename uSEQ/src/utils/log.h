@@ -13,27 +13,34 @@ int free_heap();
 
 #if USEQ_DEBUG
 
-class DEBUGGER
+#include <unordered_set>
+
+class DebugLogger
 {
 public:
-    DEBUGGER(String name);
-    ~DEBUGGER();
-    void operator()(const String& message);
+    DebugLogger(String name);
+    ~DebugLogger();
+
+    // These are the same, log is more explicit
     void log(const String& message);
+    void operator()(const String& message);
+
+    static bool print_free_heap;
+    static std::unordered_set<String> mutes;
+    static std::unordered_set<String> solos;
 
 private:
-    String name;
-    void pr(const String& s);
+    String m_name;
+    void dbg_print(const String& s);
 
     int start_heap = 0;
-    String addIndentAfterNewline(const String& input);
+    String addIndentAfterNewlines(const String& input);
 
     static int m_level;
     static String m_spaces;
     static void update_spaces();
     static void inc_level();
     static void dec_level();
-    static bool print_free_heap;
 };
 
 #endif // USEQ_DEBUG
