@@ -868,6 +868,35 @@ BUILTINFUNC(ard_digitalWrite, int pinNumber = args[0].as_int();
 BUILTINFUNC(ard_digitalRead, int pinNumber = args[0].as_int();
             int val = digitalRead(pinNumber); ret = Value(val);, 1)
 
+BUILTINFUNC(
+    useq_perf,
+    String report = "fps0: ";
+    report += env.get("fps").as_float();
+    // report += ", fps1: ";
+    // report += env.get("perf_fps1").as_int();
+    report += ", qt: ";
+    report += env.get("qt").as_float();
+    // report += ", in: ";
+    // report += env.get("perf_in").as_int();
+    // report += ", upd_tm: ";
+    // report += env.get("perf_time").as_int();
+    // report += ", out: ";
+    // report += env.get("perf_out").as_int();
+    // report += ", get: ";
+    // report += env.get("perf_get").as_float();
+    // report += ", parse: ";
+    // report += env.get("perf_parse").as_float();
+    // report += ", run: ";
+    // report += env.get("perf_run").as_float();
+    // report += ", ts1: ";
+    // report += env.get("perf_ts1").as_float();
+    report += ", heap free: ";
+    report += rp2040.getFreeHeap() / 1024;
+    Serial.println(report);
+    ret = Value();
+    , 0)
+
+
 // uSEQ-specific builtins
 
 } // namespace builtin
@@ -1222,6 +1251,7 @@ void Interpreter::loadBuiltinDefs()
 
     // utility
     Environment::builtindefs["timeit"] = Value("timeit", builtin::timeit);
+    Environment::builtindefs["perf"] = Value("perf", builtin::useq_perf);
 
 // IO operations
 #ifdef USE_STD
