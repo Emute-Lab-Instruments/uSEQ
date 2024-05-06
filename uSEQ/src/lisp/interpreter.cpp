@@ -830,7 +830,9 @@ BUILTINFUNC(useq_pulse,
             double pulseWidth = args[0].as_float();
             double phasor     = args[1].as_float();
             ret               = Value(pulseWidth < phasor ? 1.0 : 0.0);, 2)
-BUILTINFUNC(useq_sqr, ret = Value(args[0].as_float() < 0.5 ? 1.0 : 0.0);, 1)
+// NOTE: this applies an fmod 1 to its input
+BUILTINFUNC(useq_sqr, ret = Value(fmod(args[0].as_float(), 1.0) < 0.5 ? 1.0 : 0.0);
+            , 1)
 
 BUILTINFUNC(ard_sin, float m = sin(args[0].as_float()); ret = Value(m);, 1)
 BUILTINFUNC(ard_cos, float m = cos(args[0].as_float()); ret = Value(m);, 1)
