@@ -80,8 +80,8 @@ public:
     //     return *this;
     // }
 
+    static Value nil();
     static Value error();
-
     static Value quote(Value quoted);
     static Value atom(String s);
     static Value string(String s);
@@ -89,11 +89,12 @@ public:
     Value(std::vector<Value> params, Value ret, const Environment& env);
 
     std::vector<String> get_used_atoms();
-    bool is_builtin();
 
     Value apply(std::vector<Value>& args, Environment& env);
     Value eval(Environment& env);
 
+    bool is_builtin() const;
+    bool is_nil() const;
     bool is_number() const;
     bool is_error() const;
     bool is_list() const;
@@ -153,6 +154,7 @@ public:
         BUILTIN,
         BUILTIN_METHOD,
         UNIT,
+        NIL,
         ERROR
     } type;
 

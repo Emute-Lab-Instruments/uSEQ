@@ -11,6 +11,21 @@ Value::~Value() {}
 
 //// CONSTRUCTORS
 // LAMBDA
+// static Value Value::error()
+Value Value::error()
+{
+    Value result;
+    result.type = ERROR;
+    return result;
+}
+
+Value Value::nil()
+{
+    Value result;
+    result.type = NIL;
+    return result;
+}
+
 Value::Value(std::vector<Value> params, Value ret, Environment const& env)
     : type(LAMBDA)
 {
@@ -46,11 +61,13 @@ Value::Value(String name, BuiltinFuncRawPtr ptr) : type(BUILTIN)
     stack_data.builtin = ptr;
 }
 
+// BUILTIN_METHOD
 Value::Value(String name, uSEQ_Method_Ptr ptr) : type(BUILTIN_METHOD)
 {
     str                       = name;
     stack_data.builtin_method = ptr;
 }
+
 // METHODS
 Value Value::quote(Value quoted)
 {
@@ -110,7 +127,8 @@ std::vector<String> Value::get_used_atoms()
     }
 }
 
-bool Value::is_builtin() { return type == BUILTIN; }
+bool Value::is_nil() const { return type == NIL; }
+bool Value::is_builtin() const { return type == BUILTIN; }
 
 // TODO do we care to support this some_value.apply() and .eval()
 // syntax and, if so, is there a better way?
@@ -303,14 +321,6 @@ bool Value::operator<(Value other) const
         return false;
         // throw Error(*this, Environment(), INVALID_ORDER);
     }
-}
-
-// static Value Value::error()
-Value Value::error()
-{
-    Value result;
-    result.type = ERROR;
-    return result;
 }
 
 Value Value::operator+(Value other) const
@@ -526,6 +536,8 @@ String Value::get_type_name() const
 {
     switch (type)
     {
+    case NIL:
+        return "nil";
     case QUOTE:
         return QUOTE_TYPE;
     case ATOM:
@@ -566,6 +578,8 @@ String Value::display() const
     String result;
     switch (type)
     {
+    case NIL:
+        return "<nil>";
     case QUOTE:
         return "'" + list[0].debug();
     case ATOM:
@@ -621,6 +635,8 @@ String Value::debug() const
     String result;
     switch (type)
     {
+    case NIL:
+        return "<nil>";
     case QUOTE:
         return "'" + list[0].debug();
     case ATOM:
