@@ -1,0 +1,11 @@
+-/archive
+-/build
+-/builddir
+-/docs
+-/hardware
+-/interfaces
+-/license
+-/scripts
+-/.cache
+-/.git
+-/.vscode
