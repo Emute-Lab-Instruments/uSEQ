@@ -9,7 +9,7 @@
 // (through "uSEQ.h") so it's being redefined there
 // Seems like it should work since the headers are included after
 // this define - maybe an issue with Arduino IDE?
-#define USEQHARDWARE_0_2
+// #define USEQHARDWARE_0_2
 
 #include "src/uSEQ.h"
 
