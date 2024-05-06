@@ -37,72 +37,91 @@ void error(String s)
 
 int free_heap() { return rp2040.getFreeHeap() / 1024; }
 
-// DEBUGGER
+// DebugLogger
 
 #if USEQ_DEBUG
 
-bool DEBUGGER::print_free_heap = false;
+std::unordered_set<String> DebugLogger::mutes = {};
+std::unordered_set<String> DebugLogger::solos = {};
 
-int DEBUGGER::m_level = -1;
+bool DebugLogger::print_free_heap = false;
 
-String DEBUGGER::m_spaces = "";
+int DebugLogger::m_level = -1;
 
-void DEBUGGER::inc_level()
+String DebugLogger::m_spaces = "";
+
+void DebugLogger::inc_level()
 {
     m_level += 1;
     update_spaces();
 }
 
-void DEBUGGER::dec_level()
+void DebugLogger::dec_level()
 {
     m_level -= 1;
     update_spaces();
 }
 
-DEBUGGER::DEBUGGER(String s) : name(s)
+DebugLogger::DebugLogger(String s) : m_name(s)
 {
     start_heap = free_heap();
     inc_level();
 
-    pr("[DBG] " + name + " START...");
+    debug_print("[DBG] " + m_name + " START...");
     inc_level();
     if (print_free_heap)
     {
-        pr("free heap (start): " + String(start_heap) + "KB");
+        debug_print("free heap (start): " + String(start_heap) + "KB");
     }
 }
 
-DEBUGGER::~DEBUGGER()
+DebugLogger::~DebugLogger()
 {
     int end_heap = free_heap();
 
     dec_level();
 
-    pr("[DBG] " + name + " END.");
+    debug_print("[DBG] " + m_name + " END.");
     if (print_free_heap)
     {
-        pr(m_spaces + "free heap (end): " + String(end_heap) + "KB");
-        pr(m_spaces + "heap difference: " + String(end_heap - start_heap) + "KB");
+        debug_print(m_spaces + "free heap (end): " + String(end_heap) + "KB");
+        debug_print(m_spaces + "heap difference: " + String(end_heap - start_heap) +
+                    "KB");
     }
 
     dec_level();
 }
 
-void DEBUGGER::log(const String& message)
+void DebugLogger::filtered_log(const String& message)
 {
-    // pr("[" + name + "] " + addIndentAfterNewline(message));
-    pr("[" + name + "] " + addIndentAfterNewline(message));
+    bool should_print = true;
+
+    // If solos have been specified and this isn't in them, don't print
+    if (solos.size() > 0 && !solos.count(m_name))
+    {
+        should_print = false;
+    }
+    // Otherwise, print as long as it's not in the mutes
+    else if (mutes.count(m_name))
+    {
+        should_print = false;
+    }
+
+    if (should_print)
+    {
+        debug_print("[" + m_name + "] " + addIndentAfterNewlines(message));
+    }
 }
 
-void DEBUGGER::operator()(const String& message) { log(message); }
+void DebugLogger::operator()(const String& message) { filtered_log(message); }
 
-void DEBUGGER::pr(const String& s)
+void DebugLogger::debug_print(const String& s)
 {
     print(m_spaces + s);
     print("\n");
 }
 
-String DEBUGGER::addIndentAfterNewline(const String& input)
+String DebugLogger::addIndentAfterNewlines(const String& input)
 {
     String result;
     int lastIndex    = 0;
@@ -125,7 +144,7 @@ String DEBUGGER::addIndentAfterNewline(const String& input)
     return result;
 }
 
-void DEBUGGER::update_spaces()
+void DebugLogger::update_spaces()
 {
     String s = "";
 
