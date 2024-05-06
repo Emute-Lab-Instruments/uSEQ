@@ -26,12 +26,20 @@ void Interpreter::init()
     // }
 }
 
-Value myfoo(std::vector<Value>& args, Environment& env)
+bool Interpreter::evalled_args_contain_errors(std::vector<Value>& args)
 {
-    int i = args[0].as_int();
-    return Value(i + 1);
+    // NOTE: false means "no errors"
+    bool has_errors = false;
+    for (const Value& v : args)
+    {
+        if (v.is_error())
+        {
+            has_errors = true;
+            break;
+        }
+    }
+    return has_errors;
 }
-
 // #ifdef OEUOEU
 
 // MACROS
