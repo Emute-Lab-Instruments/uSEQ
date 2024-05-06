@@ -964,6 +964,12 @@ Value Interpreter::eval_in(Value& v, Environment& env)
 
     switch (v.type)
     {
+    case Value::NIL:
+    {
+        // NIL evaluates to itself
+        result = v;
+        break;
+    }
     case Value::QUOTE:
     {
         dbg("quote");

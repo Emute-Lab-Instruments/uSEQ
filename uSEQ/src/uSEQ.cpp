@@ -298,7 +298,7 @@ void uSEQ::check_code_quant_phasor()
             int cmdts = micros();
             res       = eval(m_runQueue[q]);
             cmdts     = micros() - cmdts;
-            Serial.println(res.debug());
+            // Serial.println(res.debug());
         }
         m_runQueue.clear();
     }
@@ -627,6 +627,7 @@ void uSEQ::check_and_handle_user_input()
     }
 }
 
+/// UPDATE methods
 void uSEQ::update_continuous_signals()
 {
     DBG("uSEQ::update_continuous_signals");
@@ -683,20 +684,33 @@ void uSEQ::update_serial_signals()
     for (int i = 0; i < m_num_serial_outs; i++)
     {
         Value expr = m_serial_ASTs[i];
-        dbg("Evalling: " + expr.display());
-        Value result = eval(expr);
-
-        if (!result.is_number())
+        // if it's nil we don't need to go through
+        // the overhead of calling eval (nil evals to itself)
+        if (expr.is_nil())
         {
-            error("Expression specified for d" + String(i + 1) +
-                  " does not eval to a number - resetting to default.");
-            error("Expression: \n" + expr.display());
-            m_serial_ASTs[i] = default_serial_expr;
-            m_serial_vals[i] = 0.0;
+            // signal that there's no value to write
+            m_serial_vals[i] = std::nullopt;
         }
         else
         {
-            m_serial_vals[i] = result.as_float();
+            dbg("Expr: " + expr.display());
+            // Eval
+            Value result = eval(expr);
+
+            if (!result.is_number())
+            {
+                error("Expression specified for s" + String(i + 1) +
+                      " does not eval to either a number or nil - resetting to "
+                      "default.");
+                error("Expression: \n" + expr.display());
+                m_serial_ASTs[i] = default_serial_expr;
+                m_serial_vals[i] = std::nullopt;
+            }
+            else
+            {
+                // since we know it's a number we can unbox and cache it
+                m_serial_vals[i] = result.as_float();
+            }
         }
     }
 }
@@ -745,7 +759,23 @@ void uSEQ::update_binary_outs()
     }
 }
 
-/// UPDATE methods
+void uSEQ::update_serial_outs()
+{
+    DBG("uSEQ::update_serial_outs");
+
+    for (size_t i = 0; i < m_num_serial_outs; i++)
+    {
+        dbg(String(i));
+        std::optional<SERIAL_OUTPUT_VALUE_TYPE> v = m_serial_vals[i];
+        // only write if there is a value
+        if (v)
+        {
+            dbg("writing value: " + String(*v));
+            serial_write(i, *v);
+        }
+    }
+}
+
 void uSEQ::set_time(size_t new_time_micros)
 {
     DBG("uSEQ::set_time");
@@ -806,30 +836,6 @@ void uSEQ::update_bpm_variables()
     set("barDur", Value(m_bar_length * 1e-6));
     set("phraseDur", Value(m_phrase_length * 1e-6));
     set("sectionDur", Value(m_section_length * 1e-6));
-}
-
-void uSEQ::serial_write(int out, double val)
-{
-    DBG("uSEQ::serial_write");
-
-    Serial.write(m_serial_stream_begin_marker);
-    Serial.write((u_int8_t)(out + 1));
-    char* byteArray = reinterpret_cast<char*>(&val);
-    for (size_t b = 0; b < 8; b++)
-    {
-        Serial.write(byteArray[b]);
-    }
-}
-
-void uSEQ::update_serial_outs()
-{
-    DBG("uSEQ::update_serial_outs");
-
-    for (size_t i = 0; i < m_num_serial_outs; i++)
-    {
-        dbg(String(i));
-        serial_write(i, m_serial_vals[i]);
-    }
 }
 
 #ifdef MIDIOUT
@@ -1114,6 +1120,19 @@ void uSEQ::digital_write_with_led(int output, int val)
     digitalWrite(output, val);
 #endif
     digitalWrite(led_pin, val);
+}
+
+void uSEQ::serial_write(int out, double val)
+{
+    DBG("uSEQ::serial_write");
+
+    Serial.write(m_serial_stream_begin_marker);
+    Serial.write((u_int8_t)(out + 1));
+    char* byteArray = reinterpret_cast<char*>(&val);
+    for (size_t b = 0; b < 8; b++)
+    {
+        Serial.write(byteArray[b]);
+    }
 }
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = { args[0] };, 1)

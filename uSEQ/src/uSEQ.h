@@ -73,7 +73,7 @@ private:
     std::vector<BINARY_INPUT_VALUE_TYPE> m_binary_vals;
 
     std::vector<Value> m_serial_ASTs;
-    std::vector<SERIAL_OUTPUT_VALUE_TYPE> m_serial_vals;
+    std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
     // // std::vector<double> m_serialInputStreams(MISC_INS, 0.0);
 
     // Timing
@@ -129,7 +129,7 @@ private:
 
     Value default_continuous_expr = parse("(sine t)");
     Value default_binary_expr     = parse("(square bar)");
-    Value default_serial_expr     = parse("(sine t)");
+    Value default_serial_expr     = Value::nil();
 
     String m_last_received_code = "";
 
@@ -171,7 +171,6 @@ private:
     LISP_FUNC_DECL(useq_in2);
     LISP_FUNC_DECL(useq_ain1);
     LISP_FUNC_DECL(useq_ain2);
-
 
 #ifdef MUSICTHING
     LISP_FUNC_DECL(useq_mt_knob);
@@ -238,10 +237,9 @@ private:
 
     double m_last_CQP;
 
-    //performance
-    int ts = 0;
+    // performance
+    int ts          = 0;
     int updateSpeed = 0;
-
 
 #ifdef MIDIOUT
     void update_midi_out();
