@@ -7,6 +7,7 @@
 #include "lisp/value.h"
 #include "uSEQ/configure.h"
 #include <memory>
+#include <sys/types.h>
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
 #define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
@@ -15,8 +16,8 @@
 // For declaring builtin functions as class members
 #define LISP_FUNC_DECL(__name__) LISP_FUNC_RETURN_TYPE __name__(LISP_FUNC_ARGS_TYPE);
 
-using InternalTimeType  = double;
-using InternalPhaseType = double;
+using TimeValue  = double;
+using PhaseValue = double;
 
 class uSEQ : public Interpreter
 {
@@ -40,7 +41,7 @@ public:
 
     void start_loop_blocking();
     void tick();
-    void set_time(InternalTimeType);
+    void update_logical_time_variables(TimeValue);
     // void set(String, Value);
 
     // TODO restore private
@@ -77,28 +78,33 @@ private:
 
     std::vector<Value> m_serial_ASTs;
     std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
-    // // std::vector<double> m_serialInputStreams(MISC_INS, 0.0);
+
+    double m_input_vals[14];
+    // NOTE this was a std vector before, init with 0
+    double m_serial_input_streams[NUM_SERIAL_INS];
 
     // Timing (NOTE: in micros)
     // actual time that module has been running for
-    InternalTimeType m_module_time = 0.0;
+    u_int8_t m_overflow_counter            = 0;
+    TimeValue m_time_since_boot            = 0.0;
+    TimeValue m_last_known_time_since_boot = -1;
     // time /of/ last "transport" reset by user
-    InternalTimeType m_last_transport_reset_time = 0.0;
+    TimeValue m_last_transport_reset_time = 0.0;
     // time /since/ last "transport" reset by user
-    InternalTimeType m_transport_time = 0.0;
+    TimeValue m_transport_time = 0.0;
     // last known transport time
-    InternalTimeType m_last_transport_time = 0.0;
+    TimeValue m_last_transport_time = 0.0;
 
     // Durations (NOTE: in micros)
-    InternalTimeType m_beat_length    = 0.0;
-    InternalTimeType m_bar_length     = 0.0;
-    InternalTimeType m_phrase_length  = 0.0;
-    InternalTimeType m_section_length = 0.0;
+    TimeValue m_beat_length    = 0.0;
+    TimeValue m_bar_length     = 0.0;
+    TimeValue m_phrase_length  = 0.0;
+    TimeValue m_section_length = 0.0;
     // Normalised phasors
-    InternalPhaseType m_beat_phase    = 0.0;
-    InternalPhaseType m_bar_phase     = 0.0;
-    InternalPhaseType m_phrase_phase  = 0.0;
-    InternalPhaseType m_section_phase = 0.0;
+    PhaseValue m_beat_phase    = 0.0;
+    PhaseValue m_bar_phase     = 0.0;
+    PhaseValue m_phrase_phase  = 0.0;
+    PhaseValue m_section_phase = 0.0;
 
     // Meter
     double meter_numerator   = 4;
@@ -111,9 +117,10 @@ private:
     double m_phrases_per_section = 16;
 
     // BPM
-    void set_bpm(double newBpm, double changeThreshold);
     double m_defaultBPM = 130;
     double m_bpm        = m_defaultBPM;
+    void set_bpm(double newBpm, double changeThreshold);
+    void update_bpm_variables();
 
     //// UPDATE methods
     // main user interaction logic
@@ -121,8 +128,9 @@ private:
     void update_inputs();
     // timing-related stuff
     void update_time();
+    void update_logical_time(TimeValue);
     void update_lisp_time_variables();
-    void update_bpm_variables();
+
     // updating the (cached) outputs of stored forms
     void update_signals();
     void update_continuous_signals();
@@ -215,12 +223,6 @@ private:
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
     void serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val);
 
-    // // TODO confirm
-    // std::vector<scheduledItem> m_scheduled_items;
-    double m_input_vals[14];
-    // NOTE this was a std vector before, init with 0
-    double m_serial_input_streams[NUM_SERIAL_INS];
-
     tempoEstimator tempoI1, tempoI2;
 
     void set_time_signature(double, double);
@@ -278,9 +280,6 @@ private:
     void eval_lisp_library();
     void setup_digital_ins();
     void led_animation();
-
-    int m_num_tick_starts = 0;
-    int m_num_tick_ends   = 0;
 
     static constexpr u_int8_t m_serial_stream_begin_marker = 31;
     static constexpr char m_execute_now_marker             = '@';
