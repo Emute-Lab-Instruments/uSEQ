@@ -112,8 +112,8 @@ private:
 
     // BPM
     void set_bpm(double newBpm, double changeThreshold);
-    double m_defaultBPM = 90;
-    double m_bpm        = 130.0;
+    double m_defaultBPM = 130;
+    double m_bpm        = m_defaultBPM;
 
     //// UPDATE methods
     // main user interaction logic
