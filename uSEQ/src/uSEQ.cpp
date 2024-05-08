@@ -127,7 +127,7 @@ void uSEQ::init()
     // dbg("Lisp library loaded.");
 
     // uSEQ software setup
-    set_bpm(m_defaultBPM, 0);
+    set_bpm(m_defaultBPM, 0.0);
     update_time();
     init_ASTs();
     m_initialised = true;
@@ -1517,7 +1517,7 @@ void uSEQ::set_time_signature(double numerator, double denominator)
 {
     meter_denominator = denominator;
     meter_numerator   = numerator;
-    set_bpm(m_bpm);
+    set_bpm(m_bpm, 0.0);
 }
 
 #ifdef MIDIOUT
