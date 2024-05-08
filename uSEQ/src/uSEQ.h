@@ -15,6 +15,9 @@
 // For declaring builtin functions as class members
 #define LISP_FUNC_DECL(__name__) LISP_FUNC_RETURN_TYPE __name__(LISP_FUNC_ARGS_TYPE);
 
+using InternalTimeType  = double;
+using InternalPhaseType = double;
+
 class uSEQ : public Interpreter
 {
 public:
@@ -37,7 +40,7 @@ public:
 
     void start_loop_blocking();
     void tick();
-    void set_time(size_t);
+    void set_time(InternalTimeType);
     // void set(String, Value);
 
     // TODO restore private
@@ -76,21 +79,26 @@ private:
     std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
     // // std::vector<double> m_serialInputStreams(MISC_INS, 0.0);
 
-    // Timing
-    size_t time          = 0;
-    size_t lastResetTime = 0; // time /of/ last "transport" reset by user
-    size_t t             = 0; // time /since/ last "transport" reset by user
-    size_t last_t        = 0; // timestamp of the previous time update (since reset)
-    // Phasors (will be normalised before inserted in Lisp env)
-    size_t m_beat_phase    = 0;
-    size_t m_bar_phase     = 0;
-    size_t m_phrase_phase  = 0;
-    size_t m_section_phase = 0;
-    // Durations (in micros)
-    size_t m_beat_length    = 0.0;
-    size_t m_bar_length     = 0.0;
-    size_t m_phrase_length  = 0.0;
-    size_t m_section_length = 0.0;
+    // Timing (NOTE: in micros)
+    // actual time that module has been running for
+    InternalTimeType m_module_time = 0.0;
+    // time /of/ last "transport" reset by user
+    InternalTimeType m_last_transport_reset_time = 0.0;
+    // time /since/ last "transport" reset by user
+    InternalTimeType m_transport_time = 0.0;
+    // last known transport time
+    InternalTimeType m_last_transport_time = 0.0;
+
+    // Durations (NOTE: in micros)
+    InternalTimeType m_beat_length    = 0.0;
+    InternalTimeType m_bar_length     = 0.0;
+    InternalTimeType m_phrase_length  = 0.0;
+    InternalTimeType m_section_length = 0.0;
+    // Normalised phasors
+    InternalPhaseType m_beat_phase    = 0.0;
+    InternalPhaseType m_bar_phase     = 0.0;
+    InternalPhaseType m_phrase_phase  = 0.0;
+    InternalPhaseType m_section_phase = 0.0;
 
     // Meter
     double meter_numerator   = 4;
@@ -99,8 +107,8 @@ private:
     // TODO: better to have custom specified long phasors e.g. (addPhasor phasorName
     // (lambda () (beats * 17)))
     // - to be stored in std::map<String, Double[2]>
-    double m_barsPerPhrase     = 16;
-    double m_phrasesPerSection = 16;
+    double m_bars_per_phrase     = 16;
+    double m_phrases_per_section = 16;
 
     // BPM
     void set_bpm(double newBpm, double changeThreshold);
