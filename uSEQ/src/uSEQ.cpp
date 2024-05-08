@@ -2,6 +2,7 @@
 #include "lisp/LispLibrary.h"
 #include "lisp/interpreter.h"
 #include "lisp/value.h"
+#include <cstddef>
 #ifdef ARDUINO
 #include "uSEQ/piopwm.h"
 #endif
@@ -14,7 +15,7 @@
 
 // void dbg(String s) { std::cout << s.c_str() << std::endl; }
 
-#if defined(USEQHARDWARE_1_0)
+#if defined(ARDUINO) && defined(USEQHARDWARE_1_0)
 #include <Wire.h>
 #endif
 
@@ -310,14 +311,13 @@ void uSEQ::check_code_quant_phasor()
 // a difference if the inputs have been updated already?
 void uSEQ::tick()
 {
+    DBG("uSEQ::tick");
+
     updateSpeed = micros() - ts;
     set("fps", Value(1000000.0 / updateSpeed));
     set("qt", Value(updateSpeed * 0.001));
     ts = micros();
 
-    DBG("uSEQ::tick");
-    m_num_tick_starts += 1;
-    dbg("tick starts: " + String(m_num_tick_starts));
     // Read & cache the hardware & software inputs
     update_inputs();
     // Update time
@@ -326,12 +326,10 @@ void uSEQ::tick()
     run_scheduled_items();
     // Re-run & cache output signal forms
     update_signals();
-    // // Write cached output signals to hardware & software outputs
+    // Write cached output signals to hardware and/or software outputs
     update_outs();
-    // // Check for new code and eval
+    // Check for new code and eval (or schedule it)
     check_and_handle_user_input();
-    m_num_tick_ends += 1;
-    dbg("tick ends: " + String(m_num_tick_ends));
 }
 
 ///////////////////////////////////////////////////////////
@@ -773,15 +771,37 @@ void uSEQ::update_serial_outs()
     }
 }
 
-void uSEQ::set_time(InternalTimeType new_time_micros)
+void uSEQ::update_time()
+{
+    DBG("uSEQ::update_time");
+
+    // 1. Get time-since-boot reading from the board
+    m_time_since_boot = static_cast<TimeValue>(micros());
+
+    // 2. Check if it has overflowed
+    if (m_time_since_boot - m_last_known_time_since_boot < 0.0)
+    {
+        m_overflow_counter++;
+    }
+
+    // Max value that size_t can hold before overflow
+    constexpr TimeValue max_size_t = static_cast<TimeValue>((size_t)-1);
+
+    // 3. Offset according to how many overflows we've had so far
+    m_time_since_boot += static_cast<TimeValue>(m_overflow_counter) * max_size_t;
+
+    // 4. U
+    update_logical_time(m_time_since_boot);
+
+    m_last_known_time_since_boot = m_time_since_boot;
+}
+
+void uSEQ::update_logical_time(TimeValue actual_time)
 {
     DBG("uSEQ::set_time");
 
-    m_module_time = new_time_micros;
-
-    // cache previous value before we change the new one
-    m_last_transport_time = m_transport_time;
-    m_transport_time      = m_module_time - m_last_transport_reset_time;
+    // Update the main UI timekeeping variable
+    m_transport_time = actual_time - m_last_transport_reset_time;
 
     // Phasors
     m_beat_phase    = fmod(m_transport_time, m_beat_length) / m_beat_length;
@@ -789,6 +809,7 @@ void uSEQ::set_time(InternalTimeType new_time_micros)
     m_phrase_phase  = fmod(m_transport_time, m_phrase_length) / m_phrase_length;
     m_section_phase = fmod(m_transport_time, m_section_length) / m_section_length;
 
+    // Push them to the interpreter
     update_lisp_time_variables();
 }
 
@@ -797,35 +818,22 @@ void uSEQ::update_lisp_time_variables()
     DBG("uSEQ::update_lisp_time_variables");
 
     // These should appear as seconds in Lisp-land
-    double time_s = m_module_time * 1e-6;
-    double t_s    = m_transport_time * 1e-6;
+    TimeValue time_s = m_time_since_boot * 1e-6;
+    TimeValue t_s    = m_transport_time * 1e-6;
     set("time", Value(time_s));
     set("t", Value(t_s));
 
-    // Normalise the phasors
-    // double norm_beat    = (double)m_beat_phase / (double)m_beat_length;
-    // double norm_bar     = (double)m_bar_phase / (double)m_bar_length;
-    // double norm_phrase  = (double)m_phrase_phase / (double)m_phrase_length;
-    // double norm_section = (double)m_section_phase / (double)m_section_length;
-
-    dbg("time_s = " + String(time_s));
-    dbg("t_s = " + String(t_s));
-    dbg("norm_beat = " + String(norm_beat));
-    dbg("norm_bar = " + String(norm_bar));
-    dbg("norm_phrase = " + String(norm_phrase));
-    dbg("norm_section = " + String(norm_section));
+    // dbg("time_s = " + String(time_s));
+    // dbg("t_s = " + String(t_s));
+    // dbg("norm_beat = " + String(norm_beat));
+    // dbg("norm_bar = " + String(norm_bar));
+    // dbg("norm_phrase = " + String(norm_phrase));
+    // dbg("norm_section = " + String(norm_section));
 
     set("beat", Value(m_beat_phase));
     set("bar", Value(m_bar_phase));
     set("phrase", Value(m_phrase_phase));
     set("section", Value(m_section_phase));
-}
-
-void uSEQ::update_time()
-{
-    DBG("uSEQ::update_time");
-    // FIXME: this will overflow eventually (@ ~70min runtime)
-    set_time((double)micros());
 }
 
 #ifdef MIDIOUT
@@ -1270,34 +1278,34 @@ BUILTINFUNC_NOEVAL_MEMBER(
     double factor = Interpreter::eval_in(args[0], env).as_float();
     Value expr    = args[1];
     // store the current time to reset later
-    size_t actual_time = m_module_time;
+    size_t actual_time = m_time_since_boot;
     // update the interpreter's time just for this expr
     size_t tmp_time = (double)actual_time * factor;
     dbg("factor: " + String(factor)); dbg("actual_time: " + String(actual_time));
     dbg("tmp_time: " + String(tmp_time));
     //
-    set_time(tmp_time);
+    update_logical_time(tmp_time);
     //
     ret = Interpreter::eval_in(expr, env).as_float();
     // restore the interpreter's time
-    set_time(actual_time);, 2)
+    update_logical_time(actual_time);, 2)
 
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_slow, DBG("uSEQ::slow");
     double factor = Interpreter::eval_in(args[0], env).as_float();
     Value expr    = args[1];
     // store the current time to reset later
-    size_t actual_time = m_module_time;
+    size_t actual_time = m_time_since_boot;
     // update the interpreter's time just for this expr
     size_t tmp_time = (double)actual_time / factor;
     dbg("factor: " + String(factor)); dbg("actual_time: " + String(actual_time));
     dbg("tmp_time: " + String(tmp_time));
     //
-    set_time(tmp_time);
+    update_logical_time(tmp_time);
     //
     ret = Interpreter::eval_in(expr, env).as_float();
     // restore the interpreter's time
-    set_time(actual_time);, 2)
+    update_logical_time(actual_time);, 2)
 
 // (schedule <name> <statement> <period>)
 BUILTINFUNC_NOEVAL_MEMBER(lisp_schedule, const auto itemName = args[0].as_string();
