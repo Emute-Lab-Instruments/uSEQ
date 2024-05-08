@@ -773,17 +773,22 @@ void uSEQ::update_serial_outs()
     }
 }
 
-void uSEQ::set_time(size_t new_time_micros)
+void uSEQ::set_time(InternalTimeType new_time_micros)
 {
     DBG("uSEQ::set_time");
 
-    time = new_time_micros;
-    // last_t = t;
-    t               = time - lastResetTime;
-    m_beat_phase    = t % m_beat_length;
-    m_bar_phase     = t % m_bar_length;
-    m_phrase_phase  = t % m_phrase_length;
-    m_section_phase = t % m_section_length;
+    m_module_time = new_time_micros;
+
+    // cache previous value before we change the new one
+    m_last_transport_time = m_transport_time;
+    m_transport_time      = m_module_time - m_last_transport_reset_time;
+
+    // Phasors
+    m_beat_phase    = fmod(m_transport_time, m_beat_length) / m_beat_length;
+    m_bar_phase     = fmod(m_transport_time, m_bar_length) / m_bar_length;
+    m_phrase_phase  = fmod(m_transport_time, m_phrase_length) / m_phrase_length;
+    m_section_phase = fmod(m_transport_time, m_section_length) / m_section_length;
+
     update_lisp_time_variables();
 }
 
@@ -792,16 +797,16 @@ void uSEQ::update_lisp_time_variables()
     DBG("uSEQ::update_lisp_time_variables");
 
     // These should appear as seconds in Lisp-land
-    double time_s = (double)time * 1e-6;
-    double t_s    = (double)t * 1e-6;
+    double time_s = m_module_time * 1e-6;
+    double t_s    = m_transport_time * 1e-6;
     set("time", Value(time_s));
     set("t", Value(t_s));
 
     // Normalise the phasors
-    double norm_beat    = (double)m_beat_phase / (double)m_beat_length;
-    double norm_bar     = (double)m_bar_phase / (double)m_bar_length;
-    double norm_phrase  = (double)m_phrase_phase / (double)m_phrase_length;
-    double norm_section = (double)m_section_phase / (double)m_section_length;
+    // double norm_beat    = (double)m_beat_phase / (double)m_beat_length;
+    // double norm_bar     = (double)m_bar_phase / (double)m_bar_length;
+    // double norm_phrase  = (double)m_phrase_phase / (double)m_phrase_length;
+    // double norm_section = (double)m_section_phase / (double)m_section_length;
 
     dbg("time_s = " + String(time_s));
     dbg("t_s = " + String(t_s));
@@ -810,29 +815,17 @@ void uSEQ::update_lisp_time_variables()
     dbg("norm_phrase = " + String(norm_phrase));
     dbg("norm_section = " + String(norm_section));
 
-    set("beat", Value(norm_beat));
-    set("bar", Value(norm_bar));
-    set("phrase", Value(norm_phrase));
-    set("section", Value(norm_section));
+    set("beat", Value(m_beat_phase));
+    set("bar", Value(m_bar_phase));
+    set("phrase", Value(m_phrase_phase));
+    set("section", Value(m_section_phase));
 }
 
 void uSEQ::update_time()
 {
     DBG("uSEQ::update_time");
-    set_time(micros());
-}
-
-void uSEQ::update_bpm_variables()
-{
-    DBG("uSEQ::update_bpm_variables");
-
-    set("bpm", Value(m_bpm));
-    set("bps", Value(m_bpm / 60.0));
-    // These should appear as seconds in Lisp-land
-    set("beatDur", Value(m_beat_length * 1e-6));
-    set("barDur", Value(m_bar_length * 1e-6));
-    set("phraseDur", Value(m_phrase_length * 1e-6));
-    set("sectionDur", Value(m_section_length * 1e-6));
+    // FIXME: this will overflow eventually (@ ~70min runtime)
+    set_time((double)micros());
 }
 
 #ifdef MIDIOUT
@@ -1030,32 +1023,46 @@ void uSEQ::init_ASTs()
     }
 }
 
-size_t bpm_to_micros_per_beat(double bpm)
+double bpm_to_micros_per_beat(double bpm)
 {
-    // If input was nonsensical, return max size_t
-    if (bpm <= 0.0)
-    {
-        return (size_t)-1;
-    }
-    return static_cast<size_t>(60000000.0 / bpm);
+    // 60 seconds * 1e+6 microseconds
+    constexpr double micros_in_minute = 60e+6;
+    return micros_in_minute / bpm;
 }
 
 void uSEQ::set_bpm(double newBpm, double changeThreshold = 0.0)
 {
     DBG("uSEQ::setBPM");
 
-    if (fabs(newBpm - m_bpm) >= changeThreshold)
+    if (newBpm <= 0.0)
+    {
+        error("Invalid BPM requested: " + String(newBpm));
+    }
+    else if (fabs(newBpm - m_bpm) >= changeThreshold)
     {
         m_bpm = newBpm;
         // Derive phasor lengths (in micros)
         m_beat_length = bpm_to_micros_per_beat(newBpm);
         // FIXME: this should not assume quarters
         m_bar_length = m_beat_length * (4.0 / meter_denominator) * meter_numerator;
-        m_phrase_length  = m_bar_length * m_barsPerPhrase;
-        m_section_length = m_phrase_length * m_phrasesPerSection;
+        m_phrase_length  = m_bar_length * m_bars_per_phrase;
+        m_section_length = m_phrase_length * m_phrases_per_section;
 
         update_bpm_variables();
     }
+}
+
+void uSEQ::update_bpm_variables()
+{
+    DBG("uSEQ::update_bpm_variables");
+
+    set("bpm", Value(m_bpm));
+    set("bps", Value(m_bpm / 60.0));
+    // These should appear as seconds in Lisp-land
+    set("beatDur", Value(m_beat_length * 1e-6));
+    set("barDur", Value(m_bar_length * 1e-6));
+    set("phraseDur", Value(m_phrase_length * 1e-6));
+    set("sectionDur", Value(m_section_length * 1e-6));
 }
 
 // NOTE: outputs are 0-indexed,
@@ -1111,11 +1118,13 @@ void uSEQ::digital_write_with_led(int output, int val)
     dbg("led pin = " + String(led_pin));
     dbg("val = " + String(val));
 
+    // write digi
 #ifdef DIGI_OUT_INVERT
     digitalWrite(pin, 1 - val);
 #else
     digitalWrite(output, val);
 #endif
+    // write led
     digitalWrite(led_pin, val);
 }
 
@@ -1261,7 +1270,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     double factor = Interpreter::eval_in(args[0], env).as_float();
     Value expr    = args[1];
     // store the current time to reset later
-    size_t actual_time = time;
+    size_t actual_time = m_module_time;
     // update the interpreter's time just for this expr
     size_t tmp_time = (double)actual_time * factor;
     dbg("factor: " + String(factor)); dbg("actual_time: " + String(actual_time));
@@ -1278,7 +1287,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     double factor = Interpreter::eval_in(args[0], env).as_float();
     Value expr    = args[1];
     // store the current time to reset later
-    size_t actual_time = time;
+    size_t actual_time = m_module_time;
     // update the interpreter's time just for this expr
     size_t tmp_time = (double)actual_time / factor;
     dbg("factor: " + String(factor)); dbg("actual_time: " + String(actual_time));
