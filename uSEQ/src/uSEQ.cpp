@@ -299,7 +299,7 @@ void uSEQ::check_code_quant_phasor()
             int cmdts = micros();
             res       = eval(m_runQueue[q]);
             cmdts     = micros() - cmdts;
-            // Serial.println(res.debug());
+            print(res.debug());
         }
         m_runQueue.clear();
     }
@@ -1130,7 +1130,7 @@ void uSEQ::digital_write_with_led(int output, int val)
 #ifdef DIGI_OUT_INVERT
     digitalWrite(pin, 1 - val);
 #else
-    digitalWrite(output, val);
+    digitalWrite(pin, val);
 #endif
     // write led
     digitalWrite(led_pin, val);
