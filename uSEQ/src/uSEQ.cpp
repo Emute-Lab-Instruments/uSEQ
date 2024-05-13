@@ -605,16 +605,16 @@ void uSEQ::check_and_handle_user_input()
             {
                 String result = eval(m_last_received_code);
                 print("==> ");
-                print(result);
-                print("\n");
-                print(">> ");
+                println(result);
+                // print("\n");
+                // print(">> ");
             }
             // SCHEDULE FOR LATER
             else
             {
                 m_last_received_code =
                     String((char)first_byte) + m_last_received_code;
-                // Serial.println(cmd);
+                println(m_last_received_code);
                 Value expr = parse(m_last_received_code);
                 m_runQueue.push_back(expr);
             }
@@ -1278,9 +1278,9 @@ BUILTINFUNC_NOEVAL_MEMBER(
     double factor = Interpreter::eval_in(args[0], env).as_float();
     Value expr    = args[1];
     // store the current time to reset later
-    size_t actual_time = m_time_since_boot;
+    double actual_time = m_time_since_boot;
     // update the interpreter's time just for this expr
-    size_t tmp_time = (double)actual_time * factor;
+    double tmp_time = (double)actual_time * factor;
     dbg("factor: " + String(factor)); dbg("actual_time: " + String(actual_time));
     dbg("tmp_time: " + String(tmp_time));
     //
@@ -1295,9 +1295,9 @@ BUILTINFUNC_NOEVAL_MEMBER(
     double factor = Interpreter::eval_in(args[0], env).as_float();
     Value expr    = args[1];
     // store the current time to reset later
-    size_t actual_time = m_time_since_boot;
+    double actual_time = m_time_since_boot;
     // update the interpreter's time just for this expr
-    size_t tmp_time = (double)actual_time / factor;
+    double tmp_time = (double)actual_time / factor;
     dbg("factor: " + String(factor)); dbg("actual_time: " + String(actual_time));
     dbg("tmp_time: " + String(tmp_time));
     //
