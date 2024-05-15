@@ -4,6 +4,7 @@
 #include "../utils/log.h"
 #include "configure.h"
 #include "environment.h"
+#include "generated_builtins.h"
 #include "macros.h"
 #include "parser.h"
 #include "value.h"
@@ -54,144 +55,18 @@ namespace builtin
 // arguments, we just call this function in our builtin definition.
 Value eval_args(std::vector<Value>& args, Environment& env)
 {
-    Value ret = Value();
+    Value result = Value::nil();
+
     for (size_t i = 0; i < args.size(); i++)
     {
         args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
-            Serial.println("eval args error");
-            ret = Value::error();
+            error("eval args error");
+            result = Value::error();
         }
     }
-    return ret;
-}
-
-// Create a lambda function (SPECIAL FORM)
-Value lambda(std::vector<Value>& args, Environment& env)
-{
-    if (args.size() < 2)
-        Serial.println(TOO_FEW_ARGS);
-
-    // throw Error(Value("lambda", lambda), env, TOO_FEW_ARGS);
-
-    if (args[0].get_type_name() != LIST_TYPE)
-        Serial.println(INVALID_LAMBDA);
-
-    // throw Error(Value("lambda", lambda), env, INVALID_LAMBDA);
-
-    return Value(args[0].as_list(), args[1], env);
-}
-
-// if-else (SPECIAL FORM)
-Value if_then_else(std::vector<Value>& args, Environment& env)
-{
-    if (args.size() != 3)
-        Serial.println(args.size() > 3 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    if (args[0].eval(env).as_bool())
-        return args[1].eval(env);
-    else
-        return args[2].eval(env);
-}
-
-// Define a variable with a value (SPECIAL FORM)
-Value define(std::vector<Value>& args, Environment& env)
-{
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-
-    Value result = args[1].eval(env);
-    env.set(args[0].display(), result);
     return result;
-}
-
-Value set(std::vector<Value>& args, Environment& env)
-{
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-
-    Value result = args[1].eval(env);
-    env.set_global(args[0].display(), result);
-    return result;
-}
-
-// Define a function with parameters and a result expression (SPECIAL FORM)
-Value defun(std::vector<Value>& args, Environment& env)
-{
-    if (args.size() != 3)
-        Serial.println(args.size() > 3 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("defun", defun), env, args.size() > 3? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-
-    if (args[1].get_type_name() != LIST_TYPE)
-        Serial.println(INVALID_LAMBDA);
-    // throw Error(Value("defun", defun), env, INVALID_LAMBDA);
-
-    String f_name             = args[0].display();
-    std::vector<Value> params = args[1].as_list();
-    Value body                = args[2];
-    Value f                   = Value(params, body, env);
-    env.set(f_name, f);
-    return f;
-}
-
-// Loop over a list of expressions with a condition (SPECIAL FORM)
-Value while_loop(std::vector<Value>& args, Environment& env)
-{
-    Value acc;
-    while (args[0].eval(env).as_bool())
-    {
-        for (size_t i = 1; i < args.size() - 1; i++)
-            args[i].eval(env);
-        acc = args[args.size() - 1].eval(env);
-    }
-    return acc;
-}
-
-// Iterate through a list of values in a list (SPECIAL FORM)
-Value for_loop(std::vector<Value>& args, Environment& env)
-{
-    Value acc;
-    std::vector<Value> list = args[1].eval(env).as_list();
-
-    for (size_t i = 0; i < list.size(); i++)
-    {
-        env.set(args[0].as_atom(), list[i]);
-
-        for (size_t j = 1; j < args.size() - 1; j++)
-            args[j].eval(env);
-        acc = args[args.size() - 1].eval(env);
-    }
-
-    return acc;
-}
-
-// Evaluate a block of expressions in the current environment (SPECIAL FORM)
-Value do_block(std::vector<Value>& args, Environment& env)
-{
-    Value acc;
-    for (size_t i = 0; i < args.size(); i++)
-        acc = args[i].eval(env);
-    return acc;
-}
-
-// Evaluate a block of expressions in a new environment (SPECIAL FORM)
-Value scope(std::vector<Value>& args, Environment& env)
-{
-    Environment e = env;
-    Value acc;
-    for (size_t i = 0; i < args.size(); i++)
-        acc = args[i].eval(e);
-    return acc;
-}
-
-// Quote an expression (SPECIAL FORM)
-Value quote(std::vector<Value>& args, Environment&)
-{
-    // std::vector<Value> v(args);
-    // for (size_t i = 0; i < args.size(); i++)
-    //   v.push_back(args[i]);
-    return Value(args);
 }
 
 #ifdef USE_STD
@@ -240,419 +115,21 @@ Value gen_random(std::vector<Value>& args, Environment& env)
     // throw Error(Value("random", random), env, args.size() > 2? TOO_MANY_ARGS :
     // TOO_FEW_ARGS);
 
-    int low = args[0].as_int(), high = args[1].as_int();
-    return Value((int)random(low, high));
-}
-
-// // Get the contents of a file
-// Value read_file(std::vector<Value> &args, Environment &env) {
-//     // Is not a special form, so we can evaluate our args.
-//     eval_args(args, env);
-
-//     if (args.size() != 1)
-//         throw Error(Value("read-file", read_file), env, args.size() > 1?
-//         TOO_MANY_ARGS : TOO_FEW_ARGS);
-
-//     // return Value::string(content);
-//     return Value::string(read_file_contents(args[0].as_string()));
-// }
-
-// // Write a string to a file
-// Value write_file(std::vector<Value> &args, Environment &env) {
-//     // Is not a special form, so we can evaluate our args.
-//     eval_args(args, env);
-
-//     if (args.size() != 2)
-//         throw Error(Value("write-file", write_file), env, args.size() > 1?
-//         TOO_MANY_ARGS : TOO_FEW_ARGS);
-
-//     std::ofstream f;
-//     // The first argument is the file name
-//     f.open(args[0].as_string().c_str());
-//     // The second argument is the contents of the file to write
-//     Value result = Value((f << args[1].as_string())? 1 : 0);
-//     f.close();
-//     return result;
-// }
-
-// Read a file and execute its code
-// Value include(std::vector<Value> &args, Environment &env) {
-//     // Import is technically not a special form, it's more of a macro.
-//     // We can evaluate our arguments.
-//     eval_args(args, env);
-
-//     if (args.size() != 1)
-//         throw Error(Value("include", include), env, args.size() > 1?
-//         TOO_MANY_ARGS : TOO_FEW_ARGS);
-
-//     Environment e;
-//     Value result = run(read_file_contents(args[0].as_string()), e);
-//     env.combine(e);
-//     return result;
-// }
-#endif
-
-// Evaluate a value as code
-Value eval(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    Value ret = eval_args(args, env);
-    if (ret.is_error())
+    if (args[0].is_number() && args[1].is_number())
     {
-        Serial.println("eval err");
-        return Value::error();
+
+        int low = args[0].as_int(), high = args[1].as_int();
+        return Value((int)random(low, high));
     }
-    if (args.size() != 1)
-    {
-        Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-        return Value();
-    }
-    // throw Error(Value("eval", eval), env, args.size() > 1? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
     else
     {
-        return args[0].eval(env);
+        error("(gen_random) Both arguments should evaluate to numbers, received "
+              "this instead:");
+        error(args[0].display() + args[1].display());
     }
 }
 
-// Create a list of values
-Value list(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    return Value(args);
-}
-
-// Sum multiple values
-Value sum(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() < 2)
-        Serial.println(TOO_FEW_ARGS);
-    // throw Error(Value("+", sum), env, TOO_FEW_ARGS);
-
-    Value acc = args[0];
-    for (size_t i = 1; i < args.size(); i++)
-        acc = acc + args[i];
-    return acc;
-}
-
-// Subtract two values
-Value subtract(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("-", subtract), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    return args[0] - args[1];
-}
-
-// Multiply several values
-Value product(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() < 2)
-        Serial.println(TOO_FEW_ARGS);
-    // throw Error(Value("*", product), env, TOO_FEW_ARGS);
-
-    Value acc = args[0];
-    for (size_t i = 1; i < args.size(); i++)
-        acc = acc * args[i];
-    return acc;
-}
-
-// Divide two values
-Value divide(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("/", divide), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    auto result = args[0] / args[1];
-    return result;
-}
-
-// Get the remainder of values
-Value remainder(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("%", remainder), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    auto result = args[0] % args[1];
-    return result;
-}
-
-// Are two values equal?
-Value eq(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("=", eq), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    return Value(int(args[0] == args[1]));
-}
-
-// Are two values not equal?
-Value neq(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("!=", neq), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    return Value(int(args[0] != args[1]));
-}
-
-// Is one number greater than another?
-Value greater(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value(">", greater), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    return Value(int(args[0] > args[1]));
-}
-
-// Is one number less than another?
-Value less(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("<", less), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    return Value(int(args[0] < args[1]));
-}
-
-// Is one number greater than or equal to another?
-Value greater_eq(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value(">=", greater_eq), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    return Value(int(args[0] >= args[1]));
-}
-
-// Is one number less than or equal to another?
-Value less_eq(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("<=", less_eq), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    return Value(int(args[0] <= args[1]));
-}
-
-// Get the type name of a value
-Value get_type_name(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 1)
-        Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("type", get_type_name), env, args.size() > 1?
-    // TOO_MANY_ARGS : TOO_FEW_ARGS);
-
-    return Value::string(args[0].get_type_name());
-}
-
-// Cast an item to a float
-Value cast_to_float(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 1)
-        Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value(FLOAT_TYPE, cast_to_float), env, args.size() > 1?
-    // TOO_MANY_ARGS : TOO_FEW_ARGS);
-    return args[0].cast_to_float();
-}
-
-// Cast an item to an int
-Value cast_to_int(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 1)
-        Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value(INT_TYPE, cast_to_int), env, args.size() > 1?
-    // TOO_MANY_ARGS : TOO_FEW_ARGS);
-    return args[0].cast_to_int();
-}
-
-// Index a list
-Value index(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("index", index), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-
-    std::vector<Value> list = args[0].as_list();
-    int i                   = args[1].as_int();
-    if (list.empty() || i >= (int)list.size())
-    {
-        Serial.println(INDEX_OUT_OF_RANGE);
-        return Value::error();
-    }
-    // throw Error(list, env, INDEX_OUT_OF_RANGE);
-
-    return list[i];
-}
-
-// Insert a value into a list
-Value insert(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 3)
-        Serial.println(args.size() > 3 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("insert", insert), env, args.size() > 3? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-
-    std::vector<Value> list = args[0].as_list();
-    int i                   = args[1].as_int();
-    if (i > (int)list.size())
-        Serial.println(INDEX_OUT_OF_RANGE);
-    else
-        list.insert(list.begin() + args[1].as_int(), args[2].as_int());
-    return Value(list);
-}
-
-// Remove a value at an index from a list
-Value remove(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("remove", remove), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-
-    std::vector<Value> list = args[0].as_list();
-    int i                   = args[1].as_int();
-    if (list.empty() || i >= (int)list.size())
-        Serial.println(INDEX_OUT_OF_RANGE);
-    else
-        list.erase(list.begin() + i);
-    return Value(list);
-}
-
-// Get the length of a list
-Value len(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 1)
-        Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("len", len), env, args.size() > 1?
-    // TOO_MANY_ARGS : TOO_FEW_ARGS
-    // );
-
-    return Value(int(args[0].as_list().size()));
-}
-
-// Add an item to the end of a list
-Value push(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() == 0)
-        Serial.println(TOO_FEW_ARGS);
-    // throw Error(Value("push", push), env, TOO_FEW_ARGS);
-    for (size_t i = 1; i < args.size(); i++)
-        args[0].push(args[i]);
-    return args[0];
-}
-
-Value pop(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 1)
-        Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("pop", pop), env, args.size() > 1? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    return args[0].pop();
-}
-
-Value head(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 1)
-        Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("head", head), env, args.size() > 1? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-    std::vector<Value> list = args[0].as_list();
-    if (list.empty())
-        Serial.println(INDEX_OUT_OF_RANGE);
-    // throw Error(Value("head", head), env, INDEX_OUT_OF_RANGE);
-
-    return list[0];
-}
-
-Value tail(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 1)
-        Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("tail", tail), env, args.size() > 1? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-
-    std::vector<Value> result, list = args[0].as_list();
-
-    for (size_t i = 1; i < list.size(); i++)
-        result.push_back(list[i]);
-
-    return Value(result);
-}
+#endif // USE_STD
 
 Value flatten(Value& val, Environment& env)
 {
@@ -680,66 +157,6 @@ Value flatten(Value& val, Environment& env)
         }
     }
     return Value(flattened);
-}
-
-// Value parse(std::vector<Value> &args, Environment &env) {
-//   // Is not a special form, so we can evaluate our args.
-//   eval_args(args, env);
-
-//   if (args.size() != 1)
-//     Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-//   // throw Error(Value("parse", parse), env, args.size() > 1? TOO_MANY_ARGS :
-//   // TOO_FEW_ARGS);
-//   if (args[0].get_type_name() != STRING_TYPE)
-//     Serial.println(INVALID_ARGUMENT);
-//   // throw Error(args[0], env, INVALID_ARGUMENT);
-//   std::vector<Value> parsed = parse(args[0].as_string());
-
-//   // if (parsed.size() == 1)
-//   //     return parsed[0];
-//   // else return Value(parsed);
-//   return Value(parsed);
-// }
-
-Value replace(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 3)
-        Serial.println(args.size() > 3 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("replace", replace), env, args.size() > 3? TOO_MANY_ARGS
-    // : TOO_FEW_ARGS);
-
-    String src = args[0].as_string();
-    src.replace(args[1].as_string(), args[2].as_string());
-    return Value::string(src);
-}
-
-Value display(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 1)
-        Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("display", display), env, args.size() > 1? TOO_MANY_ARGS
-    // : TOO_FEW_ARGS);
-
-    return Value::string(args[0].display());
-}
-
-Value debug(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
-
-    if (args.size() != 1)
-        Serial.println(args.size() > 1 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("debug", debug), env, args.size() > 1? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
-
-    return Value::string(args[0].debug());
 }
 
 Value map_list(std::vector<Value>& args, Environment& env)
@@ -815,52 +232,6 @@ Value range(std::vector<Value>& args, Environment& env)
     return Value(result);
 }
 
-BUILTINFUNC(ard_delay, int delaytime = args[0].as_int(); delay(delaytime);
-            ret = args[0];, 1)
-
-BUILTINFUNC(ard_delaymicros, int delaytime = args[0].as_int();
-            delayMicroseconds(delaytime); ret = args[0];, 1)
-
-BUILTINFUNC(ard_millis, int m = millis(); ret = Value(m);, 0)
-
-BUILTINFUNC(ard_micros, int m = micros(); ret = Value(m);, 0)
-
-BUILTINFUNC(useq_pulse,
-            // args: pulse width, phasor
-            double pulseWidth = args[0].as_float();
-            double phasor     = args[1].as_float();
-            ret               = Value(pulseWidth < phasor ? 1.0 : 0.0);, 2)
-// NOTE: this applies an fmod 1 to its input
-BUILTINFUNC(useq_sqr, ret = Value(fmod(args[0].as_float(), 1.0) < 0.5 ? 1.0 : 0.0);
-            , 1)
-
-BUILTINFUNC(ard_sin, float m = sin(args[0].as_float()); ret = Value(m);, 1)
-BUILTINFUNC(ard_cos, float m = cos(args[0].as_float()); ret = Value(m);, 1)
-BUILTINFUNC(ard_tan, float m = tan(args[0].as_float()); ret = Value(m);, 1)
-
-BUILTINFUNC(ard_abs, float m = abs(args[0].as_float()); ret = Value(m);, 1)
-BUILTINFUNC(ard_min, float m = min(args[0].as_float(), args[1].as_float());
-            ret = Value(m);, 2)
-BUILTINFUNC(ard_max, float m = max(args[0].as_float(), args[1].as_float());
-            ret = Value(m);, 2)
-BUILTINFUNC(ard_pow, float m = pow(args[0].as_float(), args[1].as_float());
-            ret = Value(m);, 2)
-BUILTINFUNC(ard_sqrt, float m = sqrt(args[0].as_float()); ret = Value(m);, 1)
-BUILTINFUNC(ard_map,
-            float m = map(args[0].as_float(), args[1].as_float(), args[2].as_float(),
-                          args[3].as_float(), args[4].as_float());
-            ret     = Value(m);, 5)
-BUILTINFUNC(ard_floor, double m = floor(args[0].as_float()); ret = Value(m);, 1)
-BUILTINFUNC(ard_ceil, double m = ceil(args[0].as_float()); ret = Value(m);, 1)
-
-BUILTINFUNC(zeros, int length = args[0].as_int();
-            std::vector<Value> zeroList(length, Value(0)); ret = Value(zeroList);, 1)
-
-// (timeit <function>) - returns time take to run in microseconds
-BUILTINFUNC_NOEVAL(timeit, unsigned long ts = micros();
-                   Interpreter::eval_in(args[0], env); ts = micros() - ts;
-                   ret = Value(static_cast<int>(ts));, 1)
-
 BUILTINFUNC(ard_digitalWrite, int pinNumber = args[0].as_int();
             int onOff = args[1].as_int(); digitalWrite(pinNumber, onOff);
             ret       = args[0];, 2)
@@ -868,34 +239,35 @@ BUILTINFUNC(ard_digitalWrite, int pinNumber = args[0].as_int();
 BUILTINFUNC(ard_digitalRead, int pinNumber = args[0].as_int();
             int val = digitalRead(pinNumber); ret = Value(val);, 1)
 
-BUILTINFUNC(
-    useq_perf,
-    String report = "fps0: ";
-    report += env.get("fps").as_float();
-    // report += ", fps1: ";
-    // report += env.get("perf_fps1").as_int();
-    report += ", qt: ";
-    report += env.get("qt").as_float();
-    // report += ", in: ";
-    // report += env.get("perf_in").as_int();
-    // report += ", upd_tm: ";
-    // report += env.get("perf_time").as_int();
-    // report += ", out: ";
-    // report += env.get("perf_out").as_int();
-    // report += ", get: ";
-    // report += env.get("perf_get").as_float();
-    // report += ", parse: ";
-    // report += env.get("perf_parse").as_float();
-    // report += ", run: ";
-    // report += env.get("perf_run").as_float();
-    // report += ", ts1: ";
-    // report += env.get("perf_ts1").as_float();
-    report += ", heap free: ";
-    report += rp2040.getFreeHeap() / 1024;
-    Serial.println(report);
-    ret = Value();
-    , 0)
+BUILTINFUNC(useq_perf, String report = "fps0: "; report += env.get("fps").as_float();
+            // report += ", fps1: ";
+            // report += env.get("perf_fps1").as_int();
+            report += ", qt: ";
+            report += env.get("qt").as_float();
+            // report += ", in: ";
+            // report += env.get("perf_in").as_int();
+            // report += ", upd_tm: ";
+            // report += env.get("perf_time").as_int();
+            // report += ", out: ";
+            // report += env.get("perf_out").as_int();
+            // report += ", get: ";
+            // report += env.get("perf_get").as_float();
+            // report += ", parse: ";
+            // report += env.get("perf_parse").as_float();
+            // report += ", run: ";
+            // report += env.get("perf_run").as_float();
+            // report += ", ts1: ";
+            // report += env.get("perf_ts1").as_float();
+            report += ", heap free: ";
+            report += rp2040.getFreeHeap() / 1024; Serial.println(report);
+            ret = Value();, 0)
 
+double fast(double speed, double phasor)
+{
+    phasor *= speed;
+    double phase = fmod(phasor, 1.0);
+    return phase;
+}
 
 // uSEQ-specific builtins
 
@@ -1257,7 +629,7 @@ void Interpreter::loadBuiltinDefs()
 
     // utility
     Environment::builtindefs["timeit"] = Value("timeit", builtin::timeit);
-    Environment::builtindefs["perf"] = Value("perf", builtin::useq_perf);
+    Environment::builtindefs["perf"]   = Value("perf", builtin::useq_perf);
 
 // IO operations
 #ifdef USE_STD
