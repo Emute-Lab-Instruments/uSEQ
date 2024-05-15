@@ -1268,19 +1268,17 @@ double fast(double speed, double phasor)
     return phase;
 }
 
-// BUILTINFUNC_MEMBER(lisp_fast, double speed = args[0].as_float();
-//                    double phasor     = args[1].as_float();
-//                    double fastPhasor = fast(speed, phasor); ret =
-//                    Value(fastPhasor); , 2)
+BUILTINFUNC_MEMBER(useq_fast_old, double speed = args[0].as_float();
+                   double phasor     = args[1].as_float();
+                   double fastPhasor = fast(speed, phasor); ret = Value(fastPhasor);
+                   , 2)
 
 BUILTINFUNC_NOEVAL_MEMBER(
-    useq_fast, DBG("uSEQ::fast");
+    useq_fast_new, DBG("uSEQ::fast_new");
     double factor = Interpreter::eval_in(args[0], env).as_float();
     Value expr    = args[1];
-    // store the current time to reset later
-    double actual_time = m_time_since_boot;
     // update the interpreter's time just for this expr
-    double tmp_time = (double)actual_time * factor;
+    TimeValue tmp_time = m_transport_time * factor;
     dbg("factor: " + String(factor)); dbg("actual_time: " + String(actual_time));
     dbg("tmp_time: " + String(tmp_time));
     //
@@ -1288,16 +1286,16 @@ BUILTINFUNC_NOEVAL_MEMBER(
     //
     ret = Interpreter::eval_in(expr, env).as_float();
     // restore the interpreter's time
-    update_logical_time(actual_time);, 2)
+    update_logical_time(m_transport_time);, 2)
 
+// (slow factor expr)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_slow, DBG("uSEQ::slow");
     double factor = Interpreter::eval_in(args[0], env).as_float();
     Value expr    = args[1];
     // store the current time to reset later
-    double actual_time = m_time_since_boot;
     // update the interpreter's time just for this expr
-    double tmp_time = (double)actual_time / factor;
+    TimeValue tmp_time = m_transport_time / factor;
     dbg("factor: " + String(factor)); dbg("actual_time: " + String(actual_time));
     dbg("tmp_time: " + String(tmp_time));
     //
@@ -1305,32 +1303,98 @@ BUILTINFUNC_NOEVAL_MEMBER(
     //
     ret = Interpreter::eval_in(expr, env).as_float();
     // restore the interpreter's time
-    update_logical_time(actual_time);, 2)
+    update_logical_time(m_transport_time);, 2)
 
 // (schedule <name> <statement> <period>)
-BUILTINFUNC_NOEVAL_MEMBER(lisp_schedule, const auto itemName = args[0].as_string();
-                          const auto ast    = args[1];
-                          const auto period = args[2].as_float(); scheduledItem v;
-                          v.id = itemName; v.period = period; v.lastRun = 0;
-                          //    v.statement = statement;
-                          v.ast                              = { ast };
-                          m_scheduledItems.push_back(v); ret = Value(0);, 3)
+BUILTINFUNC_NOEVAL_MEMBER(
+    lisp_schedule,
+    // Check args first
+    if (args[0].is_string()) {
+        if (args[2].is_number())
+        {
+            const auto itemName = args[0].as_string();
+            const auto ast      = args[1];
+            const auto period   = args[2].as_float();
+            scheduledItem v;
+            v.id      = itemName;
+            v.period  = period;
+            v.lastRun = 0;
+            //    v.statement = statement;
+            v.ast = ast;
+            m_scheduledItems.push_back(v);
+            ret = Value(0);
+        }
+        else
+        {
+            error("(schedule): Third argument must evaluate to a number, received "
+                  "this "
+                  "instead:");
+            error(args[2].display());
+            ret = Value::error();
+        }
+    } else {
+        error("(schedule): First argument must evaluate to a string, received this "
+              "instead:");
+        error(args[0].display());
+        ret = Value::error();
+    },
+    3)
 
 BUILTINFUNC_MEMBER(
-    lisp_unschedule, const String id = args[0].as_string();
-    auto is_item = [id](scheduledItem& v) { return v.id == id; };
+    lisp_unschedule,
 
-    if (auto it = std::find_if(std::begin(m_scheduledItems),
-                               std::end(m_scheduledItems), is_item);
-        it != std::end(m_scheduledItems)) {
-        m_scheduledItems.erase(it);
-        println("Item removed");
-    } else { println("Item not found"); },
+    if (args[0].is_string()) {
+        const String id = args[0].as_string();
+        auto is_item    = [id](scheduledItem& v) { return v.id == id; };
+
+        if (auto it = std::find_if(std::begin(m_scheduledItems),
+                                   std::end(m_scheduledItems), is_item);
+            it != std::end(m_scheduledItems))
+        {
+            m_scheduledItems.erase(it);
+            println("(unschedule) Item removed");
+        }
+        else
+        {
+            println("(unschedule) Item not found");
+        }
+    } else {
+        error(
+            "(unschedule): First argument must evaluate to a string, received this "
+            "instead:");
+        error(args[0].display());
+        ret = Value::error();
+    },
     1)
 
-BUILTINFUNC_VARGS_MEMBER(useq_setbpm, double newBpm = args[0].as_float();
-                         double thresh = args.size() == 2 ? args[1].as_float() : 0;
-                         set_bpm(newBpm, thresh); ret = args[0];, 1, 2)
+BUILTINFUNC_VARGS_MEMBER(
+    useq_setbpm,
+
+    double thresh;
+    if (args[0].is_number()) {
+        double newBpm = args[0].as_float();
+
+        // If a second argument has been passed
+        // and if it's a number, use it as thresh
+        if (args.size() == 2 && args[1].is_number())
+        {
+            thresh = args[1].as_float();
+        }
+        // otherwise default to 0
+        else
+        {
+            thresh = 0.0;
+        }
+
+        set_bpm(newBpm, thresh);
+        ret = args[0];
+    } else {
+        error("(setbpm): First argument must evaluate to a number, received this "
+              "instead:");
+        error(args[0].display());
+        ret = Value::error();
+    },
+    1, 2)
 
 BUILTINFUNC_MEMBER(
     useq_getbpm, int index = args[0].as_int(); if (index == 1) {
@@ -1587,7 +1651,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ain1", useq_ain1);
     INSERT_BUILTINDEF("ain2", useq_ain2);
 
-    INSERT_BUILTINDEF("fast", useq_fast);
+    INSERT_BUILTINDEF("fast", useq_fast_new);
     INSERT_BUILTINDEF("slow", useq_slow);
 
     INSERT_BUILTINDEF("setbpm", useq_setbpm);

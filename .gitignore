@@ -3,6 +3,7 @@
 *.log
 tmp/
 
+.cache/
 build/
 out/
 # Let's leave this checked in for now,

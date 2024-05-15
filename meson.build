@@ -33,6 +33,8 @@ common_src = [
   'uSEQ/src/lisp/interpreter.h',
   'uSEQ/src/lisp/interpreter.cpp',
   'uSEQ/src/lisp/configure.h',
+  'uSEQ/src/lisp/generated_builtins.h',
+  'uSEQ/src/lisp/generated_builtins.cpp',
   # uSEQ
   'uSEQ/src/uSEQ.h',
   'uSEQ/src/uSEQ.cpp',

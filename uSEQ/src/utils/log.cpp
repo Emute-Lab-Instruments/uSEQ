@@ -35,6 +35,14 @@ void error(String s)
     print("\\n");
 }
 
+// void error_num_args_incorrect(String function_name, String expected,
+//                               int num_received)
+// {
+//     print("ERROR: ");
+//     print("(" + function_name + ") Expected " + String(num_expected));
+//     print("\\n");
+// }
+
 int free_heap() { return rp2040.getFreeHeap() / 1024; }
 
 // DebugLogger

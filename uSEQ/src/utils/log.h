@@ -7,7 +7,10 @@ void print(String s);
 void println(String s);
 
 void debug(String s);
+
 void error(String s);
+// void error_num_args_incorrect(String function_name, int num_expected,
+//                               int num_received);
 
 int free_heap();
 

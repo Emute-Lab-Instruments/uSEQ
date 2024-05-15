@@ -1,3 +1,4 @@
+~/log
 -/archive
 -/build
 -/builddir
@@ -5,7 +6,6 @@
 -/hardware
 -/interfaces
 -/license
--/scripts
 -/.cache
 -/.git
 -/.vscode
