@@ -148,20 +148,28 @@ bool Value::is_error() const { return type == ERROR; }
 
 bool Value::is_list() const { return type == LIST; }
 
+bool Value::is_empty() const { return list.empty(); }
+
+bool Value::is_list_and_empty() const { return type == LIST && list.empty(); }
+
+bool Value::is_string() const { return type == STRING; }
+
+bool Value::is_symbol() const { return type == ATOM; }
+
 bool Value::as_bool() const { return *this != Value(0); }
 
 int Value::as_int() const { return cast_to_int().stack_data.i; }
 
 double Value::as_float() const { return cast_to_float().stack_data.f; }
 
+// FIXME @correctness these should probably change to std::optionals
 String Value::as_string() const
 {
     if (type != STRING)
     {
         print("str: ");
         println(BAD_CAST);
-        currentExprSound = false;
-        return "";
+        return "std::nullopt";
     }
     return str;
 }
@@ -172,8 +180,7 @@ String Value::as_atom() const
     {
         print("atom: ");
         println(BAD_CAST);
-        currentExprSound = false;
-        return "";
+        return "std::nullopt";
     }
     return str;
 }
@@ -185,7 +192,7 @@ std::vector<Value> Value::as_list() const
         print("list: ");
         println(BAD_CAST);
         currentExprSound = false;
-        return { Value::error() };
+        return {};
     }
     return list;
 }
@@ -221,9 +228,7 @@ Value Value::cast_to_int() const
     case FLOAT:
         return Value(int(stack_data.f));
     default:
-        println("int: ");
-        println(BAD_CAST);
-        currentExprSound = false;
+        println(BAD_CAST + " (int)");
         return Value::error();
     }
 }
@@ -237,9 +242,7 @@ Value Value::cast_to_float() const
     case INT:
         return Value(double(stack_data.i));
     default:
-        println("float: ");
-        println(BAD_CAST);
-        currentExprSound = false;
+        println(BAD_CAST + " (float)");
         return Value::error();
     }
 }

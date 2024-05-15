@@ -174,7 +174,8 @@ private:
     LISP_FUNC_DECL(useq_s7);
     LISP_FUNC_DECL(useq_s8);
     // Others
-    LISP_FUNC_DECL(useq_fast);
+    LISP_FUNC_DECL(useq_fast_old);
+    LISP_FUNC_DECL(useq_fast_new);
     LISP_FUNC_DECL(useq_slow);
     LISP_FUNC_DECL(lisp_schedule);
     LISP_FUNC_DECL(lisp_unschedule);
@@ -233,7 +234,7 @@ private:
     struct scheduledItem
     {
         //    Value statement;
-        std::vector<Value> ast;
+        Value ast;
         size_t period;
         size_t lastRun;
         String id;

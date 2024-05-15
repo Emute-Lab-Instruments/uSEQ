@@ -7,6 +7,7 @@
 #include "../utils/string.h"
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 class Environment;
@@ -98,6 +99,11 @@ public:
     bool is_number() const;
     bool is_error() const;
     bool is_list() const;
+    bool is_empty() const;
+    bool is_list_and_empty() const;
+    bool is_string() const;
+    bool is_symbol() const;
+
     bool as_bool() const;
     int as_int() const;
     double as_float() const;
@@ -155,6 +161,7 @@ public:
         BUILTIN_METHOD,
         UNIT,
         NIL,
+        SIGNAL,
         ERROR
     } type;
 

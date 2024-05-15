@@ -1,0 +1,386 @@
+;; FIXME: some of these are renamed before being set in the Lisp
+;; env, so we shouldn't use this string directly in the error msg
+;; SOLUTION: either add an extra key, or have a conversion map from
+;; internal to external name
+{"eval" {:args {:num "== 1"}
+         :eval-args? false
+         :body ["result = args[0].eval(env);"]
+         :docstring "Evaluate a value as code"}
+
+ ;; TODO @correctness should this check number of args?
+ "list" {:body ["result = Value(args);"]
+         :docstring "Create a list of values"}
+
+ "lambda" {:eval-args? false
+           :args {:num "== 2"
+                  :type {0 ".is_list()"}}
+           :body "result = Value(args[0].as_list(), args[1], env);"
+           :docstring "Create a lambda function (SPECIAL FORM)"}
+
+ "if_then_else" {:eval-args? false
+                 :args {:num "== 3"}
+                 :body ["if (args[0].eval(env).as_bool())"
+                        "        result = args[1].eval(env);"
+                        "    else"
+                        "        result = args[2].eval(env);"]}
+
+ "define" {:eval-args? false
+           :args {:num "== 2"
+                  :type {0 ".is_symbol()"}}
+           :body ["result = args[1].eval(env);"
+                  "env.set(args[0].display(), result);"]
+           :docstring "Define a variable with a value (SPECIAL FORM)"}
+
+ "defun" {:eval-args? false
+          :args {:num "== 3"
+                 :type {0 ".is_symbol()"
+                        1 ".is_list()"}}
+          :body ["String f_name             = args[0].display();"
+                 "std::vector<Value> params = args[1].as_list();"
+                 "Value body                = args[2];"
+                 "result                    = Value(params, body, env);"
+                 "env.set(f_name, result);"]
+          :docstring "Define a function with parameters and a result expression (SPECIAL FORM)"}
+
+ "while_loop" {:eval-args? false
+               :args {:num ">= 1"}
+               :body ["Value acc;"
+                      "while (args[0].eval(env).as_bool())"
+                      "{"
+                      "    for (size_t i = 1; i < args.size() - 1; i++)"
+                      "        args[i].eval(env);"
+                      "    acc = args[args.size() - 1].eval(env);"
+                      "}"
+                      "result = acc;"]
+               :docstring "Loop over a list of expressions with a condition (SPECIAL FORM)"}
+
+ "for_loop" {:eval-args? false
+             :args {:num ">= 2"
+                    :type {0 ".is_symbol()"
+                           1 ".is_list()"}}
+             :body ["Value acc;"
+                    "std::vector<Value> list = args[1].eval(env).as_list();"
+
+                    "for (size_t i = 0; i < list.size(); i++)"
+                    "{"
+                    "    env.set(args[0].as_atom(), list[i]);"
+
+                    "    for (size_t j = 1; j < args.size() - 1; j++)"
+                    "        args[j].eval(env);"
+                    "    acc = args[args.size() - 1].eval(env);"
+                    "}"
+                    "result = acc;"]
+             :docstring "Iterate through a list of values in a list (SPECIAL FORM)"}
+
+ "do_block" {:eval-args? false
+             :body ["Value acc;"
+                    "for (size_t i = 0; i < args.size(); i++)"
+                    "    acc = args[i].eval(env);"
+                    "return acc;"
+                    "result = acc;"]
+             :docstring "Evaluate a block of expressions in the current environment (SPECIAL FORM)"}
+
+ "scope" {:eval-args? false
+          :body ["Environment e = env;"
+                 "Value acc;"
+                 "for (size_t i = 0; i < args.size(); i++)"
+                 "    acc = args[i].eval(e);"
+                 "result = acc;"]
+          :docstring "Evaluate a block of expressions in a new environment (SPECIAL FORM)"}
+
+ "quote" {:eval-args? false
+          :body ["result = Value(args);"]
+          :docstring "Quote an expression (SPECIAL FORM)"}
+
+;;;
+ "set" {:eval-args? false
+        :args {:num "== 2"
+               :type {0 ".is_symbol()"}}
+        :body ["result = args[1].eval(env);"
+               "env.set_global(args[0].display(), result);"]}
+
+ "sum" {:args {:num ">= 2"
+               :type {:all ".is_number()"}}
+        :body ["Value acc = args[0];"
+               ;; TODO @performance this could be used to short-circuit :all evaluation
+               "for (size_t i = 1; i < args.size(); i++)"
+               "{"
+               "acc = acc + args[i];"
+               "}"
+               "result = acc;"]
+        :docstring "Sum multiple values"}
+
+ "subtract" {:args {:num "== 2"
+                    :type {:all  ".is_number()"}}
+             :body ["result = args[0] - args[1];"]
+             :docstring "Subtract two values"}
+
+ "product" {:args {:num ">= 2"
+                   :type
+                   {:all  ".is_number()"}}
+            :body ["Value acc = args[0];"
+                   "for (size_t i = 1; i < args.size(); i++)"
+                   "    acc = acc * args[i];"
+                   "result = acc;"]
+            :docstring "Multiply several values"}
+
+ "divide" {:args {:num "== 2"
+                  :type
+                  {:all  ".is_number()"}}
+           :body ["result = args[0] / args[1];"]
+           :docstring "Divide two values"}
+
+ "remainder" {:args {:num "== 2"
+                     :type
+                     {:all  ".is_number()"}}
+              :body ["result = args[0] % args[1];"]
+              :docstring "Get the remainder of values"}
+
+ "eq" {:args {:num "== 2"}
+       :body ["result = Value(int (args [0] == args [1]));"]
+       :docstring "Are two values equal?"}
+
+ "neq" {:args {:num "== 2"}
+        :body ["result = Value(int(args[0] != args[1]));"]
+        :docstring "Are two values not equal?"}
+
+ "greater" {:args {:num "== 2"}
+            :body ["result = Value(int(args[0] > args[1]));"]
+            :docstring "Is one number greater than another?"}
+
+ "less" {:args {:num "== 2"}
+         :body ["result = Value(int(args[0] > args[1]));"]
+         :docstring "Is one number less than another?"}
+
+;;; CHATGPT answer
+ "greater_eq" {:args {:num "== 2"}
+               :eval-args? true
+               :body ["result = Value(int(args[0] >= args[1]));"]
+               :docstring "Is one number greater than or equal to another?"}
+
+ "less_eq" {:args {:num "== 2"}
+            :eval-args? true
+            :body ["result = Value(int(args[0] <= args[1]));"]
+            :docstring "Is one number less than or equal to another?"}
+
+ "get_type_name" {:args {:num "== 1"}
+                  :eval-args? true
+                  :body ["result = Value::string(args[0].get_type_name());"]
+                  :docstring "Get the type name of a value"}
+
+ "cast_to_float" {:args {:num "== 1"
+                         :type {0 ".is_number()"}}
+                  :eval-args? false
+                  :body ["result = Value(args[0].as_float());"]
+                  :docstring "Cast an item to a float"}
+
+ "cast_to_int" {:args {:num "== 1"
+                       :type {0 ".is_number()"}}
+                :eval-args? false
+                :body ["result = args[0].cast_to_int();"]
+                :docstring "Cast an item to an int"}
+
+ ;; NOTE: this is mostly manual for now
+ "index" {:args {:num "== 2"
+                 ;; NOTE: need to generate custom messages
+                 :type {0 [".is_list()"
+                           "!.is_empty()"]
+                        1 ".is_number()"}}
+          :body ["std::vector<Value> list = args[0].as_list();"
+                 "int i                   = args[1].as_int();"
+                 "if (i < list.size())"
+                 "{"
+                 "    result = list[i];"
+                 "}"
+                 "else"
+                 "{"
+                 "    error(\"(list) Index should be smaller than the size of the list.\");"
+                 "}"]
+          :docstring "Index a list"}
+
+ "insert" {:args {:num "== 3"
+                  :type {0 ".is_list()"
+                         1 ".is_number()"}}
+           :eval-args? true
+           :body ["std::vector<Value> list = args[0].as_list();"
+                  "int i                   = args[1].as_int();"
+                  "if (i < list.size())"
+                  "    Serial.println(INDEX_OUT_OF_RANGE);"
+                  "else"
+                  "    list.insert(list.begin() + args[1].as_int(), args[2].as_int());"
+                  "result = Value(list);"]
+           :docstring "Insert a value into a list"}
+
+ "remove" {:args {:num "== 2"
+                  :type {0 ".is_list()"
+                         1 ".is_number()"}}
+           :eval-args? true
+           :body ["std::vector<Value> list = args[0].as_list();"
+                  "    int i                   = args[1].as_int();"
+                  "    if (list.empty() || i >= (int)list.size())"
+                  "        error(INDEX_OUT_OF_RANGE);"
+                  "    else"
+                  "        list.erase(list.begin() + i);"
+                  "result = Value(list);"]
+           :docstring "Remove a value at an index from a list"}
+
+ "len" {:args {:num "== 1"
+               :type {0 ".is_list()"}}
+        :eval-args? true
+        :body ["result = Value((int)args[0].as_list().size());"]
+        :docstring "Get the length of a list"}
+
+ "push" {:args {:num "== 2"}
+         :eval-args? true
+         :body ["for (size_t i = 1; i < args.size(); i++)"
+                "    args[0].push(args[i]);"
+                "result = args[0];"]
+         :docstring "Add an item to the end of a list"}
+
+ "pop" {:args {:num "== 1"}
+        :eval-args? true
+        :body ["result = args[0].pop();"]
+        :docstring "Remove an item from the end of a list"}
+
+ "head" {:args {:num "== 1"
+                :type {0 ".is_list()"}}
+         :eval-args? false
+         :body ["std::vector<Value> list = args[0].as_list();"
+                "if (list.empty())"
+                "{"
+                "    error(INDEX_OUT_OF_RANGE);"
+                "}"
+                "else"
+                "{"
+                "    result = list[0];"
+                "}"]
+         :docstring "Get the first element of list"}
+
+ ;; TODO @performance might be better to use stl to copy vec subset?
+ "tail" {:args {:num "== 1"}
+         :eval-args? false
+         :body ["std::vector<Value> acc, list = args[0].as_list();"
+                "for (size_t i = 1; i < list.size(); i++)"
+                "    acc.push_back(list[i]);"
+                "result = Value(acc);"]
+         :docstring "Get all elements after the first"}
+
+ "ard_delay"
+ {:args {:num "== 1"
+         :type {0 ".is_number()"}}
+  :body  ["int delaytime = args[0].as_int();"
+          "delay(delaytime);"
+          "result = args[0];"]}
+
+ "ard_delaymicros"
+ {:args {:num "== 1"
+         :type {0 ".is_number()"}}
+  :body ["int  delaytime = args[0].as_int();"
+         "delayMicroseconds(delaytime);"
+         "result = args[0];"]}
+
+ "ard_millis"
+ {:args {:num "== 0"}
+  :body ["int m = millis();"
+         "result = Value(m);"]}
+
+ "ard_micros"
+ {:args {:num "== 0"}
+  :body ["int m = micros();"
+         "result = Value(m);"]}
+
+ "useq_pulse" {:args {:num "== 2"
+                      :type {0 ".is_number()"
+                             1 ".is_number()"
+                             2 ".is_number()"}}
+               :body ["// args: pulse width, phasor"
+                      "double pulseWidth = args[0].as_float();"
+                      "double phasor = args[1].as_float();"
+                      "result = Value(pulseWidth < phasor ? 1.0 : 0.0);"]}
+
+ "useq_sqr" {:args {:num "== 1"
+                    :type {0 ".is_number()"}}
+             :body ["result = Value(fmod(args[0].as_float(), 1.0) < 0.5 ? 1.0 : 0.0);"]}
+
+ "ard_sin" {:args {:num "== 1"
+                   :type {0 ".is_number()"}}
+            :body ["result = Value(sin(args[0].as_float()));"]}
+
+ "ard_cos" {:args {:num "== 1"
+                   :type {0 ".is_number()"}}
+            :body ["result = Value(cos(args[0].as_float()));"]}
+
+ "ard_tan" {:args {:num "== 1"
+                   :type {0 ".is_number()"}}
+            :body ["result = Value(tan(args[0].as_float()));"]}
+
+ "ard_abs" {:args {:num "== 1"
+                   :type {0 ".is_number()"}}
+            :body ["result = Value(abs(args[0].as_float()));"]}
+
+ "ard_min" {:args {:num "== 2"
+                   :type {:all ".is_number()"}}
+            :body ["result = Value(min(args[0].as_float(), args[1].as_float()));"]}
+
+ "ard_max" {:args {:num "== 2"
+                   :type {:all ".is_number()"}}
+            :body ["result = Value(max(args[0].as_float(), args[1].as_float()));"]}
+
+ "ard_pow" {:args {:num "== 2"
+                   :type {:all ".is_number()"}}
+            :body ["result = Value(pow(args[0].as_float(), args[1].as_float()));"]}
+
+ "ard_sqrt" {:args {:num "== 1"
+                    :type {0 ".is_number()"}}
+             :body ["result = Value(sqrt(args[0].as_float()));"]}
+
+ "ard_floor" {:args {:num "== 1"
+                     :type {0 ".is_number()"}}
+              :body ["result = Value(floor(args[0].as_float()));"]}
+
+ "ard_ceil" {:args {:num "== 1"
+                    :type {0 ".is_number()"}}
+             :body ["result = Value(ceil(args[0].as_float()));"]}
+
+ "zeros" {:args {:num "== 1"
+                 :type {0 ".is_number()"}}
+          :body ["int length = args[0].as_int();"
+                 "std::vector<Value> zeroList(length, Value(0));"
+                 "result = Value(zeroList);"]}
+
+ "timeit" {:args {:num "== 1"}
+           :body ["unsigned long ts = micros();"
+                  "args[0].eval(env);"
+                  "ts = micros() - ts;"
+                  "result = Value(static_cast<int>(ts));"]}
+
+ "ard_map" {:args {:num "== 5"}
+            :type {:all ".is_number()"}
+            :body ["float m = map(args[0].as_float(), args[1].as_float(),"
+                   "                      args[2].as_float(), args[3].as_float(),"
+                   "                      args[4].as_float());"
+                   "result = Value(m);"]}
+
+ "replace" {:args {:num "== 3"
+                   :type {:all ".is_string()"}}
+            :body ["String src = args[0].as_string();"
+                   "src.replace(args[1].as_string(), args[2].as_string());"
+                   "return Value::string(src);"]}
+
+ "display" {:args {:num "== 1"}
+            :body ["result = Value::string(args[0].display());"]}
+
+ "debug" {:args {:num "== 1"}
+          :body ["result = Value::string(args[0].debug());"]}
+
+ ;; "debug" {:args {:num "== 1"}
+ ;;          :body ["result = Value::string(args[0].debug());"]}
+
+ ;;
+ ;; "useq_perf" {:body ["report += env.get(\"fps\").as_float(); report += \", qt: \";" ;
+ ;;                     "report += env.get(\"qt\").as_float(); report += \", heap free: \";"
+ ;;                     "report += rp2040.getFreeHeap() / 1024;"       "Serial.println(report);"
+ ;;                     "result = Value();"]}
+ ;;
+ ;;
+ }
