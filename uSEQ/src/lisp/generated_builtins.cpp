@@ -833,7 +833,7 @@ Value define(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error("(define) Expected == 2 args, received " + String(args.size()) + " instead.");
+        error("*(define)* Expected == 2 args, received " + String(args.size()) + " instead.");
         return Value::error();
     }
     
