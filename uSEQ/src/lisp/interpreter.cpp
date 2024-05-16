@@ -604,7 +604,7 @@ void Interpreter::loadBuiltinDefs()
     // NOTE: duplicates
     Environment::builtindefs["square"] = Value("square", builtin::useq_sqr);
     Environment::builtindefs["sqr"]    = Value("sqr", builtin::useq_sqr);
-    Environment::builtindefs["pulse"]    = Value("sqr", builtin::useq_pulse);
+    Environment::builtindefs["pulse"]  = Value("pulse", builtin::useq_pulse);
 
     // arduino math
     // NOTE: duplicates
