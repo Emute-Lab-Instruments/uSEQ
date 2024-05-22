@@ -833,7 +833,7 @@ Value define(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error("*(define)* Expected == 2 args, received " + String(args.size()) + " instead.");
+        error("(define) Expected == 2 args, received " + String(args.size()) + " instead.");
         return Value::error();
     }
     
@@ -1730,11 +1730,6 @@ Value useq_pulse(std::vector<Value>& args, Environment& env)
     if (!(args[1].is_number()))
     {
         error("(useq_pulse) Argument #1 should evaluate to a number, instead it evaluates to a " + args[1].get_type_name() + ":\n" + args[1].display());
-        return Value::error();
-    }
-    if (!(args[2].is_number()))
-    {
-        error("(useq_pulse) Argument #2 should evaluate to a number, instead it evaluates to a " + args[2].get_type_name() + ":\n" + args[2].display());
         return Value::error();
     }
     
