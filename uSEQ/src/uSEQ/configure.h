@@ -15,7 +15,7 @@
 #include "pinmap.h"
 
 #define NUM_SERIAL_INS 32
-#define NUM_SERIAL_OUTS 0
+#define NUM_SERIAL_OUTS 8
 
 // TODO move definitions regarding num of IO here,
 // leave mapping of pins to pinmap.h
