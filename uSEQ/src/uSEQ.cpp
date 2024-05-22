@@ -1024,8 +1024,6 @@ void uSEQ::init_ASTs()
 
     for (int i = 0; i < m_num_serial_outs; i++)
     {
-        // TODO
-        // m_continuous_ASTs.push_back(default_continuous_form);
         m_serial_ASTs.push_back(default_serial_expr);
         m_serial_vals.push_back(std::nullopt);
     }
@@ -1244,8 +1242,12 @@ BUILTINFUNC_NOEVAL_MEMBER(
     },
     1)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set("s1-expr", args[0]);
-                          m_serial_ASTs[0] = { args[0] };, 1)
+BUILTINFUNC_NOEVAL_MEMBER(useq_s1, 
+    set("s1-expr", args[0]);
+    m_serial_ASTs[0] = { args[0] };, 
+    // Serial.println(m_serial_ASTs.size());,
+    1)
+
 BUILTINFUNC_NOEVAL_MEMBER(useq_s2, set("s2-expr", args[0]);
                           m_serial_ASTs[1] = { args[0] };, 1)
 BUILTINFUNC_NOEVAL_MEMBER(useq_s3, set("s3-expr", args[0]);
