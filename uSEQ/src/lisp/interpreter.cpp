@@ -401,6 +401,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
                               expr.display());
                         break;
                     }
+                    args[i] = evaled_arg;
                 }
             }
 

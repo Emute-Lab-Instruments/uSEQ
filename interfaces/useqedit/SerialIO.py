@@ -119,7 +119,7 @@ class SerialIO:
                 logger.error(e)
                 logger.error(cls.serialIOMessage)
                 cls.cx = None
-                Console.post(e)
+                Console.post(e) 
                 Console.post("uSEQ disconnected")
         else:
             SerialIO.trySerialConnection(cls.serialPortName)
