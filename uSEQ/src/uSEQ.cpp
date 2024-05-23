@@ -1140,7 +1140,7 @@ void uSEQ::serial_write(int out, double val)
 
     Serial.write(m_serial_stream_begin_marker);
     Serial.write((u_int8_t)(out + 1));
-    char* byteArray = reinterpret_cast<char*>(&val);
+    unsigned char* byteArray = reinterpret_cast<unsigned char*>(&val);
     for (size_t b = 0; b < 8; b++)
     {
         Serial.write(byteArray[b]);

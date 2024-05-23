@@ -1853,14 +1853,11 @@ Value useq_pulse(std::vector<Value>& args, Environment& env)
         error_wrong_specific_pred(user_facing_name, 2, "a number", args[1].display());
         return Value::error();
     }
-<<<<<<< HEAD
-=======
     if (!(args[2].is_number()))
     {
         error_wrong_specific_pred(user_facing_name, 3, "a number", args[2].display());
         return Value::error();
     }
->>>>>>> 9f575d8 (Add vector type, set utils, remaining builtin args checking)
     
     // BODY
     Value result = Value::nil();
