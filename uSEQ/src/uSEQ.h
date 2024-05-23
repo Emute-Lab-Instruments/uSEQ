@@ -143,7 +143,7 @@ private:
     void update_serial_outs();
     void update_Q0();
 
-    Value default_continuous_expr = parse("(sine t)");
+    Value default_continuous_expr = parse("(usine t)");
     Value default_binary_expr     = parse("(square bar)");
     Value default_serial_expr     = Value::nil();
 
@@ -174,15 +174,14 @@ private:
     LISP_FUNC_DECL(useq_s7);
     LISP_FUNC_DECL(useq_s8);
     // Others
-    LISP_FUNC_DECL(useq_fast_old);
-    LISP_FUNC_DECL(useq_fast_new);
+    LISP_FUNC_DECL(useq_fast);
     LISP_FUNC_DECL(useq_slow);
-    LISP_FUNC_DECL(lisp_schedule);
-    LISP_FUNC_DECL(lisp_unschedule);
+    LISP_FUNC_DECL(useq_schedule);
+    LISP_FUNC_DECL(useq_unschedule);
 
     LISP_FUNC_DECL(useq_setbpm);
-    LISP_FUNC_DECL(useq_getbpm);
-    LISP_FUNC_DECL(useq_settimesig);
+    LISP_FUNC_DECL(useq_get_input_bpm);
+    LISP_FUNC_DECL(useq_set_time_sig);
 
     LISP_FUNC_DECL(useq_in1);
     LISP_FUNC_DECL(useq_in2);
@@ -226,7 +225,7 @@ private:
 
     tempoEstimator tempoI1, tempoI2;
 
-    void set_time_signature(double, double);
+    void set_time_sig(double, double);
 
     std::vector<Value> m_runQueue;
     Value m_cqpAST = parse("bar");

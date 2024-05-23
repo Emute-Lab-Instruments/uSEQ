@@ -1,3 +1,5 @@
+.clj-kondo/
+scripts/.nrepl-port
 .DS_Store
 .idea
 *.log

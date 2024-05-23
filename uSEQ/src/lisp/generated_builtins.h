@@ -9,12 +9,14 @@ class Environment;
 namespace builtin
 {
 Value tail(std::vector<Value>& args, Environment& env);
+Value vec(std::vector<Value>& args, Environment& env);
 Value zeros(std::vector<Value>& args, Environment& env);
 Value list(std::vector<Value>& args, Environment& env);
 Value ard_floor(std::vector<Value>& args, Environment& env);
 Value ard_ceil(std::vector<Value>& args, Environment& env);
 Value do_block(std::vector<Value>& args, Environment& env);
 Value neq(std::vector<Value>& args, Environment& env);
+Value ard_usin(std::vector<Value>& args, Environment& env);
 Value index(std::vector<Value>& args, Environment& env);
 Value ard_cos(std::vector<Value>& args, Environment& env);
 Value eq(std::vector<Value>& args, Environment& env);
@@ -29,6 +31,7 @@ Value greater(std::vector<Value>& args, Environment& env);
 Value product(std::vector<Value>& args, Environment& env);
 Value replace(std::vector<Value>& args, Environment& env);
 Value ard_sin(std::vector<Value>& args, Environment& env);
+Value ard_ucos(std::vector<Value>& args, Environment& env);
 Value eval(std::vector<Value>& args, Environment& env);
 Value cast_to_int(std::vector<Value>& args, Environment& env);
 Value remainder(std::vector<Value>& args, Environment& env);

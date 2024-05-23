@@ -9,6 +9,7 @@
 #define ATOM_TYPE "atom"
 #define QUOTE_TYPE "quote"
 #define LIST_TYPE "list"
+#define VECTOR_TYPE "vector"
 #define ERROR_TYPE "error"
 
 #endif // CONFIGURE_H_

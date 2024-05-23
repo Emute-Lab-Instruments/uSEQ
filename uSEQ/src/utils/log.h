@@ -9,8 +9,73 @@ void println(String s);
 void debug(String s);
 
 void error(String s);
-// void error_num_args_incorrect(String function_name, int num_expected,
-//                               int num_received);
+void runtime_error(String s);
+
+void user_warning(const String& s);
+
+enum class UserError
+{
+    WrongNumArgs,
+    SpecificArgType,
+    AllArgsType
+};
+
+enum class NumArgsComparison
+{
+    EqualTo,
+    AtLeast,
+    AtMost,
+    Between
+};
+
+void error_wrong_num_args(const String& function_name, int num_received,
+                          NumArgsComparison comp, int num, int num2);
+
+void error_arg_is_error(const String& function_name, int num,
+                        const String& received_val_str);
+
+void error_wrong_all_pred(const String& function_name, int num,
+                          const String& expected_str,
+                          const String& received_val_str);
+
+void error_wrong_specific_pred(const String& function_name, int num,
+                               const String& expected_str,
+                               const String& received_val_str);
+
+// NOTE: for later
+// struct NumArgs
+// {
+//     enum class Type
+//     {
+//         EqualTo,
+//         AtLeast,
+//         AtMost,
+//         Between
+//     };
+
+//     Type comp;
+//     int num;
+//     int num2;
+
+//     NumArgs(Type type, int n, int n2 = 0) : comp(type), num(n), num2(n2) {}
+// };
+
+// struct ArgTypeRequirements
+// {
+//     enum class Type
+//     {
+//         AllArgs,
+//         SpecificArg,
+//         ArgRange
+//     };
+
+//     Type which_arg;
+
+// };
+
+// void error_wrong_arg_type(const String& function_name, const NumArgs&
+// requirements,
+//                           int num_received);
 
 int free_heap();
 

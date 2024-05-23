@@ -6,11 +6,15 @@
 
 #include "configure.h"
 
+// TODO do we care to support this some_value.apply() and .eval()
+// syntax and, if so, is there a better way?
+class Interpreter;
+#include "interpreter.h"
+
 ////DESTRUCTOR
 Value::~Value() {}
 
 //// CONSTRUCTORS
-// LAMBDA
 // static Value Value::error()
 Value Value::error()
 {
@@ -26,6 +30,7 @@ Value Value::nil()
     return result;
 }
 
+// LAMBDA
 Value::Value(std::vector<Value> params, Value ret, Environment const& env)
     : type(LAMBDA)
 {
@@ -35,18 +40,19 @@ Value::Value(std::vector<Value> params, Value ret, Environment const& env)
 
     // We store the params and the result in the list member
     // instead of having dedicated members. This is to save memory.
-    list.push_back(Value(params));
+    list.push_back(Value::vector(params));
     list.push_back(ret);
 
     // Lambdas capture only variables that they know they will use.
-    std::vector<String> used_atoms = ret.get_used_atoms();
+    std::set<String> used_atoms = ret.get_used_atoms();
 
-    for (size_t i = 0; i < used_atoms.size(); i++)
+    // for (size_t i = 0; i < used_atoms.size(); i++)
+    for (const String& atom : used_atoms)
     {
         // If the environment has a symbol that this lambda uses, capture it.
-        if (env.has(used_atoms[i]))
+        if (env.has(atom))
         {
-            lambda_scope->set(used_atoms[i], env.get(used_atoms[i]));
+            lambda_scope->set(atom, env.get(atom));
         }
     }
 }
@@ -93,9 +99,17 @@ Value Value::string(String s)
     return result;
 }
 
-std::vector<String> Value::get_used_atoms()
+Value Value::vector(std::vector<Value> vec)
 {
-    std::vector<String> result, tmp;
+    Value result;
+    result.type = VECTOR;
+    result.list = vec;
+    return result;
+}
+
+std::set<String> Value::get_used_atoms() const
+{
+    std::set<String> result, tmp;
     switch (type)
     {
     case QUOTE:
@@ -105,13 +119,14 @@ std::vector<String> Value::get_used_atoms()
     case ATOM:
         // If this is an atom, add it to the list
         // of used atoms in this expression.
-        result.push_back(as_atom());
+        result.insert(as_atom());
         return result;
     case LAMBDA:
         // If this is a lambda, get the list of used atoms in the body
         // of the expression.
         return list[1].get_used_atoms();
     case LIST:
+    case VECTOR:
         // If this is a list, add each of the atoms used in all
         // of the elements in the list.
         for (size_t i = 0; i < list.size(); i++)
@@ -119,7 +134,7 @@ std::vector<String> Value::get_used_atoms()
             // Get the atoms used in the element
             tmp = list[i].get_used_atoms();
             // Add the used atoms to the current list of used atoms
-            result.insert(result.end(), tmp.begin(), tmp.end());
+            result = set_union(result, tmp);
         }
         return result;
     default:
@@ -130,11 +145,6 @@ std::vector<String> Value::get_used_atoms()
 bool Value::is_nil() const { return type == NIL; }
 bool Value::is_builtin() const { return type == BUILTIN; }
 
-// TODO do we care to support this some_value.apply() and .eval()
-// syntax and, if so, is there a better way?
-class Interpreter;
-#include "interpreter.h"
-
 Value Value::apply(std::vector<Value>& args, Environment& env)
 {
     return Interpreter::apply(*this, args, env);
@@ -143,10 +153,38 @@ Value Value::apply(std::vector<Value>& args, Environment& env)
 Value Value::eval(Environment& env) { return Interpreter::eval_in(*this, env); }
 
 bool Value::is_number() const { return type == INT || type == FLOAT; }
+// FIXME
+bool Value::is_negative_number() const { return is_number() && *this < 0.0; }
+bool Value::is_positive_number() const { return is_number() && *this > 0.0; }
+bool Value::is_non_zero_number() const
+{
+    return is_number() && (*this < 0.0 || *this > 0.0);
+}
 
 bool Value::is_error() const { return type == ERROR; }
 
 bool Value::is_list() const { return type == LIST; }
+bool Value::is_vector() const { return type == VECTOR; }
+
+bool Value::is_signal() const
+{
+    // TODO
+    return false;
+    // return ::is_signal(*this);
+    // NOTE: would this be more accurate than checking used atoms?
+    // switch (type)
+    // {
+    // case ATOM:
+    //     // If it's an atom, it's a signal only if it can be found
+    //     // in our set of known registered signals
+    //     return known_signal_vars.find(str) != known_signal_vars.end();
+    // case LIST:
+    // case VECTOR:
+    //     auto return;
+    // default:
+    //     return false;
+    // }
+}
 
 bool Value::is_empty() const { return list.empty(); }
 
@@ -197,25 +235,44 @@ std::vector<Value> Value::as_list() const
     return list;
 }
 
+std::vector<Value> Value::as_vector() const
+{
+    if (type != VECTOR)
+    {
+        print("vector: ");
+        println(BAD_CAST);
+        currentExprSound = false;
+        return {};
+    }
+    return list;
+}
+
 void Value::push(Value val)
 {
-    if (type != LIST)
+    if (type == LIST || type == VECTOR)
+    {
+        list.push_back(val);
+    }
+    else
     {
         println(MISMATCHED_TYPES);
     }
-
-    list.push_back(val);
 }
 
 Value Value::pop()
 {
-    if (type != LIST)
+    Value result = Value::nil();
+
+    if (type == LIST || type == VECTOR)
+    {
+        result = list[list.size() - 1];
+        list.pop_back();
+    }
+    else
     {
         println(MISMATCHED_TYPES);
     }
 
-    Value result = list[list.size() - 1];
-    list.pop_back();
     return result;
 }
 
@@ -276,6 +333,7 @@ bool Value::operator==(Value other) const
         return str == other.str;
     case LAMBDA:
     case LIST:
+    case VECTOR:
         // Both lambdas and lists store their
         // data in the list member.
         return list == other.list;
@@ -551,6 +609,8 @@ String Value::get_type_name() const
         return FLOAT_TYPE;
     case LIST:
         return LIST_TYPE;
+    case VECTOR:
+        return VECTOR_TYPE;
     case STRING:
         return STRING_TYPE;
     case BUILTIN:
@@ -609,6 +669,14 @@ String Value::display() const
                 result += " ";
         }
         return "(" + result + ")";
+    case VECTOR:
+        for (size_t i = 0; i < list.size(); i++)
+        {
+            result += list[i].debug();
+            if (i < list.size() - 1)
+                result += " ";
+        }
+        return "[" + result + "]";
     case BUILTIN:
         // NOTE: should this print the address of the unique
         // pointer or of the thing it's pointing to?
@@ -679,6 +747,14 @@ String Value::debug() const
                 result += " ";
         }
         return "(" + result + ")";
+    case VECTOR:
+        for (size_t i = 0; i < list.size(); i++)
+        {
+            result += list[i].debug();
+            if (i < list.size() - 1)
+                result += " ";
+        }
+        return "[" + result + "]";
     case BUILTIN:
         return "<builtin " + str + " at " + String(long(&stack_data.builtin)) + ">";
     case BUILTIN_METHOD:

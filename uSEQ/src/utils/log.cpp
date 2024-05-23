@@ -32,7 +32,21 @@ void error(String s)
 {
     print("ERROR: ");
     print(s);
-    print("\\n");
+    print("\n");
+}
+
+void runtime_error(String s)
+{
+    print("RUNTIME ERROR: ");
+    print(s);
+    print("\n");
+}
+
+void user_warning(const String& s)
+{
+    // TODO
+    println("WARNING:");
+    println(s);
 }
 
 // void error_num_args_incorrect(String function_name, String expected,
@@ -42,6 +56,76 @@ void error(String s)
 //     print("(" + function_name + ") Expected " + String(num_expected));
 //     print("\\n");
 // }
+
+String comp_to_string(NumArgsComparison comp)
+{
+    switch (comp)
+    {
+    case NumArgsComparison::EqualTo:
+    {
+        return "exactly";
+    }
+    case NumArgsComparison::AtLeast:
+    {
+        return "at least";
+    }
+    case NumArgsComparison::AtMost:
+    {
+        return "at most";
+    }
+    case NumArgsComparison::Between:
+    {
+        return "between";
+    }
+    default:
+        return "<comparison not found>";
+    }
+
+    return "";
+}
+
+void error_wrong_num_args(const String& function_name, int num_received,
+                          NumArgsComparison expected_comp, int num, int num2 = 0)
+{
+    String expected_comparison_str = comp_to_string(expected_comp);
+    String received_num_str        = String(num_received);
+
+    expected_comparison_str += " " + String(num);
+
+    if (expected_comp == NumArgsComparison::Between)
+    {
+        expected_comparison_str += " and " + String(num2);
+    }
+
+    error("(`" + function_name + "`) Wrong number of arguments: expected " +
+          expected_comparison_str + " but received " + received_num_str +
+          " instead.");
+}
+
+void error_arg_is_error(const String& function_name, int num,
+                        const String& received_val_str)
+{
+    error("(`" + function_name + "`) Argument #" + String(num) +
+          "evaluates to an error:");
+    println("    " + received_val_str);
+}
+
+void error_wrong_all_pred(const String& function_name, int num,
+                          const String& expected_str, const String& received_val_str)
+{
+    error("(`" + function_name + "`) All arguments should evaluate to " +
+          expected_str + ", but argument #" + String(num) + " does not:");
+    println("    " + received_val_str);
+}
+
+void error_wrong_specific_pred(const String& function_name, int num,
+                               const String& expected_str,
+                               const String& received_val_str)
+{
+    error("(`" + function_name + "`) Argument #" + String(num) +
+          " should evaluate to " + expected_str + ", but instead it is:");
+    println("    " + received_val_str);
+}
 
 int free_heap() { return rp2040.getFreeHeap() / 1024; }
 

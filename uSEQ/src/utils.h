@@ -1,6 +1,30 @@
 #ifndef UTILS_H_
 #define UTILS_H_
 
+#include <algorithm>
+#include <set>
+
+// SET HELPERS
+// template <typename T>
+// std::set<T> set_union(const std::set<T>& set1, const std::set<T>& set2);
+
+template <typename T>
+std::set<T> set_union(const std::set<T>& set1, const std::set<T>& set2)
+{
+    std::set<T> resultSet;
+    std::set_union(set1.begin(), set1.end(), set2.begin(), set2.end(),
+                   std::inserter(resultSet, resultSet.begin()));
+    return resultSet;
+}
+
+template <typename T>
+std::set<T> set_intersection(const std::set<T>& set1, const std::set<T>& set2);
+
+template <typename T>
+std::set<T> set_difference(const std::set<T>& set1, const std::set<T>& set2);
+
+// \SET HELPERS
+
 #if USEQ_DEBUG
 // instantiates a local debugger object
 #define DBG(__name__) DebugLogger local_debugger(__name__)

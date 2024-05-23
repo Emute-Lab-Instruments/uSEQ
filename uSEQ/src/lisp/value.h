@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <vector>
 
 class Environment;
@@ -86,10 +87,12 @@ public:
     static Value quote(Value quoted);
     static Value atom(String s);
     static Value string(String s);
+    // static Value list(std::vector<Value> lst);
+    static Value vector(std::vector<Value> vec);
 
     Value(std::vector<Value> params, Value ret, const Environment& env);
 
-    std::vector<String> get_used_atoms();
+    std::set<String> get_used_atoms() const;
 
     Value apply(std::vector<Value>& args, Environment& env);
     Value eval(Environment& env);
@@ -97,12 +100,18 @@ public:
     bool is_builtin() const;
     bool is_nil() const;
     bool is_number() const;
+    bool is_negative_number() const;
+    bool is_positive_number() const;
+    bool is_non_zero_number() const;
+
     bool is_error() const;
     bool is_list() const;
+    bool is_vector() const;
     bool is_empty() const;
     bool is_list_and_empty() const;
     bool is_string() const;
     bool is_symbol() const;
+    bool is_signal() const;
 
     bool as_bool() const;
     int as_int() const;
@@ -110,6 +119,7 @@ public:
     String as_string() const;
     String as_atom() const;
     std::vector<Value> as_list() const;
+    std::vector<Value> as_vector() const;
     void push(Value val);
     Value pop();
 
@@ -155,6 +165,7 @@ public:
         INT,
         FLOAT,
         LIST,
+        VECTOR,
         STRING,
         LAMBDA,
         BUILTIN,
