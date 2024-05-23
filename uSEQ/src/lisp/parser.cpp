@@ -48,7 +48,7 @@ bool uLispParser::is_symbol(const String& s, int ptr)
 {
     char ch = s[ptr];
     return (isdigit(ch) || isalpha(ch) || ispunct(ch)) && ch != '(' && ch != ')' &&
-           ch != '"' && ch != '\'';
+           ch != '[' && ch != ']' && ch != '"' && ch != '\'';
 }
 
 bool uLispParser::is_comment(const String& s, int ptr) { return s[ptr] == ';'; }
@@ -92,13 +92,17 @@ Value uLispParser::parse(String s, int& ptr)
     }
     else if (is_quote(s, ptr))
     {
-        // If this is a quote
+
+        // println("is quote");
+        //  If this is a quote
         ptr++;
         return Value::quote(parse(s, ptr));
     }
     else if (is_list(s, ptr))
     {
-        // If this is a list
+
+        // println("is list");
+        //  If this is a list
         skip_whitespace(s, ++ptr);
 
         Value result = Value(std::vector<Value>());
@@ -120,9 +124,37 @@ Value uLispParser::parse(String s, int& ptr)
         skip_whitespace(s, ++ptr);
         return result;
     }
+    else if (is_vector(s, ptr))
+    {
+        // println("is vector");
+        //  If this is a list
+        skip_whitespace(s, ++ptr);
+
+        Value result;
+        std::vector<Value> vec;
+
+        while (s[ptr] != ']')
+        {
+            // skip_whitespace(s, ++ptr);
+            Value res = parse(s, ptr);
+            if (res.is_error())
+            {
+                return Value::error();
+            }
+            else
+            {
+                vec.push_back(res);
+            }
+        }
+
+        skip_whitespace(s, ++ptr);
+        return Value::vector(vec);
+    }
     else if (isdigit(s[ptr]) || (s[ptr] == '-' && isdigit(s[ptr + 1])))
     {
-        // If this is a number
+
+        // println("is digit");
+        //  If this is a number
         bool negate = s[ptr] == '-';
         if (negate)
             ptr++;
@@ -141,14 +173,16 @@ Value uLispParser::parse(String s, int& ptr)
     }
     else if (s[ptr] == '\"')
     {
-        // If this is a string
+
+        // println("is string");
+        //  If this is a string
         int n = 1;
         while (s[ptr + n] != '\"')
         {
             if (ptr + n >= int(s.length()))
             {
                 print(MALFORMED_PROGRAM);
-                println(" 1");
+                // println(" 1");
                 return Value::error();
                 // throw std::runtime_error(MALFORMED_PROGRAM);
             }
@@ -169,13 +203,15 @@ Value uLispParser::parse(String s, int& ptr)
     }
     else if (s[ptr] == '@')
     {
+        // println("is @");
         ptr++;
         skip_whitespace(s, ptr);
         return Value();
     }
     else if (is_symbol(s, ptr))
     {
-        // If this is a string
+        // println("is symbol");
+        //  If this is a string
         int n = 0;
         while (is_symbol(s, ptr + n))
         {

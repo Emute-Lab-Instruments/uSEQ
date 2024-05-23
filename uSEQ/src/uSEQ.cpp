@@ -604,9 +604,9 @@ void uSEQ::check_and_handle_user_input()
             if (first_byte == m_execute_now_marker /*'@'*/)
             {
                 String result = eval(m_last_received_code);
-                print("==> ");
-                println(result);
-                // print("\n");
+                print("\n=> ");
+                print(result);
+                print("\n");
                 // print(">> ");
             }
             // SCHEDULE FOR LATER
@@ -710,9 +710,102 @@ void uSEQ::update_serial_signals()
     }
 }
 
+/*
+ * (define my-bar (slow 2 bar))
+ * => "slow", "bar"
+ *
+ * (define my-phasor (+ my-bar 1))
+ * => "my-bar"
+ *
+ * (d1 (+ my-phasor 3))
+ * => "my-phasor"
+ *
+ * */
+
+void uSEQ::perform_topo_sort()
+{
+    DBG("uSEQ::perform_topo_sort");
+    size_t millis_start = millis();
+
+    // println("Starting topo sort");
+
+    // std::set<String> collective_deps;
+
+    // 1. Iterate over output ASTs
+    // NOTE: this should probably include serial ASTs too
+    for (auto& ast_vec : { m_continuous_ASTs, m_binary_ASTs })
+    {
+        // 2. Iterate over each expr in that AST vec
+        for (auto& output_expr : ast_vec)
+        {
+            // println("expr");
+            // println(expr.display());
+
+            // 3. Iterate over each atom in that expr
+            for (auto& used_atom : output_expr.get_used_atoms())
+            {
+                // println("  atom");
+                // println("  " + atom);
+                // 4. Check to see if we've got an expr for this var
+                // and, if we do, add _their_
+                std::optional<Value> used_atom_expr = m_def_exprs.get(used_atom);
+
+                if (used_atom_expr)
+                {
+                    std::set<String> used_atoms = (*used_atom_expr).get_used_atoms();
+                    m_dependency_graph.set_dependencies(used_atom, used_atoms);
+                }
+            }
+        }
+    }
+
+    // Add the sorted vector and remove any elements for which we don't have a form
+    // to update (i.e. that weren't defined by the user in this session)
+    m_topo_sorted_execution_order = {};
+    for (auto& var : m_dependency_graph.sort())
+    {
+        if (m_def_exprs.has(var))
+        {
+            m_topo_sorted_execution_order.push_back(var);
+        }
+    }
+
+    // println("execution order:");
+    // for (auto& v : m_topo_sorted_execution_order)
+    // {
+    //     print(v);
+    //     print(", ");
+    // }
+
+    should_recheck_toposort = false;
+    // println("# time it took to sort:");
+    // println(String((millis() - millis_start) / 1000));
+}
+
+void uSEQ::update_signal_dependencies()
+{
+    if (should_recheck_toposort)
+    {
+        perform_topo_sort();
+    }
+
+    // Iterate and update each expr in the sorted order
+    for (const auto& sig_name : m_topo_sorted_execution_order)
+    {
+        std::optional<Value> expr = m_def_exprs.get(sig_name);
+        if (expr)
+        {
+            set(sig_name, eval(*expr));
+        }
+    }
+}
+
 void uSEQ::update_signals()
 {
     DBG("uSEQ::update_signals");
+
+    update_signal_dependencies();
+
     update_continuous_signals();
     update_binary_signals();
     update_serial_signals();
@@ -1875,8 +1968,12 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = { args[0] }
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a1,
     if (NUM_CONTINUOUS_OUTS >= 1) {
+        println("from a1:");
+        println(args[0].display());
         set("a1-expr", args[0]);
         m_continuous_ASTs[0] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1884,6 +1981,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 2) {
         set("a2-expr", args[0]);
         m_continuous_ASTs[1] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1891,6 +1990,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 3) {
         set("a3-expr", args[0]);
         m_continuous_ASTs[2] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1898,6 +1999,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 4) {
         set("a4-expr", args[0]);
         m_continuous_ASTs[3] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 
@@ -1906,6 +2009,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 5) {
         set("a5-expr", args[0]);
         m_continuous_ASTs[4] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 
@@ -1914,6 +2019,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 6) {
         set("a6-expr", args[0]);
         m_continuous_ASTs[5] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 
@@ -1923,6 +2030,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 1) {
         set("d1-expr", args[0]);
         m_binary_ASTs[0] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1930,6 +2039,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 2) {
         set("d2-expr", args[0]);
         m_binary_ASTs[1] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1937,6 +2048,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 3) {
         set("d3-expr", args[0]);
         m_binary_ASTs[2] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1944,6 +2057,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 4) {
         set("d4-expr", args[0]);
         m_binary_ASTs[3] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1951,6 +2066,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 5) {
         set("d5-expr", args[0]);
         m_binary_ASTs[4] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1958,14 +2075,16 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 6) {
         set("d6-expr", args[0]);
         m_binary_ASTs[5] = { args[0] };
+        // NOTE
+        should_recheck_toposort = true;
     },
     1)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_s1, 
-    set("s1-expr", args[0]);
-    m_serial_ASTs[0] = { args[0] };, 
-    // Serial.println(m_serial_ASTs.size());,
-    1)
+BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set("s1-expr", args[0]);
+                          m_serial_ASTs[0] = { args[0] };
+                          ,
+                          // Serial.println(m_serial_ASTs.size());,
+                          1)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_s2, set("s2-expr", args[0]);
                           m_serial_ASTs[1] = { args[0] };, 1)

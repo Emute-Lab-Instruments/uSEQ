@@ -13,6 +13,8 @@
 // Static Class-wide flag
 // bool Interpreter::m_builtindefs_init = false;
 
+bool should_recheck_toposort = false;
+
 uSEQ* Interpreter::useq_instance_ptr;
 
 Interpreter::Interpreter() {}
@@ -417,7 +419,25 @@ Value Interpreter::eval_in(Value& v, Environment& env)
         }
         break;
     }
+    case Value::VECTOR:
+    {
+        std::vector<Value> result;
 
+        for (auto& val : v.list)
+        {
+            Value evalled = val.eval(env);
+            if (evalled.is_error())
+            {
+                return Value::error();
+            }
+            else
+            {
+                result.push_back(evalled);
+            }
+        }
+
+        return Value::vector(result);
+    }
     default:
         dbg("default case");
         result = v;
@@ -609,11 +629,13 @@ void Interpreter::loadBuiltinDefs()
 
     // arduino math
     // NOTE: duplicates
-    Environment::builtindefs["sin"]  = Value("sin", builtin::ard_sin);
-    Environment::builtindefs["sine"] = Value("sine", builtin::ard_sin);
-    Environment::builtindefs["cos"]  = Value("cos", builtin::ard_cos);
-    Environment::builtindefs["tan"]  = Value("tan", builtin::ard_tan);
-    Environment::builtindefs["abs"]  = Value("abs", builtin::ard_abs);
+    Environment::builtindefs["sin"]   = Value("sin", builtin::ard_sin);
+    Environment::builtindefs["sine"]  = Value("sine", builtin::ard_sin);
+    Environment::builtindefs["usin"]  = Value("usin", builtin::ard_usin);
+    Environment::builtindefs["usine"] = Value("usine", builtin::ard_usin);
+    Environment::builtindefs["cos"]   = Value("cos", builtin::ard_cos);
+    Environment::builtindefs["tan"]   = Value("tan", builtin::ard_tan);
+    Environment::builtindefs["abs"]   = Value("abs", builtin::ard_abs);
 
     Environment::builtindefs["min"]   = Value("min", builtin::ard_min);
     Environment::builtindefs["max"]   = Value("max", builtin::ard_max);

@@ -7,6 +7,8 @@
 
 class uSEQ;
 
+extern bool should_recheck_toposort;
+
 class Interpreter : public Environment, public uLispParser
 {
 public:
@@ -45,9 +47,8 @@ public:
 protected:
     // may be used by uSEQ class
     bool evalled_args_contain_errors(std::vector<Value>& args);
-        
-private:
 
+private:
     bool m_builtindefs_init = false;
     void loadBuiltinDefs();
 };

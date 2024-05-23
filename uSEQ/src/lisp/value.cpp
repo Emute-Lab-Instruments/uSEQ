@@ -143,7 +143,7 @@ std::set<String> Value::get_used_atoms() const
 }
 
 bool Value::is_nil() const { return type == NIL; }
-bool Value::is_builtin() const { return type == BUILTIN; }
+bool Value::is_builtin() const { return type == BUILTIN || type == BUILTIN_METHOD; }
 
 Value Value::apply(std::vector<Value>& args, Environment& env)
 {

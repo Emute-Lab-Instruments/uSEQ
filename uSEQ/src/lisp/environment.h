@@ -74,10 +74,13 @@ public:
     bool has(String const& name) const;
     // Get the value associated with this name in this scope
     Value get(const String& name) const;
+    Value get_expr(const String& name) const;
     // Set the value associated with this name in this scope
     void set(const String& name, Value value);
+    void set_expr(const String& name, Value value);
     // void set(const String& name, Value value);
     void set_global(const String name, Value value);
+    void set_global_expr(const String name, Value value);
 
     void combine(Environment const& other);
     String toString(Environment const& e);
@@ -89,9 +92,11 @@ public:
 
     static BuiltinMap builtindefs;
 
-private:
-    // The definitions in the scope.
+protected:
     ValueMap m_defs;
+    ValueMap m_def_exprs;
+
+    // The definitions in the scope.
     Environment* m_parent_env;
     // Environment* m_child_env;
 };
