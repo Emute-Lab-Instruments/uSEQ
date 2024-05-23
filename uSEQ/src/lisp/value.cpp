@@ -225,7 +225,7 @@ String Value::as_atom() const
 
 std::vector<Value> Value::as_list() const
 {
-    if (type != LIST)
+    if (type != LIST && type != VECTOR)
     {
         print("list: ");
         println(BAD_CAST);
