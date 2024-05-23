@@ -26,6 +26,8 @@
    "!.is_empty()" "a non-empty list"
    ;; VECTORS
    ".is_vector()" "a vector"
+   ;; SYMBOLS
+   ".is_symbol()" "a symbol"
    ;; STRINGS
    ".is_string()" "a string"
    "!.is_string()" "not a string"

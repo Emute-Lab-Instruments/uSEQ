@@ -87,6 +87,37 @@ Value Environment::get(const String& name) const
     }
 }
 
+Value Environment::get_expr(const String& name) const
+{
+    DBG("Environment::get_expr");
+    dbg("Name: " + name);
+
+    std::optional<Value> result;
+    // 1. Look in regular defs
+    result = m_def_exprs.get(name);
+    // 2. If not there, check if there's a parent env
+    if (!result)
+    {
+        if (m_parent_env != NULL)
+        {
+            // debug("searching parent env...");
+            result = m_parent_env->get_expr(name);
+        }
+    }
+    // 3. If still not found, return error
+    if (!result)
+    {
+        print("Expr not defined");
+        print(": ");
+        println(name);
+        return Value::error();
+    }
+    else
+    {
+        return result.value();
+    }
+}
+
 void Environment::set(const String& name, Value value)
 {
     // debug("Environment::set setting... (" + name + ")");
@@ -97,12 +128,26 @@ void Environment::set(const String& name, Value value)
     // mutex_exit(&write_mutex);
 }
 
+void Environment::set_expr(const String& name, Value value)
+{
+    m_def_exprs[name] = value;
+}
+
 void Environment::set_global(String name, Value value)
 {
     set(name, value);
     if (m_parent_env)
     {
         m_parent_env->set_global(name, value);
+    }
+}
+
+void Environment::set_global_expr(String name, Value value)
+{
+    set_expr(name, value);
+    if (m_parent_env)
+    {
+        m_parent_env->set_global_expr(name, value);
     }
 }
 
@@ -115,6 +160,14 @@ void Environment::combine(Environment const& other)
     {
         // Iterate through the keys and assign each value.
         m_defs[itr->first] = itr->second;
+    }
+
+    // NOTE
+    auto itr2 = other.m_def_exprs.begin();
+    for (; itr2 != other.m_def_exprs.end(); itr2++)
+    {
+        // Iterate through the keys and assign each value.
+        m_def_exprs[itr2->first] = itr2->second;
     }
 }
 
