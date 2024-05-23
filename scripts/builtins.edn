@@ -2,7 +2,8 @@
 ;; env, so we shouldn't use this string directly in the error msg
 ;; SOLUTION: either add an extra key, or have a conversion map from
 ;; internal to external name
-{"eval" {:args {:num "== 1"}
+{;; LISP builtins
+ "eval" {:args {:num "== 1"}
          :eval-args? false
          :body ["result = args[0].eval(env);"]
          :docstring "Evaluate a value as code"}
@@ -11,10 +12,13 @@
  "list" {:body ["result = Value(args);"]
          :docstring "Create a list of values"}
 
+ "vec" {:body ["result = Value::vector(args);"]
+        :docstring "Create a list of values"}
+
  "lambda" {:eval-args? false
            :args {:num "== 2"
-                  :type {0 ".is_list()"}}
-           :body "result = Value(args[0].as_list(), args[1], env);"
+                  :type {0 ".is_vector()"}}
+           :body "result = Value(args[0].as_vector(), args[1], env);"
            :docstring "Create a lambda function (SPECIAL FORM)"}
 
  "if_then_else" {:eval-args? false
@@ -34,9 +38,9 @@
  "defun" {:eval-args? false
           :args {:num "== 3"
                  :type {0 ".is_symbol()"
-                        1 ".is_list()"}}
+                        1 ".is_vector()"}}
           :body ["String f_name             = args[0].display();"
-                 "std::vector<Value> params = args[1].as_list();"
+                 "std::vector<Value> params = args[1].as_vector();"
                  "Value body                = args[2];"
                  "result                    = Value(params, body, env);"
                  "env.set(f_name, result);"]
@@ -306,9 +310,21 @@
                    :type {0 ".is_number()"}}
             :body ["result = Value(sin(args[0].as_float()));"]}
 
+ ;; NOTE normalised
+ ;; TODO add to env
+ "ard_usin" {:args {:num "== 1"
+                    :type {0 ".is_number()"}}
+             :body ["result = Value(0.5 + 0.5 * sin(args[0].as_float()));"]}
+
  "ard_cos" {:args {:num "== 1"
                    :type {0 ".is_number()"}}
             :body ["result = Value(cos(args[0].as_float()));"]}
+
+ ;; NOTE normalised
+ ;; TODO add to env
+ "ard_ucos" {:args {:num "== 1"
+                    :type {0 ".is_number()"}}
+             :body ["result = Value(0.5 + 0.5 * cos(args[0].as_float()));"]}
 
  "ard_tan" {:args {:num "== 1"
                    :type {0 ".is_number()"}}
