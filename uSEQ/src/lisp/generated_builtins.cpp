@@ -1944,12 +1944,6 @@ Value useq_pulse(std::vector<Value>& args, Environment& env)
                                   args[1].display());
         return Value::error();
     }
-    if (!(args[2].is_number()))
-    {
-        error_wrong_specific_pred(user_facing_name, 3, "a number",
-                                  args[2].display());
-        return Value::error();
-    }
 
     // BODY
     Value result = Value::nil();
