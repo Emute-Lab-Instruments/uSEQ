@@ -107,6 +107,7 @@ public:
     bool is_error() const;
     bool is_list() const;
     bool is_vector() const;
+    bool is_sequential() const;
     bool is_empty() const;
     bool is_list_and_empty() const;
     bool is_string() const;
@@ -120,6 +121,7 @@ public:
     String as_atom() const;
     std::vector<Value> as_list() const;
     std::vector<Value> as_vector() const;
+    std::vector<Value> as_sequential() const;
     void push(Value val);
     Value pop();
 

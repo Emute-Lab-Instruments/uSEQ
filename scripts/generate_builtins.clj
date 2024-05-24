@@ -26,6 +26,8 @@
    "!.is_empty()" "a non-empty list"
    ;; VECTORS
    ".is_vector()" "a vector"
+   ;; SEQUENTIAL
+   ".is_sequential()" "a sequential structure (e.g. a list or a vector)"
    ;; SYMBOLS
    ".is_symbol()" "a symbol"
    ;; STRINGS

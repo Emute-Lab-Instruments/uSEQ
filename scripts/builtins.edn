@@ -44,9 +44,9 @@
  "defun" {:eval-args? false
           :args {:num "== 3"
                  :type {0 ".is_symbol()"
-                        1 ".is_vector()"}}
+                        1 ".is_sequential()"}}
           :body ["String f_name             = args[0].display();"
-                 "std::vector<Value> params = args[1].as_vector();"
+                 "std::vector<Value> params = args[1].as_sequential();"
                  "Value body                = args[2];"
                  "result                    = Value(params, body, env);"
                  "env.set(f_name, result);"]
@@ -393,6 +393,16 @@
 
  "debug" {:args {:num "== 1"}
           :body ["result = Value::string(args[0].debug());"]}
+
+ "println" {:args {:num "== 1"
+                   :type {0 ".is_string()"}}
+            :body ["String s = args[0].as_string();"
+                   "Serial.println(s);"]}
+
+ "print" {:args {:num "== 1"
+                 :type {0 ".is_string()"}}
+          :body ["String s = args[0].as_string();"
+                 "Serial.print(s);"]}
 
  ;; "debug" {:args {:num "== 1"}
  ;;          :body ["result = Value::string(args[0].debug());"]}
