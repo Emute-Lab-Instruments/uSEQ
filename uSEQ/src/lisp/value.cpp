@@ -165,6 +165,7 @@ bool Value::is_error() const { return type == ERROR; }
 
 bool Value::is_list() const { return type == LIST; }
 bool Value::is_vector() const { return type == VECTOR; }
+bool Value::is_sequential() const { return is_list() || is_vector(); }
 
 bool Value::is_signal() const
 {
@@ -229,7 +230,6 @@ std::vector<Value> Value::as_list() const
     {
         print("list: ");
         println(BAD_CAST);
-        currentExprSound = false;
         return {};
     }
     return list;
@@ -241,7 +241,16 @@ std::vector<Value> Value::as_vector() const
     {
         print("vector: ");
         println(BAD_CAST);
-        currentExprSound = false;
+        return {};
+    }
+    return list;
+}
+
+std::vector<Value> Value::as_sequential() const
+{
+    if (type != VECTOR && type != LIST)
+    {
+        println(BAD_CAST);
         return {};
     }
     return list;

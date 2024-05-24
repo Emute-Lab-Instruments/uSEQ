@@ -9,7 +9,7 @@
         Value ret = Value();                                                        \
         if (args.size() != __numArgs__)                                             \
         {                                                                           \
-            println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);      \
+            ::println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);    \
             ret = Value::error();                                                   \
         }                                                                           \
         else                                                                        \
@@ -25,7 +25,7 @@
         Interpreter::eval_args(args, env);                                          \
         Value ret = Value();                                                        \
         if (args.size() < __minArgs__ || args.size() > __maxArgs__)                 \
-            println(args.size() > __maxArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);      \
+            ::println(args.size() > __maxArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);    \
         else                                                                        \
         {                                                                           \
             __body__                                                                \
@@ -38,7 +38,7 @@
     {                                                                               \
         Value ret = Value();                                                        \
         if (args.size() != __numArgs__)                                             \
-            println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);      \
+            ::println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);    \
         else                                                                        \
         {                                                                           \
             __body__                                                                \
@@ -54,7 +54,7 @@
         Value ret = Value();                                                        \
         if (args.size() != __numArgs__)                                             \
         {                                                                           \
-            println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);      \
+            ::println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);    \
             ret = Value::error();                                                   \
         }                                                                           \
         else                                                                        \
@@ -70,7 +70,7 @@
         eval_args(args, env);                                                       \
         Value ret = Value();                                                        \
         if (args.size() < __minArgs__ || args.size() > __maxArgs__)                 \
-            println(args.size() > __maxArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);      \
+            ::println(args.size() > __maxArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);    \
         else                                                                        \
         {                                                                           \
             __body__                                                                \
@@ -83,7 +83,7 @@
     {                                                                               \
         Value ret = Value();                                                        \
         if (args.size() != __numArgs__)                                             \
-            println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);      \
+            ::println(args.size() > __numArgs__ ? TOO_MANY_ARGS : TOO_FEW_ARGS);    \
         else                                                                        \
         {                                                                           \
             __body__                                                                \
