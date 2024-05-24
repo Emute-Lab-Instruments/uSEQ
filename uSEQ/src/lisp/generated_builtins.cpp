@@ -873,6 +873,46 @@ Value eval(std::vector<Value>& args, Environment& env)
     return result;
 }
 
+Value println(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "println";
+
+    // Checking number of args
+    if (!(args.size() == 1))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+    }
+
+    // Checking individual args
+    if (!(args[0].is_string()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a string",
+                                  args[0].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+    String s     = args[0].as_string();
+    Serial.println(s);
+    return result;
+}
+
 Value cast_to_int(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "int";
@@ -1642,6 +1682,46 @@ Value ard_sqrt(std::vector<Value>& args, Environment& env)
     return result;
 }
 
+Value print(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "print";
+
+    // Checking number of args
+    if (!(args.size() == 1))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+    }
+
+    // Checking individual args
+    if (!(args[0].is_string()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a string",
+                                  args[0].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+    String s     = args[0].as_string();
+    Serial.print(s);
+    return result;
+}
+
 Value display(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "display";
@@ -1824,9 +1904,10 @@ Value defun(std::vector<Value>& args, Environment& env)
                                   args[0].display());
         return Value::error();
     }
-    if (!(args[1].is_vector()))
+    if (!(args[1].is_sequential()))
     {
-        error_wrong_specific_pred(user_facing_name, 2, "a vector",
+        error_wrong_specific_pred(user_facing_name, 2,
+                                  "a sequential structure (e.g. a list or a vector)",
                                   args[1].display());
         return Value::error();
     }
@@ -1834,7 +1915,7 @@ Value defun(std::vector<Value>& args, Environment& env)
     // BODY
     Value result              = Value::nil();
     String f_name             = args[0].display();
-    std::vector<Value> params = args[1].as_vector();
+    std::vector<Value> params = args[1].as_sequential();
     Value body                = args[2];
     result                    = Value(params, body, env);
     env.set(f_name, result);

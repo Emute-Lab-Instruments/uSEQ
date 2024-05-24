@@ -30,23 +30,17 @@ void println(String s)
 
 void error(String s)
 {
-    print("ERROR: ");
-    print(s);
-    print("\n");
+    // print("ERROR: ");
+    println("**Error**: " + s);
+    // print("\n");
 }
 
-void runtime_error(String s)
-{
-    print("RUNTIME ERROR: ");
-    print(s);
-    print("\n");
-}
+void runtime_error(String s) { println("**Runtime Error**: " + s); }
 
 void user_warning(const String& s)
 {
     // TODO
-    println("WARNING:");
-    println(s);
+    println("**Warning**: " + s);
 }
 
 // void error_num_args_incorrect(String function_name, String expected,
@@ -106,8 +100,8 @@ void error_arg_is_error(const String& function_name, int num,
                         const String& received_val_str)
 {
     error("(`" + function_name + "`) Argument #" + String(num) +
-          "evaluates to an error:");
-    println("    " + received_val_str);
+          " evaluates to an error:");
+    println("- " + received_val_str);
 }
 
 void error_wrong_all_pred(const String& function_name, int num,
@@ -115,7 +109,7 @@ void error_wrong_all_pred(const String& function_name, int num,
 {
     error("(`" + function_name + "`) All arguments should evaluate to " +
           expected_str + ", but argument #" + String(num) + " does not:");
-    println("    " + received_val_str);
+    println("- " + received_val_str);
 }
 
 void error_wrong_specific_pred(const String& function_name, int num,
@@ -124,7 +118,7 @@ void error_wrong_specific_pred(const String& function_name, int num,
 {
     error("(`" + function_name + "`) Argument #" + String(num) +
           " should evaluate to " + expected_str + ", but instead it is:");
-    println("    " + received_val_str);
+    println("- " + received_val_str);
 }
 
 int free_heap() { return rp2040.getFreeHeap() / 1024; }

@@ -1879,9 +1879,10 @@ Value uSEQ::useq_fromList(std::vector<Value>& args, Environment& env)
     }
 
     // Checking individual args
-    if (!(args[0].is_vector()))
+    if (!(args[0].is_sequential()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a vector",
+        error_wrong_specific_pred(user_facing_name, 1,
+                                  "a sequential structure (e.g. a list or a vector)",
                                   args[0].display());
         return Value::error();
     }
@@ -1894,7 +1895,7 @@ Value uSEQ::useq_fromList(std::vector<Value>& args, Environment& env)
     }
 
     // BODY
-    auto lst            = args[0].as_list();
+    auto lst            = args[0].as_sequential();
     const double phasor = args[1].as_float();
     return fromList(lst, phasor, env);
 }
@@ -1969,8 +1970,6 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = { args[0] }
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a1,
     if (NUM_CONTINUOUS_OUTS >= 1) {
-        println("from a1:");
-        println(args[0].display());
         set("a1-expr", args[0]);
         m_continuous_ASTs[0] = { args[0] };
         // NOTE

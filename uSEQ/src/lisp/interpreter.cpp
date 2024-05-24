@@ -82,29 +82,29 @@ Value eval_args(std::vector<Value>& args, Environment& env)
 // }
 
 // Print several values and return the last one
-Value print(std::vector<Value>& args, Environment& env)
-{
-    // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
+// Value print(std::vector<Value>& args, Environment& env)
+// {
+//     // Is not a special form, so we can evaluate our args.
+//     eval_args(args, env);
 
-    if (args.size() < 1)
-        Serial.println(TOO_FEW_ARGS);
-    // throw Error(Value("print", print), env, TOO_FEW_ARGS);
+//     if (args.size() < 1)
+//         Serial.println(TOO_FEW_ARGS);
+//     // throw Error(Value("print", print), env, TOO_FEW_ARGS);
 
-    Value acc;
-    for (size_t i = 0; i < args.size(); i++)
-    {
-        acc = args[i];
-        Serial.print(acc.display().c_str());
-        // std::cout << acc.display();
-        if (i < args.size() - 1)
-            // std::cout << " ";
-            Serial.print(" ");
-    }
-    // std::cout << std::endl;
-    Serial.println();
-    return acc;
-}
+//     Value acc;
+//     for (size_t i = 0; i < args.size(); i++)
+//     {
+//         acc = args[i];
+//         Serial.print(acc.display().c_str());
+//         // std::cout << acc.display();
+//         if (i < args.size() - 1)
+//             // std::cout << " ";
+//             Serial.print(" ");
+//     }
+//     // std::cout << std::endl;
+//     Serial.println();
+//     return acc;
+// }
 
 // Get a random number between two numbers inclusively
 Value gen_random(std::vector<Value>& args, Environment& env)
@@ -553,7 +553,8 @@ Value Interpreter::apply(Value& f, LispFuncArgsVec& args, Environment& env)
     }
     default:
     {
-        error("ERROR APPLY NOTHING, DEFAULT");
+        error("Attempted to apply a non-function:");
+        println(f.display());
         // We can only call lambdas and builtins
         // print(CALL_NON_FUNCTION);
         // println(str);
@@ -666,6 +667,10 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["print"] = Value("print", builtin::print);
     // if (name == "input") return Value("input", builtin::input);
     Environment::builtindefs["random"] = Value("random", builtin::gen_random);
+#else
+    //
+    Environment::builtindefs["print"]   = Value("print", builtin::print);
+    Environment::builtindefs["println"] = Value("println", builtin::println);
 #endif
 
     // String operations
