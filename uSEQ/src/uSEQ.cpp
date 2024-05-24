@@ -1261,6 +1261,56 @@ double fast(double speed, double phasor)
 //                    double fastPhasor = fast(speed, phasor); ret =
 //                    Value(fastPhasor); , 2)
 
+// Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
+// {
+//     DBG("uSEQ::fast");
+//     constexpr const char* user_facing_name = "fast";
+
+//     // Checking number of args
+//     if (!(args.size() == 2))
+//     {
+//         error_wrong_num_args(user_facing_name, args.size(),
+//                              NumArgsComparison::EqualTo, 2, 0);
+//         return Value::error();
+//     }
+
+//     // Eval first arg only
+//     Value pre_eval = args[0];
+//     args[0]        = args[0].eval(env);
+//     if (args[0].is_error())
+//     {
+//         error_arg_is_error(user_facing_name, 1, pre_eval.display());
+//         return Value::error();
+//     }
+//     // Checking first arg
+//     if (!(args[0].is_number()))
+//     {
+//         error_wrong_specific_pred(user_facing_name, 1, "a number",
+//                                   args[1].display());
+//         return Value::error();
+//     }
+
+//     // BODY
+//     Value result = Value::nil();
+
+//     // double factor = args[0].as_float();
+//     // // save current time to restore when done
+//     // TimeValue current_transport_time = m_transport_time;
+//     // TimeValue tmp_time               = m_transport_time * factor;
+//     // dbg("factor: " + String(factor));
+//     // dbg("actual_time: " + String(actual_time));
+//     // dbg("tmp_time: " + String(tmp_time));
+//     // //
+//     // update_logical_time(tmp_time);
+//     // //
+//     // Value sig = args[1];
+//     // result    = sig.eval(env);
+//     // // restore the interpreter's time
+//     // update_logical_time(current_transport_time);
+//     // result = fast(factor, sig.as_float());
+
+//     return result;
+// }
 Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
 {
     DBG("uSEQ::fast");
@@ -1274,7 +1324,7 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
-    // Eval first arg only
+    // Eval first arg
     Value pre_eval = args[0];
     args[0]        = args[0].eval(env);
     if (args[0].is_error())
@@ -1290,23 +1340,28 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
+    Value pre_eval2 = args[1];
+    args[1]        = args[1].eval(env);
+    if (args[1].is_error())
+    {
+        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        return Value::error();
+    }
+    // Checking first arg
+    if (!(args[1].is_number()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[1].display());
+        return Value::error();
+    }
+
     // BODY
-    Value result = Value::nil();
+    // Value result = Value::nil();
 
     double factor = args[0].as_float();
-    // save current time to restore when done
-    TimeValue current_transport_time = m_transport_time;
-    TimeValue tmp_time               = m_transport_time * factor;
-    dbg("factor: " + String(factor));
-    dbg("actual_time: " + String(actual_time));
-    dbg("tmp_time: " + String(tmp_time));
-    //
-    update_logical_time(tmp_time);
-    //
-    Value sig = args[1];
-    result    = sig.eval(env);
-    // restore the interpreter's time
-    update_logical_time(current_transport_time);
+    double speed = args[1].as_float();
+    Value result = fast(factor, speed);
+
 
     return result;
 }

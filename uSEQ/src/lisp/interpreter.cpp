@@ -403,11 +403,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
                               expr.display());
                         break;
                     }
-                    // Serial.println(evaled_arg.as_string());
-                    // else{
-                    //     args[i] = evaled_arg;   
-                        
-                    // }
+                    args[i] = evaled_arg;                           
                 }
             }
 
