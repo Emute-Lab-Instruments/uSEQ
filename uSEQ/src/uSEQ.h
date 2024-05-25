@@ -145,8 +145,8 @@ private:
     void update_serial_outs();
     void update_Q0();
 
-    Value default_continuous_expr = parse("bar");
-    Value default_binary_expr     = parse("(square bar)");
+    Value default_continuous_expr = Value::nil();
+    Value default_binary_expr     = Value::nil();
     Value default_serial_expr     = Value::nil();
 
     String m_last_received_code = "";

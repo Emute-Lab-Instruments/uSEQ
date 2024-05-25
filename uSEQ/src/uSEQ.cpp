@@ -630,19 +630,26 @@ void uSEQ::update_continuous_signals()
     for (int i = 0; i < m_num_continuous_outs; i++)
     {
         Value expr = m_continuous_ASTs[i];
-        dbg("Evalling: " + expr.display());
-        Value result = eval(expr);
-        if (!result.is_number())
+        if (expr.is_nil())
         {
-            error("Expression specified for a" + String(i + 1) +
-                  " does not result in a number - resetting to default.");
-            error("Expression: \n" + expr.display());
-            m_continuous_ASTs[i] = default_continuous_expr;
             m_continuous_vals[i] = 0.0;
         }
         else
         {
-            m_continuous_vals[i] = result.as_float();
+            dbg("Evalling: " + expr.display());
+            Value result = eval(expr);
+            if (!result.is_number())
+            {
+                error("Expression specified for a" + String(i + 1) +
+                      " does not result in a number - resetting to default.");
+                error("Expression: \n" + expr.display());
+                m_continuous_ASTs[i] = default_continuous_expr;
+                m_continuous_vals[i] = 0.0;
+            }
+            else
+            {
+                m_continuous_vals[i] = result.as_float();
+            }
         }
     }
 }
@@ -654,20 +661,26 @@ void uSEQ::update_binary_signals()
     for (int i = 0; i < m_num_binary_outs; i++)
     {
         Value expr = m_binary_ASTs[i];
-        dbg("Evalling: " + expr.display());
-        Value result = eval(expr);
-
-        if (!result.is_number())
+        if (expr.is_nil())
         {
-            error("Expression specified for d" + String(i + 1) +
-                  " does not eval to a number - resetting to default.");
-            error("Expression: \n" + expr.display());
-            m_binary_ASTs[i] = default_binary_expr;
-            m_binary_vals[i] = 0;
+            m_binary_vals[i] = 0.0;
         }
         else
         {
-            m_binary_vals[i] = result.as_int();
+            dbg("Evalling: " + expr.display());
+            Value result = eval(expr);
+            if (!result.is_number())
+            {
+                error("Expression specified for a" + String(i + 1) +
+                      " does not result in a number - resetting to default.");
+                error("Expression: \n" + expr.display());
+                m_binary_ASTs[i] = default_binary_expr;
+                m_binary_vals[i] = 0.0;
+            }
+            else
+            {
+                m_binary_vals[i] = result.as_float();
+            }
         }
     }
 }
