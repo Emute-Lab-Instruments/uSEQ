@@ -614,7 +614,7 @@ void uSEQ::check_and_handle_user_input()
             else
             {
                 m_last_received_code =
-                String((char)first_byte) + m_last_received_code;
+                    String((char)first_byte) + m_last_received_code;
                 println(m_last_received_code);
                 Value expr = parse(m_last_received_code);
                 m_runQueue.push_back(expr);
@@ -631,19 +631,26 @@ void uSEQ::update_continuous_signals()
     for (int i = 0; i < m_num_continuous_outs; i++)
     {
         Value expr = m_continuous_ASTs[i];
-        dbg("Evalling: " + expr.display());
-        Value result = eval(expr);
-        if (!result.is_number())
+        if (expr.is_nil())
         {
-            error("Expression specified for a" + String(i + 1) +
-                  " does not result in a number - resetting to default.");
-            error("Expression: \n" + expr.display());
-            m_continuous_ASTs[i] = default_continuous_expr;
             m_continuous_vals[i] = 0.0;
         }
         else
         {
-            m_continuous_vals[i] = result.as_float();
+            dbg("Evalling: " + expr.display());
+            Value result = eval(expr);
+            if (!result.is_number())
+            {
+                error("Expression specified for a" + String(i + 1) +
+                      " does not result in a number - resetting to default.");
+                error("Expression: \n" + expr.display());
+                m_continuous_ASTs[i] = default_continuous_expr;
+                m_continuous_vals[i] = 0.0;
+            }
+            else
+            {
+                m_continuous_vals[i] = result.as_float();
+            }
         }
     }
 }
@@ -655,20 +662,26 @@ void uSEQ::update_binary_signals()
     for (int i = 0; i < m_num_binary_outs; i++)
     {
         Value expr = m_binary_ASTs[i];
-        dbg("Evalling: " + expr.display());
-        Value result = eval(expr);
-
-        if (!result.is_number())
+        if (expr.is_nil())
         {
-            error("Expression specified for d" + String(i + 1) +
-                  " does not eval to a number - resetting to default.");
-            error("Expression: \n" + expr.display());
-            m_binary_ASTs[i] = default_binary_expr;
-            m_binary_vals[i] = 0;
+            m_binary_vals[i] = 0.0;
         }
         else
         {
-            m_binary_vals[i] = result.as_int();
+            dbg("Evalling: " + expr.display());
+            Value result = eval(expr);
+            if (!result.is_number())
+            {
+                error("Expression specified for a" + String(i + 1) +
+                      " does not result in a number - resetting to default.");
+                error("Expression: \n" + expr.display());
+                m_binary_ASTs[i] = default_binary_expr;
+                m_binary_vals[i] = 0.0;
+            }
+            else
+            {
+                m_binary_vals[i] = result.as_float();
+            }
         }
     }
 }
@@ -711,101 +724,9 @@ void uSEQ::update_serial_signals()
     }
 }
 
-/*
- * (define my-bar (slow 2 bar))
- * => "slow", "bar"
- *
- * (define my-phasor (+ my-bar 1))
- * => "my-bar"
- *
- * (d1 (+ my-phasor 3))
- * => "my-phasor"
- *
- * */
-
-void uSEQ::perform_topo_sort()
-{
-    DBG("uSEQ::perform_topo_sort");
-    size_t millis_start = millis();
-
-    // println("Starting topo sort");
-
-    // std::set<String> collective_deps;
-
-    // 1. Iterate over output ASTs
-    // NOTE: this should probably include serial ASTs too
-    for (auto& ast_vec : { m_continuous_ASTs, m_binary_ASTs })
-    {
-        // 2. Iterate over each expr in that AST vec
-        for (auto& output_expr : ast_vec)
-        {
-            // println("expr");
-            // println(expr.display());
-
-            // 3. Iterate over each atom in that expr
-            for (auto& used_atom : output_expr.get_used_atoms())
-            {
-                // println("  atom");
-                // println("  " + atom);
-                // 4. Check to see if we've got an expr for this var
-                // and, if we do, add _their_
-                std::optional<Value> used_atom_expr = m_def_exprs.get(used_atom);
-
-                if (used_atom_expr)
-                {
-                    std::set<String> used_atoms = (*used_atom_expr).get_used_atoms();
-                    m_dependency_graph.set_dependencies(used_atom, used_atoms);
-                }
-            }
-        }
-    }
-
-    // Add the sorted vector and remove any elements for which we don't have a form
-    // to update (i.e. that weren't defined by the user in this session)
-    m_topo_sorted_execution_order = {};
-    for (auto& var : m_dependency_graph.sort())
-    {
-        if (m_def_exprs.has(var))
-        {
-            m_topo_sorted_execution_order.push_back(var);
-        }
-    }
-
-    // println("execution order:");
-    // for (auto& v : m_topo_sorted_execution_order)
-    // {
-    //     print(v);
-    //     print(", ");
-    // }
-
-    should_recheck_toposort = false;
-    // println("# time it took to sort:");
-    // println(String((millis() - millis_start) / 1000));
-}
-
-void uSEQ::update_signal_dependencies()
-{
-    if (should_recheck_toposort)
-    {
-        perform_topo_sort();
-    }
-
-    // Iterate and update each expr in the sorted order
-    for (const auto& sig_name : m_topo_sorted_execution_order)
-    {
-        std::optional<Value> expr = m_def_exprs.get(sig_name);
-        if (expr)
-        {
-            set(sig_name, eval(*expr));
-        }
-    }
-}
-
 void uSEQ::update_signals()
 {
     DBG("uSEQ::update_signals");
-
-    update_signal_dependencies();
 
     update_continuous_signals();
     update_binary_signals();
@@ -848,15 +769,15 @@ void uSEQ::update_binary_outs()
     }
 }
 
-
 void uSEQ::update_serial_outs()
 {
     DBG("uSEQ::update_serial_outs");
 
     unsigned long serial_now = micros();
-    //rate limiting of serial messages
+    // rate limiting of serial messages
     unsigned long serial_time_elapsed = serial_now - serial_out_timestamp;
-    if (serial_time_elapsed > SerialMsg::serial_message_rate_limit) {
+    if (serial_time_elapsed > SerialMsg::serial_message_rate_limit)
+    {
         for (size_t i = 0; i < m_num_serial_outs; i++)
         {
             dbg(String(i));
@@ -868,7 +789,8 @@ void uSEQ::update_serial_outs()
                 serial_write(i, *v);
             }
         }
-        serial_out_timestamp = serial_now - (serial_time_elapsed - SerialMsg::serial_message_rate_limit);
+        serial_out_timestamp = serial_now - (serial_time_elapsed -
+                                             SerialMsg::serial_message_rate_limit);
     }
 }
 
@@ -1240,7 +1162,7 @@ void uSEQ::serial_write(int out, double val)
     DBG("uSEQ::serial_write");
 
     Serial.write(SerialMsg::message_begin_marker);
-    Serial.write((u_int8_t) SerialMsg::serial_message_types::STREAM);
+    Serial.write((u_int8_t)SerialMsg::serial_message_types::STREAM);
     Serial.write((u_int8_t)(out + 1));
     u_int8_t* byteArray = reinterpret_cast<u_int8_t*>(&val);
     for (size_t b = 0; b < 8; b++)
@@ -1350,7 +1272,7 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
     }
 
     Value pre_eval2 = args[1];
-    args[1]        = args[1].eval(env);
+    args[1]         = args[1].eval(env);
     if (args[1].is_error())
     {
         error_arg_is_error(user_facing_name, 1, pre_eval.display());
@@ -1368,9 +1290,8 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
     // Value result = Value::nil();
 
     double factor = args[0].as_float();
-    double speed = args[1].as_float();
-    Value result = fast(factor, speed);
-
+    double speed  = args[1].as_float();
+    Value result  = fast(factor, speed);
 
     return result;
 }
