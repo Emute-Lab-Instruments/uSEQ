@@ -6,7 +6,10 @@
 // Definitions
 void print(String s)
 {
-    Serial.print(s);
+    if (Serial.availableForWrite())
+    {
+        Serial.print(s);
+    }
     // #if defined(USE_STD_STR) && defined(USE_STD_IO)
     //     std::cout << s;
     // #elif defined(USE_ARDUINO_STR) && defined(USE_STD_IO)
@@ -18,7 +21,10 @@ void print(String s)
 
 void println(String s)
 {
-    Serial.println(s);
+    if (Serial.availableForWrite())
+    {
+        Serial.println(s);
+    }
     // #if defined(USE_STD_STR) && defined(USE_STD_IO)
     //     std::cout << s << std::endl;
     // #elif defined(USE_ARDUINO_STR) && defined(USE_STD_IO)
