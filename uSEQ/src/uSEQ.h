@@ -43,6 +43,8 @@ public:
     void start_loop_blocking();
     void tick();
     void update_logical_time_variables(TimeValue);
+
+    Value eval_at_time(Value&, Environment&, double);
     // void set(String, Value);
 
     // TODO restore private
@@ -107,6 +109,11 @@ private:
     PhaseValue m_phrase_phase  = 0.0;
     PhaseValue m_section_phase = 0.0;
 
+    PhaseValue beat_at_time(TimeValue);
+    PhaseValue bar_at_time(TimeValue);
+    PhaseValue phrase_at_time(TimeValue);
+    PhaseValue section_at_time(TimeValue);
+
     // Meter
     double meter_numerator   = 4;
     double meter_denominator = 4;
@@ -151,6 +158,7 @@ private:
 
     String m_last_received_code = "";
 
+    LISP_FUNC_DECL(useq_eval_at_time);
     // expr-updating methods
     // a
     LISP_FUNC_DECL(useq_a1);
@@ -291,6 +299,8 @@ private:
     std::vector<String> m_topo_sorted_execution_order;
     // std::vector<String> m_known_signals;
     DependencyGraph<String> m_dependency_graph;
+
+    Environment make_env_for_time(TimeValue);
 };
 
 #endif // USEQ_H_

@@ -1045,7 +1045,6 @@ Value define(std::vector<Value>& args, Environment& env)
     env.set_expr(name, body);
     result = body.eval(env);
     env.set(name, result);
-    should_recheck_toposort = true;
     return result;
 }
 

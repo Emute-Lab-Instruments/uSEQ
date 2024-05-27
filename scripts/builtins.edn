@@ -36,8 +36,7 @@
                   "Value body = args[1];"
                   "env.set_expr(name, body);"
                   "result = body.eval(env);"
-                  "env.set(name, result);"
-                  "should_recheck_toposort = true;"]
+                  "env.set(name, result);"]
 
            :docstring "Define a variable with a value (SPECIAL FORM)"}
 

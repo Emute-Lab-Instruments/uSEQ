@@ -13,7 +13,7 @@
 // Static Class-wide flag
 // bool Interpreter::m_builtindefs_init = false;
 
-bool should_recheck_toposort = false;
+bool Interpreter::m_attempt_eval_as_signals = true;
 
 uSEQ* Interpreter::useq_instance_ptr;
 
@@ -241,11 +241,12 @@ BUILTINFUNC(ard_digitalWrite, int pinNumber = args[0].as_int();
 BUILTINFUNC(ard_digitalRead, int pinNumber = args[0].as_int();
             int val = digitalRead(pinNumber); ret = Value(val);, 1)
 
-BUILTINFUNC(useq_perf, String report = "fps0: "; report += env.get("fps").as_float();
+BUILTINFUNC(useq_perf, String report = "fps0: ";
+            report += env.get("fps").value().as_float();
             // report += ", fps1: ";
             // report += env.get("perf_fps1").as_int();
             report += ", qt: ";
-            report += env.get("qt").as_float();
+            report += env.get("qt").value().as_float();
             // report += ", in: ";
             // report += env.get("perf_in").as_int();
             // report += ", upd_tm: ";
@@ -334,7 +335,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
     DBG("Interpreter::eval_in");
     dbg("Value: " + v.display());
 
-    Value result;
+    Value result = Value::error();
 
     switch (v.type)
     {
@@ -354,15 +355,40 @@ Value Interpreter::eval_in(Value& v, Environment& env)
     {
         dbg("atom");
         // ts_get = micros();
-        auto atomdata = env.get(v.str);
-        if (atomdata.is_error())
+        bool look_in_defs = true;
+
+        if (m_attempt_eval_as_signals)
         {
-            error("Get error: ");
-            println(v.str);
+            std::optional<Value> atom_def_expr = env.get_expr(v.str);
+
+            if (atom_def_expr && !(*atom_def_expr).is_error())
+            {
+                // 2. If we do and it's not an error, then recursively
+                // call eval_at_time on that
+                result       = eval_in(atom_def_expr.value(), env);
+                look_in_defs = false;
+            }
+            else
+            {
+                look_in_defs = true;
+            }
         }
+
+        if (look_in_defs)
+        {
+            std::optional<Value> atom_val = env.get(v.str);
+            if (atom_val && !atom_val.value().is_error())
+            {
+                result = *atom_val;
+            }
+            else
+            {
+                error_atom_not_defined(v.str);
+            }
+        }
+
         // ts_get = micros() - ts_get;
         // get_time += ts_get;
-        result = atomdata;
         break;
     }
     case Value::LIST:
@@ -371,8 +397,8 @@ Value Interpreter::eval_in(Value& v, Environment& env)
         if (v.list.size() < 1)
             println(EVAL_EMPTY_LIST);
         // throw Error(*this, env, EVAL_EMPTY_LIST);
-        // note: this needs to be a copy?  so original remains unevaluated?  or if
-        // not, use std::span to avoid the copy?
+        // note: this needs to be a copy?  so original remains unevaluated?  or
+        // if not, use std::span to avoid the copy?
         std::vector<Value> args =
             std::vector<Value>(v.list.begin() + 1, v.list.end());
         // Only evaluate our arguments if it's not builtin!
