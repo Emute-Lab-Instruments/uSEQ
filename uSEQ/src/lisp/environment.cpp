@@ -1,6 +1,8 @@
 #include "environment.h"
 #include "../utils.h"
+#include "../utils/log.h"
 #include "value.h"
+#include <optional>
 // std::ostream &operator<<(std::ostream &os, Environment const &e) {
 //   auto itr = e.defs.begin();
 //   os << "{ ";
@@ -47,7 +49,7 @@ bool Environment::has(String const& name) const
 // so always searching for it last may have a performance hit,
 // but searching for it first means that we don't allow users
 // to re-define built in symbols
-Value Environment::get(const String& name) const
+std::optional<Value> Environment::get(const String& name) const
 {
     DBG("Environment::get");
     dbg("Name: " + name);
@@ -72,22 +74,19 @@ Value Environment::get(const String& name) const
         // debug("searching builtindefs...");
         result = Environment::builtindefs.get(name);
     }
-    // 4. If still not found, return error
+    // 4. If still not found, return empty
     if (!result)
     {
-        print(ATOM_NOT_DEFINED);
-        print(": ");
-        println(name);
-        return Value::error();
+        error_atom_not_defined(name);
+        return std::nullopt;
     }
     else
     {
-        // debug("found, returning...");
-        return result.value();
+        return *result;
     }
 }
 
-Value Environment::get_expr(const String& name) const
+std::optional<Value> Environment::get_expr(const String& name) const
 {
     DBG("Environment::get_expr");
     dbg("Name: " + name);
@@ -107,14 +106,14 @@ Value Environment::get_expr(const String& name) const
     // 3. If still not found, return error
     if (!result)
     {
-        print("Expr not defined");
-        print(": ");
-        println(name);
-        return Value::error();
+        // NOTE don't print error here as this may be used to check
+        // whether we have a signal expr for a var or whether
+        // we should default to its cached value
+        return std::nullopt;
     }
     else
     {
-        return result.value();
+        return *result;
     }
 }
 

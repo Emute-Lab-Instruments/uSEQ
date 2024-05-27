@@ -42,6 +42,7 @@ void error_wrong_specific_pred(const String& function_name, int num,
                                const String& expected_str,
                                const String& received_val_str);
 
+void error_atom_not_defined(const String& atom);
 // NOTE: for later
 // struct NumArgs
 // {

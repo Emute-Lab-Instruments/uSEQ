@@ -37,7 +37,7 @@ const String uLispParser::unescape(const String str)
 
 void uLispParser::skip_whitespace(const String& s, int& ptr)
 {
-    while (isspace(s[ptr]))
+    while (isspace(s[ptr]) || s[ptr] == '\n')
     {
         ptr++;
     }
@@ -234,20 +234,29 @@ Value uLispParser::parse(String s, int& ptr)
 bool is_empty_string(const String& s) { return s == ""; }
 
 // Parse an entire program and get its list of expressions.
-Value uLispParser::parse(String s)
+Value uLispParser::parse(String code)
 {
-
-    // const char* st = s.c_str();
-
     // dbg(s);
+    //
+    // for (int i = 0; i < code.length(); i++)
+    // {
+    //     println(String((uint)code[i]));
+
+    //     if (code[i] == '\n')
+    //     {
+    //         println("newline at: " + String(i));
+    //     }
+    // }
 
     int i = 0, last_i = -1;
     bool error = false;
 
-    if (is_empty_string(s))
+    if (is_empty_string(code))
     {
         return Value();
     }
+
+    // code = code.replace("\n", " ");
 
     Value result;
     // An implicit "do" is wrapped around the whole program
@@ -256,11 +265,11 @@ Value uLispParser::parse(String s)
 
     // While the parser is making progress (while the pointer is moving right)
     // and the pointer hasn't reached the end of the string,
-    while (last_i != i && i <= int(s.length() - 1))
+    while (last_i != i && i <= int(code.length() - 1))
     {
         // Parse another expression and add it to the list.
         last_i     = i;
-        Value item = parse(s, i);
+        Value item = parse(code, i);
         if (item.is_error())
         {
             error = true;
@@ -271,7 +280,7 @@ Value uLispParser::parse(String s)
     }
 
     // If the whole string wasn't parsed, the program must be bad.
-    if (i < int(s.length()))
+    if (i < int(code.length()))
     {
         print("parse: ");
         println(MALFORMED_PROGRAM);

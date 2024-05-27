@@ -73,8 +73,8 @@ public:
     // creating a lambda function.
     bool has(String const& name) const;
     // Get the value associated with this name in this scope
-    Value get(const String& name) const;
-    Value get_expr(const String& name) const;
+    std::optional<Value> get(const String& name) const;
+    std::optional<Value> get_expr(const String& name) const;
     // Set the value associated with this name in this scope
     void set(const String& name, Value value);
     void set_expr(const String& name, Value value);

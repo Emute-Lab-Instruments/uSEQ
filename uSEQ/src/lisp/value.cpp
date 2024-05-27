@@ -49,10 +49,11 @@ Value::Value(std::vector<Value> params, Value ret, Environment const& env)
     // for (size_t i = 0; i < used_atoms.size(); i++)
     for (const String& atom : used_atoms)
     {
+        std::optional<Value> found_def = env.get(atom);
         // If the environment has a symbol that this lambda uses, capture it.
-        if (env.has(atom))
+        if (found_def)
         {
-            lambda_scope->set(atom, env.get(atom));
+            lambda_scope->set(atom, *found_def);
         }
     }
 }

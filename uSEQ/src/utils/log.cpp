@@ -127,6 +127,11 @@ void error_wrong_specific_pred(const String& function_name, int num,
     println("- " + received_val_str);
 }
 
+void error_atom_not_defined(const String& atom)
+{
+    error("Atom **" + atom + "** not defined.");
+}
+
 int free_heap() { return rp2040.getFreeHeap() / 1024; }
 
 // DebugLogger
@@ -134,7 +139,7 @@ int free_heap() { return rp2040.getFreeHeap() / 1024; }
 #if USEQ_DEBUG
 
 std::unordered_set<String> DebugLogger::mutes = {};
-std::unordered_set<String> DebugLogger::solos = {};
+std::unordered_set<String> DebugLogger::solos = { "uSEQ::eval_at_time" };
 
 bool DebugLogger::print_free_heap = false;
 

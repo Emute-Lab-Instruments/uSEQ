@@ -735,89 +735,11 @@ void uSEQ::update_serial_signals()
  *
  * */
 
-void uSEQ::perform_topo_sort()
-{
-    DBG("uSEQ::perform_topo_sort");
-    size_t millis_start = millis();
-
-    // println("Starting topo sort");
-
-    // std::set<String> collective_deps;
-
-    // 1. Iterate over output ASTs
-    // NOTE: this should probably include serial ASTs too
-    for (auto& ast_vec : { m_continuous_ASTs, m_binary_ASTs })
-    {
-        // 2. Iterate over each expr in that AST vec
-        for (auto& output_expr : ast_vec)
-        {
-            // println("expr");
-            // println(expr.display());
-
-            // 3. Iterate over each atom in that expr
-            for (auto& used_atom : output_expr.get_used_atoms())
-            {
-                // println("  atom");
-                // println("  " + atom);
-                // 4. Check to see if we've got an expr for this var
-                // and, if we do, add _their_
-                std::optional<Value> used_atom_expr = m_def_exprs.get(used_atom);
-
-                if (used_atom_expr)
-                {
-                    std::set<String> used_atoms = (*used_atom_expr).get_used_atoms();
-                    m_dependency_graph.set_dependencies(used_atom, used_atoms);
-                }
-            }
-        }
-    }
-
-    // Add the sorted vector and remove any elements for which we don't have a form
-    // to update (i.e. that weren't defined by the user in this session)
-    m_topo_sorted_execution_order = {};
-    for (auto& var : m_dependency_graph.sort())
-    {
-        if (m_def_exprs.has(var))
-        {
-            m_topo_sorted_execution_order.push_back(var);
-        }
-    }
-
-    // println("execution order:");
-    // for (auto& v : m_topo_sorted_execution_order)
-    // {
-    //     print(v);
-    //     print(", ");
-    // }
-
-    should_recheck_toposort = false;
-    // println("# time it took to sort:");
-    // println(String((millis() - millis_start) / 1000));
-}
-
-void uSEQ::update_signal_dependencies()
-{
-    if (should_recheck_toposort)
-    {
-        perform_topo_sort();
-    }
-
-    // Iterate and update each expr in the sorted order
-    for (const auto& sig_name : m_topo_sorted_execution_order)
-    {
-        std::optional<Value> expr = m_def_exprs.get(sig_name);
-        if (expr)
-        {
-            set(sig_name, eval(*expr));
-        }
-    }
-}
-
 void uSEQ::update_signals()
 {
     DBG("uSEQ::update_signals");
 
-    update_signal_dependencies();
+    // update_signal_dependencies();
 
     update_continuous_signals();
     update_binary_signals();
@@ -887,6 +809,7 @@ void uSEQ::update_time()
     // 2. Check if it has overflowed
     if (m_time_since_boot - m_last_known_time_since_boot < 0.0)
     {
+        println("WARNING: overflow detected, compensating for it...");
         m_overflow_counter++;
     }
 
@@ -910,10 +833,10 @@ void uSEQ::update_logical_time(TimeValue actual_time)
     m_transport_time = actual_time - m_last_transport_reset_time;
 
     // Phasors
-    m_beat_phase    = fmod(m_transport_time, m_beat_length) / m_beat_length;
-    m_bar_phase     = fmod(m_transport_time, m_bar_length) / m_bar_length;
-    m_phrase_phase  = fmod(m_transport_time, m_phrase_length) / m_phrase_length;
-    m_section_phase = fmod(m_transport_time, m_section_length) / m_section_length;
+    m_beat_phase    = beat_at_time(m_transport_time);
+    m_bar_phase     = bar_at_time(m_transport_time);
+    m_phrase_phase  = phrase_at_time(m_transport_time);
+    m_section_phase = section_at_time(m_transport_time);
 
     // Push them to the interpreter
     update_lisp_time_variables();
@@ -1304,23 +1227,11 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
     }
 
     // BODY
-    Value result = Value::nil();
-
-    double factor = args[0].as_float();
-    // save current time to restore when done
-    TimeValue current_transport_time = m_transport_time;
-    TimeValue tmp_time               = m_transport_time * factor;
-    dbg("factor: " + String(factor));
-    dbg("actual_time: " + String(actual_time));
-    dbg("tmp_time: " + String(tmp_time));
-    //
-    update_logical_time(tmp_time);
-    //
-    Value sig = args[1];
-    result    = sig.eval(env);
-    // restore the interpreter's time
-    update_logical_time(current_transport_time);
-
+    Value result           = Value::nil();
+    double current_time_s  = env.get("t").value().as_float();
+    double factor          = args[0].as_float();
+    double new_time_micros = (current_time_s * factor) * 1e+6;
+    result                 = eval_at_time(args[1], env, new_time_micros);
     return result;
 }
 
@@ -1354,23 +1265,11 @@ Value uSEQ::useq_slow(std::vector<Value>& args, Environment& env)
     }
 
     // BODY
-    Value result = Value::nil();
-
-    double factor = args[0].as_float();
-    // save current time to restore when done
-    TimeValue current_transport_time = m_transport_time;
-    TimeValue tmp_time               = m_transport_time / factor;
-    dbg("factor: " + String(factor));
-    dbg("actual_time: " + String(actual_time));
-    dbg("tmp_time: " + String(tmp_time));
-    //
-    update_logical_time(tmp_time);
-    //
-    Value sig = args[1];
-    result    = sig.eval(env);
-    // restore the interpreter's time
-    update_logical_time(current_transport_time);
-
+    Value result           = Value::nil();
+    double current_time_s  = env.get("t").value().as_float();
+    double factor          = args[0].as_float();
+    double new_time_micros = (current_time_s / factor) * 1e+6;
+    result                 = eval_at_time(args[1], env, new_time_micros);
     return result;
 }
 
@@ -1985,8 +1884,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 1) {
         set("a1-expr", args[0]);
         m_continuous_ASTs[0] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1994,8 +1891,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 2) {
         set("a2-expr", args[0]);
         m_continuous_ASTs[1] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -2003,8 +1898,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 3) {
         set("a3-expr", args[0]);
         m_continuous_ASTs[2] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -2012,8 +1905,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 4) {
         set("a4-expr", args[0]);
         m_continuous_ASTs[3] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 
@@ -2022,8 +1913,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 5) {
         set("a5-expr", args[0]);
         m_continuous_ASTs[4] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 
@@ -2032,8 +1921,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 6) {
         set("a6-expr", args[0]);
         m_continuous_ASTs[5] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 
@@ -2043,8 +1930,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 1) {
         set("d1-expr", args[0]);
         m_binary_ASTs[0] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -2052,8 +1937,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 2) {
         set("d2-expr", args[0]);
         m_binary_ASTs[1] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -2061,8 +1944,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 3) {
         set("d3-expr", args[0]);
         m_binary_ASTs[2] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -2070,8 +1951,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 4) {
         set("d4-expr", args[0]);
         m_binary_ASTs[3] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -2079,8 +1958,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 5) {
         set("d5-expr", args[0]);
         m_binary_ASTs[4] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -2088,8 +1965,6 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 6) {
         set("d6-expr", args[0]);
         m_binary_ASTs[5] = { args[0] };
-        // NOTE
-        should_recheck_toposort = true;
     },
     1)
 
@@ -2114,6 +1989,92 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_s7, set("s7-expr", args[0]);
 BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set("s8-expr", args[0]);
                           m_serial_ASTs[7] = { args[0] };, 1)
 
+// Testing
+// Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
+// {
+//     constexpr const char* user_facing_name = "eval-at-time";
+
+//     // Checking number of args
+//     // if (!(2 <= args.size() <= 3))
+//     if (!(args.size() == 2))
+//     {
+//         // error_wrong_num_args(user_facing_name, args.size(),
+//         //                      NumArgsComparison::Between, 2, 3);
+//         error_wrong_num_args(user_facing_name, args.size(),
+//                              NumArgsComparison::EqualTo, 2, -1);
+//         return Value::error();
+//     }
+
+//     // NOTE: This needs to eval both of its args, including the list,
+//     // to cover for cases where the user passes anything other than a
+//     // list literal (e.g. a symbol that points to a list)
+//     //
+//     // Evaluating & checking args for errors
+//     Value pre_eval = args[0];
+//     args[0]        = args[0].eval(env);
+//     if (args[0].is_error())
+//     {
+//         error_arg_is_error(user_facing_name, 1, pre_eval.display());
+//         return Value::error();
+//     }
+
+//     // Checking individual args
+//     if (!(args[0].is_number()))
+//     {
+//         error_wrong_specific_pred(user_facing_name, 1, "a number",
+//                                   args[0].display());
+//         return Value::error();
+//     }
+
+//     // NOTE: go from seconds to micros for internal calculations
+//     double time = args[0].as_float() * 1e+6;
+
+//     // BODY
+//     return eval_at_time(args[1], env, time);
+// }
+
+Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "eval-at-time";
+
+    // Checking number of args
+    // if (!(2 <= args.size() <= 3))
+    if (!(args.size() == 2))
+    {
+        // error_wrong_num_args(user_facing_name, args.size(),
+        //                      NumArgsComparison::Between, 2, 3);
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // NOTE: This needs to eval both of its args, including the list,
+    // to cover for cases where the user passes anything other than a
+    // list literal (e.g. a symbol that points to a list)
+    //
+    // Evaluating & checking args for errors
+    Value pre_eval = args[0];
+    args[0]        = args[0].eval(env);
+    if (args[0].is_error())
+    {
+        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        return Value::error();
+    }
+
+    // Checking individual args
+    if (!(args[0].is_number()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[0].display());
+        return Value::error();
+    }
+
+    // NOTE: go from seconds to micros for internal calculations
+    double time = args[0].as_float() * 1e+6;
+
+    // BODY
+    return eval_at_time(args[1], env, time);
+}
 // Creates a Lisp Value of type BUILTIN_METHOD,
 // which requires
 #define INSERT_BUILTINDEF(__name__, __func_name__)                                  \
@@ -2123,6 +2084,8 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set("s8-expr", args[0]);
 void uSEQ::init_builtinfuncs()
 {
     DBG("uSEQ::init_builtinfuncs");
+
+    INSERT_BUILTINDEF("eval-at-time", useq_eval_at_time);
 
     // a
     INSERT_BUILTINDEF("a1", useq_a1);
@@ -2200,4 +2163,54 @@ void uSEQ::init_builtinfuncs()
 #ifdef MIDIOUT
     INSERT_BUILTINDEF("mdo", useq_mdo);
 #endif
+}
+
+PhaseValue uSEQ::beat_at_time(TimeValue time)
+{
+    return fmod(time, m_beat_length) / m_beat_length;
+}
+
+PhaseValue uSEQ::bar_at_time(TimeValue time)
+{
+    // println("time: " + String(time));
+    // println("m_bar_length: " + String(time));
+    return fmod(time, m_bar_length) / m_bar_length;
+}
+
+PhaseValue uSEQ::phrase_at_time(TimeValue time)
+{
+    return fmod(time, m_phrase_length) / m_phrase_length;
+}
+
+PhaseValue uSEQ::section_at_time(TimeValue time)
+{
+    return fmod(time, m_section_length) / m_section_length;
+}
+
+Value uSEQ::eval_at_time(Value& expr, Environment& env, TimeValue time_micros)
+{
+    // Prepare new env with appropriate time vars
+    // and current env as parent
+    Environment new_env = make_env_for_time(time_micros);
+    new_env.set_parent_scope(&env);
+    // Eval in new env
+    Value result = Interpreter::eval_in(expr, new_env);
+    return result;
+}
+
+Environment uSEQ::make_env_for_time(TimeValue t_micros)
+{
+    Environment env;
+
+    // TimeValue time_s = m_time_since_boot * 1e-6;
+    TimeValue t_s = t_micros * 1e-6;
+
+    // env.set("time", Value(time_s));
+    env.set("t", Value(t_s));
+    env.set("beat", Value(beat_at_time(t_micros)));
+    env.set("bar", Value(bar_at_time(t_micros)));
+    env.set("phrase", Value(phrase_at_time(t_micros)));
+    env.set("section", Value(section_at_time(t_micros)));
+
+    return env;
 }

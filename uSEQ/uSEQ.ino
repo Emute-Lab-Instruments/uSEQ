@@ -41,4 +41,4 @@ void setup()
     u.init();
 }
 
-void loop() { u.tick();}
+void loop() { u.tick(); }
