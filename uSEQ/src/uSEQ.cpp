@@ -8,6 +8,7 @@
 #endif
 #include "utils.h"
 #include "utils/log.h"
+
 // #include "lisp/library.h"
 #include <cmath>
 
@@ -299,7 +300,7 @@ void uSEQ::check_code_quant_phasor()
             int cmdts = micros();
             res       = eval(m_runQueue[q]);
             cmdts     = micros() - cmdts;
-            print(res.debug());
+            println(res.debug());
         }
         m_runQueue.clear();
     }
@@ -578,7 +579,7 @@ void uSEQ::check_and_handle_user_input()
     {
         int first_byte = Serial.read();
         // SERIAL
-        if (first_byte == m_serial_stream_begin_marker /*31*/)
+        if (first_byte == SerialMsg::message_begin_marker /*31*/)
         {
             // incoming serial stream
             size_t channel = Serial.read();
@@ -601,19 +602,19 @@ void uSEQ::check_and_handle_user_input()
                 m_should_quit = true;
             }
             // EXECUTE NOW
-            if (first_byte == m_execute_now_marker /*'@'*/)
+            if (first_byte == SerialMsg::execute_now_marker /*'@'*/)
             {
                 String result = eval(m_last_received_code);
-                print("\n=> ");
-                print(result);
-                print("\n");
+                // print("\n=> ");
+                println(result);
+                // print("\n");
                 // print(">> ");
             }
             // SCHEDULE FOR LATER
             else
             {
                 m_last_received_code =
-                    String((char)first_byte) + m_last_received_code;
+                String((char)first_byte) + m_last_received_code;
                 println(m_last_received_code);
                 Value expr = parse(m_last_received_code);
                 m_runQueue.push_back(expr);
@@ -847,20 +848,27 @@ void uSEQ::update_binary_outs()
     }
 }
 
+
 void uSEQ::update_serial_outs()
 {
     DBG("uSEQ::update_serial_outs");
 
-    for (size_t i = 0; i < m_num_serial_outs; i++)
-    {
-        dbg(String(i));
-        std::optional<SERIAL_OUTPUT_VALUE_TYPE> v = m_serial_vals[i];
-        // only write if there is a value
-        if (v)
+    unsigned long serial_now = micros();
+    //rate limiting of serial messages
+    unsigned long serial_time_elapsed = serial_now - serial_out_timestamp;
+    if (serial_time_elapsed > SerialMsg::serial_message_rate_limit) {
+        for (size_t i = 0; i < m_num_serial_outs; i++)
         {
-            dbg("writing value: " + String(*v));
-            serial_write(i, *v);
+            dbg(String(i));
+            std::optional<SERIAL_OUTPUT_VALUE_TYPE> v = m_serial_vals[i];
+            // only write if there is a value
+            if (v)
+            {
+                dbg("writing value: " + String(*v));
+                serial_write(i, *v);
+            }
         }
+        serial_out_timestamp = serial_now - (serial_time_elapsed - SerialMsg::serial_message_rate_limit);
     }
 }
 
@@ -1231,7 +1239,8 @@ void uSEQ::serial_write(int out, double val)
 {
     DBG("uSEQ::serial_write");
 
-    Serial.write(m_serial_stream_begin_marker);
+    Serial.write(SerialMsg::message_begin_marker);
+    Serial.write((u_int8_t) SerialMsg::serial_message_types::STREAM);
     Serial.write((u_int8_t)(out + 1));
     u_int8_t* byteArray = reinterpret_cast<u_int8_t*>(&val);
     for (size_t b = 0; b < 8; b++)

@@ -4,9 +4,9 @@
 
 // TODO
 // Definitions
-void print(String s)
-{
-    Serial.print(s);
+// void print(String s)
+// {
+    // Serial.print(s);
     // #if defined(USE_STD_STR) && defined(USE_STD_IO)
     //     std::cout << s;
     // #elif defined(USE_ARDUINO_STR) && defined(USE_STD_IO)
@@ -14,10 +14,12 @@ void print(String s)
     // #elif defined(USE_ARDUINO_STR) && defined(USE_SERIAL_IO)
     //     Serial.print(s);
     // #endif
-}
+// }
 
 void println(String s)
 {
+    Serial.write(SerialMsg::message_begin_marker);
+    Serial.write((u_int8_t) SerialMsg::serial_message_types::TEXT);
     Serial.println(s);
     // #if defined(USE_STD_STR) && defined(USE_STD_IO)
     //     std::cout << s << std::endl;
