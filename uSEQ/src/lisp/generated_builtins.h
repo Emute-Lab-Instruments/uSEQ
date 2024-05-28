@@ -55,6 +55,7 @@ Value ard_micros(std::vector<Value>& args, Environment& env);
 Value divide(std::vector<Value>& args, Environment& env);
 Value ard_delaymicros(std::vector<Value>& args, Environment& env);
 Value insert(std::vector<Value>& args, Environment& env);
+Value get_expr(std::vector<Value>& args, Environment& env);
 Value ard_sqrt(std::vector<Value>& args, Environment& env);
 Value print(std::vector<Value>& args, Environment& env);
 Value display(std::vector<Value>& args, Environment& env);

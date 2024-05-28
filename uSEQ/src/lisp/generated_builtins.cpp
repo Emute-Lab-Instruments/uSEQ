@@ -1642,6 +1642,41 @@ Value insert(std::vector<Value>& args, Environment& env)
     return result;
 }
 
+Value get_expr(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "get-expr";
+
+    // Checking number of args
+    if (!(args.size() == 1))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+
+    // Checking individual args
+    if (!(args[0].is_symbol()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a symbol",
+                                  args[0].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result              = Value::nil();
+    String name               = args[0].display();
+    std::optional<Value> expr = env.get_expr(name);
+    if (expr)
+    {
+        result = expr.value();
+    }
+    else
+    {
+        user_warning("(get-expr) Expression for " + name + " wasn't found.");
+    }
+    return result;
+}
+
 Value ard_sqrt(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "sqrt";
@@ -1879,8 +1914,11 @@ Value set(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = args[1].eval(env);
-    env.set_global(args[0].display(), result);
+    String name  = args[0].display();
+    // NOTE: body is unevalled still
+    Value val = args[1].eval(env);
+    env.set(name, val);
+    result = val;
     return result;
 }
 
