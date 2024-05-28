@@ -181,7 +181,7 @@ Value uLispParser::parse(String s, int& ptr)
         {
             if (ptr + n >= int(s.length()))
             {
-                print(MALFORMED_PROGRAM);
+                println(MALFORMED_PROGRAM);
                 // println(" 1");
                 return Value::error();
                 // throw std::runtime_error(MALFORMED_PROGRAM);
@@ -273,7 +273,7 @@ Value uLispParser::parse(String s)
     // If the whole string wasn't parsed, the program must be bad.
     if (i < int(s.length()))
     {
-        print("parse: ");
+        println("parse: ");
         println(MALFORMED_PROGRAM);
         error = true;
     }

@@ -9,6 +9,8 @@
 #include "utils/topo_sort.hpp"
 #include <memory>
 #include <sys/types.h>
+// #include "utils/serial_message.h"
+
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
 #define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
@@ -144,6 +146,8 @@ private:
     void update_binary_outs();
     void update_serial_outs();
     void update_Q0();
+
+    unsigned long serial_out_timestamp=0;
 
     Value default_continuous_expr = parse("bar");
     Value default_binary_expr     = parse("(square bar)");
@@ -283,8 +287,6 @@ private:
     void setup_digital_ins();
     void led_animation();
 
-    static constexpr u_int8_t m_serial_stream_begin_marker = 31;
-    static constexpr char m_execute_now_marker             = '@';
 
     void perform_topo_sort();
 

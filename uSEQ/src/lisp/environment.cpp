@@ -75,9 +75,7 @@ Value Environment::get(const String& name) const
     // 4. If still not found, return error
     if (!result)
     {
-        print(ATOM_NOT_DEFINED);
-        print(": ");
-        println(name);
+        println(ATOM_NOT_DEFINED + ": " + name);
         return Value::error();
     }
     else
@@ -107,9 +105,7 @@ Value Environment::get_expr(const String& name) const
     // 3. If still not found, return error
     if (!result)
     {
-        print("Expr not defined");
-        print(": ");
-        println(name);
+        println("Expr not defined: " + name);
         return Value::error();
     }
     else
