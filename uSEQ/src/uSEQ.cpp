@@ -1882,28 +1882,28 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = { args[0] }
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a1,
     if (NUM_CONTINUOUS_OUTS >= 1) {
-        set("a1-expr", args[0]);
+        set_expr("a1", args[0]);
         m_continuous_ASTs[0] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a2,
     if (NUM_CONTINUOUS_OUTS >= 2) {
-        set("a2-expr", args[0]);
+        set_expr("a2", args[0]);
         m_continuous_ASTs[1] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a3,
     if (NUM_CONTINUOUS_OUTS >= 3) {
-        set("a3-expr", args[0]);
+        set_expr("a3", args[0]);
         m_continuous_ASTs[2] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a4,
     if (NUM_CONTINUOUS_OUTS >= 4) {
-        set("a4-expr", args[0]);
+        set_expr("a4", args[0]);
         m_continuous_ASTs[3] = { args[0] };
     },
     1)
@@ -1911,7 +1911,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a5,
     if (NUM_CONTINUOUS_OUTS >= 5) {
-        set("a5-expr", args[0]);
+        set_expr("a5", args[0]);
         m_continuous_ASTs[4] = { args[0] };
     },
     1)
@@ -1919,7 +1919,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a6,
     if (NUM_CONTINUOUS_OUTS >= 6) {
-        set("a6-expr", args[0]);
+        set_expr("a6", args[0]);
         m_continuous_ASTs[5] = { args[0] };
     },
     1)
@@ -1928,65 +1928,65 @@ BUILTINFUNC_NOEVAL_MEMBER(
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d1,
     if (NUM_BINARY_OUTS >= 1) {
-        set("d1-expr", args[0]);
+        set_expr("d1", args[0]);
         m_binary_ASTs[0] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d2,
     if (NUM_BINARY_OUTS >= 2) {
-        set("d2-expr", args[0]);
+        set_expr("d2", args[0]);
         m_binary_ASTs[1] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d3,
     if (NUM_BINARY_OUTS >= 3) {
-        set("d3-expr", args[0]);
+        set_expr("d3", args[0]);
         m_binary_ASTs[2] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d4,
     if (NUM_BINARY_OUTS >= 4) {
-        set("d4-expr", args[0]);
+        set_expr("d4", args[0]);
         m_binary_ASTs[3] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d5,
     if (NUM_BINARY_OUTS >= 5) {
-        set("d5-expr", args[0]);
+        set_expr("d5", args[0]);
         m_binary_ASTs[4] = { args[0] };
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d6,
     if (NUM_BINARY_OUTS >= 6) {
-        set("d6-expr", args[0]);
+        set_expr("d6", args[0]);
         m_binary_ASTs[5] = { args[0] };
     },
     1)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set("s1-expr", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set_expr("s1", args[0]);
                           m_serial_ASTs[0] = { args[0] };
                           ,
                           // Serial.println(m_serial_ASTs.size());,
                           1)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_s2, set("s2-expr", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s2, set_expr("s2", args[0]);
                           m_serial_ASTs[1] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s3, set("s3-expr", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s3, set_expr("s3", args[0]);
                           m_serial_ASTs[2] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s4, set("s4-expr", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s4, set_expr("s4", args[0]);
                           m_serial_ASTs[3] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s5, set("s5-expr", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s5, set_expr("s5", args[0]);
                           m_serial_ASTs[4] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s6, set("s6-expr", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s6, set_expr("s6", args[0]);
                           m_serial_ASTs[5] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s7, set("s7-expr", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s7, set_expr("s7", args[0]);
                           m_serial_ASTs[6] = { args[0] };, 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set("s8-expr", args[0]);
+BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set_expr("s8", args[0]);
                           m_serial_ASTs[7] = { args[0] };, 1)
 
 // Testing

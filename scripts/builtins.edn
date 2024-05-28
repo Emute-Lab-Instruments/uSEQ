@@ -28,6 +28,22 @@
                         "    else"
                         "        result = args[2].eval(env);"]}
 
+ "get_expr" {:eval-args? false
+             :args {:num "== 1"
+                    :type {0 ".is_symbol()"}}
+             :body ["String name  = args[0].display();"
+                    "std::optional<Value> expr = env.get_expr(name);"
+                    "if (expr)"
+                    "{"
+                    "    result = expr.value();"
+                    "}"
+                    "else"
+                    "{"
+                    "    user_warning(\"(get-expr) Expression for \" + name + \" wasn't found.\");"
+                    "}"]
+
+             :docstring "Define a variable with a value (SPECIAL FORM)"}
+
  "define" {:eval-args? false
            :args {:num "== 2"
                   :type {0 ".is_symbol()"}}
@@ -101,12 +117,18 @@
           :body ["result = Value(args);"]
           :docstring "Quote an expression (SPECIAL FORM)"}
 
-;;;
+ ;; NOTE: duplication with "define"
+ ;; this used to use set_global, but I'm not sure
+ ;; there's ever a use case for the user to do that
+ ;; Instead, it's used to set just the (static) value, not an expr
  "set" {:eval-args? false
         :args {:num "== 2"
                :type {0 ".is_symbol()"}}
-        :body ["result = args[1].eval(env);"
-               "env.set_global(args[0].display(), result);"]}
+        :body ["String name  = args[0].display();"
+               "// NOTE: body is unevalled still"
+               "Value val = args[1].eval(env);"
+               "env.set(name, val);"
+               "result = val;"]}
 
  "sum" {:args {:num ">= 2"
                :type {:all ".is_number()"}}

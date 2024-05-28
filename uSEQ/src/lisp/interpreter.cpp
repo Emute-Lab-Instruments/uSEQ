@@ -601,6 +601,8 @@ void Interpreter::loadBuiltinDefs()
 
     //// LISP
     // Special forms
+    Environment::builtindefs["get-expr"] = Value("get-expr", builtin::get_expr);
+
     Environment::builtindefs["do"]     = Value("do", builtin::do_block);
     Environment::builtindefs["if"]     = Value("if", builtin::if_then_else);
     Environment::builtindefs["for"]    = Value("for", builtin::for_loop);
