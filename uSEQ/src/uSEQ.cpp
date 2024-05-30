@@ -576,6 +576,9 @@ void uSEQ::check_and_handle_user_input()
 
     if (is_new_code_waiting())
     {
+        // TODO remove
+        user_interaction = true;
+
         int first_byte = Serial.read();
         // SERIAL
         if (first_byte == m_serial_stream_begin_marker /*31*/)
@@ -619,6 +622,9 @@ void uSEQ::check_and_handle_user_input()
                 m_runQueue.push_back(expr);
             }
         }
+
+        // TODO remove
+        user_interaction = false;
     }
 }
 
