@@ -49,11 +49,29 @@ Value::Value(std::vector<Value> params, Value ret, Environment const& env)
     // for (size_t i = 0; i < used_atoms.size(); i++)
     for (const String& atom : used_atoms)
     {
-        std::optional<Value> found_def = env.get(atom);
-        // If the environment has a symbol that this lambda uses, capture it.
-        if (found_def)
+        // Don't capture the current value of time variables
+        // TODO: there should be some globally-accessible set
+        // of the special time-varying values
+        if (atom == "time" || atom == "t" || atom == "bar" || atom == "beat" ||
+            atom == "section" || atom == "phrase")
         {
-            lambda_scope->set(atom, *found_def);
+            continue;
+        }
+
+        // Expr
+        std::optional<Value> def_expr = env.get_expr(atom);
+        // If the environment has a symbol that this lambda uses, capture it.
+        if (def_expr)
+        {
+            lambda_scope->set_expr(atom, *def_expr);
+        }
+
+        // Static def
+        std::optional<Value> def = env.get(atom);
+        // If the environment has a symbol that this lambda uses, capture it.
+        if (def)
+        {
+            lambda_scope->set(atom, *def);
         }
     }
 }
