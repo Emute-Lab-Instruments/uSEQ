@@ -741,9 +741,13 @@ void uSEQ::update_signals()
 
     // update_signal_dependencies();
 
+    m_attempt_eval_as_signals = true;
+
     update_continuous_signals();
     update_binary_signals();
     update_serial_signals();
+
+    m_attempt_eval_as_signals = false;
 }
 
 void uSEQ::update_outs()
