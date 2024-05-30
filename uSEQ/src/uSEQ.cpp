@@ -1883,7 +1883,8 @@ BUILTINFUNC_NOEVAL_MEMBER(
     useq_a1,
     if (NUM_CONTINUOUS_OUTS >= 1) {
         set_expr("a1", args[0]);
-        m_continuous_ASTs[0] = { args[0] };
+        m_continuous_ASTs[0] = args[0];
+        ret                  = Value::atom("a1");
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1891,6 +1892,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 2) {
         set_expr("a2", args[0]);
         m_continuous_ASTs[1] = { args[0] };
+        ret                  = Value::atom("a2");
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1898,6 +1900,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 3) {
         set_expr("a3", args[0]);
         m_continuous_ASTs[2] = { args[0] };
+        ret                  = Value::atom("a3");
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1905,6 +1908,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 4) {
         set_expr("a4", args[0]);
         m_continuous_ASTs[3] = { args[0] };
+        ret                  = Value::atom("a4");
     },
     1)
 
@@ -1913,6 +1917,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 5) {
         set_expr("a5", args[0]);
         m_continuous_ASTs[4] = { args[0] };
+        ret                  = Value::atom("a5");
     },
     1)
 
@@ -1921,6 +1926,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_CONTINUOUS_OUTS >= 6) {
         set_expr("a6", args[0]);
         m_continuous_ASTs[5] = { args[0] };
+        ret                  = Value::atom("a6");
     },
     1)
 
@@ -1930,6 +1936,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 1) {
         set_expr("d1", args[0]);
         m_binary_ASTs[0] = { args[0] };
+        ret              = Value::atom("d1");
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1937,6 +1944,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 2) {
         set_expr("d2", args[0]);
         m_binary_ASTs[1] = { args[0] };
+        ret              = Value::atom("d2");
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1944,6 +1952,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 3) {
         set_expr("d3", args[0]);
         m_binary_ASTs[2] = { args[0] };
+        ret              = Value::atom("d3");
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1951,6 +1960,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 4) {
         set_expr("d4", args[0]);
         m_binary_ASTs[3] = { args[0] };
+        ret              = Value::atom("d4");
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1958,6 +1968,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 5) {
         set_expr("d5", args[0]);
         m_binary_ASTs[4] = { args[0] };
+        ret              = Value::atom("d5");
     },
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -1965,29 +1976,37 @@ BUILTINFUNC_NOEVAL_MEMBER(
     if (NUM_BINARY_OUTS >= 6) {
         set_expr("d6", args[0]);
         m_binary_ASTs[5] = { args[0] };
+        ret              = Value::atom("d6");
     },
     1)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set_expr("s1", args[0]);
-                          m_serial_ASTs[0] = { args[0] };
+                          m_serial_ASTs[0] = { args[0] }; ret = Value::atom("s1");
                           ,
                           // Serial.println(m_serial_ASTs.size());,
                           1)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_s2, set_expr("s2", args[0]);
-                          m_serial_ASTs[1] = { args[0] };, 1)
+                          m_serial_ASTs[1] = { args[0] }; ret = Value::atom("s2");
+                          , 1)
 BUILTINFUNC_NOEVAL_MEMBER(useq_s3, set_expr("s3", args[0]);
-                          m_serial_ASTs[2] = { args[0] };, 1)
+                          m_serial_ASTs[2] = { args[0] }; ret = Value::atom("s3");
+                          , 1)
 BUILTINFUNC_NOEVAL_MEMBER(useq_s4, set_expr("s4", args[0]);
-                          m_serial_ASTs[3] = { args[0] };, 1)
+                          m_serial_ASTs[3] = { args[0] }; ret = Value::atom("s5");
+                          , 1)
 BUILTINFUNC_NOEVAL_MEMBER(useq_s5, set_expr("s5", args[0]);
-                          m_serial_ASTs[4] = { args[0] };, 1)
+                          m_serial_ASTs[4] = { args[0] }; ret = Value::atom("s5");
+                          , 1)
 BUILTINFUNC_NOEVAL_MEMBER(useq_s6, set_expr("s6", args[0]);
-                          m_serial_ASTs[5] = { args[0] };, 1)
+                          m_serial_ASTs[5] = { args[0] }; ret = Value::atom("s6");
+                          , 1)
 BUILTINFUNC_NOEVAL_MEMBER(useq_s7, set_expr("s7", args[0]);
-                          m_serial_ASTs[6] = { args[0] };, 1)
+                          m_serial_ASTs[6] = { args[0] }; ret = Value::atom("s7");
+                          , 1)
 BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set_expr("s8", args[0]);
-                          m_serial_ASTs[7] = { args[0] };, 1)
+                          m_serial_ASTs[7] = { args[0] }; ret = Value::atom("s8");
+                          , 1)
 
 // Testing
 // Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
