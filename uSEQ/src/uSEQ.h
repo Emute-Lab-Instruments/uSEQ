@@ -184,9 +184,12 @@ private:
     LISP_FUNC_DECL(useq_s6);
     LISP_FUNC_DECL(useq_s7);
     LISP_FUNC_DECL(useq_s8);
-    // Others
-    LISP_FUNC_DECL(useq_fast);
+
+    // Manipulating time
     LISP_FUNC_DECL(useq_slow);
+    LISP_FUNC_DECL(useq_fast);
+    LISP_FUNC_DECL(useq_offset_time);
+
     LISP_FUNC_DECL(useq_schedule);
     LISP_FUNC_DECL(useq_unschedule);
 

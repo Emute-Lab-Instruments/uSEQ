@@ -1328,6 +1328,44 @@ Value uSEQ::useq_slow(std::vector<Value>& args, Environment& env)
     return result;
 }
 
+Value uSEQ::useq_offset_time(std::vector<Value>& args, Environment& env)
+{
+    DBG("uSEQ::fast");
+    constexpr const char* user_facing_name = "fast";
+
+    // Checking number of args
+    if (!(args.size() == 2))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 2, 0);
+        return Value::error();
+    }
+
+    // Eval first arg
+    Value pre_eval = args[0];
+    args[0]        = args[0].eval(env);
+    if (args[0].is_error())
+    {
+        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        return Value::error();
+    }
+    // Checking first arg
+    if (!(args[0].is_number()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[0].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result           = Value::nil();
+    double current_time_s  = env.get("t").value().as_float();
+    double amt             = args[0].as_float();
+    double new_time_micros = (current_time_s + amt) * 1e+6;
+    result                 = eval_at_time(args[1], env, new_time_micros);
+    return result;
+}
+
 // (schedule <name> <period> <expr>)
 Value uSEQ::useq_schedule(std::vector<Value>& args, Environment& env)
 {
@@ -2201,9 +2239,9 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ain1", useq_ain1);
     INSERT_BUILTINDEF("ain2", useq_ain2);
 
-    INSERT_BUILTINDEF("fast", useq_fast);
-    // INSERT_BUILTINDEF("fast'", useq_fast_old);
     INSERT_BUILTINDEF("slow", useq_slow);
+    INSERT_BUILTINDEF("fast", useq_fast);
+    INSERT_BUILTINDEF("offset", useq_offset_time);
 
     INSERT_BUILTINDEF("set-bpm", useq_setbpm);
     INSERT_BUILTINDEF("get-input-bpm", useq_get_input_bpm);
