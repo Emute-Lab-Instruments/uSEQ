@@ -1449,6 +1449,45 @@ Value get_type_name(std::vector<Value>& args, Environment& env)
     return result;
 }
 
+Value b_to_u(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "b->u";
+
+    // Checking number of args
+    if (!(args.size() == 1))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+    }
+
+    // Checking individual args
+    if (!(args[0].is_number()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[0].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+    result       = args[0].as_float() * 0.5 + 0.5;
+    return result;
+}
+
 Value less(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "<";
@@ -2069,6 +2108,45 @@ Value useq_pulse(std::vector<Value>& args, Environment& env)
     double pulseWidth = args[0].as_float();
     double phasor     = args[1].as_float();
     result            = Value(pulseWidth < phasor ? 1.0 : 0.0);
+    return result;
+}
+
+Value u_to_b(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "u->b";
+
+    // Checking number of args
+    if (!(args.size() == 1))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+    }
+
+    // Checking individual args
+    if (!(args[0].is_number()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[0].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+    result       = args[0].as_float() * 2 - 1;
     return result;
 }
 
