@@ -144,6 +144,11 @@ void error_atom_not_defined(const String& atom)
     error("Atom **" + atom + "** not defined.");
 }
 
+void custom_function_error(const String& function_name, const String& msg)
+{
+    error("(`" + function_name + "`) " + msg);
+}
+
 int free_heap() { return rp2040.getFreeHeap() / 1024; }
 
 // DebugLogger
