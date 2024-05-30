@@ -44,6 +44,9 @@
 
              :docstring "Define a variable with a value (SPECIAL FORM)"}
 
+ ;; FIXME unnecessary duplication,
+ ;; we need to find a better way to map multiple
+ ;; idents to the same function while keeping error messages correct
  "define" {:eval-args? false
            :args {:num "== 2"
                   :type {0 ".is_symbol()"}}
@@ -51,10 +54,59 @@
                   "// NOTE: body is unevalled still"
                   "Value body = args[1];"
                   "env.set_expr(name, body);"
-                  "result = body.eval(env);"
-                  "env.set(name, result);"]
+                  "env.set(name, body.eval(env));"
+                  "result = Value::atom(name);"]
 
            :docstring "Define a variable with a value (SPECIAL FORM)"}
+
+ "def" {:eval-args? false
+        :args {:num "== 2"
+               :type {0 ".is_symbol()"}}
+        :body ["String name  = args[0].display();"
+               "// NOTE: body is unevalled still"
+               "Value body = args[1];"
+               "env.set_expr(name, body);"
+               "env.set(name, body.eval(env));"
+               "result = Value::atom(name);"]
+
+        :docstring "Define a variable with a value (SPECIAL FORM)"}
+
+ "defs" {:eval-args? false
+         :args {:num ">= 2"}
+         :body ["if (args.size() % 2 != 0)"
+                "{"
+                "    custom_function_error("
+                "        user_facing_name,"
+                "        \"Number of arguments should be even, forming pairs of <name> <value>.\");"
+                "}"
+
+                "// iterate by twos and make sure all even args are symbols"
+                "for (size_t i = 0; i < args.size() - 1; i += 2)"
+                "{"
+                "    if (!(args[i].is_symbol()))"
+                "    {"
+                "        error_wrong_specific_pred(user_facing_name, i + 1, \"a symbol \","
+                "                                  args[i].display());"
+                "        return Value::error();"
+                "    }"
+                "}"
+
+                "std::vector<Value> names;"
+
+                "for (size_t i = 0; i < args.size() - 1; i += 2)"
+                "{"
+                "    String name = args[i].display();"
+                "    // NOTE: body is unevalled still"
+                "    Value body = args[i + 1];"
+                "    env.set_expr(name, body);"
+                "    env.set(name, body.eval(env));"
+
+                "    names.push_back(Value::atom(name));"
+                "}"
+
+                "result = Value::vector(names);"]
+
+         :docstring "Define a variable with a value (SPECIAL FORM)"}
 
  "defun" {:eval-args? false
           :args {:num "== 3"
@@ -66,6 +118,17 @@
                  "result                    = Value(params, body, env);"
                  "env.set(f_name, result);"]
           :docstring "Define a function with parameters and a result expression (SPECIAL FORM)"}
+
+ "defn" {:eval-args? false
+         :args {:num "== 3"
+                :type {0 ".is_symbol()"
+                       1 ".is_sequential()"}}
+         :body ["String f_name             = args[0].display();"
+                "std::vector<Value> params = args[1].as_sequential();"
+                "Value body                = args[2];"
+                "result                    = Value(params, body, env);"
+                "env.set(f_name, result);"]
+         :docstring "Define a function with parameters and a result expression (SPECIAL FORM)"}
 
  "while_loop" {:eval-args? false
                :args {:num ">= 1"}
@@ -101,9 +164,75 @@
              :body ["Value acc;"
                     "for (size_t i = 0; i < args.size(); i++)"
                     "    acc = args[i].eval(env);"
-                    "return acc;"
                     "result = acc;"]
              :docstring "Evaluate a block of expressions in the current environment (SPECIAL FORM)"}
+
+ "let_block" {:eval-args? false
+              :args {:num ">= 2"}
+              :docstring "Evaluate a block of expressions in the current environment (SPECIAL FORM)"
+              :body ["Value bindings = args[0];"
+                     "// Make sure bindings arg is a valid vector/list"
+                     "if (!(bindings.is_sequential()))"
+                     "{"
+                     "    error_wrong_specific_pred(user_facing_name, 1, \"a list or a vector\","
+                     "                              args[0].display());"
+                     "    return Value::error();"
+                     "}"
+                     ""
+                     "std::vector<Value> bindings_vec = bindings.as_vector();"
+                     ""
+                     "if (bindings_vec.size() % 2 != 0)"
+                     "{"
+                     "    custom_function_error(user_facing_name,"
+                     "                          \"Number of elements in the bindings vector should be \""
+                     "                          \"even, forming pairs of <name> <value>.\");"
+                     "    return Value::error();"
+                     "}"
+                     ""
+                     "// iterate bindings by twos and make sure all even elements are symbols"
+                     "for (size_t i = 0; i < bindings_vec.size() - 1; i += 2)"
+                     "{"
+                     "    Value item = bindings_vec[i];"
+                     "    if (!(item.is_symbol()))"
+                     "    {"
+                     "        custom_function_error(user_facing_name,"
+                     "                              \"All even elements in the bindings vector are \""
+                     "                              \"expected to be symbols, but element #\" +"
+                     "                                  String((i - 1) / 2) +"
+                     "                                  \" is not: \" + item.display());"
+                     "        return Value::error();"
+                     "    }"
+                     "}"
+                     ""
+                     "// Make local env to store local bindings, deferring to the"
+                     "// linked parent scope for everything else"
+                     "Environment local_env;"
+                     "local_env.set_parent_scope(&env);"
+                     ""
+                     "// iterate bindings by twos and insert defs in local env"
+                     "for (size_t i = 0; i < bindings_vec.size() - 1; i += 2)"
+                     "{"
+                     "    String name       = bindings_vec[i].str;"
+                     "    Value body        = bindings_vec[i + 1];"
+                     "    Value evaled_body = body.eval(local_env);"
+                     "    if (evaled_body.is_error())"
+                     "    {"
+                     "        custom_function_error(user_facing_name,"
+                     "                              \"The definition for entry #\" +"
+                     "                                  String((i - 1) / 2) +"
+                     "                                  \" evaluates to an error: \" + body.display());"
+                     "        // println(\"- \" + body.display());"
+                     "    }"
+                     "    local_env.set(name, evaled_body);"
+                     "}"
+                     ""
+                     "// Eval the remaining body exprs in that env"
+                     "// NOTE: it starts at 1"
+                     "for (int i = 1; i < args.size(); i++)"
+                     "{"
+                     "    Value expr = args[i];"
+                     "    result     = expr.eval(local_env);"
+                     "}"]}
 
  "scope" {:eval-args? false
           :body ["Environment e = env;"

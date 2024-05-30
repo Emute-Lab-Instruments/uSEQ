@@ -1,7 +1,7 @@
 #include "generated_builtins.h"
+#include "value.h"
 #include "environment.h"
 #include "interpreter.h"
-#include "value.h"
 
 namespace builtin
 {
@@ -13,11 +13,10 @@ Value tail(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
     std::vector<Value> acc, list = args[0].as_list();
@@ -36,17 +35,17 @@ Value vec(std::vector<Value>& args, Environment& env)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value::vector(args);
+    result = Value::vector(args);
     return result;
 }
 
@@ -57,37 +56,68 @@ Value zeros(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    int length   = args[0].as_int();
+    int length = args[0].as_int();
     std::vector<Value> zeroList(length, Value(0));
     result = Value(zeroList);
+    return result;
+}
+
+Value defn(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "defn";
+
+    // Checking number of args
+    if (!(args.size() == 3))
+    {
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 3, -1);
+        return Value::error();
+    }
+    
+    // Checking individual args
+    if (!(args[0].is_symbol()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a symbol", args[0].display());
+        return Value::error();
+    }
+    if (!(args[1].is_sequential()))
+    {
+        error_wrong_specific_pred(user_facing_name, 2, "a sequential structure (e.g. a list or a vector)", args[1].display());
+        return Value::error();
+    }
+    
+    // BODY
+    Value result = Value::nil();
+    String f_name             = args[0].display();
+    std::vector<Value> params = args[1].as_sequential();
+    Value body                = args[2];
+    result                    = Value(params, body, env);
+    env.set(f_name, result);
     return result;
 }
 
@@ -100,17 +130,17 @@ Value list(std::vector<Value>& args, Environment& env)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(args);
+    result = Value(args);
     return result;
 }
 
@@ -121,35 +151,33 @@ Value ard_floor(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(floor(args[0].as_float()));
+    result = Value(floor(args[0].as_float()));
     return result;
 }
 
@@ -160,35 +188,33 @@ Value ard_ceil(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(ceil(args[0].as_float()));
+    result = Value(ceil(args[0].as_float()));
     return result;
 }
 
@@ -201,7 +227,6 @@ Value do_block(std::vector<Value>& args, Environment& env)
     Value acc;
     for (size_t i = 0; i < args.size(); i++)
         acc = args[i].eval(env);
-    return acc;
     result = acc;
     return result;
 }
@@ -213,27 +238,26 @@ Value neq(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(int(args[0] != args[1]));
+    result = Value(int(args[0] != args[1]));
     return result;
 }
 
@@ -244,35 +268,33 @@ Value ard_usin(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(0.5 + 0.5 * sin(args[0].as_float()));
+    result = Value(0.5 + 0.5 * sin(args[0].as_float()));
     return result;
 }
 
@@ -283,24 +305,23 @@ Value index(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_list()))
     {
@@ -309,19 +330,17 @@ Value index(std::vector<Value>& args, Environment& env)
     }
     if (!(!args[0].is_empty()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a non-empty list",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a non-empty list", args[0].display());
         return Value::error();
     }
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                  args[1].display());
+        error_wrong_specific_pred(user_facing_name, 2, "a number", args[1].display());
         return Value::error();
     }
-
+    
     // BODY
-    Value result            = Value::nil();
+    Value result = Value::nil();
     std::vector<Value> list = args[0].as_list();
     int i                   = args[1].as_int();
     if (i < list.size())
@@ -342,35 +361,112 @@ Value ard_cos(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
+        return Value::error();
+    }
+    
+    // BODY
+    Value result = Value::nil();
+    result = Value(cos(args[0].as_float()));
+    return result;
+}
+
+Value let_block(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "let";
+
+    // Checking number of args
+    if (!(args.size() >= 2))
+    {
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::AtLeast, 2, -1);
+        return Value::error();
+    }
+    
+    // BODY
+    Value result = Value::nil();
+    Value bindings = args[0];
+    // Make sure bindings arg is a valid vector/list
+    if (!(bindings.is_sequential()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a list or a vector",
                                   args[0].display());
         return Value::error();
     }
-
-    // BODY
-    Value result = Value::nil();
-    result       = Value(cos(args[0].as_float()));
+    
+    std::vector<Value> bindings_vec = bindings.as_vector();
+    
+    if (bindings_vec.size() % 2 != 0)
+    {
+        custom_function_error(user_facing_name,
+                              "Number of elements in the bindings vector should be "
+                              "even, forming pairs of <name> <value>.");
+        return Value::error();
+    }
+    
+    // iterate bindings by twos and make sure all even elements are symbols
+    for (size_t i = 0; i < bindings_vec.size() - 1; i += 2)
+    {
+        Value item = bindings_vec[i];
+        if (!(item.is_symbol()))
+        {
+            custom_function_error(user_facing_name,
+                                  "All even elements in the bindings vector are "
+                                  "expected to be symbols, but element #" +
+                                      String((i - 1) / 2) +
+                                      " is not: " + item.display());
+            return Value::error();
+        }
+    }
+    
+    // Make local env to store local bindings, deferring to the
+    // linked parent scope for everything else
+    Environment local_env;
+    local_env.set_parent_scope(&env);
+    
+    // iterate bindings by twos and insert defs in local env
+    for (size_t i = 0; i < bindings_vec.size() - 1; i += 2)
+    {
+        String name       = bindings_vec[i].str;
+        Value body        = bindings_vec[i + 1];
+        Value evaled_body = body.eval(local_env);
+        if (evaled_body.is_error())
+        {
+            custom_function_error(user_facing_name,
+                                  "The definition for entry #" +
+                                      String((i - 1) / 2) +
+                                      " evaluates to an error: " + body.display());
+            // println("- " + body.display());
+        }
+        local_env.set(name, evaled_body);
+    }
+    
+    // Eval the remaining body exprs in that env
+    // NOTE: it starts at 1
+    for (int i = 1; i < args.size(); i++)
+    {
+        Value expr = args[i];
+        result     = expr.eval(local_env);
+    }
     return result;
 }
 
@@ -381,27 +477,26 @@ Value eq(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(int(args[0] == args[1]));
+    result = Value(int (args [0] == args [1]));
     return result;
 }
 
@@ -412,35 +507,33 @@ Value ard_abs(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(abs(args[0].as_float()));
+    result = Value(abs(args[0].as_float()));
     return result;
 }
 
@@ -451,28 +544,27 @@ Value ard_millis(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 0))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 0, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 0, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    int m        = millis();
-    result       = Value(m);
+    int m = millis();
+    result = Value(m);
     return result;
 }
 
@@ -483,38 +575,36 @@ Value sum(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::AtLeast, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::AtLeast, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating args, checking for errors & all-arg constraints
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
-
+        
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            error_wrong_all_pred(user_facing_name, i + 1, "a number", args[i].display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    Value acc    = args[0];
+    Value acc = args[0];
     for (size_t i = 1; i < args.size(); i++)
     {
-        acc = acc + args[i];
+    acc = acc + args[i];
     }
     result = acc;
     return result;
@@ -527,16 +617,14 @@ Value for_loop(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::AtLeast, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::AtLeast, 2, -1);
         return Value::error();
     }
-
+    
     // Checking individual args
     if (!(args[0].is_symbol()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a symbol", args[0].display());
         return Value::error();
     }
     if (!(args[1].is_list()))
@@ -544,7 +632,7 @@ Value for_loop(std::vector<Value>& args, Environment& env)
         error_wrong_specific_pred(user_facing_name, 2, "a list", args[1].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
     Value acc;
@@ -567,27 +655,26 @@ Value pop(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = args[0].pop();
+    result = args[0].pop();
     return result;
 }
 
@@ -598,35 +685,33 @@ Value ard_min(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating args, checking for errors & all-arg constraints
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
-
+        
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            error_wrong_all_pred(user_facing_name, i + 1, "a number", args[i].display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(min(args[0].as_float(), args[1].as_float()));
+    result = Value(min(args[0].as_float(), args[1].as_float()));
     return result;
 }
 
@@ -637,24 +722,23 @@ Value push(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
     for (size_t i = 1; i < args.size(); i++)
@@ -670,27 +754,26 @@ Value greater(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(int(args[0] > args[1]));
+    result = Value(int(args[0] > args[1]));
     return result;
 }
 
@@ -701,35 +784,33 @@ Value product(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::AtLeast, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::AtLeast, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating args, checking for errors & all-arg constraints
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
-
+        
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            error_wrong_all_pred(user_facing_name, i + 1, "a number", args[i].display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    Value acc    = args[0];
+    Value acc = args[0];
     for (size_t i = 1; i < args.size(); i++)
         acc = acc * args[i];
     result = acc;
@@ -743,35 +824,33 @@ Value replace(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 3, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
-
+    
     // Evaluating args, checking for errors & all-arg constraints
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
-
+        
         if (!(args[i].is_string()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a string",
-                                 args[i].display());
+            error_wrong_all_pred(user_facing_name, i + 1, "a string", args[i].display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    String src   = args[0].as_string();
+    String src = args[0].as_string();
     src.replace(args[1].as_string(), args[2].as_string());
     return Value::string(src);
     return result;
@@ -784,35 +863,33 @@ Value ard_sin(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(sin(args[0].as_float()));
+    result = Value(sin(args[0].as_float()));
     return result;
 }
 
@@ -823,35 +900,33 @@ Value ard_ucos(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(0.5 + 0.5 * cos(args[0].as_float()));
+    result = Value(0.5 + 0.5 * cos(args[0].as_float()));
     return result;
 }
 
@@ -862,14 +937,13 @@ Value eval(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = args[0].eval(env);
+    result = args[0].eval(env);
     return result;
 }
 
@@ -880,35 +954,33 @@ Value println(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_string()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a string",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a string", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    String s     = args[0].as_string();
+    String s = args[0].as_string();
     Serial.println(s);
     return result;
 }
@@ -920,22 +992,20 @@ Value cast_to_int(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = args[0].cast_to_int();
+    result = args[0].cast_to_int();
     return result;
 }
 
@@ -946,35 +1016,33 @@ Value remainder(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating args, checking for errors & all-arg constraints
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
-
+        
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            error_wrong_all_pred(user_facing_name, i + 1, "a number", args[i].display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = args[0] % args[1];
+    result = args[0] % args[1];
     return result;
 }
 
@@ -985,35 +1053,33 @@ Value subtract(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating args, checking for errors & all-arg constraints
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
-
+        
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            error_wrong_all_pred(user_facing_name, i + 1, "a number", args[i].display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = args[0] - args[1];
+    result = args[0] - args[1];
     return result;
 }
 
@@ -1024,27 +1090,25 @@ Value define(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Checking individual args
     if (!(args[0].is_symbol()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a symbol", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
     String name  = args[0].display();
     // NOTE: body is unevalled still
     Value body = args[1];
     env.set_expr(name, body);
-    result = body.eval(env);
-    env.set(name, result);
+    env.set(name, body.eval(env));
+    result = Value::atom(name);
     return result;
 }
 
@@ -1055,35 +1119,33 @@ Value ard_pow(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating args, checking for errors & all-arg constraints
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
-
+        
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            error_wrong_all_pred(user_facing_name, i + 1, "a number", args[i].display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(pow(args[0].as_float(), args[1].as_float()));
+    result = Value(pow(args[0].as_float(), args[1].as_float()));
     return result;
 }
 
@@ -1094,11 +1156,10 @@ Value while_loop(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::AtLeast, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::AtLeast, 1, -1);
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
     Value acc;
@@ -1119,24 +1180,23 @@ Value remove(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_list()))
     {
@@ -1145,19 +1205,18 @@ Value remove(std::vector<Value>& args, Environment& env)
     }
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                  args[1].display());
+        error_wrong_specific_pred(user_facing_name, 2, "a number", args[1].display());
         return Value::error();
     }
-
+    
     // BODY
-    Value result            = Value::nil();
+    Value result = Value::nil();
     std::vector<Value> list = args[0].as_list();
-    int i                   = args[1].as_int();
-    if (list.empty() || i >= (int)list.size())
-        error(INDEX_OUT_OF_RANGE);
-    else
-        list.erase(list.begin() + i);
+        int i                   = args[1].as_int();
+        if (list.empty() || i >= (int)list.size())
+            error(INDEX_OUT_OF_RANGE);
+        else
+            list.erase(list.begin() + i);
     result = Value(list);
     return result;
 }
@@ -1167,7 +1226,7 @@ Value scope(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "scope";
 
     // BODY
-    Value result  = Value::nil();
+    Value result = Value::nil();
     Environment e = env;
     Value acc;
     for (size_t i = 0; i < args.size(); i++)
@@ -1183,27 +1242,26 @@ Value debug(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value::string(args[0].debug());
+    result = Value::string(args[0].debug());
     return result;
 }
 
@@ -1214,27 +1272,26 @@ Value less_eq(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(int(args[0] <= args[1]));
+    result = Value(int(args[0] <= args[1]));
     return result;
 }
 
@@ -1245,35 +1302,33 @@ Value ard_max(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating args, checking for errors & all-arg constraints
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
-
+        
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            error_wrong_all_pred(user_facing_name, i + 1, "a number", args[i].display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(max(args[0].as_float(), args[1].as_float()));
+    result = Value(max(args[0].as_float(), args[1].as_float()));
     return result;
 }
 
@@ -1284,34 +1339,32 @@ Value ard_delay(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
-    Value result  = Value::nil();
+    Value result = Value::nil();
     int delaytime = args[0].as_int();
     delay(delaytime);
     result = args[0];
@@ -1325,29 +1378,28 @@ Value timeit(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
-    Value result     = Value::nil();
+    Value result = Value::nil();
     unsigned long ts = micros();
     args[0].eval(env);
-    ts     = micros() - ts;
+    ts = micros() - ts;
     result = Value(static_cast<int>(ts));
     return result;
 }
@@ -1359,29 +1411,29 @@ Value ard_map(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 5))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 5, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 5, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    float m      = map(args[0].as_float(), args[1].as_float(), args[2].as_float(),
-                       args[3].as_float(), args[4].as_float());
-    result       = Value(m);
+    float m = map(args[0].as_float(), args[1].as_float(),
+                          args[2].as_float(), args[3].as_float(),
+                          args[4].as_float());
+    result = Value(m);
     return result;
 }
 
@@ -1392,20 +1444,19 @@ Value head(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Checking individual args
     if (!(args[0].is_list()))
     {
         error_wrong_specific_pred(user_facing_name, 1, "a list", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
-    Value result            = Value::nil();
+    Value result = Value::nil();
     std::vector<Value> list = args[0].as_list();
     if (list.empty())
     {
@@ -1425,27 +1476,26 @@ Value get_type_name(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value::string(args[0].get_type_name());
+    result = Value::string(args[0].get_type_name());
     return result;
 }
 
@@ -1456,35 +1506,33 @@ Value b_to_u(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = args[0].as_float() * 0.5 + 0.5;
+    result = args[0].as_float() * 0.5 + 0.5;
     return result;
 }
 
@@ -1495,27 +1543,26 @@ Value less(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(int(args[0] > args[1]));
+    result = Value(int(args[0] > args[1]));
     return result;
 }
 
@@ -1526,28 +1573,27 @@ Value ard_micros(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 0))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 0, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 0, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    int m        = micros();
-    result       = Value(m);
+    int m = micros();
+    result = Value(m);
     return result;
 }
 
@@ -1558,35 +1604,33 @@ Value divide(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating args, checking for errors & all-arg constraints
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
-
+        
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            error_wrong_all_pred(user_facing_name, i + 1, "a number", args[i].display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = args[0] / args[1];
+    result = args[0] / args[1];
     return result;
 }
 
@@ -1597,35 +1641,33 @@ Value ard_delaymicros(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
-    Value result  = Value::nil();
-    int delaytime = args[0].as_int();
+    Value result = Value::nil();
+    int  delaytime = args[0].as_int();
     delayMicroseconds(delaytime);
     result = args[0];
     return result;
@@ -1638,24 +1680,23 @@ Value insert(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 3, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_list()))
     {
@@ -1664,13 +1705,12 @@ Value insert(std::vector<Value>& args, Environment& env)
     }
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                  args[1].display());
+        error_wrong_specific_pred(user_facing_name, 2, "a number", args[1].display());
         return Value::error();
     }
-
+    
     // BODY
-    Value result            = Value::nil();
+    Value result = Value::nil();
     std::vector<Value> list = args[0].as_list();
     int i                   = args[1].as_int();
     if (i < list.size())
@@ -1688,22 +1728,20 @@ Value get_expr(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Checking individual args
     if (!(args[0].is_symbol()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a symbol", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
-    Value result              = Value::nil();
-    String name               = args[0].display();
+    Value result = Value::nil();
+    String name  = args[0].display();
     std::optional<Value> expr = env.get_expr(name);
     if (expr)
     {
@@ -1723,35 +1761,33 @@ Value ard_sqrt(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(sqrt(args[0].as_float()));
+    result = Value(sqrt(args[0].as_float()));
     return result;
 }
 
@@ -1762,35 +1798,33 @@ Value print(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_string()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a string",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a string", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    String s     = args[0].as_string();
+    String s = args[0].as_string();
     Serial.print(s);
     return result;
 }
@@ -1802,27 +1836,26 @@ Value display(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value::string(args[0].display());
+    result = Value::string(args[0].display());
     return result;
 }
 
@@ -1833,27 +1866,26 @@ Value greater_eq(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(int(args[0] >= args[1]));
+    result = Value(int(args[0] >= args[1]));
     return result;
 }
 
@@ -1863,7 +1895,7 @@ Value quote(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = Value(args);
+    result = Value(args);
     return result;
 }
 
@@ -1874,22 +1906,20 @@ Value cast_to_float(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(args[0].as_float());
+    result = Value(args[0].as_float());
     return result;
 }
 
@@ -1900,34 +1930,33 @@ Value len(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_list()))
     {
         error_wrong_specific_pred(user_facing_name, 1, "a list", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value((int)args[0].as_list().size());
+    result = Value((int)args[0].as_list().size());
     return result;
 }
 
@@ -1938,19 +1967,17 @@ Value set(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Checking individual args
     if (!(args[0].is_symbol()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a symbol", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
     String name  = args[0].display();
@@ -1968,33 +1995,58 @@ Value defun(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 3, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
-
+    
     // Checking individual args
     if (!(args[0].is_symbol()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a symbol", args[0].display());
         return Value::error();
     }
     if (!(args[1].is_sequential()))
     {
-        error_wrong_specific_pred(user_facing_name, 2,
-                                  "a sequential structure (e.g. a list or a vector)",
-                                  args[1].display());
+        error_wrong_specific_pred(user_facing_name, 2, "a sequential structure (e.g. a list or a vector)", args[1].display());
         return Value::error();
     }
-
+    
     // BODY
-    Value result              = Value::nil();
+    Value result = Value::nil();
     String f_name             = args[0].display();
     std::vector<Value> params = args[1].as_sequential();
     Value body                = args[2];
     result                    = Value(params, body, env);
     env.set(f_name, result);
+    return result;
+}
+
+Value def(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "def";
+
+    // Checking number of args
+    if (!(args.size() == 2))
+    {
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+    
+    // Checking individual args
+    if (!(args[0].is_symbol()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a symbol", args[0].display());
+        return Value::error();
+    }
+    
+    // BODY
+    Value result = Value::nil();
+    String name  = args[0].display();
+    // NOTE: body is unevalled still
+    Value body = args[1];
+    env.set_expr(name, body);
+    env.set(name, body.eval(env));
+    result = Value::atom(name);
     return result;
 }
 
@@ -2005,35 +2057,76 @@ Value useq_sqr(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(fmod(args[0].as_float(), 1.0) < 0.5 ? 1.0 : 0.0);
+    result = Value(fmod(args[0].as_float(), 1.0) < 0.5 ? 1.0 : 0.0);
+    return result;
+}
+
+Value defs(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "defs";
+
+    // Checking number of args
+    if (!(args.size() >= 2))
+    {
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::AtLeast, 2, -1);
+        return Value::error();
+    }
+    
+    // BODY
+    Value result = Value::nil();
+    if (args.size() % 2 != 0)
+    {
+        custom_function_error(
+            user_facing_name,
+            "Number of arguments should be even, forming pairs of <name> <value>.");
+    }
+    // iterate by twos and make sure all even args are symbols
+    for (size_t i = 0; i < args.size() - 1; i += 2)
+    {
+        if (!(args[i].is_symbol()))
+        {
+            error_wrong_specific_pred(user_facing_name, i + 1, "a symbol ",
+                                      args[i].display());
+            return Value::error();
+        }
+    }
+    std::vector<Value> names;
+    for (size_t i = 0; i < args.size() - 1; i += 2)
+    {
+        String name = args[i].display();
+        // NOTE: body is unevalled still
+        Value body = args[i + 1];
+        env.set_expr(name, body);
+        env.set(name, body.eval(env));
+        names.push_back(Value::atom(name));
+    }
+    result = Value::vector(names);
     return result;
 }
 
@@ -2044,22 +2137,20 @@ Value lambda(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Checking individual args
     if (!(args[0].is_vector()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a vector",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a vector", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(args[0].as_vector(), args[1], env);
+    result = Value(args[0].as_vector(), args[1], env);
     return result;
 }
 
@@ -2070,44 +2161,41 @@ Value useq_pulse(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                  args[1].display());
+        error_wrong_specific_pred(user_facing_name, 2, "a number", args[1].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
     // args: pulse width, phasor
     double pulseWidth = args[0].as_float();
-    double phasor     = args[1].as_float();
-    result            = Value(pulseWidth < phasor ? 1.0 : 0.0);
+    double phasor = args[1].as_float();
+    result = Value(pulseWidth < phasor ? 1.0 : 0.0);
     return result;
 }
 
@@ -2118,35 +2206,33 @@ Value u_to_b(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = args[0].as_float() * 2 - 1;
+    result = args[0].as_float() * 2 - 1;
     return result;
 }
 
@@ -2157,35 +2243,33 @@ Value ard_tan(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
-
+    
     // Evaluating & checking args for errors
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
-
+    
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        error_wrong_specific_pred(user_facing_name, 1, "a number", args[0].display());
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
-    result       = Value(tan(args[0].as_float()));
+    result = Value(tan(args[0].as_float()));
     return result;
 }
 
@@ -2196,17 +2280,16 @@ Value if_then_else(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 3, -1);
+        error_wrong_num_args(user_facing_name, args.size(), NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
-
+    
     // BODY
     Value result = Value::nil();
     if (args[0].eval(env).as_bool())
-        result = args[1].eval(env);
-    else
-        result = args[2].eval(env);
+            result = args[1].eval(env);
+        else
+            result = args[2].eval(env);
     return result;
 }
 
