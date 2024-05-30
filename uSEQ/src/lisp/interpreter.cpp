@@ -13,7 +13,9 @@
 // Static Class-wide flag
 // bool Interpreter::m_builtindefs_init = false;
 
-bool Interpreter::m_attempt_eval_as_signals = true;
+bool user_interaction = false;
+
+bool Interpreter::m_attempt_eval_as_signals = false;
 
 uSEQ* Interpreter::useq_instance_ptr;
 

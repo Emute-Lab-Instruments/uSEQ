@@ -7,6 +7,8 @@
 
 class uSEQ;
 
+extern bool user_interaction;
+
 class Interpreter : public Environment, public uLispParser
 {
 public:
