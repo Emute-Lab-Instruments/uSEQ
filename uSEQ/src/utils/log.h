@@ -2,8 +2,11 @@
 #define LOG_H_
 
 #include "string.h"
+#include "serial_message.h"
 
-void print(String s);
+
+
+// void print(String s);
 void println(String s);
 
 void debug(String s);

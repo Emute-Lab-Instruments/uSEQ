@@ -4,10 +4,15 @@
 
 // TODO
 // Definitions
+// void print(String s)
+// {
+// Serial.print(s);
 void print(String s)
 {
     if (Serial.availableForWrite())
     {
+        Serial.write(SerialMsg::message_begin_marker);
+        Serial.write((u_int8_t)SerialMsg::serial_message_types::TEXT);
         Serial.print(s);
     }
     // #if defined(USE_STD_STR) && defined(USE_STD_IO)
@@ -23,6 +28,9 @@ void println(String s)
 {
     if (Serial.availableForWrite())
     {
+        // Serial.println(s);
+        Serial.write(SerialMsg::message_begin_marker);
+        Serial.write((u_int8_t)SerialMsg::serial_message_types::TEXT);
         Serial.println(s);
     }
     // #if defined(USE_STD_STR) && defined(USE_STD_IO)
