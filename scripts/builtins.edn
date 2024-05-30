@@ -425,6 +425,14 @@
           :body ["String s = args[0].as_string();"
                  "Serial.print(s);"]}
 
+ "b_to_u" {:args {:num "== 1"
+                  :type {0 ".is_number()"}}
+           :body ["result = args[0].as_float() * 0.5 + 0.5;"]}
+
+ "u_to_b" {:args {:num "== 1"
+                  :type {0 ".is_number()"}}
+           :body ["result = args[0].as_float() * 2 - 1;"]}
+
  ;; "debug" {:args {:num "== 1"}
  ;;          :body ["result = Value::string(args[0].debug());"]}
 

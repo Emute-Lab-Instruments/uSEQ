@@ -50,6 +50,7 @@ Value timeit(std::vector<Value>& args, Environment& env);
 Value ard_map(std::vector<Value>& args, Environment& env);
 Value head(std::vector<Value>& args, Environment& env);
 Value get_type_name(std::vector<Value>& args, Environment& env);
+Value b_to_u(std::vector<Value>& args, Environment& env);
 Value less(std::vector<Value>& args, Environment& env);
 Value ard_micros(std::vector<Value>& args, Environment& env);
 Value divide(std::vector<Value>& args, Environment& env);
@@ -68,6 +69,7 @@ Value defun(std::vector<Value>& args, Environment& env);
 Value useq_sqr(std::vector<Value>& args, Environment& env);
 Value lambda(std::vector<Value>& args, Environment& env);
 Value useq_pulse(std::vector<Value>& args, Environment& env);
+Value u_to_b(std::vector<Value>& args, Environment& env);
 Value ard_tan(std::vector<Value>& args, Environment& env);
 Value if_then_else(std::vector<Value>& args, Environment& env);
 } // namespace builtin
