@@ -608,10 +608,7 @@ void uSEQ::check_and_handle_user_input()
             if (first_byte == SerialMsg::execute_now_marker /*'@'*/)
             {
                 String result = eval(m_last_received_code);
-                // print("\n=> ");
                 println(result);
-                // print("\n");
-                // print(">> ");
             }
             // SCHEDULE FOR LATER
             else
@@ -1280,22 +1277,7 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[1].display());
-        return Value::error();
-    }
-
-    Value pre_eval2 = args[1];
-    args[1]         = args[1].eval(env);
-    if (args[1].is_error())
-    {
-        error_arg_is_error(user_facing_name, 1, pre_eval.display());
-        return Value::error();
-    }
-    // Checking first arg
-    if (!(args[1].is_number()))
-    {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[1].display());
+                                  args[0].display());
         return Value::error();
     }
 

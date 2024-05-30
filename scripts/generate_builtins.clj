@@ -38,7 +38,8 @@
    ".is_error()" "an error"})
 
 (def internal->user-names
-  {"b_to_u" "b->u"
+  {"let_block" "let"
+   "b_to_u" "b->u"
    "u_to_b" "u->b"
    "get_expr" "get-expr"
    "do_block" "do"

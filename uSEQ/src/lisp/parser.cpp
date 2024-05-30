@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "interpreter.h"
 
 const String uLispParser::unescape(const String str)
 {
@@ -37,7 +38,7 @@ const String uLispParser::unescape(const String str)
 
 void uLispParser::skip_whitespace(const String& s, int& ptr)
 {
-    while (isspace(s[ptr]) || s[ptr] == '\n')
+    while (isspace(s[ptr]) || s[ptr] == '\n' || s[ptr] == ',')
     {
         ptr++;
     }
@@ -62,6 +63,16 @@ bool uLispParser::is_midinote(const String& s, int ptr) { return s[ptr] == 'M'; 
 // to the beginning of the next value to parse.
 Value uLispParser::parse(String s, int& ptr)
 {
+    // if (user_interaction)
+    // {
+    //     println("\n");
+    //     println("\n");
+    //     println("(inner parse)");
+    //     println(s.substring(ptr));
+    //     println("\n");
+    //     println("\n");
+    // }
+
     skip_whitespace(s, ptr);
 
     // Skip comments
@@ -102,7 +113,7 @@ Value uLispParser::parse(String s, int& ptr)
     {
 
         // println("is list");
-        //  If this is a list
+        // Consume the opening '(' and skip initial whitespace
         skip_whitespace(s, ++ptr);
 
         Value result = Value(std::vector<Value>());
@@ -119,6 +130,7 @@ Value uLispParser::parse(String s, int& ptr)
             {
                 result.push(res);
             }
+            skip_whitespace(s, ptr);
         }
 
         skip_whitespace(s, ++ptr);
@@ -145,9 +157,11 @@ Value uLispParser::parse(String s, int& ptr)
             {
                 vec.push_back(res);
             }
+            skip_whitespace(s, ptr);
         }
+        ptr++;
 
-        skip_whitespace(s, ++ptr);
+        // skip_whitespace(s, ++ptr);
         return Value::vector(vec);
     }
     else if (isdigit(s[ptr]) || (s[ptr] == '-' && isdigit(s[ptr + 1])))
@@ -238,6 +252,9 @@ Value uLispParser::parse(String code)
 {
     // dbg(s);
     //
+
+    // println("Parse: ");
+    // println(code);
     // for (int i = 0; i < code.length(); i++)
     // {
     //     println(String((uint)code[i]));

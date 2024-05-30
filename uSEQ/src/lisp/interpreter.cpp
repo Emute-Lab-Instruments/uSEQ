@@ -337,6 +337,14 @@ Value Interpreter::eval_in(Value& v, Environment& env)
     DBG("Interpreter::eval_in");
     dbg("Value: " + v.display());
 
+    // if (user_interaction)
+    // {
+    //     println("\n\n");
+    //     println("Eval: \n");
+    //     println(v.display());
+    //     println("\n\n");
+    // }
+
     Value result = Value::error();
 
     switch (v.type)
@@ -357,7 +365,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
     {
         dbg("atom");
         // ts_get = micros();
-        bool look_in_defs = true;
+        bool look_in_static_defs = true;
 
         if (m_attempt_eval_as_signals)
         {
@@ -365,18 +373,16 @@ Value Interpreter::eval_in(Value& v, Environment& env)
 
             if (atom_def_expr && !(*atom_def_expr).is_error())
             {
-                // 2. If we do and it's not an error, then recursively
-                // call eval_at_time on that
-                result       = eval_in(atom_def_expr.value(), env);
-                look_in_defs = false;
+                result              = eval_in(atom_def_expr.value(), env);
+                look_in_static_defs = false;
             }
             else
             {
-                look_in_defs = true;
+                look_in_static_defs = true;
             }
         }
 
-        if (look_in_defs)
+        if (look_in_static_defs)
         {
             std::optional<Value> atom_val = env.get(v.str);
             if (atom_val && !atom_val.value().is_error())
@@ -396,6 +402,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
     case Value::LIST:
     {
         dbg("list");
+
         if (v.list.size() < 1)
             println(EVAL_EMPTY_LIST);
         // throw Error(*this, env, EVAL_EMPTY_LIST);
@@ -410,7 +417,10 @@ Value Interpreter::eval_in(Value& v, Environment& env)
         // Make sure we can find the function
         if (function.is_error())
         {
-            error("function is error");
+            runtime_error(
+                "Trying to evaluate the function " + v.list[0].display() +
+                " results in an error. This could either mean that it hasn't been "
+                "defined, or that it's not valid.");
             result = Value::error();
         }
         else
@@ -482,6 +492,20 @@ Value Interpreter::eval_in(Value& v, Environment& env)
 Value Interpreter::apply(Value& f, LispFuncArgsVec& args, Environment& env)
 {
     DBG("Interpreter::apply");
+
+    // if (user_interaction)
+    // {
+    //     println("\n\n");
+    //     println("Apply: \n");
+    //     println(f.display());
+
+    //     println("\nArgs: \n");
+    //     for (auto& v : args)
+    //     {
+    //         println(v.display());
+    //     }
+    //     println("\n\n");
+    // }
 
     dbg(f.str);
 
@@ -605,14 +629,21 @@ void Interpreter::loadBuiltinDefs()
     // Special forms
     Environment::builtindefs["get-expr"] = Value("get-expr", builtin::get_expr);
 
+    // Defining
+    Environment::builtindefs["define"] = Value("define", builtin::define);
+    Environment::builtindefs["def"]    = Value("def", builtin::def);
+    Environment::builtindefs["defun"]  = Value("defun", builtin::defun);
+    Environment::builtindefs["defn"]   = Value("defn", builtin::defn);
+    Environment::builtindefs["defs"]   = Value("defs", builtin::defs);
+
+    Environment::builtindefs["let"] = Value("let", builtin::let_block);
+
     Environment::builtindefs["do"]     = Value("do", builtin::do_block);
     Environment::builtindefs["if"]     = Value("if", builtin::if_then_else);
     Environment::builtindefs["for"]    = Value("for", builtin::for_loop);
     Environment::builtindefs["while"]  = Value("while", builtin::while_loop);
     Environment::builtindefs["scope"]  = Value("scope", builtin::scope);
     Environment::builtindefs["quote"]  = Value("quote", builtin::quote);
-    Environment::builtindefs["defun"]  = Value("defun", builtin::defun);
-    Environment::builtindefs["define"] = Value("define", builtin::define);
     Environment::builtindefs["set"]    = Value("set", builtin::set);
     Environment::builtindefs["lambda"] = Value("lambda", builtin::lambda);
 
@@ -660,13 +691,16 @@ void Interpreter::loadBuiltinDefs()
 
     // arduino math
     // NOTE: duplicates
-    Environment::builtindefs["sin"]   = Value("sin", builtin::ard_sin);
-    Environment::builtindefs["sine"]  = Value("sine", builtin::ard_sin);
-    Environment::builtindefs["usin"]  = Value("usin", builtin::ard_usin);
-    Environment::builtindefs["usine"] = Value("usine", builtin::ard_usin);
-    Environment::builtindefs["cos"]   = Value("cos", builtin::ard_cos);
-    Environment::builtindefs["tan"]   = Value("tan", builtin::ard_tan);
-    Environment::builtindefs["abs"]   = Value("abs", builtin::ard_abs);
+    Environment::builtindefs["sin"]     = Value("sin", builtin::ard_sin);
+    Environment::builtindefs["sine"]    = Value("sine", builtin::ard_sin);
+    Environment::builtindefs["usin"]    = Value("usin", builtin::ard_usin);
+    Environment::builtindefs["usine"]   = Value("usine", builtin::ard_usin);
+    Environment::builtindefs["cos"]     = Value("cos", builtin::ard_cos);
+    Environment::builtindefs["cosine"]  = Value("cosine", builtin::ard_cos);
+    Environment::builtindefs["ucos"]    = Value("ucos", builtin::ard_ucos);
+    Environment::builtindefs["ucosine"] = Value("ucos", builtin::ard_ucos);
+    Environment::builtindefs["tan"]     = Value("tan", builtin::ard_tan);
+    Environment::builtindefs["abs"]     = Value("abs", builtin::ard_abs);
 
     Environment::builtindefs["min"]   = Value("min", builtin::ard_min);
     Environment::builtindefs["max"]   = Value("max", builtin::ard_max);
@@ -674,8 +708,10 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["sqrt"]  = Value("sqrt", builtin::ard_sqrt);
     Environment::builtindefs["scale"] = Value("scale", builtin::ard_map);
 
-    Environment::builtindefs["b->u"] = Value("b->u", builtin::b_to_u);
-    Environment::builtindefs["u->b"] = Value("u->b", builtin::u_to_b);
+    Environment::builtindefs["b->u"]    = Value("b->u", builtin::b_to_u);
+    Environment::builtindefs["bi->uni"] = Value("bi->uni", builtin::b_to_u);
+    Environment::builtindefs["u->b"]    = Value("u->b", builtin::u_to_b);
+    Environment::builtindefs["uni->bi"] = Value("uni->bi", builtin::u_to_b);
 
     // Meta operations
     Environment::builtindefs["eval"] = Value("eval", builtin::eval);
