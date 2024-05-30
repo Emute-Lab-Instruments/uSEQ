@@ -8,6 +8,7 @@
 #endif
 #include "utils.h"
 #include "utils/log.h"
+
 // #include "lisp/library.h"
 #include <cmath>
 
@@ -299,7 +300,7 @@ void uSEQ::check_code_quant_phasor()
             int cmdts = micros();
             res       = eval(m_runQueue[q]);
             cmdts     = micros() - cmdts;
-            print(res.debug());
+            println(res.debug());
         }
         m_runQueue.clear();
     }
@@ -581,7 +582,7 @@ void uSEQ::check_and_handle_user_input()
 
         int first_byte = Serial.read();
         // SERIAL
-        if (first_byte == m_serial_stream_begin_marker /*31*/)
+        if (first_byte == SerialMsg::message_begin_marker /*31*/)
         {
             // incoming serial stream
             size_t channel = Serial.read();
@@ -604,12 +605,12 @@ void uSEQ::check_and_handle_user_input()
                 m_should_quit = true;
             }
             // EXECUTE NOW
-            if (first_byte == m_execute_now_marker /*'@'*/)
+            if (first_byte == SerialMsg::execute_now_marker /*'@'*/)
             {
                 String result = eval(m_last_received_code);
-                print("\n=> ");
-                print(result);
-                print("\n");
+                // print("\n=> ");
+                println(result);
+                // print("\n");
                 // print(">> ");
             }
             // SCHEDULE FOR LATER
@@ -729,24 +730,12 @@ void uSEQ::update_serial_signals()
     }
 }
 
-/*
- * (define my-bar (slow 2 bar))
- * => "slow", "bar"
- *
- * (define my-phasor (+ my-bar 1))
- * => "my-bar"
- *
- * (d1 (+ my-phasor 3))
- * => "my-phasor"
- *
- * */
-
 void uSEQ::update_signals()
 {
     DBG("uSEQ::update_signals");
 
-    // update_signal_dependencies();
-
+    // Flip flag on only for evals that happen
+    // for output signals
     m_attempt_eval_as_signals = true;
 
     update_continuous_signals();
@@ -796,16 +785,24 @@ void uSEQ::update_serial_outs()
 {
     DBG("uSEQ::update_serial_outs");
 
-    for (size_t i = 0; i < m_num_serial_outs; i++)
+    unsigned long serial_now = micros();
+    // rate limiting of serial messages
+    unsigned long serial_time_elapsed = serial_now - serial_out_timestamp;
+    if (serial_time_elapsed > SerialMsg::serial_message_rate_limit)
     {
-        dbg(String(i));
-        std::optional<SERIAL_OUTPUT_VALUE_TYPE> v = m_serial_vals[i];
-        // only write if there is a value
-        if (v)
+        for (size_t i = 0; i < m_num_serial_outs; i++)
         {
-            dbg("writing value: " + String(*v));
-            serial_write(i, *v);
+            dbg(String(i));
+            std::optional<SERIAL_OUTPUT_VALUE_TYPE> v = m_serial_vals[i];
+            // only write if there is a value
+            if (v)
+            {
+                dbg("writing value: " + String(*v));
+                serial_write(i, *v);
+            }
         }
+        serial_out_timestamp = serial_now - (serial_time_elapsed -
+                                             SerialMsg::serial_message_rate_limit);
     }
 }
 
@@ -1177,7 +1174,8 @@ void uSEQ::serial_write(int out, double val)
 {
     DBG("uSEQ::serial_write");
 
-    Serial.write(m_serial_stream_begin_marker);
+    Serial.write(SerialMsg::message_begin_marker);
+    Serial.write((u_int8_t)SerialMsg::serial_message_types::STREAM);
     Serial.write((u_int8_t)(out + 1));
     u_int8_t* byteArray = reinterpret_cast<u_int8_t*>(&val);
     for (size_t b = 0; b < 8; b++)
@@ -1207,6 +1205,56 @@ double fast(double speed, double phasor)
 //                    double fastPhasor = fast(speed, phasor); ret =
 //                    Value(fastPhasor); , 2)
 
+// Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
+// {
+//     DBG("uSEQ::fast");
+//     constexpr const char* user_facing_name = "fast";
+
+//     // Checking number of args
+//     if (!(args.size() == 2))
+//     {
+//         error_wrong_num_args(user_facing_name, args.size(),
+//                              NumArgsComparison::EqualTo, 2, 0);
+//         return Value::error();
+//     }
+
+//     // Eval first arg only
+//     Value pre_eval = args[0];
+//     args[0]        = args[0].eval(env);
+//     if (args[0].is_error())
+//     {
+//         error_arg_is_error(user_facing_name, 1, pre_eval.display());
+//         return Value::error();
+//     }
+//     // Checking first arg
+//     if (!(args[0].is_number()))
+//     {
+//         error_wrong_specific_pred(user_facing_name, 1, "a number",
+//                                   args[1].display());
+//         return Value::error();
+//     }
+
+//     // BODY
+//     Value result = Value::nil();
+
+//     // double factor = args[0].as_float();
+//     // // save current time to restore when done
+//     // TimeValue current_transport_time = m_transport_time;
+//     // TimeValue tmp_time               = m_transport_time * factor;
+//     // dbg("factor: " + String(factor));
+//     // dbg("actual_time: " + String(actual_time));
+//     // dbg("tmp_time: " + String(tmp_time));
+//     // //
+//     // update_logical_time(tmp_time);
+//     // //
+//     // Value sig = args[1];
+//     // result    = sig.eval(env);
+//     // // restore the interpreter's time
+//     // update_logical_time(current_transport_time);
+//     // result = fast(factor, sig.as_float());
+
+//     return result;
+// }
 Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
 {
     DBG("uSEQ::fast");
@@ -1220,7 +1268,7 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
-    // Eval first arg only
+    // Eval first arg
     Value pre_eval = args[0];
     args[0]        = args[0].eval(env);
     if (args[0].is_error())
@@ -1230,6 +1278,21 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
     }
     // Checking first arg
     if (!(args[0].is_number()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[1].display());
+        return Value::error();
+    }
+
+    Value pre_eval2 = args[1];
+    args[1]         = args[1].eval(env);
+    if (args[1].is_error())
+    {
+        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        return Value::error();
+    }
+    // Checking first arg
+    if (!(args[1].is_number()))
     {
         error_wrong_specific_pred(user_facing_name, 1, "a number",
                                   args[1].display());

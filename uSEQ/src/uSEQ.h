@@ -6,9 +6,9 @@
 #include "lisp/macros.h"
 #include "lisp/value.h"
 #include "uSEQ/configure.h"
-#include "utils/topo_sort.hpp"
 #include <memory>
 #include <sys/types.h>
+// #include "utils/serial_message.h"
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
 #define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
@@ -140,7 +140,6 @@ private:
     void update_lisp_time_variables();
 
     // updating the (cached) outputs of stored forms
-    void update_signal_dependencies();
     void update_signals();
     void update_continuous_signals();
     void update_binary_signals();
@@ -151,6 +150,8 @@ private:
     void update_binary_outs();
     void update_serial_outs();
     void update_Q0();
+
+    unsigned long serial_out_timestamp = 0;
 
     Value default_continuous_expr = Value::nil();
     Value default_binary_expr     = Value::nil();
@@ -290,15 +291,8 @@ private:
     void eval_lisp_library();
     void setup_digital_ins();
     void led_animation();
-
     static constexpr u_int8_t m_serial_stream_begin_marker = 31;
     static constexpr char m_execute_now_marker             = '@';
-
-    void perform_topo_sort();
-
-    std::vector<String> m_topo_sorted_execution_order;
-    // std::vector<String> m_known_signals;
-    DependencyGraph<String> m_dependency_graph;
 
     Environment make_env_for_time(TimeValue);
 };

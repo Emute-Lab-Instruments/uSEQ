@@ -207,8 +207,7 @@ String Value::as_string() const
 {
     if (type != STRING)
     {
-        print("str: ");
-        println(BAD_CAST);
+        println("str: " + BAD_CAST);
         return "std::nullopt";
     }
     return str;
@@ -218,8 +217,7 @@ String Value::as_atom() const
 {
     if (type != ATOM)
     {
-        print("atom: ");
-        println(BAD_CAST);
+        println("atom: " + BAD_CAST);
         return "std::nullopt";
     }
     return str;
@@ -229,8 +227,7 @@ std::vector<Value> Value::as_list() const
 {
     if (type != LIST && type != VECTOR)
     {
-        print("list: ");
-        println(BAD_CAST);
+        println("list: " + BAD_CAST);
         return {};
     }
     return list;
@@ -240,8 +237,7 @@ std::vector<Value> Value::as_vector() const
 {
     if (type != VECTOR)
     {
-        print("vector: ");
-        println(BAD_CAST);
+        println("vector: " + BAD_CAST);
         return {};
     }
     return list;
