@@ -343,10 +343,10 @@
  ;; NOTE: this is mostly manual for now
  "index" {:args {:num "== 2"
                  ;; NOTE: need to generate custom messages
-                 :type {0 [".is_list()"
+                 :type {0 [".is_sequential()"
                            "!.is_empty()"]
                         1 ".is_number()"}}
-          :body ["std::vector<Value> list = args[0].as_list();"
+          :body ["std::vector<Value> list = args[0].as_vector();"
                  "int i                   = args[1].as_int();"
                  "if (i < list.size())"
                  "{"
@@ -354,7 +354,8 @@
                  "}"
                  "else"
                  "{"
-                 "    error(\"(list) Index should be smaller than the size of the list.\");"
+                 "    error(\"(index) Index should be smaller than the size of the list.\");"
+                 "    return Value::error();"
                  "}"]
           :docstring "Index a list"}
 
