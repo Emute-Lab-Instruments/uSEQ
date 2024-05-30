@@ -37,16 +37,28 @@ void println(String s)
 void error(String s)
 {
     // print("ERROR: ");
-    println("**Error**: " + s);
+    if (Serial.availableForWrite())
+    {
+        println("**Error**: " + s);
+    }
     // print("\n");
 }
 
-void runtime_error(String s) { println("**Runtime Error**: " + s); }
+void runtime_error(String s)
+{
+    if (Serial.availableForWrite())
+    {
+        println("**Runtime Error**: " + s);
+    }
+}
 
 void user_warning(const String& s)
 {
     // TODO
-    println("**Warning**: " + s);
+    if (Serial.availableForWrite())
+    {
+        println("**Warning**: " + s);
+    }
 }
 
 // void error_num_args_incorrect(String function_name, String expected,
