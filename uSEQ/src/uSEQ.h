@@ -20,6 +20,22 @@
 using TimeValue  = double;
 using PhaseValue = double;
 
+class maxiFilter
+{
+private:
+    double z=0;
+    double output = 0;
+public:
+    maxiFilter() {
+        
+    };
+    double lopass(double input, double cutoff);
+
+    // ------------------------------------------------
+};
+
+
+
 class uSEQ : public Interpreter
 {
 public:
