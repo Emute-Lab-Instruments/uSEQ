@@ -12,6 +12,15 @@
 // #include "lisp/library.h"
 #include <cmath>
 
+double maxiFilter::lopass(double input, double cutoff) {
+	output=z + cutoff*(input-z);
+	z=output;
+	return(output);
+}
+
+maxiFilter cvInFilter[2];
+
+
 // uSEQ MEMBER FUNCTIONS
 
 // void dbg(String s) { std::cout << s.c_str() << std::endl; }
@@ -111,7 +120,7 @@ void setup_leds()
 void uSEQ::init()
 {
     DBG("uSEQ::init");
-    setup_IO();
+    setup_leds();
 
     // dbg("free heap (start):" + String(free_heap()));
     // if (!m_initialised)
@@ -123,8 +132,8 @@ void uSEQ::init()
     init_builtinfuncs();
     eval_lisp_library();
 
-    setup_leds();
     led_animation();
+    setup_IO();
 
     // dbg("Lisp library loaded.");
 
@@ -456,6 +465,8 @@ void uSEQ::update_inputs()
     // inputs are input_pullup, so invert
     auto now              = micros();
     const double recp4096 = 0.000244141; // 1/4096
+    const double recp2048 = 1/2048.0;
+    const double recp1024 = 1/1024.0;
 #ifdef MUSICTHING
     const size_t muxdelay = 2;
     // unroll loop for efficiency
@@ -552,15 +563,15 @@ void uSEQ::update_inputs()
 
 #ifdef USEQHARDWARE_1_0
     auto v_ai1    = analogRead(USEQ_PIN_AI1);
-    auto v_ai1_11 = v_ai1 >> 1;                  // scale from 12 bit to 11 bit range
+    auto v_ai1_11 = v_ai1;                  // scale from 10 bit to 11 bit range
     v_ai1_11      = (v_ai1_11 * v_ai1_11) >> 11; // sqr to get exp curve
-    analogWrite(USEQ_PIN_LED_AI1, v_ai1_11);
+    analogWrite(USEQ_PIN_LED_AI1, v_ai1_11 >> 4);
     auto v_ai2    = analogRead(USEQ_PIN_AI2);
-    auto v_ai2_11 = v_ai2 >> 1;
+    auto v_ai2_11 = v_ai2;
     v_ai2_11      = (v_ai2_11 * v_ai2_11) >> 11;
-    analogWrite(USEQ_PIN_LED_AI2, v_ai2_11 >> 1);
-    m_input_vals[USEQAI1] = v_ai1 * recp4096;
-    m_input_vals[USEQAI2] = v_ai2 * recp4096;
+    analogWrite(USEQ_PIN_LED_AI2, v_ai2_11>>4);
+    m_input_vals[USEQAI1] = cvInFilter[0].lopass(v_ai1 * recp2048, 0.009);
+    m_input_vals[USEQAI2] = cvInFilter[1].lopass(v_ai2 * recp2048, 0.009);
 #endif
 
     dbg("updating inputs...DONE");
@@ -944,13 +955,15 @@ void setup_analog_outs()
     DBG("uSEQ::setup_analog_outs");
     dbg(String(NUM_CONTINUOUS_OUTS));
     // PWM outputs
-    analogWriteFreq(30000);    // out of hearing range
-    analogWriteResolution(11); // about the best we can get for 30kHz
+    analogWriteFreq(80000);    // out of hearing range
+    analogWriteResolution(11); // about the best we can get
 
     // set PIO PWM state machines to run PWM outputs
     uint offset  = pio_add_program(pio0, &pwm_program);
     uint offset2 = pio_add_program(pio1, &pwm_program);
     // printf("Loaded program at %d\n", offset);
+
+    // auto ledPins[] = {USEQ_PIN_LED_A1, USEQ_PIN_LED_A2, USEQ_PIN_LED_A3};
 
     for (int i = 0; i < NUM_CONTINUOUS_OUTS; i++)
     {
@@ -959,8 +972,9 @@ void setup_analog_outs()
         auto smIdx       = i % 4;
         dbg(String(reinterpret_cast<size_t>(pioInstance)));
         dbg(String(reinterpret_cast<size_t>(pioOffset)));
-        pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_pins[i]);
-        pio_pwm_set_period(pioInstance, smIdx, (1u << 13) - 1);
+        // pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_pins[i]);
+        pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_led_pins[i]);
+        pio_pwm_set_period(pioInstance, smIdx, (1u << 11) - 1);
     }
 }
 
@@ -992,7 +1006,7 @@ void uSEQ::setup_switches()
 #ifdef ANALOG_INPUTS
 void uSEQ::setup_analog_ins()
 {
-    analogReadResolution(12);
+    analogReadResolution(11);
 #ifdef USEQHARDWARE_1_0
     pinMode(USEQ_PIN_AI1, INPUT);
     pinMode(USEQ_PIN_AI2, INPUT);
@@ -1109,7 +1123,7 @@ void uSEQ::analog_write_with_led(int output, double val)
 {
     DBG("uSEQ::analog_write_with_led");
 
-    constexpr double maxpwm = 8191.0;
+    constexpr double maxpwm = 2047.0;
 
     int scaled_val = val * maxpwm;
     dbg("scaled_val (before clamping) = " + String(scaled_val));
@@ -1127,8 +1141,9 @@ void uSEQ::analog_write_with_led(int output, double val)
     }
 
     // led
-    int led_pin   = analog_out_LED_pin(output + 1);
-    int ledsigval = scaled_val >> 2; // shift to 11 bit range for the LED
+    // int led_pin   = analog_out_LED_pin(output + 1);
+    int pwm_pin = analog_out_pin(output+1);
+    int ledsigval = scaled_val;// >> 2; // shift to 11 bit range for the LED
     ledsigval =
         (ledsigval * ledsigval) >> 11; // cheap way to square and get a exp curve
 
@@ -1138,10 +1153,15 @@ void uSEQ::analog_write_with_led(int output, double val)
     dbg("val = " + String(val));
     dbg("scaled_val = " + String(scaled_val));
 
+    // // write pwm
+    // pio_pwm_set_level(output < 4 ? pio0 : pio1, output % 4, scaled_val);
+    // // write led
+    // analogWrite(led_pin, ledsigval);
+
     // write pwm
-    pio_pwm_set_level(output < 4 ? pio0 : pio1, output % 4, scaled_val);
+    pio_pwm_set_level(pio0, output, ledsigval);
     // write led
-    analogWrite(led_pin, ledsigval);
+    analogWrite(pwm_pin, scaled_val);
 }
 
 // NOTE: outputs are 0-indexed,
