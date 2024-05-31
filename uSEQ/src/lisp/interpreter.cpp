@@ -27,6 +27,7 @@ void Interpreter::init()
     // if (!m_builtindefs_init)
     // {
     loadBuiltinDefs();
+    set("nil", Value::nil());
     // m_builtindefs_init = true;
     // }
 }
