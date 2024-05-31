@@ -102,18 +102,18 @@ void setup_leds()
 #ifndef MUSICTHING
     pinMode(LED_BOARD, OUTPUT); // test LED
     digitalWrite(LED_BOARD, 1);
-    pinMode(USEQ_PIN_LED_I1, OUTPUT);
-    pinMode(USEQ_PIN_LED_I2, OUTPUT);
+    pinMode(USEQ_PIN_LED_I1, OUTPUT_2MA);
+    pinMode(USEQ_PIN_LED_I2, OUTPUT_2MA);
 #endif
 
 #ifdef USEQHARDWARE_1_0
-    pinMode(USEQ_PIN_LED_AI1, OUTPUT);
-    pinMode(USEQ_PIN_LED_AI2, OUTPUT);
+    pinMode(USEQ_PIN_LED_AI1, OUTPUT_2MA);
+    pinMode(USEQ_PIN_LED_AI2, OUTPUT_2MA);
 #endif
 
     for (int i = 0; i < 6; i++)
     {
-        pinMode(useq_output_led_pins[i], OUTPUT);
+        pinMode(useq_output_led_pins[i], OUTPUT_2MA);
     }
 }
 
