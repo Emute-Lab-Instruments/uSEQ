@@ -249,6 +249,11 @@ private:
     LISP_FUNC_DECL(ard_useqaw);
     LISP_FUNC_DECL(ard_useqdw);
 
+    //usync API
+    LISP_FUNC_DECL(useq_usync_source);
+    LISP_FUNC_DECL(useq_usync_listener);
+    LISP_FUNC_DECL(useq_usync_send);
+
     void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val);
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
     void serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val);
@@ -280,6 +285,9 @@ private:
     // performance
     int ts          = 0;
     int updateSpeed = 0;
+
+    //usync
+    static void receiveI2C(int nBytes);
 
 #ifdef MIDIOUT
     void update_midi_out();

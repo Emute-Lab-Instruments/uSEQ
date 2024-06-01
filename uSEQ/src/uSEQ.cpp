@@ -2124,6 +2124,50 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set_expr("s8", args[0]);
                           m_serial_ASTs[7] = { args[0] }; ret = Value::atom("s8");
                           , 1)
 
+//usync API
+
+void uSEQ::receiveI2C(int nBytes) {
+    String s="i2c received: ";
+    s = s + nBytes;
+    println(s);
+    // String msg;
+    // while(Wire.available()) {
+    //     char c = Wire.read();    
+    //     msg = msg + c;
+    // }    
+    // println(msg);         
+}
+
+BUILTINFUNC_MEMBER(useq_usync_source,
+    //make this useq a controller
+    Wire.end();
+    Wire.begin();
+    println("This module is now the source for the i2c bus");
+,0
+)
+
+BUILTINFUNC_MEMBER(useq_usync_listener,
+    //make this useq a listener
+    // peripheral
+    Wire.end();
+    Wire.begin(4);
+    Wire.onReceive(uSEQ::receiveI2C);
+    println("This module is listening on the i2c bus");
+,0
+)
+
+BUILTINFUNC_MEMBER(useq_usync_send,
+    Wire.beginTransmission(4);
+    String msg = args[0].as_string();
+    Wire.write(65);
+    // for(int i=0; i < msg.length(); i++) {
+    //     Wire.write((char)msg.c_str()[i]);
+    // }
+    Wire.endTransmission(true);
+
+    println("Transmitted: " + msg);
+,1
+)
 // Testing
 // Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
 // {
@@ -2286,6 +2330,10 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("flat", useq_flatten);
     INSERT_BUILTINDEF("interp", useq_interpolate);
     INSERT_BUILTINDEF("step", useq_step);
+
+    INSERT_BUILTINDEF("usync-source", useq_usync_source);
+    INSERT_BUILTINDEF("usync-listener", useq_usync_listener);
+    INSERT_BUILTINDEF("usync-send", useq_usync_send);
 
     // TODO
 #ifdef MUSICTHING
