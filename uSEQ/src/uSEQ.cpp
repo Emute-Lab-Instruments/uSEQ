@@ -114,6 +114,7 @@ void setup_leds()
     for (int i = 0; i < 6; i++)
     {
         pinMode(useq_output_led_pins[i], OUTPUT_2MA);
+        gpio_set_slew_rate(useq_output_led_pins[i], GPIO_SLEW_RATE_SLOW);
     }
 }
 
@@ -565,13 +566,16 @@ void uSEQ::update_inputs()
     auto v_ai1    = analogRead(USEQ_PIN_AI1);
     auto v_ai1_11 = v_ai1;                  // scale from 10 bit to 11 bit range
     v_ai1_11      = (v_ai1_11 * v_ai1_11) >> 11; // sqr to get exp curve
-    analogWrite(USEQ_PIN_LED_AI1, v_ai1_11 >> 4);
+    analogWrite(USEQ_PIN_LED_AI1, v_ai1_11);
+
     auto v_ai2    = analogRead(USEQ_PIN_AI2);
     auto v_ai2_11 = v_ai2;
     v_ai2_11      = (v_ai2_11 * v_ai2_11) >> 11;
-    analogWrite(USEQ_PIN_LED_AI2, v_ai2_11>>4);
-    m_input_vals[USEQAI1] = cvInFilter[0].lopass(v_ai1 * recp2048, 0.009);
-    m_input_vals[USEQAI2] = cvInFilter[1].lopass(v_ai2 * recp2048, 0.009);
+    analogWrite(USEQ_PIN_LED_AI2, v_ai2_11);
+
+    const double lpcoeff = 0.01; //0.009;
+    m_input_vals[USEQAI1] = cvInFilter[0].lopass(v_ai1 * recp2048, lpcoeff);
+    m_input_vals[USEQAI2] = cvInFilter[1].lopass(v_ai2 * recp2048, lpcoeff);
 #endif
 
     dbg("updating inputs...DONE");
@@ -941,7 +945,7 @@ void uSEQ::setup_outs()
     DBG("uSEQ::setup_outs");
     for (int i = 0; i < NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS; i++)
     {
-        pinMode(useq_output_pins[i], OUTPUT);
+        pinMode(useq_output_pins[i], OUTPUT_2MA);
     }
 
 #ifdef MUSICTHING
@@ -963,7 +967,6 @@ void setup_analog_outs()
     uint offset2 = pio_add_program(pio1, &pwm_program);
     // printf("Loaded program at %d\n", offset);
 
-    // auto ledPins[] = {USEQ_PIN_LED_A1, USEQ_PIN_LED_A2, USEQ_PIN_LED_A3};
 
     for (int i = 0; i < NUM_CONTINUOUS_OUTS; i++)
     {
