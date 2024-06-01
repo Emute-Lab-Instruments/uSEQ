@@ -1634,7 +1634,7 @@ Value less(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = Value(int(args[0] > args[1]));
+    result       = Value(int(args[0] < args[1]));
     return result;
 }
 

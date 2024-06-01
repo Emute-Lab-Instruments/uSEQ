@@ -573,7 +573,7 @@ void uSEQ::update_inputs()
     v_ai2_11      = (v_ai2_11 * v_ai2_11) >> 11;
     analogWrite(USEQ_PIN_LED_AI2, v_ai2_11);
 
-    const double lpcoeff = 0.01; //0.009;
+    const double lpcoeff = 0.05; //0.009;
     m_input_vals[USEQAI1] = cvInFilter[0].lopass(v_ai1 * recp2048, lpcoeff);
     m_input_vals[USEQAI2] = cvInFilter[1].lopass(v_ai2 * recp2048, lpcoeff);
 #endif
