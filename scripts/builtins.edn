@@ -1,7 +1,3 @@
-;; FIXME: some of these are renamed before being set in the Lisp
-;; env, so we shouldn't use this string directly in the error msg
-;; SOLUTION: either add an extra key, or have a conversion map from
-;; internal to external name
 {;; LISP builtins
  "eval" {:args {:num "== 1"}
          :eval-args? false
@@ -319,10 +315,9 @@
             :docstring "Is one number greater than another?"}
 
  "less" {:args {:num "== 2"}
-         :body ["result = Value(int(args[0] > args[1]));"]
+         :body ["result = Value(int(args[0] < args[1]));"]
          :docstring "Is one number less than another?"}
 
-;;; CHATGPT answer
  "greater_eq" {:args {:num "== 2"}
                :eval-args? true
                :body ["result = Value(int(args[0] >= args[1]));"]
@@ -477,7 +472,6 @@
             :body ["result = Value(sin(args[0].as_float()));"]}
 
  ;; NOTE normalised
- ;; TODO add to env
  "ard_usin" {:args {:num "== 1"
                     :type {0 ".is_number()"}}
              :body ["result = Value(0.5 + 0.5 * sin(args[0].as_float()));"]}
@@ -487,7 +481,6 @@
             :body ["result = Value(cos(args[0].as_float()));"]}
 
  ;; NOTE normalised
- ;; TODO add to env
  "ard_ucos" {:args {:num "== 1"
                     :type {0 ".is_number()"}}
              :body ["result = Value(0.5 + 0.5 * cos(args[0].as_float()));"]}
