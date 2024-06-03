@@ -2,6 +2,7 @@
 #define USEQ_H_
 
 #include "dsp/tempoEstimator.h"
+// #include "dsp/MAFilter.h"
 #include "lisp/interpreter.h"
 #include "lisp/macros.h"
 #include "lisp/value.h"
@@ -9,6 +10,8 @@
 #include <memory>
 #include <sys/types.h>
 // #include "utils/serial_message.h"
+
+
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
 #define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
@@ -63,7 +66,15 @@ public:
     Value eval_at_time(Value&, Environment&, double);
     // void set(String, Value);
 
-    // TODO restore private
+    static void gpio_irq_gate1();
+    static void gpio_irq_gate2();
+    tempoEstimator tempoI1, tempoI2;
+    void updateI1();
+
+    double delme = 928.22234;
+
+    static uSEQ* instance;
+
 private:
     // IO m_io;
 
@@ -253,7 +264,7 @@ private:
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
     void serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val);
 
-    tempoEstimator tempoI1, tempoI2;
+
 
     void set_time_sig(double, double);
 

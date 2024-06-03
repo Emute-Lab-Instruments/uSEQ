@@ -2,17 +2,18 @@
 #define TEMPOESTIMATOR_H
 
 
-#include "MAFilter.hpp"
+#include "MAFilter.h"
 
 class tempoEstimator {
   public:
-    double averageBPM(int currentValue, int micros);
+    tempoEstimator() {
+      avgBeat.init(5);
+    }
+    double averageBPM(double micros);
     double avgBPM=0;
   private:
-    unsigned long lastTrig=0;
-    int lastValue=0;
-    MovingAverageFilter avgBeat{MovingAverageFilter(9)};
-    double lastAverage=0;
+    MovingAverageFilter avgBeat;
+    double lastVal=0;
 };
 
 #endif
