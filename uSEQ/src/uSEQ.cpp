@@ -12,6 +12,10 @@
 // #include "lisp/library.h"
 #include <cmath>
 
+//statics
+uSEQ* uSEQ::instance;
+
+
 double maxiFilter::lopass(double input, double cutoff) {
 	output=z + cutoff*(input-z);
 	z=output;
@@ -129,6 +133,8 @@ void uSEQ::init()
     dbg("Setting instance pointer");
     Interpreter::useq_instance_ptr = this;
     Interpreter::init();
+
+    uSEQ::instance = this;
 
     init_builtinfuncs();
     eval_lisp_library();
@@ -526,10 +532,6 @@ void uSEQ::update_inputs()
 
     digitalWrite(USEQ_PIN_LED_I1, input1);
     digitalWrite(USEQ_PIN_LED_I2, input2);
-
-    // tempo estimates
-    tempoI1.averageBPM(input1, now);
-    tempoI2.averageBPM(input2, now);
 
     m_input_vals[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
 #ifdef USEQ_1_0_c
@@ -981,10 +983,29 @@ void setup_analog_outs()
     }
 }
 
+void uSEQ::updateI1() {
+    double newBPM = tempoI1.averageBPM((static_cast<double>(micros())));
+    set_bpm(newBPM, 0.1);    
+    println(String(newBPM));
+}
+
+void uSEQ::gpio_irq_gate1() {
+    int x = digitalRead(USEQ_PIN_I1);
+    if (x==0) {
+        uSEQ::instance->updateI1();
+    }
+}
+
+void uSEQ::gpio_irq_gate2() {
+
+}
+
 void uSEQ::setup_digital_ins()
 {
     pinMode(USEQ_PIN_I1, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I1), uSEQ::gpio_irq_gate1, CHANGE);    
     pinMode(USEQ_PIN_I2, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I2), uSEQ::gpio_irq_gate2, CHANGE);    
 }
 
 void uSEQ::setup_switches()
