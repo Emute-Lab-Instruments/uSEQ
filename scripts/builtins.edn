@@ -547,12 +547,27 @@
 
  "println" {:args {:num "== 1"
                    :type {0 ".is_string()"}}
-            :body ["String s = args[0].as_string();"
+            :body ["String s;"
+                   "if (args[0].is_string())"
+                   "{"
+                   "    s = args[0].as_string();"
+                   "}"
+                   "else"
+                   "{"
+                   "    s = args[0].display();"
+                   "}"
                    "Serial.println(s);"]}
 
- "print" {:args {:num "== 1"
-                 :type {0 ".is_string()"}}
-          :body ["String s = args[0].as_string();"
+ "print" {:args {:num "== 1"}
+          :body ["String s;"
+                 "if (args[0].is_string())"
+                 "{"
+                 "    s = args[0].as_string();"
+                 "}"
+                 "else"
+                 "{"
+                 "    s = args[0].display();"
+                 "}"
                  "Serial.print(s);"]}
 
  "b_to_u" {:args {:num "== 1"
