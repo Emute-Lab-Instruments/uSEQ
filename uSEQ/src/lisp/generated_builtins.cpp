@@ -1027,7 +1027,15 @@ Value println(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    String s     = args[0].as_string();
+    String s;
+    if (args[0].is_string())
+    {
+        s = args[0].as_string();
+    }
+    else
+    {
+        s = args[0].display();
+    }
     Serial.println(s);
     return result;
 }
@@ -1899,17 +1907,17 @@ Value print(std::vector<Value>& args, Environment& env)
         }
     }
 
-    // Checking individual args
-    if (!(args[0].is_string()))
-    {
-        error_wrong_specific_pred(user_facing_name, 1, "a string",
-                                  args[0].display());
-        return Value::error();
-    }
-
     // BODY
     Value result = Value::nil();
-    String s     = args[0].as_string();
+    String s;
+    if (args[0].is_string())
+    {
+        s = args[0].as_string();
+    }
+    else
+    {
+        s = args[0].display();
+    }
     Serial.print(s);
     return result;
 }
