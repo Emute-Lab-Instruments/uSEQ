@@ -2,12 +2,26 @@
 #define MAFILTER
 
 #include <vector>
+#include <numeric>
+#include <functional>
+#include <math.h>
 
 class MovingAverageFilter
 {
 public:
-    explicit MovingAverageFilter(std::size_t filterSize)
-        : filterSize_(filterSize), circularBuffer_(filterSize, 0.0), sum_(0.0) {}
+    MovingAverageFilter(std::size_t filterSize) {
+        init(filterSize);
+    }
+
+    MovingAverageFilter() {
+        init(3);
+    }   
+
+    void init(std::size_t fSize) {
+        filterSize_ = fSize;
+        circularBuffer_ = std::vector<double>(filterSize_, 0.0);
+        sum_ = 0.0;
+    } 
 
     double process(double inputValue)
     {
@@ -28,6 +42,18 @@ public:
 
         // Calculate and return the moving average
         return sum_ / filterSize_;
+    }
+
+    double std() {
+        double sum = std::accumulate(std::begin(circularBuffer_), std::end(circularBuffer_), 0.0);
+        double m =  sum / circularBuffer_.size();
+
+        double accum = 0.0;
+        std::for_each (std::begin(circularBuffer_), std::end(circularBuffer_), [&](const double d) {
+            accum += (d - m) * (d - m);
+        });
+
+        return sqrt(accum / (circularBuffer_.size()-1));
     }
 
 private:
