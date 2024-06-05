@@ -657,6 +657,7 @@ String Value::get_type_name() const
     }
 }
 
+// NOTE: should be able to parse right back
 String Value::display() const
 {
     // DBG("Value::display");
@@ -665,22 +666,10 @@ String Value::display() const
     String result;
     switch (type)
     {
-    case NIL:
-        return "<nil>";
-    case QUOTE:
-        return "'" + list[0].debug();
-    case ATOM:
-        return str;
-    case INT:
-        return String(stack_data.i);
-    case FLOAT:
-        return String(stack_data.f);
-    case STRING:
-        return str;
     case LAMBDA:
         for (size_t i = 0; i < list.size(); i++)
         {
-            result += list[i].debug();
+            result += list[i].to_lisp_src();
             if (i < list.size() - 1)
                 result += " ";
         }
@@ -688,7 +677,7 @@ String Value::display() const
     case LIST:
         for (size_t i = 0; i < list.size(); i++)
         {
-            result += list[i].debug();
+            result += list[i].to_lisp_src();
             if (i < list.size() - 1)
                 result += " ";
         }
@@ -696,7 +685,7 @@ String Value::display() const
     case VECTOR:
         for (size_t i = 0; i < list.size(); i++)
         {
-            result += list[i].debug();
+            result += list[i].to_lisp_src();
             if (i < list.size() - 1)
                 result += " ";
         }
@@ -719,33 +708,27 @@ String Value::display() const
         // We don't know how to display whatever type this is.
         // This isn't the users fault, this is just unhandled.
         // This should never be reached.
-        ::error("(display) UNKNOWN TYPE");
+        // ::error("(display) UNKNOWN TYPE");
         // throw Error(*this, Environment(), INTERNAL_ERROR);
-        return "";
+        return to_lisp_src();
     }
 }
 
-String Value::debug() const
+String Value::to_lisp_src() const
 {
     String result;
     switch (type)
     {
     case NIL:
-        return "<nil>";
+        return "nil";
     case QUOTE:
-        return "'" + list[0].debug();
+        return "'" + list[0].to_lisp_src();
     case ATOM:
         return str;
     case INT:
-    {
-        auto val = String(stack_data.i);
-        return val;
-    }
+        return String(stack_data.i);
     case FLOAT:
-    {
-        auto val = String(stack_data.f);
-        return val;
-    }
+        return String(stack_data.f);
     case STRING:
         for (size_t i = 0; i < str.length(); i++)
         {
@@ -758,7 +741,7 @@ String Value::debug() const
     case LAMBDA:
         for (size_t i = 0; i < list.size(); i++)
         {
-            result += list[i].debug();
+            result += list[i].to_lisp_src();
             if (i < list.size() - 1)
                 result += " ";
         }
@@ -766,7 +749,7 @@ String Value::debug() const
     case LIST:
         for (size_t i = 0; i < list.size(); i++)
         {
-            result += list[i].debug();
+            result += list[i].to_lisp_src();
             if (i < list.size() - 1)
                 result += " ";
         }
@@ -774,26 +757,14 @@ String Value::debug() const
     case VECTOR:
         for (size_t i = 0; i < list.size(); i++)
         {
-            result += list[i].debug();
+            result += list[i].to_lisp_src();
             if (i < list.size() - 1)
                 result += " ";
         }
         return "[" + result + "]";
-    case BUILTIN:
-        return "<builtin " + str + " at " + String(long(&stack_data.builtin)) + ">";
-    case BUILTIN_METHOD:
-        return "<builtin method " + str + " at " +
-               String(long(&stack_data.builtin_method)) + ">";
     case UNIT:
         return "@";
-    case ERROR:
-        return "error";
     default:
-        // We don't know how to debug whatever type this is.
-        // This isn't the users fault, this is just unhandled.
-        // This should never be reached.
-        println(INTERNAL_ERROR);
-        // throw Error(*this, Environment(), INTERNAL_ERROR);
         return "";
     }
 }
