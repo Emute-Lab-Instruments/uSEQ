@@ -181,7 +181,7 @@ String Environment::toString(Environment const& e)
         os += '\'';
         os += itr->first;
         os += "' : ";
-        os += itr->second.debug();
+        os += itr->second.to_lisp_src();
         os += ", ";
     }
     os += "}";

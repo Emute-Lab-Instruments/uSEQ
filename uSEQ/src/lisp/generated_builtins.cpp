@@ -1322,7 +1322,7 @@ Value debug(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = Value::string(args[0].debug());
+    result       = Value::string(args[0].display());
     return result;
 }
 
