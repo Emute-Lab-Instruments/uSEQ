@@ -2885,16 +2885,6 @@ Environment uSEQ::make_env_for_time(TimeValue t_micros)
 
 // FLASH
 
-BUILTINFUNC_MEMBER(useq_load_flash_info,
-                   //
-                   print_flash_vars();
-                   load_info_from_flash();, 0)
-
-BUILTINFUNC_MEMBER(useq_write_flash_info,
-                   //
-                   write_info_to_flash();
-                   , 0)
-
 uintptr_t const FLASH_START_ADDR = reinterpret_cast<uintptr_t>(XIP_BASE);
 uintptr_t FLASH_INFO_SECTOR_SIZE = FLASH_SECTOR_SIZE;
 uintptr_t FLASH_INFO_SECTOR_OFFSET_START =
@@ -2929,6 +2919,116 @@ void print_flash_vars()
     println("FLASH_INFO_SECTOR_SIZE: " + String(FLASH_INFO_SECTOR_SIZE));
     println("FLASH_INFO_SECTOR_OFFSET_START: " +
             String(FLASH_INFO_SECTOR_OFFSET_START));
+}
+
+// Lisp interfaces
+BUILTINFUNC_NOEVAL_MEMBER(useq_reboot,
+                          //
+                          reboot();
+                          , 0)
+
+BUILTINFUNC_MEMBER(useq_write_flash_info,
+                   //
+                   write_info_to_flash();
+                   , 0)
+
+BUILTINFUNC_MEMBER(useq_load_flash_info,
+                   //
+                   print_flash_vars();
+                   load_info_from_flash();, 0)
+
+BUILTINFUNC_MEMBER(useq_write_flash_env,
+                   //
+                   write_flash_env();
+                   , 0)
+
+BUILTINFUNC_MEMBER(useq_load_flash_env,
+                   //
+                   // print_flash_vars();
+                   println("Free heap: " + String(free_heap()));
+                   load_flash_env();, 0)
+
+BUILTINFUNC_NOEVAL_MEMBER(useq_get_my_id,
+                          //
+                          ret = Value(m_my_id);
+                          , 0)
+
+BUILTINFUNC_NOEVAL_MEMBER(
+    useq_set_my_id,
+    //
+    if (args[0].is_number()) { set_my_id(args[0].as_int()); }, 1)
+
+void uSEQ::set_my_id(int num)
+{
+    m_my_id = num;
+    write_info_to_flash();
+}
+
+// Utils
+void copy_strings_to_buffer(const std::vector<String>& strings, char* buffer)
+{
+    char* currentPos = buffer;
+
+    for (const String& str : strings)
+    {
+        std::strcpy(currentPos, str.c_str());
+        // Add 1 to account for the null terminator
+        currentPos += str.length() + 1;
+    }
+}
+
+size_t padding_to_nearest_multiple_of(size_t in, size_t quant)
+{
+    return (quant - (in % quant)) % quant;
+}
+
+// void uSEQ::erase_info_flash_sector() { u_int8_t buffer[FLASH_INFO_SECTOR_SIZE]; }
+
+// BUILTINFUNC_NOEVAL_MEMBER(useq_erase_all_flash,
+//                           //
+//                           erase_all_flash();
+//                           , 0)
+
+void uSEQ::erase_info_flash()
+{
+    flash_range_erase(FLASH_INFO_SECTOR_OFFSET_START, FLASH_INFO_SECTOR_SIZE);
+    println("Erased info flash.");
+}
+
+void uSEQ::write_info_to_flash()
+{
+    // 4k buffer
+    u_int8_t buffer[FLASH_SECTOR_SIZE];
+
+    // This will increment as we're writing
+    u_int8_t* write_ptr = &buffer[0];
+
+    // Write a specific type's worth of bytes to the buffer and
+    // increment the write pointer
+#define WRITE_SEQUENTIALLY_TO_BUFFER_SIZE(__item__, __size__)                       \
+    std::memcpy(write_ptr, (u_int8_t*)&__item__, __size__);                         \
+    write_ptr += __size__;
+
+#define WRITE_SEQUENTIALLY_TO_BUFFER(__item__)                                      \
+    WRITE_SEQUENTIALLY_TO_BUFFER_SIZE(__item__, sizeof(__item__));
+
+    // NOTE: Bits in flash default to 1, so writing a zero
+    // as the very first element to use as a flag that we
+    // can safely read
+    bool f = false;
+    bool t = true;
+    // Writing starting from 0
+    WRITE_SEQUENTIALLY_TO_BUFFER(f);
+    WRITE_SEQUENTIALLY_TO_BUFFER(m_my_id);
+    WRITE_SEQUENTIALLY_TO_BUFFER(t);
+    WRITE_SEQUENTIALLY_TO_BUFFER(m_FLASH_ENV_SECTOR_OFFSET_START);
+    WRITE_SEQUENTIALLY_TO_BUFFER(m_FLASH_ENV_STRING_BUFFER_SIZE);
+
+    // Write buffer to flash
+    write_to_flash(&buffer[0], FLASH_INFO_SECTOR_OFFSET_START,
+                   FLASH_INFO_SECTOR_SIZE);
+
+    println("Done writing INFO to flash.");
 }
 
 void uSEQ::load_info_from_flash()
@@ -2985,130 +3085,6 @@ void uSEQ::load_info_from_flash()
     // }
 }
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_get_my_id,
-                          //
-                          ret = Value(m_my_id);
-                          , 0)
-
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_set_my_id,
-    //
-    if (args[0].is_number()) { set_my_id(args[0].as_int()); }, 1)
-
-void uSEQ::set_my_id(int num)
-{
-    m_my_id = num;
-    write_info_to_flash();
-}
-
-BUILTINFUNC_NOEVAL_MEMBER(useq_test_flash,
-                          //
-                          test_flash();
-                          , 0)
-
-// void uSEQ::erase_info_flash_sector() { u_int8_t buffer[FLASH_INFO_SECTOR_SIZE]; }
-
-// BUILTINFUNC_NOEVAL_MEMBER(useq_erase_all_flash,
-//                           //
-//                           erase_all_flash();
-//                           , 0)
-
-void uSEQ::erase_info_flash()
-{
-    flash_range_erase(FLASH_INFO_SECTOR_OFFSET_START, FLASH_INFO_SECTOR_SIZE);
-    println("Erased info flash.");
-}
-
-void uSEQ::test_flash()
-{
-    erase_info_flash();
-
-    const u_int8_t* const info_sector_addr_ptr = reinterpret_cast<u_int8_t*>(
-        FLASH_START_ADDR + FLASH_INFO_SECTOR_OFFSET_START);
-
-    println("Info sector addr ptr: " +
-            String(reinterpret_cast<uintptr_t>(info_sector_addr_ptr)));
-
-    const u_int8_t* read_ptr = info_sector_addr_ptr;
-
-    println("Info sector READ ptr: " +
-            String(reinterpret_cast<uintptr_t>(read_ptr)));
-
-    int num = 10;
-    println("First " + String(num) + " bytes:");
-
-    String s;
-    for (int i = 0; i < num; i++)
-    {
-        s += "[" + String(i + 1) + ", " + String(*(u_int8_t*)read_ptr) + "] ";
-        read_ptr++;
-    }
-    println(s);
-}
-
-void uSEQ::write_info_to_flash()
-{
-    // 4k buffer
-    u_int8_t buffer[FLASH_SECTOR_SIZE];
-
-    // This will increment as we're writing
-    u_int8_t* write_ptr = &buffer[0];
-
-    // Write a specific type's worth of bytes to the buffer and
-    // increment the write pointer
-#define WRITE_SEQUENTIALLY_TO_BUFFER_SIZE(__item__, __size__)                       \
-    std::memcpy(write_ptr, (u_int8_t*)&__item__, __size__);                         \
-    write_ptr += __size__;
-
-#define WRITE_SEQUENTIALLY_TO_BUFFER(__item__)                                      \
-    WRITE_SEQUENTIALLY_TO_BUFFER_SIZE(__item__, sizeof(__item__));
-
-    // NOTE: Bits in flash default to 1, so writing a zero
-    // as the very first element to use as a flag that we
-    // can safely read
-    bool f = false;
-    bool t = true;
-    // Writing starting from 0
-    WRITE_SEQUENTIALLY_TO_BUFFER(f);
-    WRITE_SEQUENTIALLY_TO_BUFFER(m_my_id);
-    WRITE_SEQUENTIALLY_TO_BUFFER(t);
-    WRITE_SEQUENTIALLY_TO_BUFFER(m_FLASH_ENV_SECTOR_OFFSET_START);
-    WRITE_SEQUENTIALLY_TO_BUFFER(m_FLASH_ENV_STRING_BUFFER_SIZE);
-
-    // Write buffer to flash
-    write_to_flash(&buffer[0], FLASH_INFO_SECTOR_OFFSET_START,
-                   FLASH_INFO_SECTOR_SIZE);
-
-    println("Done writing INFO to flash.");
-}
-
-void copy_strings_to_buffer(const std::vector<String>& strings, char* buffer)
-{
-    char* currentPos = buffer;
-
-    for (const String& str : strings)
-    {
-        std::strcpy(currentPos, str.c_str());
-        // Add 1 to account for the null terminator
-        currentPos += str.length() + 1;
-    }
-}
-
-// constexpr size_t FLASH_MISC_STORAGE_START_OFFSET =
-//     FLASH_SIZE_B - flash_misc_storage_size - 1;
-// constexpr size_t FLASH_ID_SIZE  = 8;
-// constexpr size_t FLASH_ID_START = FLASH_SIZE_B - flash_id_size - 1;
-
-size_t padding_to_nearest_multiple_of(size_t in, size_t quant)
-{
-    return (quant - (in % quant)) % quant;
-}
-
-BUILTINFUNC_MEMBER(useq_write_flash_env,
-                   //
-                   write_flash_env();
-                   , 0)
-
 void uSEQ::write_flash_env()
 {
     // 1. Collect all env strings and figure out their total size
@@ -3122,12 +3098,10 @@ void uSEQ::write_flash_env()
     for (auto& pair : m_defs)
     {
         String name = pair.first;
-        println("Name: " + name);
         strings_total_size += name.length() + 1;
         strings.push_back(name);
 
         String def = pair.second.to_lisp_src();
-        println("Def: " + def);
         strings_total_size += def.length() + 1;
         strings.push_back(def);
     }
@@ -3159,8 +3133,7 @@ void uSEQ::write_flash_env()
     m_FLASH_ENV_SECTOR_OFFSET_START =
         m_FLASH_ENV_SECTOR_OFFSET_END - FLASH_ENV_SECTOR_SIZE;
 
-    // write_to_flash((u_int8_t*)buffer, m_FLASH_ENV_SECTOR_OFFSET_START,
-    //                FLASH_ENV_SECTOR_SIZE, padded_buffer_size);
+    // Flush the in-memory buffer to the flash
     write_to_flash((u_int8_t*)buffer, m_FLASH_ENV_SECTOR_OFFSET_START,
                    FLASH_ENV_SECTOR_SIZE, padded_buffer_size);
 
@@ -3170,95 +3143,48 @@ void uSEQ::write_flash_env()
 
     // This will write the m_FLASH_ENV_SECTOR_OFFSET_START  &
     // m_FLASH_ENV_STRING_BUFFER_SIZE to the info sector so that we can read back the
-    // env next time
+    // env correctly next time
     write_info_to_flash();
-
-    //
-    // go through every pair of the std::map<String, Value> in the ValuMap m_defs
-    // cast both the string and the Value into c_strs. The string has a .c_str()
-    // method, and the Value has a .display_parseable() method (assume). The
-    // bytes
-    //  for each pair should be written into flash memory in such a way that they
-    //  should be (the code word is potato) easily re-serialisable and turned back
-    //  into Strings. This should also store some information into the uSEQ class to
-    //  tell us where we can find the env in the future to deserialize it, how big it
-    //  is etc
 }
-
-BUILTINFUNC_MEMBER(useq_load_flash_env,
-                   //
-                   // print_flash_vars();
-                   println("Free heap: " + String(free_heap()));
-                   load_flash_env();, 0)
 
 void uSEQ::load_flash_env()
 {
-    // If these are 0 (their default) then it means we haven't written anything
-    // if (m_FLASH_ENV_SECTOR_OFFSET_START != 0 && m_FLASH_ENV_BUFFER_SIZE != 0)
-    // {
-    println("1");
-    println("IMPORTANT: env string buffer size is " +
-            String(m_FLASH_ENV_STRING_BUFFER_SIZE));
-    // char* buffer = new char[m_FLASH_ENV_STRING_BUFFER_SIZE];
-    println("2");
+    // 1. Allocate a buffer that is at least large enough to hold the
+    // (last known) serialized strings buffer
+    char* buffer = new char[m_FLASH_ENV_STRING_BUFFER_SIZE];
+    println("String buffer size: " + String(m_FLASH_ENV_STRING_BUFFER_SIZE));
     println("ENV SECTOR OFFSET START: " + String(m_FLASH_ENV_SECTOR_OFFSET_START));
-    println("from the end: " +
-            String(PICO_FLASH_SIZE_BYTES - m_FLASH_ENV_SECTOR_OFFSET_START));
-    println("/ 2: " +
-            String((PICO_FLASH_SIZE_BYTES - m_FLASH_ENV_SECTOR_OFFSET_START) / 2));
 
-    // FIXME tmp
-    // delete buffer;
-    println("STRING BUFFER SIZE: " + String(m_FLASH_ENV_STRING_BUFFER_SIZE));
+    println("Copying from flash to in-memory buffer...");
+    // 2. Copy the string buffer bytes from flash to the memory buffer
+    std::memcpy(buffer, FLASH_START_ADDR + (char*)m_FLASH_ENV_SECTOR_OFFSET_START,
+                m_FLASH_ENV_STRING_BUFFER_SIZE);
+    println("Copying from flash to in-memory buffer...DONE");
 
-    // std::memcpy(buffer, (char*)m_FLASH_ENV_SECTOR_OFFSET_START,
-    //             m_FLASH_ENV_STRING_BUFFER_SIZE);
-
+    println("2");
     println(String((char*)m_FLASH_ENV_SECTOR_OFFSET_START));
-    // char* str = (char*)m_FLASH_ENV_SECTOR_OFFSET_START;
-
-    // String s;
-    // while (*str != '\0')
-    // {
-    //     s += *str;
-    // }
-    println("3");
-
-    // println(s);
     println("4");
-    /*
-        char* read_ptr = buffer;
-        while (true)
-        {
-            String name = String(read_ptr);
-            read_ptr += name.length() + 1;
+    char* read_ptr = buffer;
 
-            String def = String(read_ptr);
-            read_ptr += def.length() + 1;
+    // As long as we're still in the (string) buffer, try to read pairs of strings
+    while (read_ptr - buffer < m_FLASH_ENV_STRING_BUFFER_SIZE)
+    {
+        String name = String(read_ptr);
+        read_ptr += name.length() + 1;
 
-            println("name: " + name);
-            println("def: " + def);
-            // do first pair
-            // increment idx
-        }
+        String def = String(read_ptr);
+        read_ptr += def.length() + 1;
 
-    */
+        println("name: " + name);
+        println("def: " + def);
 
-    // }
-    // your answer here
-    // this should do the opposite: read the address and size of the environment,
-    // load back the bytes as they are in the flash, and cast it to be an array of c
-    // strings. Then, for each pair of c_str (i.e. first and second, third and fourth
-    // etc.) turn them into Strings, and insert into the m_defs ValueMap such that
-    // the key is the first string in the pair and the element inserted is the result
-    // of passing that string through the parse method and storing that Value.
-    //
+        // Parse def str and insert into map
+        Value val    = parse(def);
+        m_defs[name] = val;
+    }
+
+    delete buffer;
 }
-
-BUILTINFUNC_NOEVAL_MEMBER(useq_reboot,
-                          //
-                          reboot();
-                          , 0)
 
 void uSEQ::reboot()
 {
