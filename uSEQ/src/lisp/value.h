@@ -154,7 +154,7 @@ public:
     String get_type_name() const;
     int get_type_enum() const;
     String display() const;
-    String debug() const;
+    String to_lisp_src() const;
 
     // friend std::ostream &operator<<(std::ostream &os, Value const &v) {
     //   return os << v.display();

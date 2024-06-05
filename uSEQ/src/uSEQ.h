@@ -6,6 +6,7 @@
 #include "lisp/macros.h"
 #include "lisp/value.h"
 #include "uSEQ/configure.h"
+#include <cstdint>
 #include <memory>
 #include <sys/types.h>
 // #include "utils/serial_message.h"
@@ -23,47 +24,37 @@ using PhaseValue = double;
 class maxiFilter
 {
 private:
-    double z=0;
+    double z      = 0;
     double output = 0;
+
 public:
-    maxiFilter() {
-        
+    maxiFilter(){
+
     };
     double lopass(double input, double cutoff);
 
     // ------------------------------------------------
 };
 
-
-
 class uSEQ : public Interpreter
 {
 public:
-    // uSEQ(int num_continuous_ins, int num_binary_ins, int num_continuous_outs, int
-    // num_binary_outs)
-    //     : m_num_continuous_outs(num_continuous_outs),
-    //     m_num_binary_outs(num_binary_outs),
-    //       m_num_continuous_ins(num_continuous_ins),
-    //       m_num_binary_ins(num_binary_ins)
-    // {
-    //     m_toplevel_env = Environment();
-    // }
-
     uSEQ() {}
 
     void init();
     void run();
 
-    // String eval(const String& code);
-
     void start_loop_blocking();
     void tick();
     void update_logical_time_variables(TimeValue);
 
+    // NOTE: this should probably be considered
+    // part of the interpreter instead
     Value eval_at_time(Value&, Environment&, double);
-    // void set(String, Value);
 
-    // TODO restore private
+    void write_flash_env();
+    void load_flash_env();
+
 private:
     // IO m_io;
 
@@ -251,6 +242,22 @@ private:
     LISP_FUNC_DECL(ard_useqaw);
     LISP_FUNC_DECL(ard_useqdw);
 
+    LISP_FUNC_DECL(useq_load_flash_info);
+    LISP_FUNC_DECL(useq_write_flash_info);
+    LISP_FUNC_DECL(useq_reboot);
+    LISP_FUNC_DECL(useq_set_my_id);
+    LISP_FUNC_DECL(useq_get_my_id);
+    LISP_FUNC_DECL(useq_test_flash);
+
+    LISP_FUNC_DECL(useq_load_flash_env);
+    LISP_FUNC_DECL(useq_write_flash_env);
+    // LISP_FUNC_DECL(useq_erase_all_flash);
+
+    void test_flash();
+    void erase_info_flash();
+
+    void set_my_id(int num);
+
     void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val);
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
     void serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val);
@@ -316,6 +323,18 @@ private:
     static constexpr char m_execute_now_marker             = '@';
 
     Environment make_env_for_time(TimeValue);
+
+    void load_info_from_flash();
+    void write_info_to_flash();
+
+    int8_t m_my_id       = -1;
+    bool m_is_env_stored = false;
+
+    uintptr_t m_FLASH_ENV_SECTOR_OFFSET_START = 0;
+    uintptr_t m_FLASH_ENV_SECTOR_OFFSET_END   = 0;
+    uintptr_t m_FLASH_ENV_STRING_BUFFER_SIZE  = 0;
+
+    void reboot();
 };
 
 #endif // USEQ_H_
