@@ -245,13 +245,13 @@ private:
     LISP_FUNC_DECL(useq_reboot);
     LISP_FUNC_DECL(useq_set_my_id);
     LISP_FUNC_DECL(useq_get_my_id);
-    LISP_FUNC_DECL(useq_test_flash);
+    // LISP_FUNC_DECL(useq_test_flash);
 
     LISP_FUNC_DECL(useq_load_flash_env);
     LISP_FUNC_DECL(useq_write_flash_env);
-    // LISP_FUNC_DECL(useq_erase_all_flash);
+    LISP_FUNC_DECL(useq_autoload_flash);
+    LISP_FUNC_DECL(useq_clear_non_program_flash);
 
-    void test_flash();
     void erase_info_flash();
 
     void set_my_id(int num);
@@ -328,11 +328,24 @@ private:
     int8_t m_my_id       = -1;
     bool m_is_env_stored = false;
 
+    uintptr_t m_FLASH_ENV_SECTOR_SIZE         = 0;
+    uintptr_t m_FLASH_ENV_DEFS_SIZE           = 0;
+    uintptr_t m_FLASH_ENV_EXPRS_SIZE          = 0;
     uintptr_t m_FLASH_ENV_SECTOR_OFFSET_START = 0;
     uintptr_t m_FLASH_ENV_SECTOR_OFFSET_END   = 0;
     uintptr_t m_FLASH_ENV_STRING_BUFFER_SIZE  = 0;
-
     void reboot();
+
+    std::pair<size_t, size_t> num_bytes_def_strs() const;
+    void copy_def_strings_to_buffer(char*);
+
+    const static char* m_flash_marker;
+    const static uint m_flash_marker_size;
+
+    bool flash_has_been_written_before();
+    void autoload_flash();
+
+    void clear_non_program_flash();
 };
 
 #endif // USEQ_H_
