@@ -21,6 +21,9 @@
 const char* uSEQ::m_flash_marker     = "uSEQ";
 const uint uSEQ::m_flash_marker_size = std::strlen(m_flash_marker) + 1;
 
+// statics
+uSEQ* uSEQ::instance;
+
 double maxiFilter::lopass(double input, double cutoff)
 {
     output = z + cutoff * (input - z);
@@ -139,6 +142,8 @@ void uSEQ::init()
 
     Interpreter::useq_instance_ptr = this;
     Interpreter::init();
+
+    uSEQ::instance = this;
 
     init_builtinfuncs();
     // eval_lisp_library();
@@ -348,6 +353,9 @@ void uSEQ::tick()
     update_outs();
     // Check for new code and eval (or schedule it)
     check_and_handle_user_input();
+
+    // tiny delay to allow for interrupts etc
+    delayMicroseconds(100);
 }
 
 ///////////////////////////////////////////////////////////
@@ -526,22 +534,9 @@ void uSEQ::update_inputs()
     m_input_vals[USEQI2] = input2;
 
 #else
-    const auto input1    = 1 - digitalRead(USEQ_PIN_I1);
-    const auto input2    = 1 - digitalRead(USEQ_PIN_I2);
-    m_input_vals[USEQI1] = input1;
-    m_input_vals[USEQI2] = input2;
-
-    digitalWrite(USEQ_PIN_LED_I1, input1);
-    digitalWrite(USEQ_PIN_LED_I2, input2);
-
-    // tempo estimates
-    tempoI1.averageBPM(input1, now);
-    tempoI2.averageBPM(input2, now);
-
-    m_input_vals[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
 #ifdef USEQ_1_0_c
-    const int ts_a       = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
-    const int ts_b       = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
+    const int ts_a = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
+    const int ts_b = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
     if ((ts_a == 0) && (ts_b == 0))
     {
         m_input_vals[USEQT1] = 1;
@@ -851,6 +846,12 @@ void uSEQ::update_time()
     m_last_known_time_since_boot = m_time_since_boot;
 }
 
+void uSEQ::reset_logical_time()
+{
+    m_last_transport_reset_time = m_time_since_boot;
+    update_logical_time(m_time_since_boot);
+}
+
 void uSEQ::update_logical_time(TimeValue actual_time)
 {
     DBG("uSEQ::set_time");
@@ -987,10 +988,94 @@ void setup_analog_outs()
     }
 }
 
+void uSEQ::update_clock_from_external(double ts)
+{
+    double newBPM = tempoI1.averageBPM(ts);
+    if (ext_clock_tracker.count == 0)
+    {
+        newBPM *= (4.0 / meter_numerator / ext_clock_tracker.div);
+        // println(String(newBPM));
+        // println(String(beatCountI1));
+        // println("bar: " + String(barCountI1));
+        // println("barpf: " + String(m_bars_per_phrase));
+        double std = tempoI1.std();
+        // println("std: " + String(std));
+        bool highstd = std > 100.0;
+        // adjust every bar in high variance, otherwise every phrase
+        if ((ext_clock_tracker.beat_count == 0 & highstd) ||
+            ext_clock_tracker.beat_count == 0)
+        {
+            // println("----------------------------------------reset");
+            set_bpm(newBPM, 0);
+            reset_logical_time();
+        }
+        ext_clock_tracker.beat_count++;
+        if (meter_denominator == ext_clock_tracker.beat_count)
+        {
+            ext_clock_tracker.beat_count = 0;
+            ext_clock_tracker.bar_count++;
+            if (ext_clock_tracker.bar_count ==
+                static_cast<size_t>(m_bars_per_phrase))
+            {
+                ext_clock_tracker.bar_count = 0;
+            }
+        }
+    }
+    ext_clock_tracker.count++;
+    if (ext_clock_tracker.count == ext_clock_tracker.div)
+    {
+        ext_clock_tracker.count = 0;
+        // println("clock=0");
+    }
+}
+/*
+    const auto input1    = 1 - digitalRead(USEQ_PIN_I1);
+    const auto input2    = 1 - digitalRead(USEQ_PIN_I2);
+    m_input_vals[USEQI1] = input1;
+    m_input_vals[USEQI2] = input2;
+
+    digitalWrite(USEQ_PIN_LED_I1, input1);
+    digitalWrite(USEQ_PIN_LED_I2, input2);
+
+    m_input_vals[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
+*/
+
+void uSEQ::set_input_val(size_t index, double value) { m_input_vals[index] = value; }
+
+void uSEQ::gpio_irq_gate1()
+{
+    double ts         = static_cast<double>(micros());
+    const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
+    uSEQ::instance->set_input_val(USEQI1, input1);
+    digitalWrite(USEQ_PIN_LED_I1, input1);
+    if (input1 == 1 &&
+        uSEQ::instance->getClockSource() == uSEQ::CLOCK_SOURCES::EXTERNAL_I1)
+    {
+        uSEQ::instance->update_clock_from_external(ts);
+    }
+}
+
+void uSEQ::gpio_irq_gate2()
+{
+    double ts         = static_cast<double>(micros());
+    const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
+    uSEQ::instance->set_input_val(USEQI2, input2);
+    digitalWrite(USEQ_PIN_LED_I2, input2);
+    if (input2 == 1 &&
+        uSEQ::instance->getClockSource() == uSEQ::CLOCK_SOURCES::EXTERNAL_I2)
+    {
+        uSEQ::instance->update_clock_from_external(ts);
+    }
+}
+
 void uSEQ::setup_digital_ins()
 {
     pinMode(USEQ_PIN_I1, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I1), uSEQ::gpio_irq_gate1,
+                    CHANGE);
     pinMode(USEQ_PIN_I2, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I2), uSEQ::gpio_irq_gate2,
+                    CHANGE);
 }
 
 void uSEQ::setup_switches()
@@ -1105,8 +1190,7 @@ void uSEQ::set_bpm(double newBpm, double changeThreshold = 0.0)
         m_bpm = newBpm;
         // Derive phasor lengths (in micros)
         m_beat_length = bpm_to_micros_per_beat(newBpm);
-        // FIXME: this should not assume quarters
-        m_bar_length = m_beat_length * (4.0 / meter_denominator) * meter_numerator;
+        m_bar_length  = m_beat_length * (4.0 / meter_denominator) * meter_numerator;
         m_phrase_length  = m_bar_length * m_bars_per_phrase;
         m_section_length = m_phrase_length * m_phrases_per_section;
 
@@ -1648,6 +1732,94 @@ BUILTINFUNC_MEMBER(useq_in1, ret = Value(m_input_vals[USEQI1]);, 0)
 BUILTINFUNC_MEMBER(useq_in2, ret = Value(m_input_vals[USEQI2]);, 0)
 BUILTINFUNC_MEMBER(useq_ain1, ret = Value(m_input_vals[USEQAI1]);, 0)
 BUILTINFUNC_MEMBER(useq_ain2, ret = Value(m_input_vals[USEQAI2]);, 0)
+
+// clock sources
+
+BUILTINFUNC_MEMBER(
+    useq_reset_external_clock_tracking,
+    constexpr const char* user_facing_name = "reset-clock-ext";
+    if (!(args.size() == 0)) {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 0, 0);
+        return Value::error();
+    } reset_ext_tracking();
+    return Value::nil();, 0)
+
+BUILTINFUNC_MEMBER(
+    useq_reset_internal_clock,
+    constexpr const char* user_facing_name = "reset-clock-int";
+    if (!(args.size() == 0)) {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 0, 0);
+        return Value::error();
+    } reset_logical_time();
+    return Value::nil();, 0)
+
+BUILTINFUNC_MEMBER(
+    useq_get_clock_source,
+    constexpr const char* user_facing_name = "get-clock-source";
+    if (!(args.size() == 0)) {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 0, 0);
+        return Value::error();
+    }
+
+    switch (useq_clock_source) {
+case uSEQ::CLOCK_SOURCES::INTERNAL:
+    println("Internal");
+    break;
+case uSEQ::CLOCK_SOURCES::EXTERNAL_I1:
+    println("External 1");
+    break;
+case uSEQ::CLOCK_SOURCES::EXTERNAL_I2:
+    println("External 2");
+    break;
+    } return Value((int)useq_clock_source);
+    , 0)
+
+BUILTINFUNC_MEMBER(useq_set_clock_internal,
+                   useq_clock_source = uSEQ::CLOCK_SOURCES::INTERNAL;
+                   println("Clock source set to internal"); return Value::nil();, 0)
+
+BUILTINFUNC_MEMBER(
+    useq_set_clock_external,
+    constexpr const char* user_facing_name = "set-clock-ext";
+
+    // Checking number of args
+    if (!(args.size() == 2)) {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 1, 0);
+        return Value::error();
+    } if (!(args[0].is_number())) {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[0].display());
+        return Value::error();
+    } else if (args[0] < 1 || args[0] > 2) {
+        custom_function_error(user_facing_name,
+                              "The clock source can be either input 1 or 2");
+    } if (!(args[1].is_number())) {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[0].display());
+        return Value::error();
+    } else if (args[1] <= 0) {
+        custom_function_error(user_facing_name,
+                              "The clock divisor must be more than 0");
+    }
+
+    // update settings
+    if (args[0] == 1) {
+        useq_clock_source = uSEQ::CLOCK_SOURCES::EXTERNAL_I1;
+    } else if (args[0] == 2) {
+        useq_clock_source = uSEQ::CLOCK_SOURCES::EXTERNAL_I2;
+    }
+
+    set_ext_clock_div(args[1].as_int());
+
+    // notify player
+    println("Clock source set to external: " + String(args[0].as_int()));
+    println("Clock divisor: " + String(args[1].as_int()));
+
+    return Value::nil();, 2)
 
 #ifdef MUSICTHING
 BUILTINFUNC_MEMBER(useq_mt_knob, ret = Value(m_input_vals[MTMAINKNOB]);, 0)
@@ -2292,6 +2464,13 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("flat", useq_flatten);
     INSERT_BUILTINDEF("interp", useq_interpolate);
     INSERT_BUILTINDEF("step", useq_step);
+
+    // clock sources and management
+    INSERT_BUILTINDEF("reset-clock-ext", useq_reset_external_clock_tracking);
+    INSERT_BUILTINDEF("reset-clock-int", useq_reset_internal_clock);
+    INSERT_BUILTINDEF("get-clock-source", useq_get_clock_source);
+    INSERT_BUILTINDEF("set-clock-int", useq_set_clock_internal);
+    INSERT_BUILTINDEF("set-clock-ext", useq_set_clock_external);
 
     // TODO
 #ifdef MUSICTHING
