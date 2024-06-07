@@ -99,6 +99,29 @@ void pio_pwm_set_period(PIO pio, uint sm, uint32_t period)
     pio_sm_set_enabled(pio, sm, true);
 }
 
+float pdm_y=0;
+float pdm_err=0;
+float pdm_w=0;
+
+
+bool timer_callback(repeating_timer_t *mst) {
+    pdm_y = pdm_w > pdm_err ? 1 : 0;
+    pdm_err = pdm_y - pdm_w + pdm_err;
+    if (pdm_y == 1) {
+      //on
+      digitalWrite(USEQ_PIN_LED_AI1, HIGH);
+    }else{
+      //off
+      digitalWrite(USEQ_PIN_LED_AI1, LOW);
+    }
+
+
+//   w = w + 0.00000001;
+//   if (w>=1) w=0;
+
+  return true;
+}
+
 void setup_leds()
 {
     DBG("uSEQ::setup_leds");
@@ -120,6 +143,9 @@ void setup_leds()
         pinMode(useq_output_led_pins[i], OUTPUT_2MA);
         gpio_set_slew_rate(useq_output_led_pins[i], GPIO_SLEW_RATE_SLOW);
     }
+  static repeating_timer_t mst;
+  add_repeating_timer_us(150, timer_callback, NULL, &mst);
+
 }
 
 void uSEQ::init()
@@ -464,6 +490,10 @@ void uSEQ::setup_rotary_encoder()
 }
 #endif // useq 0.2 rotary
 
+
+MedianFilter mf1(51), mf2(51);
+
+
 void uSEQ::update_inputs()
 {
     DBG("uSEQ::update_inputs");
@@ -559,23 +589,44 @@ void uSEQ::update_inputs()
 #endif
 
 #ifdef USEQHARDWARE_1_0
-    auto v_ai1    = analogRead(USEQ_PIN_AI1);
-    auto v_ai1_11 = v_ai1;                  // scale from 10 bit to 11 bit range
-    v_ai1_11      = (v_ai1_11 * v_ai1_11) >> 11; // sqr to get exp curve
-    analogWrite(USEQ_PIN_LED_AI1, v_ai1_11);
+    //switch off LED while making measurements
+    // digitalWrite(USEQ_PIN_LED_AI1, 0);
+    // digitalWrite(USEQ_PIN_LED_AI2, 0);
+    // delayMicroseconds(100);
 
+    // pdm_w = 0;
+    // delayMicroseconds(10);
+
+
+    auto v_ai1    = analogRead(USEQ_PIN_AI1);
     auto v_ai2    = analogRead(USEQ_PIN_AI2);
+
+    auto v_ai1_11 = v_ai1;                  
+    v_ai1_11      = (v_ai1_11 * v_ai1_11) >> 11; // sqr to get exp curve
+
+    // analogWriteFreq(25000);    // out of hearing range
+
+    // digitalWrite(USEQ_PIN_LED_AI2, 0);
+
+    // analogWrite(USEQ_PIN_LED_AI1, v_ai1_11 + random(-100,100));
+    pdm_w = v_ai1_11 / 2048.0;
     auto v_ai2_11 = v_ai2;
+
     v_ai2_11      = (v_ai2_11 * v_ai2_11) >> 11;
     analogWrite(USEQ_PIN_LED_AI2, v_ai2_11);
 
-    const double lpcoeff = 0.05; //0.009;
-    m_input_vals[USEQAI1] = cvInFilter[0].lopass(v_ai1 * recp2048, lpcoeff);
-    m_input_vals[USEQAI2] = cvInFilter[1].lopass(v_ai2 * recp2048, lpcoeff);
+    const double lpcoeff = 0.2; //0.009;
+    double filt1 = mf1.process(v_ai1 * recp2048);
+    double filt2 = mf2.process(v_ai1 * recp2048);
+    // m_input_vals[USEQAI1] = cvInFilter[0].lopass(v_ai1 * recp2048, lpcoeff);
+    // m_input_vals[USEQAI2] = cvInFilter[1].lopass(v_ai2 * recp2048, lpcoeff);
+    m_input_vals[USEQAI1] = filt1;
+    m_input_vals[USEQAI2] = filt2;
 #endif
 
     dbg("updating inputs...DONE");
 }
+
 
 bool is_new_code_waiting() { return Serial.available(); }
 
@@ -1235,7 +1286,6 @@ void uSEQ::analog_write_with_led(int output, double val)
 
     // write pwm
     pio_pwm_set_level(pio0, output, ledsigval);
-    // write led
     analogWrite(pwm_pin, scaled_val);
 }
 

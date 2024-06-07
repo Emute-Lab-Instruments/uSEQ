@@ -9,6 +9,7 @@
 #include "uSEQ/configure.h"
 #include <memory>
 #include <sys/types.h>
+#include "dsp/MedianFilter.h"
 // #include "utils/serial_message.h"
 
 
