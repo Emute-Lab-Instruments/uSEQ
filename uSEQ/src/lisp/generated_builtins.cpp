@@ -600,10 +600,10 @@ Value sum(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "+";
 
     // Checking number of args
-    if (!(args.size() >= 2))
+    if (!(args.size() >= 1))
     {
         error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::AtLeast, 2, -1);
+                             NumArgsComparison::AtLeast, 1, -1);
         return Value::error();
     }
 
@@ -818,10 +818,10 @@ Value product(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "*";
 
     // Checking number of args
-    if (!(args.size() >= 2))
+    if (!(args.size() >= 1))
     {
         error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::AtLeast, 2, -1);
+                             NumArgsComparison::AtLeast, 1, -1);
         return Value::error();
     }
 
@@ -850,7 +850,17 @@ Value product(std::vector<Value>& args, Environment& env)
     Value result = Value::nil();
     Value acc    = args[0];
     for (size_t i = 1; i < args.size(); i++)
-        acc = acc * args[i];
+    {
+        Value num = args[i];
+        if (num == 0)
+        {
+            return Value(0);
+        }
+        else
+        {
+            acc = acc * args[i];
+        }
+    }
     result = acc;
     return result;
 }
@@ -2158,7 +2168,7 @@ Value def(std::vector<Value>& args, Environment& env)
 
 Value useq_sqr(std::vector<Value>& args, Environment& env)
 {
-    constexpr const char* user_facing_name = "useq_sqr";
+    constexpr const char* user_facing_name = "sqr";
 
     // Checking number of args
     if (!(args.size() == 1))
@@ -2267,7 +2277,7 @@ Value lambda(std::vector<Value>& args, Environment& env)
 
 Value useq_pulse(std::vector<Value>& args, Environment& env)
 {
-    constexpr const char* user_facing_name = "useq_pulse";
+    constexpr const char* user_facing_name = "pulse";
 
     // Checking number of args
     if (!(args.size() == 2))

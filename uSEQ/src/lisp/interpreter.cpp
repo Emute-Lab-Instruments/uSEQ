@@ -136,34 +136,6 @@ Value gen_random(std::vector<Value>& args, Environment& env)
 
 #endif // USE_STD
 
-Value flatten(Value& val, Environment& env)
-{
-    std::vector<Value> flattened;
-    if (!val.is_list())
-    {
-        flattened.push_back(val);
-    }
-    else
-    {
-        auto valList = val.as_list();
-        for (size_t i = 0; i < valList.size(); i++)
-        {
-            Value evaluatedElement = valList[i].eval(env);
-            if (evaluatedElement.is_list())
-            {
-                auto flattenedElement = flatten(evaluatedElement, env).as_list();
-                flattened.insert(flattened.end(), flattenedElement.begin(),
-                                 flattenedElement.end());
-            }
-            else
-            {
-                flattened.push_back(evaluatedElement);
-            }
-        }
-    }
-    return Value(flattened);
-}
-
 Value map_list(std::vector<Value>& args, Environment& env)
 {
     // Is not a special form, so we can evaluate our args.
