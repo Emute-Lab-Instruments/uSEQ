@@ -268,15 +268,6 @@ BUILTINFUNC(useq_perf, String report = "fps0: ";
             report += rp2040.getFreeHeap() / 1024; Serial.println(report);
             ret = Value();, 0)
 
-double fast(double speed, double phasor)
-{
-    phasor *= speed;
-    double phase = fmod(phasor, 1.0);
-    return phase;
-}
-
-// uSEQ-specific builtins
-
 } // namespace builtin
 
 // extra arduino api functions
