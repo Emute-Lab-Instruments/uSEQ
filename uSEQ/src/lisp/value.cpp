@@ -657,7 +657,6 @@ String Value::get_type_name() const
     }
 }
 
-// NOTE: should be able to parse right back
 String Value::display() const
 {
     // DBG("Value::display");
@@ -669,7 +668,7 @@ String Value::display() const
     case LAMBDA:
         for (size_t i = 0; i < list.size(); i++)
         {
-            result += list[i].to_lisp_src();
+            result += list[i].display();
             if (i < list.size() - 1)
                 result += " ";
         }
@@ -677,7 +676,7 @@ String Value::display() const
     case LIST:
         for (size_t i = 0; i < list.size(); i++)
         {
-            result += list[i].to_lisp_src();
+            result += list[i].display();
             if (i < list.size() - 1)
                 result += " ";
         }
@@ -685,7 +684,7 @@ String Value::display() const
     case VECTOR:
         for (size_t i = 0; i < list.size(); i++)
         {
-            result += list[i].to_lisp_src();
+            result += list[i].display();
             if (i < list.size() - 1)
                 result += " ";
         }
@@ -764,6 +763,12 @@ String Value::to_lisp_src() const
         return "[" + result + "]";
     case UNIT:
         return "@";
+        // TODO @correctness this needs to be lexically sound,
+        // i.e. referring to the variable that the original did
+        // and not to any potential shadowings in the current scope
+    case BUILTIN:
+    case BUILTIN_METHOD:
+        return str;
     default:
         return "";
     }
