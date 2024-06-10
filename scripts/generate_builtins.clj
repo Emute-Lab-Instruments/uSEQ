@@ -38,7 +38,10 @@
    ".is_error()" "an error"})
 
 (def internal->user-names
-  {"let_block" "let"
+  {"useq_sqr" "sqr"
+   "useq_pulse" "pulse"
+
+   "let_block" "let"
    "b_to_u" "b->u"
    "u_to_b" "u->b"
    "get_expr" "get-expr"
