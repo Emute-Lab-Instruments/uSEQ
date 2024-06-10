@@ -259,7 +259,7 @@
                "env.set(name, val);"
                "result = val;"]}
 
- "sum" {:args {:num ">= 2"
+ "sum" {:args {:num ">= 1"
                :type {:all ".is_number()"}}
         :body ["Value acc = args[0];"
                ;; TODO @performance this could be used to short-circuit :all evaluation
@@ -275,12 +275,22 @@
              :body ["result = args[0] - args[1];"]
              :docstring "Subtract two values"}
 
- "product" {:args {:num ">= 2"
+ "product" {:args {:num ">= 1"
                    :type
                    {:all  ".is_number()"}}
             :body ["Value acc = args[0];"
                    "for (size_t i = 1; i < args.size(); i++)"
-                   "    acc = acc * args[i];"
+                   "{"
+                   "    Value num = args[i];"
+                   "    if (num == 0)"
+                   "    {"
+                   "        return Value(0);"
+                   "    }"
+                   "    else"
+                   "    {"
+                   "        acc = acc * args[i];"
+                   "    }"
+                   "}"
                    "result = acc;"]
             :docstring "Multiply several values"}
 
