@@ -224,10 +224,12 @@ private:
     LISP_FUNC_DECL(useq_loopPhasor);
     LISP_FUNC_DECL(useq_euclidean);
 
+    LISP_FUNC_DECL(useq_flatten);
     LISP_FUNC_DECL(useq_step);
     LISP_FUNC_DECL(useq_fromList);
     LISP_FUNC_DECL(useq_fromFlattenedList);
-    LISP_FUNC_DECL(useq_flatten);
+    LISP_FUNC_DECL(useq_seq);
+    LISP_FUNC_DECL(useq_flatseq);
     LISP_FUNC_DECL(useq_interpolate);
 
     LISP_FUNC_DECL(ard_useqaw);

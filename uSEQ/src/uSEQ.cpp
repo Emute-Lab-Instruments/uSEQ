@@ -369,31 +369,6 @@ int digital_out_pin(int out)
     return res;
 }
 
-BUILTINFUNC_MEMBER(
-    ard_useqdw,
-    if (evalled_args_contain_errors(args)) {
-        error("useqdw has an error in one or more of its args");
-    } else {
-        int out = args[0].as_int();
-        int val = args[1].as_int();
-        digital_write_with_led(out, val);
-    },
-    2)
-
-BUILTINFUNC_MEMBER(
-    ard_useqaw,
-    if (evalled_args_contain_errors(args)) {
-        error("useqaw has an error in one or more of its args");
-    } else {
-        analog_write_with_led(args[0].as_int(), args[1].as_float());
-        // int pin     = analog_out_pin();
-        // int led_pin = analog_out_LED_pin(args[0].as_int());
-        // int val     = args[1].as_float() * 2047.0;
-        // analogWrite(pin, val);
-        // analogWrite(led_pin, val);
-    },
-    2)
-
 static uint8_t prevNextCode = 0;
 static uint16_t store       = 0;
 
@@ -1190,68 +1165,88 @@ void uSEQ::set_time_sig(double numerator, double denominator)
     set_bpm(m_bpm, 0.0);
 }
 
-double fast(double speed, double phasor)
+////////////////////
+// USEQ API
+Value uSEQ::ard_useqdw(std::vector<Value>& args, Environment& env)
 {
-    phasor *= speed;
-    double phase = fmod(phasor, 1.0);
-    return phase;
+    constexpr const char* user_facing_name = "useqdw";
+
+    if (!(args.size() == 2))
+    {
+        // error_wrong_num_args(user_facing_name, args.size(),
+        //                      NumArgsComparison::Between, 2, 3);
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+        if (!(args[i].is_number()))
+        {
+            error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                 args[i].display());
+            return Value::error();
+        }
+    }
+
+    // BODY
+    int out = args[0].as_int();
+    int val = args[1].as_int();
+    digital_write_with_led(out, val);
+
+    return Value::nil();
 }
 
-// BUILTINFUNC_MEMBER(useq_fast_old, double speed = args[0].as_float();
-//                    double phasor     = args[1].as_float();
-//                    double fastPhasor = fast(speed, phasor); ret =
-//                    Value(fastPhasor); , 2)
+Value uSEQ::ard_useqaw(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "useqaw";
 
-// Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
-// {
-//     DBG("uSEQ::fast");
-//     constexpr const char* user_facing_name = "fast";
+    if (!(args.size() == 2))
+    {
+        // error_wrong_num_args(user_facing_name, args.size(),
+        //                      NumArgsComparison::Between, 2, 3);
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
 
-//     // Checking number of args
-//     if (!(args.size() == 2))
-//     {
-//         error_wrong_num_args(user_facing_name, args.size(),
-//                              NumArgsComparison::EqualTo, 2, 0);
-//         return Value::error();
-//     }
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
 
-//     // Eval first arg only
-//     Value pre_eval = args[0];
-//     args[0]        = args[0].eval(env);
-//     if (args[0].is_error())
-//     {
-//         error_arg_is_error(user_facing_name, 1, pre_eval.display());
-//         return Value::error();
-//     }
-//     // Checking first arg
-//     if (!(args[0].is_number()))
-//     {
-//         error_wrong_specific_pred(user_facing_name, 1, "a number",
-//                                   args[1].display());
-//         return Value::error();
-//     }
+        if (!(args[i].is_number()))
+        {
+            error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                 args[i].display());
+            return Value::error();
+        }
+    }
 
-//     // BODY
-//     Value result = Value::nil();
+    // BODY
+    analog_write_with_led(args[0].as_int(), args[1].as_float());
 
-//     // double factor = args[0].as_float();
-//     // // save current time to restore when done
-//     // TimeValue current_transport_time = m_transport_time;
-//     // TimeValue tmp_time               = m_transport_time * factor;
-//     // dbg("factor: " + String(factor));
-//     // dbg("actual_time: " + String(actual_time));
-//     // dbg("tmp_time: " + String(tmp_time));
-//     // //
-//     // update_logical_time(tmp_time);
-//     // //
-//     // Value sig = args[1];
-//     // result    = sig.eval(env);
-//     // // restore the interpreter's time
-//     // update_logical_time(current_transport_time);
-//     // result = fast(factor, sig.as_float());
+    return Value::nil();
+}
 
-//     return result;
-// }
 Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
 {
     DBG("uSEQ::fast");
@@ -1330,8 +1325,8 @@ Value uSEQ::useq_slow(std::vector<Value>& args, Environment& env)
 
 Value uSEQ::useq_offset_time(std::vector<Value>& args, Environment& env)
 {
-    DBG("uSEQ::fast");
-    constexpr const char* user_facing_name = "fast";
+    DBG("uSEQ::offset");
+    constexpr const char* user_facing_name = "offset";
 
     // Checking number of args
     if (!(args.size() == 2))
@@ -1615,10 +1610,25 @@ Value uSEQ::useq_set_time_sig(std::vector<Value>& args, Environment& env)
     return Value::nil();
 }
 
-BUILTINFUNC_MEMBER(useq_in1, ret = Value(m_input_vals[USEQI1]);, 0)
-BUILTINFUNC_MEMBER(useq_in2, ret = Value(m_input_vals[USEQI2]);, 0)
-BUILTINFUNC_MEMBER(useq_ain1, ret = Value(m_input_vals[USEQAI1]);, 0)
-BUILTINFUNC_MEMBER(useq_ain2, ret = Value(m_input_vals[USEQAI2]);, 0)
+Value uSEQ::useq_in1(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_input_vals[USEQI1]);
+}
+
+Value uSEQ::useq_in2(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_input_vals[USEQI2]);
+}
+
+Value uSEQ::useq_ain1(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_input_vals[USEQAI1]);
+}
+
+Value uSEQ::useq_ain2(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_input_vals[USEQAI2]);
+}
 
 #ifdef MUSICTHING
 BUILTINFUNC_MEMBER(useq_mt_knob, ret = Value(m_input_vals[MTMAINKNOB]);, 0)
@@ -1673,7 +1683,8 @@ Value uSEQ::useq_ssin(std::vector<Value>& args, Environment& env)
     else
     {
         user_warning("(ssin) Received request for index " + String(index) +
-                     ", which is out of bounds; returning nil.");
+                     ", which is out of bounds.");
+        return Value::error();
     }
 
     return result;
@@ -1794,48 +1805,238 @@ Value fromList(std::vector<Value>& lst, double phasor, Environment& env)
     return Interpreter::eval_in(lst[idx], env);
 }
 
-BUILTINFUNC_MEMBER(useq_dm, auto index = args[0].as_int();
-                   auto v1 = args[1].as_float(); auto v2 = args[2].as_float();
-                   ret = Value(index > 0 ? v2 : v1);, 3)
+Value uSEQ::useq_dm(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "dm";
 
-BUILTINFUNC_VARGS_MEMBER(
-    useq_gates, auto lst = args[0].as_list();
-    const double phasor     = args[1].as_float();
-    const double speed      = args[2].as_float();
-    const double pulseWidth = args.size() == 4 ? args[3].as_float() : 0.5;
-    const double val        = fromList(lst, fast(speed, phasor), env).as_int();
-    const double gates = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
-    ret                = Value(val * gates);, 3, 4)
+    // Checking number of args
+    if (!(args.size() == 3))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 3, -1);
+        return Value::error();
+    }
 
-BUILTINFUNC_VARGS_MEMBER(
-    useq_gatesw, auto lst = args[0].as_list();
-    const double phasor     = args[1].as_float();
-    const double speed      = args.size() == 3 ? args[2].as_float() : 1.0;
-    const double val        = fromList(lst, fast(speed, phasor), env).as_int();
-    const double pulseWidth = val / 9.0;
-    const double gate = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
-    ret               = Value((val > 0 ? 1.0 : 0.0) * gate);, 2, 3)
+    // Evaluating args, checking for errors & all-arg constraints
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+        // Check all-pred(s)
 
-BUILTINFUNC_VARGS_MEMBER(
-    useq_trigs, auto lst = args[0].as_list();
-    const double phasor     = args[1].as_float();
-    const double speed      = args.size() == 3 ? args[2].as_float() : 1.0;
-    const double val        = fromList(lst, fast(speed, phasor), env).as_int();
-    const double amp        = val / 9.0;
-    const double pulseWidth = args.size() == 4 ? args[3].as_float() : 0.1;
-    const double gate = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
-    ret               = Value((val > 0 ? 1.0 : 0.0) * gate * amp);, 2, 4)
+        if (!(args[i].is_number()))
+        {
+            error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                 args[i].display());
+            return Value::error();
+        }
+    }
 
-BUILTINFUNC_MEMBER(useq_loopPhasor,
-                   auto phasor                   = args[0].as_float();
-                   auto loopPoint                = args[1].as_float();
-                   if (loopPoint == 0) loopPoint = 1; // avoid infinity
-                   double spedupPhasor           = fast(1.0 / loopPoint, phasor);
-                   ret                           = spedupPhasor * loopPoint;, 2)
+    // BODY
+    Value result = Value::nil();
+
+    int index = args[0].as_int();
+    double v1 = args[1].as_float();
+    double v2 = args[2].as_float();
+    result    = Value(index > 0 ? v2 : v1);
+
+    return result;
+}
+
+// FIXME shouldn't the pulsewidth be compared to the
+// 1/nth phase of the phasor, where n is the number of gates?
+// the way it is now it defaults to muting the first half of the gates
+Value uSEQ::useq_gates(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "gates";
+
+    // Checking number of args
+    if (!(2 <= args.size() <= 3))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::Between, 2, 3);
+        return Value::error();
+    }
+
+    // Evaluating args, checking for errors & all-arg constraints
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+        // Check all-pred(s)
+
+        if (i == 0 && !(args[i].is_sequential()))
+        {
+            error_wrong_all_pred(user_facing_name, i + 1, "a vector or list",
+                                 args[i].display());
+            return Value::error();
+        }
+        else
+        {
+            if (!(args[i].is_number()))
+            {
+                error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                     args[i].display());
+                return Value::error();
+            }
+        }
+    }
+
+    // BODY
+    Value result = Value::nil();
+
+    bool pulse_width_specified = args.size() == 3;
+    auto gates_vec             = args[0].as_sequential();
+
+    double pulseWidth;
+    double phasor;
+    if (pulse_width_specified)
+    {
+        pulseWidth = args[1].as_float();
+        phasor     = args[2].as_float();
+    }
+    else
+    {
+        pulseWidth = 0.5;
+        phasor     = args[1].as_float();
+    }
+
+    const double val   = fromList(gates_vec, phasor, env).as_int();
+    const double gates = phasor < pulseWidth ? 1.0 : 0.0;
+    result             = Value(val * gates);
+
+    return result;
+}
+
+Value uSEQ::useq_gatesw(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "gatesw";
+
+    // Checking number of args
+    if (!(args.size() == 2))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Evaluating args, checking for errors & all-arg constraints
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+        // Check all-pred(s)
+
+        if (i == 0 && !(args[i].is_sequential()))
+        {
+            error_wrong_all_pred(user_facing_name, i + 1, "a vector or list",
+                                 args[i].display());
+            return Value::error();
+        }
+        else
+        {
+            if (!(args[i].is_number()))
+            {
+                error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                     args[i].display());
+                return Value::error();
+            }
+        }
+    }
+
+    // BODY
+    Value result = Value::nil();
+
+    auto gates_vec               = args[0].as_sequential();
+    const double phasor          = args[1].as_float();
+    const double val             = fromList(gates_vec, phasor, env).as_int();
+    const double pulseWidth      = val / 9.0;
+    const double relative_phasor = fmod(phasor * gates_vec.size(), 1.0);
+    const double gate            = relative_phasor < pulseWidth ? 1.0 : 0.0;
+
+    result = Value((val > 0 ? 1.0 : 0.0) * gate);
+
+    return result;
+}
+
+// BUILTINFUNC_VARGS_MEMBER(
+//     useq_trigs, auto lst = args[0].as_list();
+//     const double phasor     = args[1].as_float();
+//     const double speed      = args.size() == 3 ? args[2].as_float() : 1.0;
+//     const double val        = fromList(lst, fast(speed, phasor), env).as_int();
+//     const double amp        = val / 9.0;
+//     const double pulseWidth = args.size() == 4 ? args[3].as_float() : 0.1;
+//     const double gate = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
+//     ret               = Value((val > 0 ? 1.0 : 0.0) * gate * amp);, 2, 4)
+
+// Value uSEQ::useq_loopPhasor(std::vector<Value>& args, Environment& env)
+// {
+//     constexpr const char* user_facing_name = "looph";
+
+//     // Checking number of args
+//     if (!(args.size() == 2))
+//     {
+//         error_wrong_num_args(user_facing_name, args.size(),
+//                              NumArgsComparison::EqualTo, 2, -1);
+//         return Value::error();
+//     }
+
+//     // Evaluating args, checking for errors & all-arg constraints
+//     for (size_t i = 0; i < args.size(); i++)
+//     {
+//         // Eval
+//         Value pre_eval = args[i];
+//         args[i]        = args[i].eval(env);
+//         if (args[i].is_error())
+//         {
+//             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+//             return Value::error();
+//         }
+//         // Check all-pred(s)
+//         if (!(args[i].is_number()))
+//         {
+//             error_wrong_all_pred(user_facing_name, i + 1, "a number",
+//                                  args[i].display());
+//             return Value::error();
+//         }
+//     }
+
+//     // BODY
+//     Value result = Value::nil();
+
+//     auto phasor    = args[0].as_float();
+//     auto loopPoint = args[1].as_float();
+//     if (loopPoint == 0)
+//         loopPoint = 1; // avoid infinity
+//     double spedupPhasor = fast(1.0 / loopPoint, phasor);
+//     result              = spedupPhasor * loopPoint;
+
+//     return result;
+// }
 
 // (euclid <phasor> <n> <k> (<offset>) (<pulsewidth>)
 BUILTINFUNC_VARGS_MEMBER(
-    useq_euclidean, const double phasor = args[0].as_float();
+    useq_euclidean,
+
+    const double phasor = args[0].as_float();
     const int n = args[1].as_int(); const int k = args[2].as_int();
     const int offset       = (args.size() >= 4) ? args[3].as_int() : 0;
     const float pulseWidth = (args.size() == 5) ? args[4].as_float() : 0.5;
@@ -1853,7 +2054,7 @@ BUILTINFUNC_VARGS_MEMBER(
 // NOTE: doesn't eval its arguments until they're selected by the phasor
 Value uSEQ::useq_fromList(std::vector<Value>& args, Environment& env)
 {
-    constexpr const char* user_facing_name = "fromList";
+    constexpr const char* user_facing_name = "from-list";
 
     // Checking number of args
     // if (!(2 <= args.size() <= 3))
@@ -1905,22 +2106,81 @@ Value uSEQ::useq_fromList(std::vector<Value>& args, Environment& env)
     return fromList(lst, phasor, env);
 }
 
-Value flatten(Value& val, Environment& env)
+// NOTE: duplicate of fromList, FIXME
+Value uSEQ::useq_seq(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "seq";
+
+    // Checking number of args
+    // if (!(2 <= args.size() <= 3))
+    if (!(args.size() == 2))
+    {
+        // error_wrong_num_args(user_facing_name, args.size(),
+        //                      NumArgsComparison::Between, 2, 3);
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // NOTE: This needs to eval both of its args, including the list,
+    // to cover for cases where the user passes anything other than a
+    // list literal (e.g. a symbol that points to a list)
+    //
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+    }
+
+    // Checking individual args
+    if (!(args[0].is_sequential()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1,
+                                  "a sequential structure (e.g. a list or a vector)",
+                                  args[0].display());
+        return Value::error();
+    }
+    // Checking individual args
+    if (!(args[1].is_number()))
+    {
+        error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                  args[1].display());
+        return Value::error();
+    }
+
+    // BODY
+    auto lst            = args[0].as_sequential();
+    const double phasor = args[1].as_float();
+    return fromList(lst, phasor, env);
+}
+
+Value flatten_impl(const Value& val, Environment& env)
 {
     std::vector<Value> flattened;
-    if (!val.is_list())
+
+    // int original_type = val.type;
+
+    if (!val.is_sequential())
     {
         flattened.push_back(val);
     }
     else
     {
-        auto valList = val.as_list();
+        auto valList = val.as_sequential();
         for (size_t i = 0; i < valList.size(); i++)
         {
             Value evaluatedElement = Interpreter::eval_in(valList[i], env);
-            if (evaluatedElement.is_list())
+            if (evaluatedElement.is_sequential())
             {
-                auto flattenedElement = flatten(evaluatedElement, env).as_list();
+                auto flattenedElement =
+                    flatten_impl(evaluatedElement, env).as_list();
                 flattened.insert(flattened.end(), flattenedElement.begin(),
                                  flattenedElement.end());
             }
@@ -1930,32 +2190,282 @@ Value flatten(Value& val, Environment& env)
             }
         }
     }
-    return Value(flattened);
+
+    Value result;
+
+    // Only return a list if the input was a list,
+    // otherwise a vec
+    // if (original_type == Value::LIST)
+    // {
+    //     result = Value(flattened);
+    // }
+    // else
+    // {
+    //     result = Value::vector(flattened);
+    // }
+
+    result = Value::vector(flattened);
+    return result;
 }
 
-BUILTINFUNC_MEMBER(useq_fromFlattenedList,
-                   auto lst      = flatten(args[0], env).as_list();
-                   double phasor = args[1].as_float();
-                   ret           = fromList(lst, phasor, env);, 2)
-BUILTINFUNC_MEMBER(useq_flatten, ret = flatten(args[0], env);, 1)
-BUILTINFUNC_MEMBER(
-    useq_interpolate, auto lst = args[0].as_list();
-    double phasor = args[1].as_float();
-    if (phasor < 0.0) { phasor = 0; } else if (phasor > 1) { phasor = 1; } float a;
-    double index = phasor * (lst.size() - 1);
-    size_t pos0  = static_cast<size_t>(index); if (pos0 == (lst.size() - 1)) pos0--;
-    a            = (index - pos0);
-    double v2    = Interpreter::eval_in(lst[pos0 + 1], env).as_float();
-    double v1    = Interpreter::eval_in(lst[pos0], env).as_float();
-    ret          = Value(((v2 - v1) * a) + v1);, 2)
+// TODO test
+Value uSEQ::useq_flatten(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "flatten";
 
-// (step <phasor> <count> (<offset>))
-BUILTINFUNC_VARGS_MEMBER(
-    useq_step, const double phasor = args[0].as_float();
-    const int count     = args[1].as_int();
-    const double offset = (args.size() == 3) ? args[2].as_float() : 0;
-    double val = static_cast<int>(phasor * abs(count)); if (val == count) val--;
-    ret        = Value((count > 0 ? val : count - 1 - val) + offset);, 2, 3)
+    if (!(args.size() == 1))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+
+    // Check list for error
+    Value pre_eval = args[0];
+    args[0]        = args[0].eval(env);
+    if (args[0].is_error())
+    {
+        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+    result       = flatten_impl(args[0], env);
+
+    return result;
+}
+
+// NOTE: duplicate of fromFlattenedList, FIXME
+Value uSEQ::useq_flatseq(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "flatseq";
+
+    if (!(args.size() == 2))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // NOTE: This needs to eval both of its args, including the list,
+    // to cover for cases where the user passes anything other than a
+    // list literal (e.g. a symbol that points to a list)
+    //
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+    }
+
+    // Checking individual args
+    if (!(args[0].is_sequential()))
+    {
+        error_wrong_specific_pred(user_facing_name, 0, "a list or a vector",
+                                  args[0].display());
+        return Value::error();
+    }
+
+    if (!(args[1].is_number()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[1].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+
+    auto lst      = flatten_impl(args[0], env).as_sequential();
+    double phasor = args[1].as_float();
+    result        = fromList(lst, phasor, env);
+
+    return result;
+}
+
+Value uSEQ::useq_fromFlattenedList(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "from-flat-list";
+
+    if (!(args.size() == 2))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // NOTE: This needs to eval both of its args, including the list,
+    // to cover for cases where the user passes anything other than a
+    // list literal (e.g. a symbol that points to a list)
+    //
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+    }
+
+    // Checking individual args
+    if (!(args[0].is_sequential()))
+    {
+        error_wrong_specific_pred(user_facing_name, 0,
+                                  "a sequential structure (e.g. a list or a vector)",
+                                  args[0].display());
+        return Value::error();
+    }
+
+    if (!(args[1].is_number()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[1].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+
+    auto lst      = flatten_impl(args[0], env).as_sequential();
+    double phasor = args[1].as_float();
+    result        = fromList(lst, phasor, env);
+
+    return result;
+}
+
+Value uSEQ::useq_interpolate(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "interp";
+
+    // Check num arguments
+    if (!(args.size() == 2))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+    }
+
+    // Checking individual args
+    if (!(args[0].is_sequential()))
+    {
+        error_wrong_specific_pred(user_facing_name, 0, "a list or a vector",
+                                  args[0].display());
+        return Value::error();
+    }
+
+    if (!(args[1].is_number()))
+    {
+        error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                  args[1].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result  = Value::nil();
+    auto lst      = args[0].as_list();
+    double phasor = args[1].as_float();
+    if (phasor < 0.0)
+    {
+        phasor = 0;
+    }
+    else if (phasor > 1)
+    {
+        phasor = 1;
+    }
+    float a;
+    double index = phasor * (lst.size() - 1);
+    size_t pos0  = static_cast<size_t>(index);
+    if (pos0 == (lst.size() - 1))
+        pos0--;
+    a         = (index - pos0);
+    double v2 = lst[pos0 + 1].as_float();
+    double v1 = lst[pos0].as_float();
+    result    = Value(((v2 - v1) * a) + v1);
+
+    return result;
+}
+
+Value uSEQ::useq_step(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "step";
+
+    // Check num arguments
+    if (!(2 <= args.size() <= 3))
+    {
+        error_wrong_num_args(user_facing_name, args.size(),
+                             NumArgsComparison::Between, 2, 3);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+        // Check all-pred(s)
+        if (!(args[i].is_number()))
+        {
+            error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                 args[i].display());
+            return Value::error();
+        }
+    }
+
+    // BODY
+    Value result = Value::nil();
+
+    const int count      = args[0].as_int();
+    bool offset_provided = args.size() == 3;
+    double phasor, offset;
+
+    if (offset_provided)
+    {
+        offset = args[1].as_float();
+        phasor = args[2].as_float();
+    }
+    else
+    {
+        offset = 0;
+        phasor = args[1].as_float();
+    }
+
+    double val = static_cast<int>(phasor * abs(count));
+    if (val == count)
+        val--;
+    result = Value((count > 0 ? val : count - 1 - val) + offset);
+    return result;
+}
 
 #ifdef MIDIOUT
 // midi drum out
@@ -1966,7 +2476,7 @@ BUILTINFUNC_MEMBER(
                                                2)
 #endif
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = { args[0] };, 1)
+BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = args[0];, 1)
 
 // TODO: there is potentially a lot of duplicated/wasted memory by storing
 // the exprs in both the environment and the class member vectors
@@ -1980,6 +2490,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
         ret                  = Value::atom("a1");
     },
     1)
+
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a2,
     if (NUM_CONTINUOUS_OUTS >= 2) {
@@ -2249,18 +2760,19 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("schedule", useq_schedule);
     INSERT_BUILTINDEF("unschedule", useq_unschedule);
 
-    INSERT_BUILTINDEF("looph", useq_loopPhasor);
+    // INSERT_BUILTINDEF("looph", useq_loopPhasor);
     INSERT_BUILTINDEF("dm", useq_dm);
     INSERT_BUILTINDEF("gates", useq_gates);
     INSERT_BUILTINDEF("gatesw", useq_gatesw);
-    INSERT_BUILTINDEF("trigs", useq_trigs);
+    // INSERT_BUILTINDEF("trigs", useq_trigs);
     INSERT_BUILTINDEF("euclid", useq_euclidean);
     // NOTE: different names for the same function
-    INSERT_BUILTINDEF("fromList", useq_fromList);
-    INSERT_BUILTINDEF("seq", useq_fromList);
+    INSERT_BUILTINDEF("from-list", useq_fromList);
+    INSERT_BUILTINDEF("seq", useq_seq);
+    INSERT_BUILTINDEF("flatseq", useq_flatseq);
     //
-    INSERT_BUILTINDEF("flatIdx", useq_fromFlattenedList);
-    INSERT_BUILTINDEF("flat", useq_flatten);
+    INSERT_BUILTINDEF("from-flattened-list", useq_fromFlattenedList);
+    INSERT_BUILTINDEF("flatten", useq_flatten);
     INSERT_BUILTINDEF("interp", useq_interpolate);
     INSERT_BUILTINDEF("step", useq_step);
 
