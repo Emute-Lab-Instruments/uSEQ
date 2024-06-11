@@ -700,7 +700,7 @@ String Value::display() const
         return "{builtin method " + str + " at " +
                String(size_t(&stack_data.builtin_method)) + "}";
     case UNIT:
-        return "{unit}";
+        return "";
     case ERROR:
         return "{error}";
     default:
