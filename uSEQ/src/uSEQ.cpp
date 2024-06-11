@@ -4,7 +4,6 @@
 #include "lisp/value.h"
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <sys/types.h>
 #ifdef ARDUINO
 #include "uSEQ/piopwm.h"
@@ -18,8 +17,8 @@
 // #include "lisp/library.h"
 #include <cmath>
 
-const char* uSEQ::m_flash_marker     = "uSEQ";
-const uint uSEQ::m_flash_marker_size = std::strlen(m_flash_marker) + 1;
+// statics
+uSEQ* uSEQ::instance;
 
 double maxiFilter::lopass(double input, double cutoff)
 {
@@ -139,6 +138,8 @@ void uSEQ::init()
 
     Interpreter::useq_instance_ptr = this;
     Interpreter::init();
+
+    uSEQ::instance = this;
 
     init_builtinfuncs();
     // eval_lisp_library();
@@ -508,10 +509,6 @@ void uSEQ::update_inputs()
 
     digitalWrite(USEQ_PIN_LED_I1, input1);
     digitalWrite(USEQ_PIN_LED_I2, input2);
-
-    // tempo estimates
-    tempoI1.averageBPM(input1, now);
-    tempoI2.averageBPM(input2, now);
 
     m_input_vals[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
 #ifdef USEQ_1_0_c
@@ -962,10 +959,32 @@ void setup_analog_outs()
     }
 }
 
+void uSEQ::updateI1()
+{
+    double newBPM = tempoI1.averageBPM((static_cast<double>(micros())));
+    set_bpm(newBPM, 0.1);
+    println(String(newBPM));
+}
+
+void uSEQ::gpio_irq_gate1()
+{
+    int x = digitalRead(USEQ_PIN_I1);
+    if (x == 0)
+    {
+        uSEQ::instance->updateI1();
+    }
+}
+
+void uSEQ::gpio_irq_gate2() {}
+
 void uSEQ::setup_digital_ins()
 {
     pinMode(USEQ_PIN_I1, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I1), uSEQ::gpio_irq_gate1,
+                    CHANGE);
     pinMode(USEQ_PIN_I2, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I2), uSEQ::gpio_irq_gate2,
+                    CHANGE);
 }
 
 void uSEQ::setup_switches()
@@ -2727,108 +2746,6 @@ Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
     // BODY
     return eval_at_time(args[1], env, time);
 }
-// Creates a Lisp Value of type BUILTIN_METHOD,
-// which requires
-#define INSERT_BUILTINDEF(__name__, __func_name__)                                  \
-    Environment::builtindefs[__name__] =                                            \
-        Value((String)__name__, &uSEQ::__func_name__);
-
-void uSEQ::init_builtinfuncs()
-{
-    DBG("uSEQ::init_builtinfuncs");
-
-    INSERT_BUILTINDEF("eval-at-time", useq_eval_at_time);
-
-    // a
-    INSERT_BUILTINDEF("a1", useq_a1);
-    INSERT_BUILTINDEF("a2", useq_a2);
-    INSERT_BUILTINDEF("a3", useq_a3);
-    INSERT_BUILTINDEF("a4", useq_a4);
-    INSERT_BUILTINDEF("a5", useq_a5);
-    INSERT_BUILTINDEF("a6", useq_a6);
-    // d
-    INSERT_BUILTINDEF("d1", useq_d1);
-    INSERT_BUILTINDEF("d2", useq_d2);
-    INSERT_BUILTINDEF("d3", useq_d3);
-    INSERT_BUILTINDEF("d4", useq_d4);
-    INSERT_BUILTINDEF("d5", useq_d5);
-    INSERT_BUILTINDEF("d6", useq_d6);
-    // s
-    INSERT_BUILTINDEF("s1", useq_s1);
-    INSERT_BUILTINDEF("s2", useq_s2);
-    INSERT_BUILTINDEF("s3", useq_s3);
-    INSERT_BUILTINDEF("s4", useq_s4);
-    INSERT_BUILTINDEF("s5", useq_s5);
-    INSERT_BUILTINDEF("s6", useq_s6);
-
-    // These are not class methods, so they can be inserted normally
-    INSERT_BUILTINDEF("useqaw", ard_useqaw);
-    INSERT_BUILTINDEF("useqdw", ard_useqdw);
-
-    // These are all class methods
-    INSERT_BUILTINDEF("swm", useq_swm);
-    INSERT_BUILTINDEF("swt", useq_swt);
-    INSERT_BUILTINDEF("swr", useq_swr);
-    INSERT_BUILTINDEF("rot", useq_rot);
-    INSERT_BUILTINDEF("ssin", useq_ssin);
-
-    INSERT_BUILTINDEF("in1", useq_in1);
-    INSERT_BUILTINDEF("in2", useq_in2);
-    INSERT_BUILTINDEF("gin1", useq_in1);
-    INSERT_BUILTINDEF("gin2", useq_in2);
-    INSERT_BUILTINDEF("ain1", useq_ain1);
-    INSERT_BUILTINDEF("ain2", useq_ain2);
-
-    INSERT_BUILTINDEF("slow", useq_slow);
-    INSERT_BUILTINDEF("fast", useq_fast);
-    INSERT_BUILTINDEF("offset", useq_offset_time);
-
-    INSERT_BUILTINDEF("set-bpm", useq_setbpm);
-    INSERT_BUILTINDEF("get-input-bpm", useq_get_input_bpm);
-    INSERT_BUILTINDEF("set-time-sig", useq_set_time_sig);
-    INSERT_BUILTINDEF("schedule", useq_schedule);
-    INSERT_BUILTINDEF("unschedule", useq_unschedule);
-
-    // INSERT_BUILTINDEF("looph", useq_loopPhasor);
-    INSERT_BUILTINDEF("dm", useq_dm);
-    INSERT_BUILTINDEF("gates", useq_gates);
-    INSERT_BUILTINDEF("gatesw", useq_gatesw);
-    // INSERT_BUILTINDEF("trigs", useq_trigs);
-    INSERT_BUILTINDEF("euclid", useq_euclidean);
-    // NOTE: different names for the same function
-    INSERT_BUILTINDEF("from-list", useq_fromList);
-    INSERT_BUILTINDEF("seq", useq_seq);
-    INSERT_BUILTINDEF("flatseq", useq_flatseq);
-    //
-    INSERT_BUILTINDEF("from-flattened-list", useq_fromFlattenedList);
-    INSERT_BUILTINDEF("flatten", useq_flatten);
-    INSERT_BUILTINDEF("interp", useq_interpolate);
-    INSERT_BUILTINDEF("step", useq_step);
-
-    // TODO
-#ifdef MUSICTHING
-    Environment::builtindefs["knob"]  = Value("knob", builtin::useq_mt_knob);
-    Environment::builtindefs["knobx"] = Value("knobx", builtin::useq_mt_knobx);
-    Environment::builtindefs["knoby"] = Value("knoby", builtin::useq_mt_knoby);
-    Environment::builtindefs["swz"]   = Value("swz", builtin::useq_mt_swz);
-#endif
-
-#ifdef MIDIOUT
-    INSERT_BUILTINDEF("mdo", useq_mdo);
-#endif
-
-    INSERT_BUILTINDEF("write-flash-info", useq_write_flash_info);
-    INSERT_BUILTINDEF("load-flash-info", useq_load_flash_info);
-
-    INSERT_BUILTINDEF("write-flash-env", useq_write_flash_env);
-    INSERT_BUILTINDEF("load-flash-env", useq_load_flash_env);
-
-    INSERT_BUILTINDEF("useq-reboot", useq_reboot);
-    INSERT_BUILTINDEF("useq-set-id", useq_set_my_id);
-    INSERT_BUILTINDEF("useq-get-id", useq_get_my_id);
-    INSERT_BUILTINDEF("useq-autoload-flash", useq_autoload_flash);
-    INSERT_BUILTINDEF("useq-clear-flash", useq_clear_non_program_flash);
-}
 
 PhaseValue uSEQ::beat_at_time(TimeValue time)
 {
@@ -2937,13 +2854,13 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_reboot,
 
 BUILTINFUNC_MEMBER(useq_write_flash_info,
                    //
-                   write_info_to_flash();
+                   write_flash_info();
                    , 0)
 
 BUILTINFUNC_MEMBER(useq_load_flash_info,
                    //
                    // print_flash_vars();
-                   load_info_from_flash();
+                   load_flash_info();
                    , 0)
 
 BUILTINFUNC_MEMBER(useq_write_flash_env,
@@ -2963,25 +2880,63 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_get_my_id,
                           ret = Value(m_my_id);
                           , 0)
 
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_set_my_id,
-    //
-    if (args[0].is_number()) { set_my_id(args[0].as_int()); }, 1)
-
 BUILTINFUNC_NOEVAL_MEMBER(useq_autoload_flash,
                           //
                           autoload_flash();
                           , 0)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_clear_non_program_flash,
-                          //
-                          clear_non_program_flash();
+// NOTE: only these are meant for user interface
+BUILTINFUNC_MEMBER(
+    useq_set_my_id,                  //
+    if (args[0].is_number())         //
+    { set_my_id(args[0].as_int()); } //
+    else {
+        error_wrong_specific_pred("useq-set-id", 1, "a number", args[0].display());
+    } //
+    ,
+    1)
+
+BUILTINFUNC_NOEVAL_MEMBER(useq_memory_save, write_flash_env();, 0)
+BUILTINFUNC_NOEVAL_MEMBER(useq_memory_restore, //
+                          load_flash_info();
+                          load_flash_env(); //
+                          , 0);
+BUILTINFUNC_NOEVAL_MEMBER(useq_memory_erase, //
+                          reset_flash_env_var_info();
                           , 0)
+
+BUILTINFUNC_NOEVAL_MEMBER(useq_stop_all, //
+                          clear_all_outputs();
+                          println("All outputs cleared.");, 0)
+
+void uSEQ::clear_all_outputs()
+{
+    for (int i = 0; i < m_continuous_ASTs.size(); i++)
+    {
+        String name          = "a" + String(i + 1);
+        m_continuous_ASTs[i] = default_continuous_expr;
+        m_def_exprs.erase(name);
+    }
+
+    for (int i = 0; i < m_binary_ASTs.size(); i++)
+    {
+        String name      = "d" + String(i + 1);
+        m_binary_ASTs[i] = default_binary_expr;
+        m_def_exprs.erase(name);
+    }
+
+    for (int i = 0; i < m_serial_ASTs.size(); i++)
+    {
+        String name      = "s" + String(i + 1);
+        m_serial_ASTs[i] = default_serial_expr;
+        m_def_exprs.erase(name);
+    }
+}
 
 void uSEQ::set_my_id(int num)
 {
     m_my_id = num;
-    write_info_to_flash();
+    write_flash_info();
 }
 
 // Utils
@@ -3022,13 +2977,6 @@ size_t pad_to_nearest_multiple_of(size_t in, size_t quant)
     return in + padding_to_nearest_multiple_of(in, quant);
 }
 
-// void uSEQ::erase_info_flash_sector() { u_int8_t buffer[FLASH_INFO_SECTOR_SIZE]; }
-
-// BUILTINFUNC_NOEVAL_MEMBER(useq_erase_all_flash,
-//                           //
-//                           erase_all_flash();
-//                           , 0)
-
 void uSEQ::erase_info_flash()
 {
     flash_range_erase(FLASH_INFO_SECTOR_OFFSET_START, FLASH_INFO_SECTOR_SIZE);
@@ -3037,12 +2985,15 @@ void uSEQ::erase_info_flash()
 
 bool uSEQ::flash_has_been_written_before()
 {
+    // Get a char* to the start of the info block and check to see whether
+    // that points to the start of a c-style string (spelling "uSEQ" as of 1.0
+    // release)
     const char* const info_start =
         (char*)(PICO_FLASH_START_ADDR + FLASH_INFO_SECTOR_OFFSET_START);
-    return std::strcmp(info_start, m_flash_marker) == 0;
+    return std::strcmp(info_start, m_flash_stamp_str) == 0;
 }
 
-void uSEQ::write_info_to_flash()
+void uSEQ::write_flash_info()
 {
     // 4k buffer
     u_int8_t buffer[FLASH_INFO_SECTOR_SIZE];
@@ -3061,10 +3012,12 @@ void uSEQ::write_info_to_flash()
 
     // This should always be at the top so that we can know if we've written
     // to the flash at least once
-    std::strcpy((char*)write_ptr, m_flash_marker);
-    write_ptr += m_flash_marker_size;
+    std::strcpy((char*)write_ptr, m_flash_stamp_str);
+    write_ptr += m_flash_stamp_size_bytes;
 
     // Writing starting from 0
+    // NOTE: The order here should match the order in load_flash_info
+    // NOTE: The order here should match the order in load_flash_info
     WRITE_SEQUENTIALLY_TO_BUFFER(m_my_id);
     WRITE_SEQUENTIALLY_TO_BUFFER(m_FLASH_ENV_SECTOR_SIZE);
     WRITE_SEQUENTIALLY_TO_BUFFER(m_FLASH_ENV_SECTOR_OFFSET_START);
@@ -3076,10 +3029,10 @@ void uSEQ::write_info_to_flash()
     write_to_flash(&buffer[0], FLASH_INFO_SECTOR_OFFSET_START,
                    FLASH_INFO_SECTOR_SIZE);
 
-    println("Done writing INFO to flash.");
+    println("Wrote module info to flash successfully.");
 }
 
-void uSEQ::load_info_from_flash()
+void uSEQ::load_flash_info()
 {
     const u_int8_t* const info_sector_addr_ptr = reinterpret_cast<u_int8_t*>(
         PICO_FLASH_START_ADDR + FLASH_INFO_SECTOR_OFFSET_START);
@@ -3096,9 +3049,9 @@ void uSEQ::load_info_from_flash()
     if (flash_has_been_written_before())
     {
         // Skip the flash marker
-        read_ptr += m_flash_marker_size;
+        read_ptr += m_flash_stamp_size_bytes;
 
-        // NOTE: The order here should match the order in write_info_to_flash
+        // NOTE: The order here should match the order in write_flash_info
         READ_SEQUENTIALLY_FROM_FLASH(m_my_id);
         READ_SEQUENTIALLY_FROM_FLASH(m_FLASH_ENV_SECTOR_SIZE);
         READ_SEQUENTIALLY_FROM_FLASH(m_FLASH_ENV_SECTOR_OFFSET_START);
@@ -3157,7 +3110,8 @@ void uSEQ::write_flash_env()
 
     if (buffer_size % FLASH_PAGE_SIZE != 0)
     {
-        println("Page size not multiple");
+        println("Error: Flash env buffer size is not a multiple of the page size: " +
+                String(buffer_size));
         return;
     }
 
@@ -3172,13 +3126,17 @@ void uSEQ::write_flash_env()
 
     if (m_FLASH_ENV_SECTOR_SIZE % FLASH_SECTOR_SIZE != 0)
     {
-        println("Env sector size not multiple");
+        println(
+            "Error: Flash env sector size is not a multiple of the sector size: " +
+            String(buffer_size));
         return;
     }
 
     if (m_FLASH_ENV_SECTOR_OFFSET_START % FLASH_SECTOR_SIZE != 0)
     {
-        println("Env sector start not multiple");
+        println("Error: Flash env sector start position does not allign with flash "
+                "sector boundaries: " +
+                String(buffer_size));
         println(String((uint)m_FLASH_ENV_SECTOR_OFFSET_START));
         return;
     }
@@ -3193,19 +3151,22 @@ void uSEQ::write_flash_env()
 
     delete[] buffer;
 
-    println("Done writing ENV to flash.");
+    println("Wrote current variable definitions to flash.");
 
     // 5. Update the info sector with the new locations/sizes
-    write_info_to_flash();
+    write_flash_info();
 }
 
 void uSEQ::load_flash_env()
 {
+    println("Loading previously saved state...");
+
     char* strings_start =
         (char*)(PICO_FLASH_START_ADDR + m_FLASH_ENV_SECTOR_OFFSET_START);
 
     char* read_ptr    = strings_start;
     size_t bytes_read = 0;
+    // We read defs first, then swap to def_exprs
     ValueMap* map_ptr = &m_defs;
 
     while (bytes_read < m_FLASH_ENV_STRING_BUFFER_SIZE)
@@ -3216,11 +3177,13 @@ void uSEQ::load_flash_env()
         String def_str = String(read_ptr);
         read_ptr += def_str.length() + 1;
 
-        // Update bytes read (to see if we need to move on to exprs instead)
+        // Update bytes read (to see if we need to move
+        // on to loading def exprs instead)
         bytes_read = (size_t)(read_ptr - strings_start);
 
         if (bytes_read > m_FLASH_ENV_DEFS_SIZE)
         {
+            // Swap pointers
             map_ptr = &m_def_exprs;
         }
 
@@ -3228,9 +3191,8 @@ void uSEQ::load_flash_env()
 
         if (val.is_error())
         {
-            println("ERROR!!!! : below");
-            println(name_str);
-            println(def_str);
+            println("Warning: Expression for " + name_str +
+                    " could not be parsed (ignoring):\n" + "    " + def_str);
         }
         else
         {
@@ -3248,8 +3210,8 @@ void uSEQ::load_flash_env()
         }
         else
         {
-            println("Warning: Expression for output " + name +
-                    " was not found, ignoring...");
+            // println("Warning: Expression for output " + name +
+            //         " was not found, ignoring...");
         }
     }
 
@@ -3263,8 +3225,8 @@ void uSEQ::load_flash_env()
         }
         else
         {
-            println("Warning: Expression for output " + name +
-                    " was not found, ignoring...");
+            // println("Warning: Expression for output " + name +
+            //         " was not found, ignoring...");
         }
     }
 
@@ -3278,21 +3240,23 @@ void uSEQ::load_flash_env()
         }
         else
         {
-            println("Warning: Expression for output " + name +
-                    " was not found, ignoring...");
+            // println("Warning: Expression for output " + name +
+            //         " was not found, ignoring...");
         }
     }
+
+    println("Previously saved state loaded successfully.");
 }
 
 void uSEQ::autoload_flash()
 {
     if (flash_has_been_written_before())
     {
-        load_info_from_flash();
+        load_flash_info();
 
         if (m_FLASH_ENV_SECTOR_SIZE > 0 && m_FLASH_ENV_SECTOR_OFFSET_START > 0)
         {
-            println("All good, reading env...");
+            // println("All good, reading env...");
             load_flash_env();
         }
         else
@@ -3310,36 +3274,168 @@ void uSEQ::autoload_flash()
     }
     else
     {
-        println("Flash NOT written before - ignoring.");
+        // println("Flash NOT written before - ignoring.");
     }
 }
 
 // FIXME hangs
-void uSEQ::clear_non_program_flash()
-{
-    // NOTE: this was taken from the Arduino's IDE printout
-    // during compilation
-    constexpr uint32_t max_code_bytes = 1044480;
+// void uSEQ::clear_non_program_flash()
+// {
+//     // NOTE: this was taken from the Arduino's IDE printout
+//     // during compilation
+//     constexpr uint32_t max_code_bytes = 1044480;
 
-    for (uint32_t addr = max_code_bytes; addr < PICO_FLASH_SIZE_BYTES;
-         addr += FLASH_SECTOR_SIZE)
-    {
-        if (addr % FLASH_SECTOR_SIZE != 0)
-        {
-            println("Address " + String(addr) +
-                    " is NOT aligned on sector borders.");
-        }
-        else
-        {
-            flash_range_erase(addr, FLASH_SECTOR_SIZE);
-        }
-    }
+//     for (uint32_t addr = max_code_bytes; addr < PICO_FLASH_SIZE_BYTES;
+//          addr += FLASH_SECTOR_SIZE)
+//     {
+//         if (addr % FLASH_SECTOR_SIZE != 0)
+//         {
+//             println("Address " + String(addr) +
+//                     " is NOT aligned on sector borders.");
+//         }
+//         else
+//         {
+//             flash_range_erase(addr, FLASH_SECTOR_SIZE);
+//         }
+//     }
 
-    println("Cleared flash memory.");
-}
+//     println("Cleared flash memory.");
+// }
 
 void uSEQ::reboot()
 {
 #define AIRCR_Register (*((volatile uint32_t*)(PPB_BASE + 0x0ED0C)))
     AIRCR_Register = 0x5FA0004;
+}
+
+void uSEQ::reset_flash_env_var_info()
+{
+    m_FLASH_ENV_SECTOR_SIZE         = 0;
+    m_FLASH_ENV_DEFS_SIZE           = 0;
+    m_FLASH_ENV_EXPRS_SIZE          = 0;
+    m_FLASH_ENV_SECTOR_OFFSET_START = 0;
+    m_FLASH_ENV_SECTOR_OFFSET_END   = 0;
+    m_FLASH_ENV_STRING_BUFFER_SIZE  = 0;
+    write_flash_info();
+}
+
+//////////////////////////
+
+// Creates a Lisp Value of type BUILTIN_METHOD,
+// which requires
+#define INSERT_BUILTINDEF(__name__, __func_name__)                                  \
+    Environment::builtindefs[__name__] =                                            \
+        Value((String)__name__, &uSEQ::__func_name__);
+
+void uSEQ::init_builtinfuncs()
+{
+    DBG("uSEQ::init_builtinfuncs");
+
+    INSERT_BUILTINDEF("eval-at-time", useq_eval_at_time);
+
+    // a
+    INSERT_BUILTINDEF("a1", useq_a1);
+    INSERT_BUILTINDEF("a2", useq_a2);
+    INSERT_BUILTINDEF("a3", useq_a3);
+    INSERT_BUILTINDEF("a4", useq_a4);
+    INSERT_BUILTINDEF("a5", useq_a5);
+    INSERT_BUILTINDEF("a6", useq_a6);
+    // d
+    INSERT_BUILTINDEF("d1", useq_d1);
+    INSERT_BUILTINDEF("d2", useq_d2);
+    INSERT_BUILTINDEF("d3", useq_d3);
+    INSERT_BUILTINDEF("d4", useq_d4);
+    INSERT_BUILTINDEF("d5", useq_d5);
+    INSERT_BUILTINDEF("d6", useq_d6);
+    // s
+    INSERT_BUILTINDEF("s1", useq_s1);
+    INSERT_BUILTINDEF("s2", useq_s2);
+    INSERT_BUILTINDEF("s3", useq_s3);
+    INSERT_BUILTINDEF("s4", useq_s4);
+    INSERT_BUILTINDEF("s5", useq_s5);
+    INSERT_BUILTINDEF("s6", useq_s6);
+
+    // These are not class methods, so they can be inserted normally
+    INSERT_BUILTINDEF("useqaw", ard_useqaw);
+    INSERT_BUILTINDEF("useqdw", ard_useqdw);
+
+    // These are all class methods
+    INSERT_BUILTINDEF("swm", useq_swm);
+    INSERT_BUILTINDEF("swt", useq_swt);
+    INSERT_BUILTINDEF("swr", useq_swr);
+    INSERT_BUILTINDEF("rot", useq_rot);
+    INSERT_BUILTINDEF("ssin", useq_ssin);
+
+    INSERT_BUILTINDEF("in1", useq_in1);
+    INSERT_BUILTINDEF("in2", useq_in2);
+    INSERT_BUILTINDEF("gin1", useq_in1);
+    INSERT_BUILTINDEF("gin2", useq_in2);
+    INSERT_BUILTINDEF("ain1", useq_ain1);
+    INSERT_BUILTINDEF("ain2", useq_ain2);
+
+    INSERT_BUILTINDEF("slow", useq_slow);
+    INSERT_BUILTINDEF("fast", useq_fast);
+    INSERT_BUILTINDEF("offset", useq_offset_time);
+
+    INSERT_BUILTINDEF("set-bpm", useq_setbpm);
+    INSERT_BUILTINDEF("get-input-bpm", useq_get_input_bpm);
+    INSERT_BUILTINDEF("set-time-sig", useq_set_time_sig);
+    INSERT_BUILTINDEF("schedule", useq_schedule);
+    INSERT_BUILTINDEF("unschedule", useq_unschedule);
+
+    // INSERT_BUILTINDEF("looph", useq_loopPhasor);
+    INSERT_BUILTINDEF("dm", useq_dm);
+    INSERT_BUILTINDEF("gates", useq_gates);
+    INSERT_BUILTINDEF("gatesw", useq_gatesw);
+    // INSERT_BUILTINDEF("trigs", useq_trigs);
+    INSERT_BUILTINDEF("euclid", useq_euclidean);
+    // NOTE: different names for the same function
+    INSERT_BUILTINDEF("from-list", useq_fromList);
+    INSERT_BUILTINDEF("seq", useq_seq);
+    INSERT_BUILTINDEF("flatseq", useq_flatseq);
+    //
+    INSERT_BUILTINDEF("from-flattened-list", useq_fromFlattenedList);
+    INSERT_BUILTINDEF("flatten", useq_flatten);
+    INSERT_BUILTINDEF("interp", useq_interpolate);
+    INSERT_BUILTINDEF("step", useq_step);
+
+    // TODO
+#ifdef MUSICTHING
+    Environment::builtindefs["knob"]  = Value("knob", builtin::useq_mt_knob);
+    Environment::builtindefs["knobx"] = Value("knobx", builtin::useq_mt_knobx);
+    Environment::builtindefs["knoby"] = Value("knoby", builtin::useq_mt_knoby);
+    Environment::builtindefs["swz"]   = Value("swz", builtin::useq_mt_swz);
+#endif
+
+#ifdef MIDIOUT
+    INSERT_BUILTINDEF("mdo", useq_mdo);
+#endif
+
+    // SYSTEM API
+    INSERT_BUILTINDEF("useq-reboot", useq_reboot);
+
+    // FLASH API
+    // NOTE: These are meant to be the main user interface
+    // ID
+    INSERT_BUILTINDEF("useq-set-id", useq_set_my_id);
+    INSERT_BUILTINDEF("useq-get-id", useq_get_my_id);
+    // MEMORY
+    INSERT_BUILTINDEF("useq-memory-save", useq_memory_save);
+    INSERT_BUILTINDEF("useq-memory-restore", useq_memory_restore);
+    INSERT_BUILTINDEF("useq-memory-erase", useq_memory_erase);
+    // NOTE: aliases
+    INSERT_BUILTINDEF("useq-memory-load", useq_memory_restore);
+    INSERT_BUILTINDEF("useq-memory-clear", useq_memory_erase);
+
+    // NOTE: these are NOT meant to be user interface, just for
+    // more granular dev tests
+    INSERT_BUILTINDEF("write-flash-info", useq_write_flash_info);
+    INSERT_BUILTINDEF("load-flash-info", useq_load_flash_info);
+
+    INSERT_BUILTINDEF("write-flash-env", useq_write_flash_env);
+    INSERT_BUILTINDEF("load-flash-env", useq_load_flash_env);
+
+    INSERT_BUILTINDEF("useq-autoload-flash", useq_autoload_flash);
+    INSERT_BUILTINDEF("useq-stop-all", useq_stop_all);
+    // INSERT_BUILTINDEF("useq-clear-flash", useq_clear_non_program_flash);
 }
