@@ -1,20 +1,77 @@
 #ifndef LOG_H_
 #define LOG_H_
 
-#include "string.h"
 #include "serial_message.h"
+#include "string.h"
+#include <optional>
+#include <vector>
 
+// enum class PrintJobType
+// {
+//     PRINT,
+//     PRINTLN
+// };
 
+// struct ErrorMsg
+// {
+//     String msg;
+//     PrintJobType type;
+//     String relevant_atom;
+// };
 
-// void print(String s);
-void println(String s);
+// struct uSEQ_Message
+// {
+//     enum class Type
+//     {
+//         USER_INFO,
+//         USER_WARNING,
+//         USER_ERROR,
+//         RUNTIME_INFO,
+//         RUNTIME_WARNING,
+//         RUNTIME_ERROR,
+//     };
+
+//     Type type;
+//     String str;
+
+//     // Constructor accepting an lvalue reference
+//     uSEQ_Message(Type type, const String& s) : type(type), str(s) {}
+
+//     // Constructor accepting an rvalue reference
+//     uSEQ_Message(Type type, String&& s) : type(type), str(std::move(s)) {}
+// };
+
+// class uSEQ_MessageQ
+// {
+// public:
+//     void push(uSEQ_Message&& message) { messages.push_back(std::move(message)); }
+
+//     void clear() { messages.clear(); }
+//     const uSEQ_Message& first() { return messages[0]; }
+//     const uSEQ_Message& last() { return messages[messages.size() - 1]; }
+
+// private:
+//     std::vector<uSEQ_Message> messages;
+// };
+
+extern std::vector<String> error_msg_q;
+
+// void print_now(const String& s);
+// void println_now(const String& s);
+
+void print(const String& s);
+void println(const String& s);
+
+// void serve_message(const uSEQ_Message& msg);
+
+// void execute_print_q_index(size_t index);
 
 void debug(String s);
 
-void error(String s);
-void runtime_error(String s);
-
-void user_warning(const String& s);
+void report_error(const String& s);
+void report_generic_error(const String& s);
+void report_runtime_error(const String& s);
+void report_user_warning(const String& s);
 
 enum class UserError
 {
@@ -31,23 +88,23 @@ enum class NumArgsComparison
     Between
 };
 
-void error_wrong_num_args(const String& function_name, int num_received,
-                          NumArgsComparison comp, int num, int num2);
+void report_error_wrong_num_args(const String& function_name, int num_received,
+                                 NumArgsComparison comp, int num, int num2);
 
-void error_arg_is_error(const String& function_name, int num,
-                        const String& received_val_str);
-
-void error_wrong_all_pred(const String& function_name, int num,
-                          const String& expected_str,
-                          const String& received_val_str);
-
-void error_wrong_specific_pred(const String& function_name, int num,
-                               const String& expected_str,
+void report_error_arg_is_error(const String& function_name, int num,
                                const String& received_val_str);
 
-void error_atom_not_defined(const String& atom);
+void report_error_wrong_all_pred(const String& function_name, int num,
+                                 const String& expected_str,
+                                 const String& received_val_str);
 
-void custom_function_error(const String& function_name, const String& msg);
+void report_error_wrong_specific_pred(const String& function_name, int num,
+                                      const String& expected_str,
+                                      const String& received_val_str);
+
+void report_error_atom_not_defined(const String& atom);
+
+void report_custom_function_error(const String& function_name, const String& msg);
 // NOTE: for later
 // struct NumArgs
 // {

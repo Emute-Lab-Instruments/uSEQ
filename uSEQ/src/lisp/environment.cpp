@@ -77,7 +77,7 @@ std::optional<Value> Environment::get(const String& name) const
     // 4. If still not found, return empty
     if (!result)
     {
-        error_atom_not_defined(name);
+        report_error_atom_not_defined(name);
         return std::nullopt;
     }
     else

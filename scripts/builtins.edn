@@ -35,7 +35,7 @@
                     "}"
                     "else"
                     "{"
-                    "    user_warning(\"(get-expr) Expression for \" + name + \" wasn't found.\");"
+                    "    report_user_warning(\"(**get-expr**) Expression for \" + name + \" wasn't found.\");"
                     "}"]
 
              :docstring "Define a variable with a value (SPECIAL FORM)"}
@@ -71,7 +71,7 @@
          :args {:num ">= 2"}
          :body ["if (args.size() % 2 != 0)"
                 "{"
-                "    custom_function_error("
+                "    report_custom_function_error("
                 "        user_facing_name,"
                 "        \"Number of arguments should be even, forming pairs of <name> <value>.\");"
                 "}"
@@ -81,7 +81,7 @@
                 "{"
                 "    if (!(args[i].is_symbol()))"
                 "    {"
-                "        error_wrong_specific_pred(user_facing_name, i + 1, \"a symbol \","
+                "        report_error_wrong_specific_pred(user_facing_name, i + 1, \"a symbol \","
                 "                                  args[i].display());"
                 "        return Value::error();"
                 "    }"
@@ -170,7 +170,7 @@
                      "// Make sure bindings arg is a valid vector/list"
                      "if (!(bindings.is_sequential()))"
                      "{"
-                     "    error_wrong_specific_pred(user_facing_name, 1, \"a list or a vector\","
+                     "    report_error_wrong_specific_pred(user_facing_name, 1, \"a list or a vector\","
                      "                              args[0].display());"
                      "    return Value::error();"
                      "}"
@@ -179,7 +179,7 @@
                      ""
                      "if (bindings_vec.size() % 2 != 0)"
                      "{"
-                     "    custom_function_error(user_facing_name,"
+                     "    report_custom_function_error(user_facing_name,"
                      "                          \"Number of elements in the bindings vector should be \""
                      "                          \"even, forming pairs of <name> <value>.\");"
                      "    return Value::error();"
@@ -191,7 +191,7 @@
                      "    Value item = bindings_vec[i];"
                      "    if (!(item.is_symbol()))"
                      "    {"
-                     "        custom_function_error(user_facing_name,"
+                     "        report_custom_function_error(user_facing_name,"
                      "                              \"All even elements in the bindings vector are \""
                      "                              \"expected to be symbols, but element #\" +"
                      "                                  String((i - 1) / 2) +"
@@ -213,7 +213,7 @@
                      "    Value evaled_body = body.eval(local_env);"
                      "    if (evaled_body.is_error())"
                      "    {"
-                     "        custom_function_error(user_facing_name,"
+                     "        report_custom_function_error(user_facing_name,"
                      "                              \"The definition for entry #\" +"
                      "                                  String((i - 1) / 2) +"
                      "                                  \" evaluates to an error: \" + body.display());"
@@ -359,7 +359,7 @@
                  "}"
                  "else"
                  "{"
-                 "    error(\"(index) Index should be smaller than the size of the list.\");"
+                 "    report_custom_function_error(\"index\", \"Index should be smaller than the size of the list.\");"
                  "    return Value::error();"
                  "}"]
           :docstring "Index a list"}
@@ -384,7 +384,7 @@
            :body ["std::vector<Value> list = args[0].as_list();"
                   "    int i                   = args[1].as_int();"
                   "    if (list.empty() || i >= (int)list.size())"
-                  "        error(INDEX_OUT_OF_RANGE);"
+                  "        report_error(INDEX_OUT_OF_RANGE);"
                   "    else"
                   "        list.erase(list.begin() + i);"
                   "result = Value(list);"]
@@ -414,7 +414,7 @@
          :body ["std::vector<Value> list = args[0].as_list();"
                 "if (list.empty())"
                 "{"
-                "    error(INDEX_OUT_OF_RANGE);"
+                "    report_error(INDEX_OUT_OF_RANGE);"
                 "}"
                 "else"
                 "{"
@@ -545,8 +545,9 @@
  "display" {:args {:num "== 1"}
             :body ["result = Value::string(args[0].display());"]}
 
+ ;; TODO: what is the intended use case for this?
  "debug" {:args {:num "== 1"}
-          :body ["result = Value::string(args[0].debug());"]}
+          :body ["result = Value::string(args[0].to_lisp_src());"]}
 
  "println" {:args {:num "== 1"
                    :type {0 ".is_string()"}}

@@ -66,11 +66,14 @@ public:
     static uSEQ* instance;
     void set_input_val(size_t index, double value);
 
-    enum CLOCK_SOURCES {INTERNAL=0, EXTERNAL_I1, EXTERNAL_I2};
+    enum CLOCK_SOURCES
+    {
+        INTERNAL = 0,
+        EXTERNAL_I1,
+        EXTERNAL_I2
+    };
 
-    uSEQ::CLOCK_SOURCES getClockSource() {
-        return useq_clock_source;
-    }
+    uSEQ::CLOCK_SOURCES getClockSource() { return useq_clock_source; }
 
 private:
     // IO m_io;
@@ -177,19 +180,25 @@ private:
     void update_Q0();
 
     CLOCK_SOURCES useq_clock_source = CLOCK_SOURCES::INTERNAL;
-    struct ext_clock_tracking {
-        size_t beat_count=0;
-        size_t bar_count = 0;
-        size_t count = 0;
-        size_t div=1;
+    struct ext_clock_tracking
+    {
+        size_t beat_count = 0;
+        size_t bar_count  = 0;
+        size_t count      = 0;
+        size_t div        = 1;
     } ext_clock_tracker;
 
-    void reset_ext_tracking() {
-        ext_clock_tracker.beat_count = ext_clock_tracker.bar_count = ext_clock_tracker.count = 0;
+    void reset_ext_tracking()
+    {
+        ext_clock_tracker.beat_count = ext_clock_tracker.bar_count =
+            ext_clock_tracker.count  = 0;
     }
 
-    void set_ext_clock_div(size_t val) {ext_clock_tracker.div=val; reset_ext_tracking();}
-
+    void set_ext_clock_div(size_t val)
+    {
+        ext_clock_tracker.div = val;
+        reset_ext_tracking();
+    }
 
     unsigned long serial_out_timestamp = 0;
 
@@ -247,9 +256,6 @@ private:
     LISP_FUNC_DECL(useq_get_clock_source);
     LISP_FUNC_DECL(useq_reset_internal_clock);
     LISP_FUNC_DECL(useq_reset_external_clock_tracking);
-    
-
-
 
 #ifdef MUSICTHING
     LISP_FUNC_DECL(useq_mt_knob);
@@ -397,6 +403,7 @@ private:
     void autoload_flash();
 
     // void clear_non_program_flash();
+    static String current_output_being_processed;
 };
 
 #endif // USEQ_H_

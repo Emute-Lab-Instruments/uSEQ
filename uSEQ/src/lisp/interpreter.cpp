@@ -15,7 +15,11 @@
 
 bool user_interaction = false;
 
-bool Interpreter::m_attempt_eval_as_signals = false;
+bool Interpreter::m_attempt_expr_eval_first          = false;
+bool Interpreter::m_eval_expr_if_def_not_found       = true;
+bool Interpreter::m_manual_evaluation                = false;
+bool Interpreter::m_update_loop_evaluation           = false;
+String Interpreter::m_atom_currently_being_evaluated = "";
 
 uSEQ* Interpreter::useq_instance_ptr;
 
@@ -67,7 +71,7 @@ Value eval_args(std::vector<Value>& args, Environment& env)
         args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
-            error("eval args error");
+            report_generic_error("eval args error");
             result = Value::error();
         }
     }
@@ -91,7 +95,7 @@ Value eval_args(std::vector<Value>& args, Environment& env)
 //     eval_args(args, env);
 
 //     if (args.size() < 1)
-//         Serial.println(TOO_FEW_ARGS);
+//         println(TOO_FEW_ARGS);
 //     // throw Error(Value("print", print), env, TOO_FEW_ARGS);
 
 //     Value acc;
@@ -105,7 +109,7 @@ Value eval_args(std::vector<Value>& args, Environment& env)
 //             Serial.print(" ");
 //     }
 //     // std::cout << std::endl;
-//     Serial.println();
+//     println();
 //     return acc;
 // }
 
@@ -116,7 +120,7 @@ Value gen_random(std::vector<Value>& args, Environment& env)
     eval_args(args, env);
 
     if (args.size() != 2)
-        Serial.println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
+        ::println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
     // throw Error(Value("random", random), env, args.size() > 2? TOO_MANY_ARGS :
     // TOO_FEW_ARGS);
 
@@ -192,10 +196,16 @@ Value range(std::vector<Value>& args, Environment& env)
     std::vector<Value> result;
     Value low = args[0], high = args[1];
     if (low.get_type_name() != INT_TYPE && low.get_type_name() != FLOAT_TYPE)
-        Serial.println(MISMATCHED_TYPES);
+    {
+        ::println(MISMATCHED_TYPES);
+        return Value::error();
+    }
     // throw Error(low, env, MISMATCHED_TYPES);
     if (high.get_type_name() != INT_TYPE && high.get_type_name() != FLOAT_TYPE)
-        Serial.println(MISMATCHED_TYPES);
+    {
+        ::println(MISMATCHED_TYPES);
+        return Value::error();
+    }
     // throw Error(high, env, MISMATCHED_TYPES);
 
     if (low >= high)
@@ -237,8 +247,8 @@ BUILTINFUNC(useq_perf, String report = "fps0: ";
             // report += ", ts1: ";
             // report += env.get("perf_ts1").as_float();
             report += ", heap free: ";
-            report += rp2040.getFreeHeap() / 1024; Serial.println(report);
-            ret = Value();, 0)
+            report += rp2040.getFreeHeap() / 1024; ::println(report); ret = Value();
+            , 0)
 
 } // namespace builtin
 
@@ -265,7 +275,7 @@ void Interpreter::eval_args(std::vector<Value>& args, Environment& env)
         args[i] = Interpreter::eval_in(args[i], env);
         if (args[i].is_error())
         {
-            error("eval args error");
+            report_generic_error("eval args error");
         }
     }
 }
@@ -277,7 +287,7 @@ void Interpreter::eval_args(std::vector<Value>& args, Environment& env)
 Value builtin_set(std::vector<Value>& args, Environment& env)
 {
     if (args.size() != 2)
-        println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
+        ::println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
 
     Value result = Interpreter::eval_in(args[1], env);
     // TODO should this be set_global? it bubbles up mutatively
@@ -296,17 +306,21 @@ String Interpreter::eval_in(const String& code, Environment& env)
     return result.display();
 }
 
+#if defined(USE_NOT_IN_FLASH)
+Value __not_in_flash_func(Interpreter::eval_in)(Value& v, Environment& env)
+#else
 Value Interpreter::eval_in(Value& v, Environment& env)
+#endif
 {
     DBG("Interpreter::eval_in");
     dbg("Value: " + v.display());
 
     // if (user_interaction)
     // {
-    //     println("\n\n");
-    //     println("Eval: \n");
-    //     println(v.display());
-    //     println("\n\n");
+    //     ::println("\n\n");
+    //     ::println("Eval: \n");
+    //     ::println(v.display());
+    //     ::println("\n\n");
     // }
 
     Value result = Value::error();
@@ -328,10 +342,11 @@ Value Interpreter::eval_in(Value& v, Environment& env)
     case Value::ATOM:
     {
         dbg("atom");
+        m_atom_currently_being_evaluated = v.str;
         // ts_get = micros();
         bool look_in_static_defs = true;
 
-        if (m_attempt_eval_as_signals)
+        if (m_attempt_expr_eval_first)
         {
             std::optional<Value> atom_def_expr = env.get_expr(v.str);
 
@@ -355,7 +370,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
             }
             else
             {
-                error_atom_not_defined(v.str);
+                report_error_atom_not_defined(v.str);
             }
         }
 
@@ -368,7 +383,10 @@ Value Interpreter::eval_in(Value& v, Environment& env)
         dbg("list");
 
         if (v.list.size() < 1)
-            println(EVAL_EMPTY_LIST);
+        {
+            ::println(EVAL_EMPTY_LIST);
+            return Value::error();
+        }
         // throw Error(*this, env, EVAL_EMPTY_LIST);
         // note: this needs to be a copy?  so original remains unevaluated?  or
         // if not, use std::span to avoid the copy?
@@ -381,7 +399,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
         // Make sure we can find the function
         if (function.is_error())
         {
-            runtime_error(
+            report_runtime_error(
                 "Trying to evaluate the function " + v.list[0].display() +
                 " results in an error. This could either mean that it hasn't been "
                 "defined, or that it's not valid.");
@@ -401,8 +419,8 @@ Value Interpreter::eval_in(Value& v, Environment& env)
                     if (evaled_arg.is_error())
                     {
                         evalError = true;
-                        error("Arg number " + String(i) + " is error:\n" +
-                              expr.display());
+                        report_generic_error("Arg number " + String(i) +
+                                             " is error:\n" + expr.display());
                         break;
                     }
                     args[i] = evaled_arg;
@@ -450,25 +468,32 @@ Value Interpreter::eval_in(Value& v, Environment& env)
     return result;
 }
 
-#include <iostream>
+// #include <iostream>
+
+// #define USE_NOT_IN_FLASH
 
 // NOTE: should be const?
+#if defined(USE_NOT_IN_FLASH)
+Value __not_in_flash_func(Interpreter::apply)(Value& f, LispFuncArgsVec& args,
+                                              Environment& env)
+#else
 Value Interpreter::apply(Value& f, LispFuncArgsVec& args, Environment& env)
+#endif
 {
     DBG("Interpreter::apply");
 
     // if (user_interaction)
     // {
-    //     println("\n\n");
-    //     println("Apply: \n");
-    //     println(f.display());
+    //     ::println("\n\n");
+    //     ::println("Apply: \n");
+    //     ::println(f.display());
 
-    //     println("\nArgs: \n");
+    //     ::println("\nArgs: \n");
     //     for (auto& v : args)
     //     {
-    //         println(v.display());
+    //         ::println(v.display());
     //     }
-    //     println("\n\n");
+    //     ::println("\n\n");
     // }
 
     dbg(f.str);
@@ -485,7 +510,7 @@ Value Interpreter::apply(Value& f, LispFuncArgsVec& args, Environment& env)
         params = &f.list[0].list;
         if (params->size() != args.size())
         {
-            println(args.size() > params->size() ? TOO_MANY_ARGS : TOO_FEW_ARGS);
+            ::println(args.size() > params->size() ? TOO_MANY_ARGS : TOO_FEW_ARGS);
             return Value::error();
         }
 
@@ -504,7 +529,7 @@ Value Interpreter::apply(Value& f, LispFuncArgsVec& args, Environment& env)
         {
             if ((*params)[i].type != Value::ATOM)
             {
-                println(INVALID_LAMBDA);
+                ::println(INVALID_LAMBDA);
             }
             else
             {
@@ -532,7 +557,7 @@ Value Interpreter::apply(Value& f, LispFuncArgsVec& args, Environment& env)
         }
         else
         {
-            error("EMPTY BUILTIN POINTER");
+            report_generic_error("EMPTY BUILTIN POINTER");
             return Value::error();
         }
     }
@@ -554,22 +579,23 @@ Value Interpreter::apply(Value& f, LispFuncArgsVec& args, Environment& env)
         {
             if (f.stack_data.builtin_method == NULL)
             {
-                error("EMPTY BUILTIN POINTER for method with name " + f.str);
+                report_generic_error("EMPTY BUILTIN POINTER for method with name " +
+                                     f.str);
             }
             else if (Interpreter::useq_instance_ptr == NULL)
             {
-                error("uSEQ POINTER INSTANCE IS NULL");
+                report_generic_error("uSEQ POINTER INSTANCE IS NULL");
             }
             return Value::error();
         }
     }
     default:
     {
-        error("Attempted to apply a non-function:");
-        println(f.display());
+        report_generic_error("Attempted to apply a non-function:");
+        ::println(f.display());
         // We can only call lambdas and builtins
         // print(CALL_NON_FUNCTION);
-        // println(str);
+        // ::println(str);
         return Value::error();
     }
     }
