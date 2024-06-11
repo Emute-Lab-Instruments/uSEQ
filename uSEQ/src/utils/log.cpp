@@ -7,7 +7,14 @@
 // void print(String s)
 // {
 // Serial.print(s);
-void print(String s)
+
+// std::vector<std::pair<PrintJobType, String>> print_q = {};
+
+std::vector<String> error_msg_q = {};
+
+void report_error(const String& s) { error_msg_q.push_back(s); }
+
+void print(const String& s)
 {
     if (Serial.availableForWrite())
     {
@@ -24,7 +31,7 @@ void print(String s)
     // #endif
 }
 
-void println(String s)
+void println(const String& s)
 {
     if (Serial.availableForWrite())
     {
@@ -42,31 +49,23 @@ void println(String s)
     // #endif
 }
 
-void error(String s)
+void report_generic_error(const String& s)
 {
-    // print("ERROR: ");
-    if (Serial.availableForWrite())
-    {
-        println("**Error**: " + s);
-    }
-    // print("\n");
+    report_error(String("**Error**: ") + s);
 }
 
-void runtime_error(String s)
+void report_runtime_error(const String& s)
 {
-    if (Serial.availableForWrite())
-    {
-        println("**Runtime Error**: " + s);
-    }
+    report_error((String) "**Runtime Error**: " + s);
 }
 
-void user_warning(const String& s)
+void report_user_warning(const String& s) { report_error("**Warning**: " + s); }
+
+void report_evaluation_error(const String& error_msg, String atom)
 {
-    // TODO
-    if (Serial.availableForWrite())
-    {
-        println("**Warning**: " + s);
-    }
+    String msg = "**Evaluation Error**: While evaluating atom " + atom +
+                 ", the following error ocurred:\n    " + error_msg;
+    report_error(msg);
 }
 
 // void error_num_args_incorrect(String function_name, String expected,
@@ -104,8 +103,9 @@ String comp_to_string(NumArgsComparison comp)
     return "";
 }
 
-void error_wrong_num_args(const String& function_name, int num_received,
-                          NumArgsComparison expected_comp, int num, int num2 = 0)
+void report_error_wrong_num_args(const String& function_name, int num_received,
+                                 NumArgsComparison expected_comp, int num,
+                                 int num2 = 0)
 {
     String expected_comparison_str = comp_to_string(expected_comp);
     String received_num_str        = String(num_received);
@@ -117,44 +117,48 @@ void error_wrong_num_args(const String& function_name, int num_received,
         expected_comparison_str += " and " + String(num2);
     }
 
-    error("(`" + function_name + "`) Wrong number of arguments: expected " +
-          expected_comparison_str + " but received " + received_num_str +
-          " instead.");
+    report_error("(`" + function_name + "`) Wrong number of arguments: expected " +
+                 expected_comparison_str + " but received " + received_num_str +
+                 " instead.");
 }
 
-void error_arg_is_error(const String& function_name, int num,
-                        const String& received_val_str)
-{
-    error("(`" + function_name + "`) Argument #" + String(num) +
-          " evaluates to an error:");
-    println("- " + received_val_str);
-}
-
-void error_wrong_all_pred(const String& function_name, int num,
-                          const String& expected_str, const String& received_val_str)
-{
-    error("(`" + function_name + "`) All arguments should evaluate to " +
-          expected_str + ", but argument #" + String(num) + " does not:");
-    println("- " + received_val_str);
-}
-
-void error_wrong_specific_pred(const String& function_name, int num,
-                               const String& expected_str,
+void report_error_arg_is_error(const String& function_name, int num,
                                const String& received_val_str)
 {
-    error("(`" + function_name + "`) Argument #" + String(num) +
-          " should evaluate to " + expected_str + ", but instead it is:");
-    println("- " + received_val_str);
+    String msg = "(`" + function_name + "`) Argument #" + String(num) +
+                 " evaluates to an error:";
+    msg += "\n    " + received_val_str;
+    report_error(msg);
 }
 
-void error_atom_not_defined(const String& atom)
+void report_error_wrong_all_pred(const String& function_name, int num,
+                                 const String& expected_str,
+                                 const String& received_val_str)
 {
-    error("Atom **" + atom + "** not defined.");
+    String msg = "(`" + function_name + "`) All arguments should evaluate to " +
+                 expected_str + ", but argument #" + String(num) + " does not:";
+    msg += "\n    " + received_val_str;
+    report_error(msg);
 }
 
-void custom_function_error(const String& function_name, const String& msg)
+void report_error_wrong_specific_pred(const String& function_name, int num,
+                                      const String& expected_str,
+                                      const String& received_val_str)
 {
-    error("(`" + function_name + "`) " + msg);
+    String msg = "(`" + function_name + "`) Argument #" + String(num) +
+                 " should evaluate to " + expected_str + ", but instead it is:";
+    msg += "\n    " + received_val_str;
+    report_error(msg);
+}
+
+void report_error_atom_not_defined(const String& atom)
+{
+    report_error("Atom **" + atom + "** not defined.");
+}
+
+void report_custom_function_error(const String& function_name, const String& msg)
+{
+    report_error("(`" + function_name + "`) " + msg);
 }
 
 int free_heap() { return rp2040.getFreeHeap() / 1024; }

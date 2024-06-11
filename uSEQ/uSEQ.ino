@@ -4,6 +4,7 @@
 // - How should this be integrated with the editor so that it
 //   doesn't pollute the console out?
 #define USEQ_DEBUG 0
+#define USE_NOT_IN_FLASH 1
 
 // NOTE: this doesn't seem to carry over to "uSEQ/configure.h"
 // (through "uSEQ.h") so it's being redefined there

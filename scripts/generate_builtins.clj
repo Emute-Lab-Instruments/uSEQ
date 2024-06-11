@@ -201,7 +201,7 @@
    "if (args[i].is_error())"
    "{"
    (tab
-    "error_arg_is_error(user_facing_name, i + 1, pre_eval.display());"
+    "report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());"
     "return Value::error();")
    "}"])
 
@@ -262,7 +262,7 @@
                (num-args-range-low spec))
        "{"
        (tab
-        (format "error_wrong_num_args(user_facing_name, args.size(), %s, %d%s);"
+        (format "report_error_wrong_num_args(user_facing_name, args.size(), %s, %d%s);"
                 (num-args-comparison-op-enum spec)
                 (num-args-range-low spec)
                 ;; FIXME varargs
@@ -285,7 +285,7 @@
                                arg-num
                                (if negated? (subs pred 1) pred))
                        "{"
-                       (tab (format "error_wrong_specific_pred(user_facing_name, %d, \"%s\", %s);"
+                       (tab (format "report_error_wrong_specific_pred(user_facing_name, %d, \"%s\", %s);"
                                     (inc arg-num)
                                     (preds->words pred)
                                     (format "args[%d].display()" arg-num))
@@ -348,7 +348,7 @@
                               (if negate? (subs pred 1)
                                   pred))
                       "{"
-                      (tab (format "error_wrong_all_pred(user_facing_name, %s, \"%s\", %s);"
+                      (tab (format "report_error_wrong_all_pred(user_facing_name, %s, \"%s\", %s);"
                                    "i + 1"
                                    (preds->words pred)
                                    "args[i].display()")

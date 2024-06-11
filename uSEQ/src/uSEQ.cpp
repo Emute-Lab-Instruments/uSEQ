@@ -278,6 +278,7 @@ void uSEQ::run_scheduled_items()
         {
             // run the statement
             //             Serial.println(m_scheduledItems[i].id);
+            // TODO: #99
             eval(m_scheduledItems[i].ast);
         }
         m_scheduledItems[i].lastRun = run;
@@ -565,8 +566,7 @@ void uSEQ::check_and_handle_user_input()
 
     if (is_new_code_waiting())
     {
-        // TODO remove
-        user_interaction = true;
+        m_manual_evaluation = true;
 
         int first_byte = Serial.read();
         // SERIAL
@@ -595,7 +595,16 @@ void uSEQ::check_and_handle_user_input()
             // EXECUTE NOW
             if (first_byte == SerialMsg::execute_now_marker /*'@'*/)
             {
+                // Clear error queue
+                error_msg_q.clear();
+
                 String result = eval(m_last_received_code);
+
+                if (error_msg_q.size() > 0)
+                {
+                    println(error_msg_q[0]);
+                }
+
                 println(result);
             }
             // SCHEDULE FOR LATER
@@ -609,18 +618,27 @@ void uSEQ::check_and_handle_user_input()
             }
         }
 
-        // TODO remove
-        user_interaction = false;
+        m_manual_evaluation = false;
+        // flush_print_jobs();
     }
 }
 
 /// UPDATE methods
+#if defined(USE_NOT_IN_FLASH)
+void __not_in_flash_func(uSEQ::update_continuous_signals)()
+#else
 void uSEQ::update_continuous_signals()
+#endif
 {
     DBG("uSEQ::update_continuous_signals");
 
     for (int i = 0; i < m_num_continuous_outs; i++)
     {
+        // Clear error queue
+        error_msg_q.clear();
+        String expr_name                 = "a" + (i + 1);
+        m_atom_currently_being_evaluated = expr_name;
+
         Value expr = m_continuous_ASTs[i];
         if (expr.is_nil())
         {
@@ -629,12 +647,21 @@ void uSEQ::update_continuous_signals()
         else
         {
             dbg("Evalling: " + expr.display());
+
             Value result = eval(expr);
             if (!result.is_number())
             {
-                error("Expression specified for a" + String(i + 1) +
-                      " does not result in a number - resetting to default.");
-                error("Expression: \n" + expr.display());
+                println("**Warning**: Clearing the expression for **a" +
+                        String(i + 1) +
+                        "** because it doesn't evaluate to a number:\n    " +
+                        expr.display());
+
+                // Print first error that was added to q
+                if (error_msg_q.size() > 0)
+                {
+                    println(error_msg_q[0]);
+                }
+
                 m_continuous_ASTs[i] = default_continuous_expr;
                 m_continuous_vals[i] = 0.0;
             }
@@ -646,12 +673,21 @@ void uSEQ::update_continuous_signals()
     }
 }
 
+#if defined(USE_NOT_IN_FLASH)
+void __not_in_flash_func(uSEQ::update_binary_signals)()
+#else
 void uSEQ::update_binary_signals()
+#endif
 {
     DBG("uSEQ::update_binary_signals");
 
     for (int i = 0; i < m_num_binary_outs; i++)
     {
+        // Clear error queue
+        error_msg_q.clear();
+        String expr_name                 = "d" + (i + 1);
+        m_atom_currently_being_evaluated = expr_name;
+
         Value expr = m_binary_ASTs[i];
         if (expr.is_nil())
         {
@@ -663,9 +699,18 @@ void uSEQ::update_binary_signals()
             Value result = eval(expr);
             if (!result.is_number())
             {
-                error("Expression specified for a" + String(i + 1) +
-                      " does not result in a number - resetting to default.");
-                error("Expression: \n" + expr.display());
+
+                println("**Warning**: Clearing the expression for **d" +
+                        String(i + 1) +
+                        "** because it doesn't evaluate to a number:\n    " +
+                        expr.display());
+
+                // Print first error that was added to q
+                if (error_msg_q.size() > 0)
+                {
+                    println(error_msg_q[0]);
+                }
+
                 m_binary_ASTs[i] = default_binary_expr;
                 m_binary_vals[i] = 0.0;
             }
@@ -683,6 +728,11 @@ void uSEQ::update_serial_signals()
 
     for (int i = 0; i < m_num_serial_outs; i++)
     {
+        // Clear error queue
+        error_msg_q.clear();
+        String expr_name                 = "s" + (i + 1);
+        m_atom_currently_being_evaluated = expr_name;
+
         Value expr = m_serial_ASTs[i];
         // if it's nil we don't need to go through
         // the overhead of calling eval (nil evals to itself)
@@ -699,10 +749,17 @@ void uSEQ::update_serial_signals()
 
             if (!result.is_number())
             {
-                error("Expression specified for s" + String(i + 1) +
-                      " does not eval to either a number or nil - resetting to "
-                      "default.");
-                error("Expression: \n" + expr.display());
+                println("**Warning**: Clearing the expression for **s" +
+                        String(i + 1) +
+                        "** because it doesn't evaluate to a number:\n    " +
+                        expr.display());
+
+                // Print first error that was added to q
+                if (error_msg_q.size() > 0)
+                {
+                    println(error_msg_q[0]);
+                }
+
                 m_serial_ASTs[i] = default_serial_expr;
                 m_serial_vals[i] = std::nullopt;
             }
@@ -715,19 +772,26 @@ void uSEQ::update_serial_signals()
     }
 }
 
+#if defined(USE_NOT_IN_FLASH)
+void __not_in_flash_func(uSEQ::update_signals)()
+#else
 void uSEQ::update_signals()
+#endif
 {
     DBG("uSEQ::update_signals");
 
     // Flip flag on only for evals that happen
     // for output signals
-    m_attempt_eval_as_signals = true;
+    m_attempt_expr_eval_first = true;
+    m_update_loop_evaluation  = true;
 
+    // BODY
     update_continuous_signals();
     update_binary_signals();
     update_serial_signals();
 
-    m_attempt_eval_as_signals = false;
+    m_attempt_expr_eval_first = false;
+    m_update_loop_evaluation  = false;
 }
 
 void uSEQ::update_outs()
@@ -1155,7 +1219,7 @@ void uSEQ::set_bpm(double newBpm, double changeThreshold = 0.0)
 
     if (newBpm <= 0.0)
     {
-        error("Invalid BPM requested: " + String(newBpm));
+        report_generic_error("Invalid BPM requested: " + String(newBpm));
     }
     else if (fabs(newBpm - m_bpm) >= changeThreshold)
     {
@@ -1285,8 +1349,8 @@ Value uSEQ::ard_useqdw(std::vector<Value>& args, Environment& env)
     {
         // error_wrong_num_args(user_facing_name, args.size(),
         //                      NumArgsComparison::Between, 2, 3);
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
@@ -1298,14 +1362,14 @@ Value uSEQ::ard_useqdw(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
 
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
             return Value::error();
         }
     }
@@ -1326,8 +1390,8 @@ Value uSEQ::ard_useqaw(std::vector<Value>& args, Environment& env)
     {
         // error_wrong_num_args(user_facing_name, args.size(),
         //                      NumArgsComparison::Between, 2, 3);
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
@@ -1339,14 +1403,14 @@ Value uSEQ::ard_useqaw(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
 
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
             return Value::error();
         }
     }
@@ -1365,8 +1429,8 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, 0);
         return Value::error();
     }
 
@@ -1375,14 +1439,14 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
     args[0]        = args[0].eval(env);
     if (args[0].is_error())
     {
-        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
         return Value::error();
     }
     // Checking first arg
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     }
 
@@ -1403,8 +1467,8 @@ Value uSEQ::useq_slow(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, 0);
         return Value::error();
     }
 
@@ -1413,14 +1477,14 @@ Value uSEQ::useq_slow(std::vector<Value>& args, Environment& env)
     args[0]        = args[0].eval(env);
     if (args[0].is_error())
     {
-        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
         return Value::error();
     }
     // Checking first arg
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[1].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[1].display());
         return Value::error();
     }
 
@@ -1441,8 +1505,8 @@ Value uSEQ::useq_offset_time(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, 0);
         return Value::error();
     }
 
@@ -1451,14 +1515,14 @@ Value uSEQ::useq_offset_time(std::vector<Value>& args, Environment& env)
     args[0]        = args[0].eval(env);
     if (args[0].is_error())
     {
-        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
         return Value::error();
     }
     // Checking first arg
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     }
 
@@ -1480,8 +1544,8 @@ Value uSEQ::useq_schedule(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 3, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 3, 0);
         return Value::error();
     }
 
@@ -1493,7 +1557,7 @@ Value uSEQ::useq_schedule(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -1501,14 +1565,14 @@ Value uSEQ::useq_schedule(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_string()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a string",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a string",
+                                         args[0].display());
         return Value::error();
     }
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                  args[1].display());
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
         return Value::error();
     }
     // BODY
@@ -1533,8 +1597,8 @@ Value uSEQ::useq_unschedule(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, 0);
         return Value::error();
     }
 
@@ -1543,15 +1607,15 @@ Value uSEQ::useq_unschedule(std::vector<Value>& args, Environment& env)
     args[0]        = args[0].eval(env);
     if (args[0].is_error())
     {
-        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
         return Value::error();
     }
 
     // Checking individual args
     if (!(args[0].is_string()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a string",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a string",
+                                         args[0].display());
         return Value::error();
     }
 
@@ -1580,8 +1644,8 @@ Value uSEQ::useq_setbpm(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(1 <= args.size() <= 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::Between, 1, 2);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::Between, 1, 2);
         return Value::error();
     }
 
@@ -1592,7 +1656,7 @@ Value uSEQ::useq_setbpm(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -1600,8 +1664,8 @@ Value uSEQ::useq_setbpm(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     }
 
@@ -1612,8 +1676,8 @@ Value uSEQ::useq_setbpm(std::vector<Value>& args, Environment& env)
     {
         if (!(args[1].is_number()))
         {
-            error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                      args[1].display());
+            report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                             args[1].display());
             return Value::error();
         }
         else
@@ -1633,8 +1697,8 @@ Value uSEQ::useq_get_input_bpm(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, 0);
         return Value::error();
     }
 
@@ -1646,7 +1710,7 @@ Value uSEQ::useq_get_input_bpm(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -1654,8 +1718,8 @@ Value uSEQ::useq_get_input_bpm(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     }
 
@@ -1685,8 +1749,8 @@ Value uSEQ::useq_set_time_sig(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, 0);
         return Value::error();
     }
 
@@ -1697,7 +1761,7 @@ Value uSEQ::useq_set_time_sig(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -1705,14 +1769,14 @@ Value uSEQ::useq_set_time_sig(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     }
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                  args[1].display());
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
         return Value::error();
     }
 
@@ -1746,8 +1810,8 @@ BUILTINFUNC_MEMBER(
     useq_reset_external_clock_tracking,
     constexpr const char* user_facing_name = "reset-clock-ext";
     if (!(args.size() == 0)) {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 0, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 0, 0);
         return Value::error();
     } reset_ext_tracking();
     return Value::nil();, 0)
@@ -1756,8 +1820,8 @@ BUILTINFUNC_MEMBER(
     useq_reset_internal_clock,
     constexpr const char* user_facing_name = "reset-clock-int";
     if (!(args.size() == 0)) {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 0, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 0, 0);
         return Value::error();
     } reset_logical_time();
     return Value::nil();, 0)
@@ -1766,8 +1830,8 @@ BUILTINFUNC_MEMBER(
     useq_get_clock_source,
     constexpr const char* user_facing_name = "get-clock-source";
     if (!(args.size() == 0)) {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 0, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 0, 0);
         return Value::error();
     }
 
@@ -1794,23 +1858,23 @@ BUILTINFUNC_MEMBER(
 
     // Checking number of args
     if (!(args.size() == 2)) {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, 0);
         return Value::error();
     } if (!(args[0].is_number())) {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     } else if (args[0] < 1 || args[0] > 2) {
-        custom_function_error(user_facing_name,
-                              "The clock source can be either input 1 or 2");
+        report_custom_function_error(user_facing_name,
+                                     "The clock source can be either input 1 or 2");
     } if (!(args[1].is_number())) {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     } else if (args[1] <= 0) {
-        custom_function_error(user_facing_name,
-                              "The clock divisor must be more than 0");
+        report_custom_function_error(user_facing_name,
+                                     "The clock divisor must be more than 0");
     }
 
     // update settings
@@ -1846,8 +1910,8 @@ Value uSEQ::useq_ssin(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, 0);
         return Value::error();
     }
 
@@ -1859,7 +1923,7 @@ Value uSEQ::useq_ssin(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -1867,8 +1931,8 @@ Value uSEQ::useq_ssin(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     }
 
@@ -1880,9 +1944,8 @@ Value uSEQ::useq_ssin(std::vector<Value>& args, Environment& env)
     }
     else
     {
-        user_warning("(ssin) Received request for index " + String(index) +
-                     ", which is out of bounds.");
-        return Value::error();
+        report_user_warning("(ssin) Received request for index " + String(index) +
+                            ", which is out of bounds; returning nil.");
     }
 
     return result;
@@ -1895,8 +1958,8 @@ Value uSEQ::useq_swm(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, 0);
         return Value::error();
     }
 
@@ -1908,7 +1971,7 @@ Value uSEQ::useq_swm(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -1916,8 +1979,8 @@ Value uSEQ::useq_swm(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     }
 
@@ -1943,8 +2006,8 @@ Value uSEQ::useq_swt(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, 0);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, 0);
         return Value::error();
     }
 
@@ -1956,7 +2019,7 @@ Value uSEQ::useq_swt(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -1964,8 +2027,8 @@ Value uSEQ::useq_swt(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     }
 
@@ -2010,8 +2073,8 @@ Value uSEQ::useq_dm(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 3, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
 
@@ -2023,15 +2086,15 @@ Value uSEQ::useq_dm(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
 
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
             return Value::error();
         }
     }
@@ -2057,8 +2120,8 @@ Value uSEQ::useq_gates(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(2 <= args.size() <= 3))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::Between, 2, 3);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::Between, 2, 3);
         return Value::error();
     }
 
@@ -2070,23 +2133,23 @@ Value uSEQ::useq_gates(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
 
         if (i == 0 && !(args[i].is_sequential()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a vector or list",
-                                 args[i].display());
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a vector or list",
+                                        args[i].display());
             return Value::error();
         }
         else
         {
             if (!(args[i].is_number()))
             {
-                error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                     args[i].display());
+                report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                            args[i].display());
                 return Value::error();
             }
         }
@@ -2125,8 +2188,8 @@ Value uSEQ::useq_gatesw(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
@@ -2138,23 +2201,23 @@ Value uSEQ::useq_gatesw(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
         // Check all-pred(s)
 
         if (i == 0 && !(args[i].is_sequential()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a vector or list",
-                                 args[i].display());
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a vector or list",
+                                        args[i].display());
             return Value::error();
         }
         else
         {
             if (!(args[i].is_number()))
             {
-                error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                     args[i].display());
+                report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                            args[i].display());
                 return Value::error();
             }
         }
@@ -2260,8 +2323,8 @@ Value uSEQ::useq_fromList(std::vector<Value>& args, Environment& env)
     {
         // error_wrong_num_args(user_facing_name, args.size(),
         //                      NumArgsComparison::Between, 2, 3);
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
@@ -2277,7 +2340,7 @@ Value uSEQ::useq_fromList(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -2285,16 +2348,16 @@ Value uSEQ::useq_fromList(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_sequential()))
     {
-        error_wrong_specific_pred(user_facing_name, 1,
-                                  "a sequential structure (e.g. a list or a vector)",
-                                  args[0].display());
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].display());
         return Value::error();
     }
     // Checking individual args
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                  args[1].display());
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
         return Value::error();
     }
 
@@ -2315,8 +2378,8 @@ Value uSEQ::useq_seq(std::vector<Value>& args, Environment& env)
     {
         // error_wrong_num_args(user_facing_name, args.size(),
         //                      NumArgsComparison::Between, 2, 3);
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
@@ -2332,7 +2395,7 @@ Value uSEQ::useq_seq(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -2340,16 +2403,16 @@ Value uSEQ::useq_seq(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_sequential()))
     {
-        error_wrong_specific_pred(user_facing_name, 1,
-                                  "a sequential structure (e.g. a list or a vector)",
-                                  args[0].display());
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].display());
         return Value::error();
     }
     // Checking individual args
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                  args[1].display());
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
         return Value::error();
     }
 
@@ -2413,8 +2476,8 @@ Value uSEQ::useq_flatten(std::vector<Value>& args, Environment& env)
 
     if (!(args.size() == 1))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 1, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
@@ -2423,7 +2486,7 @@ Value uSEQ::useq_flatten(std::vector<Value>& args, Environment& env)
     args[0]        = args[0].eval(env);
     if (args[0].is_error())
     {
-        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
         return Value::error();
     }
 
@@ -2441,8 +2504,8 @@ Value uSEQ::useq_flatseq(std::vector<Value>& args, Environment& env)
 
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
@@ -2458,7 +2521,7 @@ Value uSEQ::useq_flatseq(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -2466,15 +2529,15 @@ Value uSEQ::useq_flatseq(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_sequential()))
     {
-        error_wrong_specific_pred(user_facing_name, 0, "a list or a vector",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 0, "a list or a vector",
+                                         args[0].display());
         return Value::error();
     }
 
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[1].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[1].display());
         return Value::error();
     }
 
@@ -2494,8 +2557,8 @@ Value uSEQ::useq_fromFlattenedList(std::vector<Value>& args, Environment& env)
 
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
@@ -2511,7 +2574,7 @@ Value uSEQ::useq_fromFlattenedList(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -2519,16 +2582,16 @@ Value uSEQ::useq_fromFlattenedList(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_sequential()))
     {
-        error_wrong_specific_pred(user_facing_name, 0,
-                                  "a sequential structure (e.g. a list or a vector)",
-                                  args[0].display());
+        report_error_wrong_specific_pred(
+            user_facing_name, 0, "a sequential structure (e.g. a list or a vector)",
+            args[0].display());
         return Value::error();
     }
 
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[1].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[1].display());
         return Value::error();
     }
 
@@ -2549,8 +2612,8 @@ Value uSEQ::useq_interpolate(std::vector<Value>& args, Environment& env)
     // Check num arguments
     if (!(args.size() == 2))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
@@ -2562,7 +2625,7 @@ Value uSEQ::useq_interpolate(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
@@ -2570,15 +2633,15 @@ Value uSEQ::useq_interpolate(std::vector<Value>& args, Environment& env)
     // Checking individual args
     if (!(args[0].is_sequential()))
     {
-        error_wrong_specific_pred(user_facing_name, 0, "a list or a vector",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 0, "a list or a vector",
+                                         args[0].display());
         return Value::error();
     }
 
     if (!(args[1].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[1].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[1].display());
         return Value::error();
     }
 
@@ -2614,8 +2677,8 @@ Value uSEQ::useq_step(std::vector<Value>& args, Environment& env)
     // Check num arguments
     if (!(2 <= args.size() <= 3))
     {
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::Between, 2, 3);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::Between, 2, 3);
         return Value::error();
     }
 
@@ -2627,15 +2690,15 @@ Value uSEQ::useq_step(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
 
         // Check all-pred(s)
         if (!(args[i].is_number()))
         {
-            error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                 args[i].display());
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
             return Value::error();
         }
     }
@@ -2810,6 +2873,8 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set_expr("s8", args[0]);
                           m_serial_ASTs[7] = { args[0] }; ret = Value::atom("s8");
                           , 1)
 
+// NOTE: from here
+// https://forums.raspberrypi.com/viewtopic.php?t=318747
 // Testing
 // Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
 // {
@@ -2864,8 +2929,8 @@ Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
     {
         // error_wrong_num_args(user_facing_name, args.size(),
         //                      NumArgsComparison::Between, 2, 3);
-        error_wrong_num_args(user_facing_name, args.size(),
-                             NumArgsComparison::EqualTo, 2, -1);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
@@ -2878,15 +2943,15 @@ Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
     args[0]        = args[0].eval(env);
     if (args[0].is_error())
     {
-        error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
         return Value::error();
     }
 
     // Checking individual args
     if (!(args[0].is_number()))
     {
-        error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                  args[0].display());
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
         return Value::error();
     }
 
@@ -3041,7 +3106,8 @@ BUILTINFUNC_MEMBER(
     if (args[0].is_number())         //
     { set_my_id(args[0].as_int()); } //
     else {
-        error_wrong_specific_pred("useq-set-id", 1, "a number", args[0].display());
+        report_error_wrong_specific_pred("useq-set-id", 1, "a number",
+                                         args[0].display());
     } //
     ,
     1)

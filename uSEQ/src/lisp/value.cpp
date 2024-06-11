@@ -651,7 +651,7 @@ String Value::get_type_name() const
         // We don't know the name of this type.
         // This isn't the users fault, this is just unhandled.
         // This should never be reached.
-        ::error("(get_type_name) UNKNOWN TYPE");
+        ::report_generic_error("(get_type_name) UNKNOWN TYPE");
         return "";
         // throw Error(*this, Environment(), INTERNAL_ERROR);
     }
@@ -692,23 +692,18 @@ String Value::display() const
     case BUILTIN:
         // NOTE: should this print the address of the unique
         // pointer or of the thing it's pointing to?
-        return "<builtin " + str + " at " + String(size_t(&stack_data.builtin)) +
-               ">";
+        return "{builtin " + str + " at " + String(size_t(&stack_data.builtin)) +
+               "}";
     case BUILTIN_METHOD:
         // NOTE: should this print the address of the unique
         // pointer or of the thing it's pointing to?
-        return "<builtin method " + str + " at " +
-               String(size_t(&stack_data.builtin_method)) + ">";
+        return "{builtin method " + str + " at " +
+               String(size_t(&stack_data.builtin_method)) + "}";
     case UNIT:
-        return "<unit type>";
+        return "{unit}";
     case ERROR:
-        return "<error type>";
+        return "{error}";
     default:
-        // We don't know how to display whatever type this is.
-        // This isn't the users fault, this is just unhandled.
-        // This should never be reached.
-        // ::error("(display) UNKNOWN TYPE");
-        // throw Error(*this, Environment(), INTERNAL_ERROR);
         return to_lisp_src();
     }
 }
@@ -770,6 +765,8 @@ String Value::to_lisp_src() const
     case BUILTIN_METHOD:
         return str;
     default:
+        // We don't know how to display whatever type this is.
+        // This isn't the users fault, this is just unhandled.
         return "";
     }
 }
