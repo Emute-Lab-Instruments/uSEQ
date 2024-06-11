@@ -6,8 +6,19 @@
 class MovingAverageFilter
 {
 public:
-    explicit MovingAverageFilter(std::size_t filterSize)
-        : filterSize_(filterSize), circularBuffer_(filterSize, 0.0), sum_(0.0) {}
+    MovingAverageFilter(std::size_t filterSize) {
+        init(filterSize);
+    }
+
+    MovingAverageFilter() {
+        init(3);
+    }   
+
+    void init(std::size_t fSize) {
+        filterSize_ = fSize;
+        circularBuffer_ = std::vector<double>(filterSize_, 0.0);
+        sum_ = 0.0;
+    } 
 
     double process(double inputValue)
     {
