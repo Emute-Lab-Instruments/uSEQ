@@ -9,6 +9,9 @@ class tempoEstimator {
     tempoEstimator() {
       avgBeat.init(5);
     }
+    double std() {
+      return avgBeat.std();
+    }
     double averageBPM(double micros);
     double avgBPM=0;
   private:

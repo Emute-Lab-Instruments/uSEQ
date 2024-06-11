@@ -59,11 +59,18 @@ public:
     static void gpio_irq_gate1();
     static void gpio_irq_gate2();
     tempoEstimator tempoI1, tempoI2;
-    void updateI1();
+    void update_clock_from_external(double ts);
 
     double delme = 928.22234;
 
     static uSEQ* instance;
+    void set_input_val(size_t index, double value);
+
+    enum CLOCK_SOURCES {INTERNAL=0, EXTERNAL_I1, EXTERNAL_I2};
+
+    uSEQ::CLOCK_SOURCES getClockSource() {
+        return useq_clock_source;
+    }
 
 private:
     // IO m_io;
@@ -153,6 +160,7 @@ private:
     void update_inputs();
     // timing-related stuff
     void update_time();
+    void reset_logical_time();
     void update_logical_time(TimeValue);
     void update_lisp_time_variables();
 
@@ -167,6 +175,21 @@ private:
     void update_binary_outs();
     void update_serial_outs();
     void update_Q0();
+
+    CLOCK_SOURCES useq_clock_source = CLOCK_SOURCES::INTERNAL;
+    struct ext_clock_tracking {
+        size_t beat_count=0;
+        size_t bar_count = 0;
+        size_t count = 0;
+        size_t div=1;
+    } ext_clock_tracker;
+
+    void reset_ext_tracking() {
+        ext_clock_tracker.beat_count = ext_clock_tracker.bar_count = ext_clock_tracker.count = 0;
+    }
+
+    void set_ext_clock_div(size_t val) {ext_clock_tracker.div=val; reset_ext_tracking();}
+
 
     unsigned long serial_out_timestamp = 0;
 
@@ -218,6 +241,15 @@ private:
     LISP_FUNC_DECL(useq_in2);
     LISP_FUNC_DECL(useq_ain1);
     LISP_FUNC_DECL(useq_ain2);
+
+    LISP_FUNC_DECL(useq_set_clock_internal);
+    LISP_FUNC_DECL(useq_set_clock_external);
+    LISP_FUNC_DECL(useq_get_clock_source);
+    LISP_FUNC_DECL(useq_reset_internal_clock);
+    LISP_FUNC_DECL(useq_reset_external_clock_tracking);
+    
+
+
 
 #ifdef MUSICTHING
     LISP_FUNC_DECL(useq_mt_knob);
