@@ -536,9 +536,23 @@ void uSEQ::update_inputs()
     m_input_vals[USEQI2] = input2;
 
 #else
-#ifdef USEQ_1_0_c
+
+    // #ifdef USEQHARDWARE_1_0
+    // #else
+    m_input_vals[USEQT1] = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
+#endif // MUSICTHING
+
+#ifdef USEQHARDWARE_0_2
+    m_input_vals[USEQRS1] = 1 - digitalRead(USEQ_PIN_SWITCH_R1);
+    m_input_vals[USEQM2]  = 1 - digitalRead(USEQ_PIN_SWITCH_M2);
+    m_input_vals[USEQT2]  = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
+#endif
+
+#ifdef USEQHARDWARE_1_0
+    // TOGGLES
     const int ts_a = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
     const int ts_b = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
+
     if ((ts_a == 0) && (ts_b == 0))
     {
         m_input_vals[USEQT1] = 1;
@@ -554,19 +568,10 @@ void uSEQ::update_inputs()
             m_input_vals[USEQT1] = 0;
         }
     }
-#else
-    m_input_vals[USEQT1] = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
-#endif
 
-#endif
+    // MOMENTARY
+    m_input_vals[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
 
-#ifdef USEQHARDWARE_0_2
-    m_input_vals[USEQRS1] = 1 - digitalRead(USEQ_PIN_SWITCH_R1);
-    m_input_vals[USEQM2]  = 1 - digitalRead(USEQ_PIN_SWITCH_M2);
-    m_input_vals[USEQT2]  = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
-#endif
-
-#ifdef USEQHARDWARE_1_0
     // switch off LED while making measurements
     //  digitalWrite(USEQ_PIN_LED_AI1, 0);
     //  digitalWrite(USEQ_PIN_LED_AI2, 0);
@@ -1236,9 +1241,7 @@ void uSEQ::setup_switches()
     pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);
 
     pinMode(USEQ_PIN_SWITCH_T1, INPUT_PULLUP);
-#ifdef USEQ_1_0_c
     pinMode(USEQ_PIN_SWITCH_T2, INPUT_PULLUP);
-#endif
 #endif
 #ifdef USEQHARDWARE_0_2
     pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);
@@ -2154,46 +2157,16 @@ Value uSEQ::useq_swm(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "swm";
 
     // Checking number of args
-    if (!(args.size() == 1))
+    if (!(args.size() == 0))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
-                                    NumArgsComparison::EqualTo, 1, 0);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Checking individual args
-    if (!(args[0].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                    NumArgsComparison::EqualTo, 0, 0);
         return Value::error();
     }
 
     // BODY
     Value result = Value::nil();
-
-    int index = args[0].as_int();
-    if (index == 1)
-    {
-        result = Value(m_input_vals[USEQM1]);
-    }
-    else
-    {
-        result = Value(m_input_vals[USEQM2]);
-    }
+    result       = Value(m_input_vals[USEQM1]);
     return result;
 }
 
@@ -2202,46 +2175,16 @@ Value uSEQ::useq_swt(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "swt";
 
     // Checking number of args
-    if (!(args.size() == 1))
+    if (!(args.size() == 0))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
-                                    NumArgsComparison::EqualTo, 1, 0);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Checking individual args
-    if (!(args[0].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                    NumArgsComparison::EqualTo, 0, 0);
         return Value::error();
     }
 
     // BODY
     Value result = Value::nil();
-
-    int index = args[0].as_int();
-    if (index == 1)
-    {
-        result = Value(m_input_vals[USEQT1]);
-    }
-    else
-    {
-        result = Value(m_input_vals[USEQT2]);
-    }
+    result       = Value(m_input_vals[USEQT1]);
     return result;
 }
 
