@@ -944,9 +944,9 @@ void uSEQ::update_time()
     m_micros_raw = micros();
 
     // 2. Check if it has overflowed
-    if (m_micros_raw - m_micros_raw_last < 0.0)
+    if (m_micros_raw < m_micros_raw_last)
     {
-        println("WARNING: overflow detected, compensating for it...");
+        dbg("INFO: overflow occurred, incrementing counter.");
         m_overflow_counter++;
     }
 
