@@ -2,6 +2,7 @@
 #define USEQ_H_
 
 #define USEQ_FIRMWARE_VERSION "1.0"
+#define USEQ_FIRMWARE_RELEASE_DATE "2024-06-27"
 
 #include "dsp/tempoEstimator.h"
 // #include "dsp/MAFilter.h"
@@ -306,7 +307,10 @@ private:
     LISP_FUNC_DECL(useq_autoload_flash);
 
     LISP_FUNC_DECL(useq_stop_all);
-    // LISP_FUNC_DECL(useq_clear_non_program_flash);
+    LISP_FUNC_DECL(useq_rewind_logical_time);
+
+    LISP_FUNC_DECL(useq_firmware_info);
+    LISP_FUNC_DECL(useq_report_firmware_info);
 
     void clear_all_outputs();
     void erase_info_flash();
@@ -404,8 +408,6 @@ private:
 
     // void clear_non_program_flash();
     static String current_output_being_processed;
-
-    static void print_firmware_version() { println(USEQ_FIRMWARE_VERSION); }
 };
 
 #endif // USEQ_H_
