@@ -39,7 +39,8 @@ Value vec(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -70,7 +71,8 @@ Value zeros(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -79,7 +81,7 @@ Value zeros(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -107,14 +109,14 @@ Value defn(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_symbol()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
     if (!(args[1].is_sequential()))
     {
         report_error_wrong_specific_pred(
             user_facing_name, 2, "a sequential structure (e.g. a list or a vector)",
-            args[1].display());
+            args[1].to_lisp_src());
         return Value::error();
     }
 
@@ -140,7 +142,8 @@ Value list(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -171,7 +174,8 @@ Value ard_floor(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -180,7 +184,7 @@ Value ard_floor(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -210,7 +214,8 @@ Value ard_ceil(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -219,7 +224,7 @@ Value ard_ceil(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -262,7 +267,8 @@ Value neq(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -293,7 +299,8 @@ Value ard_usin(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -302,7 +309,7 @@ Value ard_usin(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -332,7 +339,8 @@ Value index(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -342,19 +350,19 @@ Value index(std::vector<Value>& args, Environment& env)
     {
         report_error_wrong_specific_pred(
             user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
-            args[0].display());
+            args[0].to_lisp_src());
         return Value::error();
     }
     if (!(!args[0].is_empty()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a non-empty list",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
     if (!(args[1].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
+                                         args[1].to_lisp_src());
         return Value::error();
     }
 
@@ -395,7 +403,8 @@ Value ard_cos(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -404,7 +413,7 @@ Value ard_cos(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -514,7 +523,8 @@ Value eq(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -545,7 +555,8 @@ Value ard_abs(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -554,7 +565,7 @@ Value ard_abs(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -584,7 +595,8 @@ Value ard_millis(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -616,7 +628,8 @@ Value sum(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
         // Check all-pred(s)
@@ -624,7 +637,7 @@ Value sum(std::vector<Value>& args, Environment& env)
         if (!(args[i].is_number()))
         {
             report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
+                                        args[i].to_lisp_src());
             return Value::error();
         }
     }
@@ -656,13 +669,13 @@ Value for_loop(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_symbol()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
     if (!(args[1].is_list()))
     {
         report_error_wrong_specific_pred(user_facing_name, 2, "a list",
-                                         args[1].display());
+                                         args[1].to_lisp_src());
         return Value::error();
     }
 
@@ -701,7 +714,8 @@ Value pop(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -732,7 +746,8 @@ Value ard_min(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
         // Check all-pred(s)
@@ -740,7 +755,7 @@ Value ard_min(std::vector<Value>& args, Environment& env)
         if (!(args[i].is_number()))
         {
             report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
+                                        args[i].to_lisp_src());
             return Value::error();
         }
     }
@@ -771,7 +786,8 @@ Value push(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -804,7 +820,8 @@ Value greater(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -835,7 +852,8 @@ Value product(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
         // Check all-pred(s)
@@ -843,7 +861,7 @@ Value product(std::vector<Value>& args, Environment& env)
         if (!(args[i].is_number()))
         {
             report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
+                                        args[i].to_lisp_src());
             return Value::error();
         }
     }
@@ -887,7 +905,8 @@ Value replace(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
         // Check all-pred(s)
@@ -895,7 +914,7 @@ Value replace(std::vector<Value>& args, Environment& env)
         if (!(args[i].is_string()))
         {
             report_error_wrong_all_pred(user_facing_name, i + 1, "a string",
-                                        args[i].display());
+                                        args[i].to_lisp_src());
             return Value::error();
         }
     }
@@ -928,7 +947,8 @@ Value ard_sin(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -937,7 +957,7 @@ Value ard_sin(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -967,7 +987,8 @@ Value ard_ucos(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -976,7 +997,7 @@ Value ard_ucos(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -1024,7 +1045,8 @@ Value println(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1033,7 +1055,7 @@ Value println(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_string()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a string",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -1068,7 +1090,7 @@ Value cast_to_int(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -1098,7 +1120,8 @@ Value remainder(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
         // Check all-pred(s)
@@ -1106,7 +1129,7 @@ Value remainder(std::vector<Value>& args, Environment& env)
         if (!(args[i].is_number()))
         {
             report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
+                                        args[i].to_lisp_src());
             return Value::error();
         }
     }
@@ -1137,7 +1160,8 @@ Value subtract(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
         // Check all-pred(s)
@@ -1145,7 +1169,7 @@ Value subtract(std::vector<Value>& args, Environment& env)
         if (!(args[i].is_number()))
         {
             report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
+                                        args[i].to_lisp_src());
             return Value::error();
         }
     }
@@ -1172,7 +1196,7 @@ Value define(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_symbol()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -1207,7 +1231,8 @@ Value ard_pow(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
         // Check all-pred(s)
@@ -1215,7 +1240,7 @@ Value ard_pow(std::vector<Value>& args, Environment& env)
         if (!(args[i].is_number()))
         {
             report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
+                                        args[i].to_lisp_src());
             return Value::error();
         }
     }
@@ -1271,7 +1296,8 @@ Value remove(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1280,13 +1306,13 @@ Value remove(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_list()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a list",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
     if (!(args[1].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
+                                         args[1].to_lisp_src());
         return Value::error();
     }
 
@@ -1336,7 +1362,8 @@ Value debug(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1367,7 +1394,8 @@ Value less_eq(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1398,7 +1426,8 @@ Value ard_max(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
         // Check all-pred(s)
@@ -1406,7 +1435,7 @@ Value ard_max(std::vector<Value>& args, Environment& env)
         if (!(args[i].is_number()))
         {
             report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
+                                        args[i].to_lisp_src());
             return Value::error();
         }
     }
@@ -1437,7 +1466,8 @@ Value ard_delay(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1446,7 +1476,7 @@ Value ard_delay(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -1478,7 +1508,8 @@ Value timeit(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1512,7 +1543,8 @@ Value ard_map(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1541,7 +1573,7 @@ Value head(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_list()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a list",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -1579,7 +1611,8 @@ Value get_type_name(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1610,7 +1643,8 @@ Value b_to_u(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1619,7 +1653,7 @@ Value b_to_u(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -1649,7 +1683,8 @@ Value less(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1680,7 +1715,8 @@ Value ard_micros(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1712,7 +1748,8 @@ Value divide(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
         // Check all-pred(s)
@@ -1720,7 +1757,7 @@ Value divide(std::vector<Value>& args, Environment& env)
         if (!(args[i].is_number()))
         {
             report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
+                                        args[i].to_lisp_src());
             return Value::error();
         }
     }
@@ -1751,7 +1788,8 @@ Value ard_delaymicros(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1760,7 +1798,7 @@ Value ard_delaymicros(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -1792,7 +1830,8 @@ Value insert(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1801,13 +1840,13 @@ Value insert(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_list()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a list",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
     if (!(args[1].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
+                                         args[1].to_lisp_src());
         return Value::error();
     }
 
@@ -1839,7 +1878,7 @@ Value get_expr(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_symbol()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -1879,7 +1918,8 @@ Value ard_sqrt(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1888,7 +1928,7 @@ Value ard_sqrt(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -1918,7 +1958,8 @@ Value print(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1958,7 +1999,8 @@ Value display(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -1989,7 +2031,8 @@ Value greater_eq(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -2026,7 +2069,7 @@ Value cast_to_float(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -2056,7 +2099,8 @@ Value len(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -2065,7 +2109,7 @@ Value len(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_list()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a list",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -2091,7 +2135,7 @@ Value set(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_symbol()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -2121,14 +2165,14 @@ Value defun(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_symbol()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
     if (!(args[1].is_sequential()))
     {
         report_error_wrong_specific_pred(
             user_facing_name, 2, "a sequential structure (e.g. a list or a vector)",
-            args[1].display());
+            args[1].to_lisp_src());
         return Value::error();
     }
 
@@ -2158,7 +2202,7 @@ Value def(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_symbol()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -2193,7 +2237,8 @@ Value useq_sqr(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -2202,7 +2247,7 @@ Value useq_sqr(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -2272,7 +2317,7 @@ Value lambda(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_vector()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a vector",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -2302,7 +2347,8 @@ Value useq_pulse(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -2311,13 +2357,13 @@ Value useq_pulse(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
     if (!(args[1].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
+                                         args[1].to_lisp_src());
         return Value::error();
     }
 
@@ -2350,7 +2396,8 @@ Value u_to_b(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -2359,7 +2406,7 @@ Value u_to_b(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -2389,7 +2436,8 @@ Value ard_tan(std::vector<Value>& args, Environment& env)
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
             return Value::error();
         }
     }
@@ -2398,7 +2446,7 @@ Value ard_tan(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 

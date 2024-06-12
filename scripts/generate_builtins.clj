@@ -201,7 +201,7 @@
    "if (args[i].is_error())"
    "{"
    (tab
-    "report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());"
+    "report_error_arg_is_error(user_facing_name, i + 1, pre_eval.to_lisp_src());"
     "return Value::error();")
    "}"])
 
@@ -288,7 +288,7 @@
                        (tab (format "report_error_wrong_specific_pred(user_facing_name, %d, \"%s\", %s);"
                                     (inc arg-num)
                                     (preds->words pred)
-                                    (format "args[%d].display()" arg-num))
+                                    (format "args[%d].to_lisp_src()" arg-num))
                             "return Value::error();")
                        "}"]))]
     (if (empty? type-constraints)
@@ -351,7 +351,7 @@
                       (tab (format "report_error_wrong_all_pred(user_facing_name, %s, \"%s\", %s);"
                                    "i + 1"
                                    (preds->words pred)
-                                   "args[i].display()")
+                                   "args[i].to_lisp_src()")
                            "return Value::error();")
                       "}"])))]
           nil))
