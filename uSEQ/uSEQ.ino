@@ -35,7 +35,6 @@ void init_random()
 
 uSEQ u;
 
-
 void setup()
 {
     init_serial();

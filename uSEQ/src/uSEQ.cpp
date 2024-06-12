@@ -103,6 +103,31 @@ void pio_pwm_set_period(PIO pio, uint sm, uint32_t period)
     pio_sm_set_enabled(pio, sm, true);
 }
 
+float pdm_y   = 0;
+float pdm_err = 0;
+float pdm_w   = 0;
+
+bool timer_callback(repeating_timer_t* mst)
+{
+    pdm_y   = pdm_w > pdm_err ? 1 : 0;
+    pdm_err = pdm_y - pdm_w + pdm_err;
+    if (pdm_y == 1)
+    {
+        // on
+        digitalWrite(USEQ_PIN_LED_AI1, HIGH);
+    }
+    else
+    {
+        // off
+        digitalWrite(USEQ_PIN_LED_AI1, LOW);
+    }
+
+    //   w = w + 0.00000001;
+    //   if (w>=1) w=0;
+
+    return true;
+}
+
 void setup_leds()
 {
     DBG("uSEQ::setup_leds");
@@ -124,6 +149,8 @@ void setup_leds()
         pinMode(useq_output_led_pins[i], OUTPUT_2MA);
         gpio_set_slew_rate(useq_output_led_pins[i], GPIO_SLEW_RATE_SLOW);
     }
+    static repeating_timer_t mst;
+    add_repeating_timer_us(150, timer_callback, NULL, &mst);
 }
 
 void uSEQ::init()
@@ -442,6 +469,8 @@ void uSEQ::setup_rotary_encoder()
 }
 #endif // useq 0.2 rotary
 
+MedianFilter mf1(51), mf2(51);
+
 void uSEQ::update_inputs()
 {
     DBG("uSEQ::update_inputs");
@@ -455,6 +484,7 @@ void uSEQ::update_inputs()
     const double recp4096 = 0.000244141; // 1/4096
     const double recp2048 = 1 / 2048.0;
     const double recp1024 = 1 / 1024.0;
+
 #ifdef MUSICTHING
     const size_t muxdelay = 2;
     // unroll loop for efficiency
@@ -537,19 +567,52 @@ void uSEQ::update_inputs()
 #endif
 
 #ifdef USEQHARDWARE_1_0
-    auto v_ai1    = analogRead(USEQ_PIN_AI1);
-    auto v_ai1_11 = v_ai1;                       // scale from 10 bit to 11 bit range
-    v_ai1_11      = (v_ai1_11 * v_ai1_11) >> 11; // sqr to get exp curve
-    analogWrite(USEQ_PIN_LED_AI1, v_ai1_11);
+    // switch off LED while making measurements
+    //  digitalWrite(USEQ_PIN_LED_AI1, 0);
+    //  digitalWrite(USEQ_PIN_LED_AI2, 0);
+    //  delayMicroseconds(100);
 
-    auto v_ai2    = analogRead(USEQ_PIN_AI2);
+    // pdm_w = 0;
+    // delayMicroseconds(10);
+
+    auto v_ai1 = analogRead(USEQ_PIN_AI1);
+    // <<<<<<< HEAD
+    //     auto v_ai1_11 = v_ai1;                       // scale from 10 bit to 11
+    //     bit range v_ai1_11      = (v_ai1_11 * v_ai1_11) >> 11; // sqr to get exp
+    //     curve analogWrite(USEQ_PIN_LED_AI1, v_ai1_11);
+
+    //     auto v_ai2    = analogRead(USEQ_PIN_AI2);
+    //     auto v_ai2_11 = v_ai2;
+    //     v_ai2_11      = (v_ai2_11 * v_ai2_11) >> 11;
+    //     analogWrite(USEQ_PIN_LED_AI2, v_ai2_11);
+
+    //     const double lpcoeff  = 0.05; // 0.009;
+    //     m_input_vals[USEQAI1] = cvInFilter[0].lopass(v_ai1 * recp2048, lpcoeff);
+    //     m_input_vals[USEQAI2] = cvInFilter[1].lopass(v_ai2 * recp2048, lpcoeff);
+    // =======
+    auto v_ai2 = analogRead(USEQ_PIN_AI2);
+
+    auto v_ai1_11 = v_ai1;
+    v_ai1_11      = (v_ai1_11 * v_ai1_11) >> 11; // sqr to get exp curve
+
+    // analogWriteFreq(25000);    // out of hearing range
+
+    // digitalWrite(USEQ_PIN_LED_AI2, 0);
+
+    // analogWrite(USEQ_PIN_LED_AI1, v_ai1_11 + random(-100,100));
+    pdm_w         = v_ai1_11 / 2048.0;
     auto v_ai2_11 = v_ai2;
-    v_ai2_11      = (v_ai2_11 * v_ai2_11) >> 11;
+
+    v_ai2_11 = (v_ai2_11 * v_ai2_11) >> 11;
     analogWrite(USEQ_PIN_LED_AI2, v_ai2_11);
 
-    const double lpcoeff  = 0.05; // 0.009;
-    m_input_vals[USEQAI1] = cvInFilter[0].lopass(v_ai1 * recp2048, lpcoeff);
-    m_input_vals[USEQAI2] = cvInFilter[1].lopass(v_ai2 * recp2048, lpcoeff);
+    const double lpcoeff = 0.2; // 0.009;
+    double filt1         = mf1.process(v_ai1 * recp2048);
+    double filt2         = mf2.process(v_ai1 * recp2048);
+    // m_input_vals[USEQAI1] = cvInFilter[0].lopass(v_ai1 * recp2048, lpcoeff);
+    // m_input_vals[USEQAI2] = cvInFilter[1].lopass(v_ai2 * recp2048, lpcoeff);
+    m_input_vals[USEQAI1] = filt1;
+    m_input_vals[USEQAI2] = filt2;
 #endif
 
     dbg("updating inputs...DONE");
@@ -1104,6 +1167,59 @@ void uSEQ::gpio_irq_gate2()
     }
 }
 
+// TODO: delete if not needed
+// void uSEQ::update_clock_from_external(double ts)
+// {
+//     double newBPM = tempoI1.averageBPM(ts);
+//     if (ext_clock_tracker.count == 0)
+//     {
+//         newBPM *= (4.0 / meter_numerator / ext_clock_tracker.div);
+//         // println(String(newBPM));
+//         // println(String(beatCountI1));
+//         // println("bar: " + String(barCountI1));
+//         // println("barpf: " + String(m_bars_per_phrase));
+//         double std = tempoI1.std();
+//         // println("std: " + String(std));
+//         bool highstd = std > 100.0;
+//         // adjust every bar in high variance, otherwise every phrase
+//         if ((ext_clock_tracker.beat_count == 0 & highstd) ||
+//             ext_clock_tracker.beat_count == 0)
+//         {
+//             // println("----------------------------------------reset");
+//             set_bpm(newBPM, 0);
+//             reset_logical_time();
+//         }
+//         ext_clock_tracker.beat_count++;
+//         if (meter_denominator == ext_clock_tracker.beat_count)
+//         {
+//             ext_clock_tracker.beat_count = 0;
+//             ext_clock_tracker.bar_count++;
+//             if (ext_clock_tracker.bar_count ==
+//                 static_cast<size_t>(m_bars_per_phrase))
+//             {
+//                 ext_clock_tracker.bar_count = 0;
+//             }
+//         }
+//     }
+//     ext_clock_tracker.count++;
+//     if (ext_clock_tracker.count == ext_clock_tracker.div)
+//     {
+//         ext_clock_tracker.count = 0;
+//         // println("clock=0");
+//     }
+// }
+/*
+    const auto input1    = 1 - digitalRead(USEQ_PIN_I1);
+    const auto input2    = 1 - digitalRead(USEQ_PIN_I2);
+    m_input_vals[USEQI1] = input1;
+    m_input_vals[USEQI2] = input2;
+
+    digitalWrite(USEQ_PIN_LED_I1, input1);
+    digitalWrite(USEQ_PIN_LED_I2, input2);
+
+    m_input_vals[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
+*/
+
 void uSEQ::setup_digital_ins()
 {
     pinMode(USEQ_PIN_I1, INPUT_PULLUP);
@@ -1227,6 +1343,7 @@ void uSEQ::set_bpm(double newBpm, double changeThreshold = 0.0)
         // Derive phasor lengths (in micros)
         m_beat_length = bpm_to_micros_per_beat(newBpm);
         m_bar_length  = m_beat_length * (4.0 / meter_denominator) * meter_numerator;
+        m_bar_length  = m_beat_length * (4.0 / meter_denominator) * meter_numerator;
         m_phrase_length  = m_bar_length * m_bars_per_phrase;
         m_section_length = m_phrase_length * m_phrases_per_section;
 
@@ -1273,6 +1390,7 @@ void uSEQ::analog_write_with_led(int output, double val)
     // int led_pin   = analog_out_LED_pin(output + 1);
     int pwm_pin   = analog_out_pin(output + 1);
     int ledsigval = scaled_val; // >> 2; // shift to 11 bit range for the LED
+
     ledsigval =
         (ledsigval * ledsigval) >> 11; // cheap way to square and get a exp curve
 
@@ -1803,6 +1921,86 @@ Value uSEQ::useq_ain2(std::vector<Value>& args, Environment& env)
 {
     return Value(m_input_vals[USEQAI2]);
 }
+
+// clock sources
+
+// BUILTINFUNC_MEMBER(
+//     useq_reset_internal_clock,
+//     constexpr const char* user_facing_name = "reset-clock-int";
+//     if (!(args.size() == 0)) {
+//         report_error_wrong_num_args(user_facing_name, args.size(),
+//                                     NumArgsComparison::EqualTo, 0, 0);
+//         return Value::error();
+//     } reset_logical_time();
+//     return Value::nil();, 0)
+
+// BUILTINFUNC_MEMBER(
+//     useq_get_clock_source,
+//     constexpr const char* user_facing_name = "get-clock-source";
+//     if (!(args.size() == 0)) {
+//         report_error_wrong_num_args(user_facing_name, args.size(),
+//                                     NumArgsComparison::EqualTo, 0, 0);
+//         return Value::error();
+//     }
+
+//     switch (useq_clock_source) {
+// case uSEQ::CLOCK_SOURCES::INTERNAL:
+//     println("Internal");
+//     break;
+// case uSEQ::CLOCK_SOURCES::EXTERNAL_I1:
+//     println("External 1");
+//     break;
+// case uSEQ::CLOCK_SOURCES::EXTERNAL_I2:
+//     println("External 2");
+//     break;
+//     } return Value((int)useq_clock_source);
+//     , 0)
+
+// BUILTINFUNC_MEMBER(useq_set_clock_internal,
+//                    useq_clock_source = uSEQ::CLOCK_SOURCES::INTERNAL;
+//                    println("Clock source set to internal"); return Value::nil();,
+//                    0)
+
+// BUILTINFUNC_MEMBER(
+//     useq_set_clock_external,
+//     constexpr const char* user_facing_name = "set-clock-ext";
+
+//     // Checking number of args
+//     if (!(args.size() == 2)) {
+//         report_error_wrong_num_args(user_facing_name, args.size(),
+//                                     NumArgsComparison::EqualTo, 1, 0);
+//         return Value::error();
+//     } if (!(args[0].is_number())) {
+//         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+//                                          args[0].display());
+//         return Value::error();
+//     } else if (args[0] < 1 || args[0] > 2) {
+//         report_custom_function_error(user_facing_name,
+//                                      "The clock source can be either input 1 or
+//                                      2");
+//     } if (!(args[1].is_number())) {
+//         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+//                                          args[0].display());
+//         return Value::error();
+//     } else if (args[1] <= 0) {
+//         report_custom_function_error(user_facing_name,
+//                                      "The clock divisor must be more than 0");
+//     }
+
+//     // update settings
+//     if (args[0] == 1) {
+//         useq_clock_source = uSEQ::CLOCK_SOURCES::EXTERNAL_I1;
+//     } else if (args[0] == 2) {
+//         useq_clock_source = uSEQ::CLOCK_SOURCES::EXTERNAL_I2;
+//     }
+
+//     set_ext_clock_div(args[1].as_int());
+
+//     // notify player
+//     println("Clock source set to external: " + String(args[0].as_int()));
+//     println("Clock divisor: " + String(args[1].as_int()));
+
+//     return Value::nil();, 2)
 
 // clock sources
 

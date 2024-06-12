@@ -1,8 +1,11 @@
 #ifndef USEQ_H_
 #define USEQ_H_
 
+#define USEQ_FIRMWARE_VERSION "1.0"
+
 #include "dsp/tempoEstimator.h"
 // #include "dsp/MAFilter.h"
+#include "dsp/MedianFilter.h"
 #include "lisp/interpreter.h"
 #include "lisp/macros.h"
 #include "lisp/value.h"
@@ -30,12 +33,8 @@ private:
     double output = 0;
 
 public:
-    maxiFilter(){
-
-    };
+    maxiFilter() {}
     double lopass(double input, double cutoff);
-
-    // ------------------------------------------------
 };
 
 class uSEQ : public Interpreter
@@ -56,6 +55,7 @@ public:
 
     void write_flash_env();
     void load_flash_env();
+
     static void gpio_irq_gate1();
     static void gpio_irq_gate2();
     tempoEstimator tempoI1, tempoI2;
@@ -404,6 +404,8 @@ private:
 
     // void clear_non_program_flash();
     static String current_output_being_processed;
+
+    static void print_firmware_version() { println(USEQ_FIRMWARE_VERSION); }
 };
 
 #endif // USEQ_H_
