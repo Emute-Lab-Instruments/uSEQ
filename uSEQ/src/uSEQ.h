@@ -117,6 +117,8 @@ private:
     // Timing (NOTE: in micros)
     // actual time that module has been running for
     u_int8_t m_overflow_counter            = 0;
+    size_t m_micros_raw                    = 0;
+    size_t m_micros_raw_last               = 0.0;
     TimeValue m_time_since_boot            = 0.0;
     TimeValue m_last_known_time_since_boot = -1;
     // time /of/ last "transport" reset by user
