@@ -665,6 +665,8 @@ String Value::display() const
     String result;
     switch (type)
     {
+    case STRING:
+        return str;
     case LAMBDA:
         for (size_t i = 0; i < list.size(); i++)
         {
