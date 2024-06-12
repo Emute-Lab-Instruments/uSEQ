@@ -17,7 +17,6 @@ Gizmo or other products you make using this      | | source. |
 #ifndef PINMAP_H
 #define PINMAP_H
 
-
 /*
 
 
@@ -120,6 +119,7 @@ const int useq_output_led_pins[] = { USEQ_PIN_LED_A1, USEQ_PIN_LED_A2,
 #define USEQ_PIN_SWITCH_M1 10
 
 #define USEQ_PIN_SWITCH_T1 14
+#define USEQ_PIN_SWITCH_T2 23
 
 #define NUM_CONTINUOUS_OUTS 3
 #define NUM_BINARY_OUTS (6 - NUM_CONTINUOUS_OUTS)
