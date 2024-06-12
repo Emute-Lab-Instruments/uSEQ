@@ -737,7 +737,7 @@ void uSEQ::update_continuous_signals()
                 }
 
                 m_continuous_ASTs[i] = default_continuous_expr;
-                m_continuous_vals[i] = 0.0;
+                m_continuous_vals[i] = 0.5;
             }
             else
             {
