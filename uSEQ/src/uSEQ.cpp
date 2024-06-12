@@ -3249,6 +3249,11 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_autoload_flash,
                           autoload_flash();
                           , 0)
 
+BUILTINFUNC_NOEVAL_MEMBER(useq_rewind_logical_time,
+                          //
+                          reset_logical_time();
+                          , 0)
+
 // NOTE: only these are meant for user interface
 BUILTINFUNC_MEMBER(
     useq_set_my_id,                  //
@@ -3697,6 +3702,7 @@ void uSEQ::init_builtinfuncs()
     DBG("uSEQ::init_builtinfuncs");
 
     INSERT_BUILTINDEF("eval-at-time", useq_eval_at_time);
+    INSERT_BUILTINDEF("useq-rewind", useq_rewind_logical_time);
 
     // a
     INSERT_BUILTINDEF("a1", useq_a1);
