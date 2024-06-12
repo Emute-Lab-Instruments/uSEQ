@@ -929,30 +929,32 @@ void uSEQ::update_serial_outs()
     }
 }
 
+// Max value that size_t can hold before overflow
+constexpr TimeValue max_size_t = static_cast<TimeValue>((size_t)-1);
+
 void uSEQ::update_time()
 {
     DBG("uSEQ::update_time");
 
+    // Cache previous values
+    m_micros_raw_last            = m_micros_raw;
+    m_last_known_time_since_boot = m_time_since_boot;
+
     // 1. Get time-since-boot reading from the board
-    m_time_since_boot = static_cast<TimeValue>(micros());
+    m_micros_raw = micros();
 
     // 2. Check if it has overflowed
-    if (m_time_since_boot - m_last_known_time_since_boot < 0.0)
+    if (m_micros_raw - m_micros_raw_last < 0.0)
     {
         println("WARNING: overflow detected, compensating for it...");
         m_overflow_counter++;
     }
 
-    // Max value that size_t can hold before overflow
-    constexpr TimeValue max_size_t = static_cast<TimeValue>((size_t)-1);
+    // 3. Add an offset according to how many overflows we've had so far
+    m_time_since_boot = static_cast<TimeValue>(m_micros_raw) +
+                        (max_size_t * static_cast<TimeValue>(m_overflow_counter));
 
-    // 3. Offset according to how many overflows we've had so far
-    m_time_since_boot += static_cast<TimeValue>(m_overflow_counter) * max_size_t;
-
-    // 4. U
     update_logical_time(m_time_since_boot);
-
-    m_last_known_time_since_boot = m_time_since_boot;
 }
 
 void uSEQ::reset_logical_time()
