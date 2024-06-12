@@ -1426,12 +1426,12 @@ void uSEQ::digital_write_with_led(int output, int val)
 
     // write digi
 #ifdef DIGI_OUT_INVERT
-    digitalWrite(pin, 1 - val);
+    digitalWrite(pin, 1 - (val > 0));
 #else
-    digitalWrite(pin, val);
+    digitalWrite(pin, val > 0);
 #endif
     // write led
-    digitalWrite(led_pin, val);
+    digitalWrite(led_pin, val > 0);
 }
 
 void uSEQ::serial_write(int out, double val)
