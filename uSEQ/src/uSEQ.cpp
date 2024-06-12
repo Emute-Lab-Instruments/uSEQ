@@ -149,7 +149,12 @@ void setup_leds()
         pinMode(useq_output_led_pins[i], OUTPUT_2MA);
         gpio_set_slew_rate(useq_output_led_pins[i], GPIO_SLEW_RATE_SLOW);
     }
+}
+
+void start_pdm()
+{
     static repeating_timer_t mst;
+
     add_repeating_timer_us(150, timer_callback, NULL, &mst);
 }
 
@@ -172,6 +177,7 @@ void uSEQ::init()
     // eval_lisp_library();
 
     led_animation();
+    start_pdm();
     setup_IO();
 
     // dbg("Lisp library loaded.");
