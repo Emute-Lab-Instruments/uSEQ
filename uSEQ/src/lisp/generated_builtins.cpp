@@ -442,7 +442,7 @@ Value let_block(std::vector<Value>& args, Environment& env)
     if (!(bindings.is_sequential()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a list or a vector",
-                                         args[0].display());
+                                         args[0].to_lisp_src());
         return Value::error();
     }
 
@@ -466,7 +466,7 @@ Value let_block(std::vector<Value>& args, Environment& env)
                 user_facing_name, "All even elements in the bindings vector are "
                                   "expected to be symbols, but element #" +
                                       String((i - 1) / 2) +
-                                      " is not: " + item.display());
+                                      " is not: " + item.to_lisp_src());
             return Value::error();
         }
     }
@@ -485,9 +485,9 @@ Value let_block(std::vector<Value>& args, Environment& env)
         if (evaled_body.is_error())
         {
             report_custom_function_error(
-                user_facing_name, "The definition for entry #" +
-                                      String((i - 1) / 2) +
-                                      " evaluates to an error: " + body.display());
+                user_facing_name,
+                "The definition for entry #" + String((i - 1) / 2) +
+                    " evaluates to an error: " + body.to_lisp_src());
             // println("- " + body.display());
         }
         local_env.set(name, evaled_body);
@@ -2145,6 +2145,7 @@ Value set(std::vector<Value>& args, Environment& env)
     // NOTE: body is unevalled still
     Value val = args[1].eval(env);
     env.set(name, val);
+    env.unset_expr(name);
     result = val;
     return result;
 }
@@ -2283,7 +2284,7 @@ Value defs(std::vector<Value>& args, Environment& env)
         if (!(args[i].is_symbol()))
         {
             report_error_wrong_specific_pred(user_facing_name, i + 1, "a symbol ",
-                                             args[i].display());
+                                             args[i].to_lisp_src());
             return Value::error();
         }
     }
