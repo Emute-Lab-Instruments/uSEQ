@@ -132,6 +132,10 @@ void Environment::set_expr(const String& name, Value value)
     m_def_exprs[name] = value;
 }
 
+void Environment::unset(const String& name) { m_defs.erase(name); }
+
+void Environment::unset_expr(const String& name) { m_def_exprs.erase(name); }
+
 void Environment::set_global(String name, Value value)
 {
     set(name, value);

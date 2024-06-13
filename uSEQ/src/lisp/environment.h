@@ -78,6 +78,9 @@ public:
     // Set the value associated with this name in this scope
     void set(const String& name, Value value);
     void set_expr(const String& name, Value value);
+
+    void unset(const String& name);
+    void unset_expr(const String& name);
     // void set(const String& name, Value value);
     void set_global(const String name, Value value);
     void set_global_expr(const String name, Value value);
