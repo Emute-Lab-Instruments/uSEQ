@@ -619,7 +619,7 @@ void uSEQ::update_inputs()
 
     const double lpcoeff = 0.2; // 0.009;
     double filt1         = mf1.process(v_ai1 * recp2048);
-    double filt2         = mf2.process(v_ai1 * recp2048);
+    double filt2         = mf2.process(v_ai2 * recp2048);
     // m_input_vals[USEQAI1] = cvInFilter[0].lopass(v_ai1 * recp2048, lpcoeff);
     // m_input_vals[USEQAI2] = cvInFilter[1].lopass(v_ai2 * recp2048, lpcoeff);
     m_input_vals[USEQAI1] = filt1;
