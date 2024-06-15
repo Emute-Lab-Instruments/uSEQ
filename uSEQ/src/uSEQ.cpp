@@ -3820,7 +3820,7 @@ void uSEQ::init_builtinfuncs()
     // NOTE: for user interface only
     INSERT_BUILTINDEF("useq-firmware-info", useq_firmware_info);
     // NOTE: for editor use only
-    INSERT_BUILTINDEF("useq-report-firmware-info", useq_firmware_info);
+    INSERT_BUILTINDEF("useq-report-firmware-info", useq_report_firmware_info);
     // INSERT_BUILTINDEF("useq-clear-flash", useq_clear_non_program_flash);
 }
 
@@ -3833,10 +3833,12 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, //
                           ret = Value::string(msg);, 0)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_report_firmware_info, //
-                          String msg = "{";
-                          msg += "\"release_date\": \"";
-                          msg += String((String)USEQ_FIRMWARE_RELEASE_DATE);
-                          msg += "\", {\"version\": \"";
-                          msg += String((String)USEQ_FIRMWARE_VERSION); //
-                          msg += "\"}";                                 //
-                          println(msg);, 0)
+                          message_editor((String)USEQ_FIRMWARE_VERSION);
+                          // String msg = "{";
+                          // msg += "\"release_date\": \"";
+                          // msg += String((String)USEQ_FIRMWARE_RELEASE_DATE);
+                          // msg += "\", {\"version\": \"";
+                          // msg += String((String)USEQ_FIRMWARE_VERSION); //
+                          // msg += "\"}";                                 //
+                          // println(msg);
+                          , 0)
