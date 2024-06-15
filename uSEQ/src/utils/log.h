@@ -59,6 +59,8 @@ extern std::vector<String> error_msg_q;
 // void print_now(const String& s);
 // void println_now(const String& s);
 
+void message_editor(const String& s);
+
 void print(const String& s);
 void println(const String& s);
 

@@ -2,52 +2,31 @@
 
 #include <iostream>
 
-// TODO
-// Definitions
-// void print(String s)
-// {
-// Serial.print(s);
-
-// std::vector<std::pair<PrintJobType, String>> print_q = {};
-
-std::vector<String> error_msg_q = {};
-
-void report_error(const String& s) { error_msg_q.push_back(s); }
-
-void print(const String& s)
+void message_editor(const String& s)
 {
     if (Serial.availableForWrite())
     {
         Serial.write(SerialMsg::message_begin_marker);
-        Serial.write((u_int8_t)SerialMsg::serial_message_types::TEXT);
-        Serial.print(s);
+        Serial.write((u_int8_t)SerialMsg::serial_message_types::MSG_TO_EDITOR);
+        Serial.println(s);
+        // Serial.write(SerialMsg::message_end_marker);
     }
-    // #if defined(USE_STD_STR) && defined(USE_STD_IO)
-    //     std::cout << s;
-    // #elif defined(USE_ARDUINO_STR) && defined(USE_STD_IO)
-    //     std::cout << s.c_str();
-    // #elif defined(USE_ARDUINO_STR) && defined(USE_SERIAL_IO)
-    //     Serial.print(s);
-    // #endif
 }
 
 void println(const String& s)
 {
     if (Serial.availableForWrite())
     {
-        // Serial.println(s);
         Serial.write(SerialMsg::message_begin_marker);
         Serial.write((u_int8_t)SerialMsg::serial_message_types::TEXT);
         Serial.println(s);
+        // Serial.write(SerialMsg::message_end_marker);
     }
-    // #if defined(USE_STD_STR) && defined(USE_STD_IO)
-    //     std::cout << s << std::endl;
-    // #elif defined(USE_ARDUINO_STR) && defined(USE_STD_IO)
-    //     std::cout << s.c_str() << std::endl;
-    // #elif defined(USE_ARDUINO_STR) && defined(USE_SERIAL_IO)
-    //     Serial.println(s);
-    // #endif
 }
+
+// ERRORS
+std::vector<String> error_msg_q = {};
+void report_error(const String& s) { error_msg_q.push_back(s); }
 
 void report_generic_error(const String& s)
 {
