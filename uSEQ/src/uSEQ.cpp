@@ -1077,7 +1077,7 @@ void setup_analog_outs()
     DBG("uSEQ::setup_analog_outs");
     dbg(String(NUM_CONTINUOUS_OUTS));
     // PWM outputs
-    analogWriteFreq(80000);    // out of hearing range
+    analogWriteFreq(100000);    // out of hearing range
     analogWriteResolution(11); // about the best we can get
 
     // set PIO PWM state machines to run PWM outputs
