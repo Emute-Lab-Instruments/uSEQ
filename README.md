@@ -20,21 +20,12 @@ uSEQ modules set up within eurorack performance systems
 * Open source hardware and software
 * Low-cost DIY project
 * Live code using a simple LISP language library, from a laptop or mobile device, using serial-over-USB
-  * Also programmable from a dedicated cross-platform editor [uSEQ Edit](interfaces/useqedit)
-* Inputs
-  * Two momentary switches
-  * Two toggle switches
-  * A rotary encoder + momentary switch
-  * Two trigger/gate inputs
-* Outputs
-  * 6 outputs, configurable (on the PCB and in software) as either gate or CV (using PWM)
-  * 13 bit resolution PWM outputs
-* Serial port expansion for MIDI IO or connection to other uSEQ modules
 * Stream waveforms back over USB serial to a computer, and route it to MIDI or OSC, linking the modular with software and external hardware
 * Livecoding engine with flexible timing and varied options for creating gate and CV patterns (from basic waveforms to euclidean sequencing) and structuring arrangements
 
-  
-## [Library & API Documentation](docs/useq.md)
+
+More info from [https://www.emutelabinstruments.co.uk/useq/](https://www.emutelabinstruments.co.uk/useq/)
+
 ## [Developer notes](docs/dev.md)
 ## Building the Firmware
 
@@ -51,11 +42,5 @@ Build the firmware in Arduino IDE, using the [Earle Philhower Pico core](https:/
 | Optimize | Optimize Even More (-O3) |
 
 Overclock the Pico at 250Mhz and set the optimisation level to -O3.
-
-## Building a uSEQ module
-
-Contact @chriskiefer (https://ravenation.club/@luuma) for PCBs
-
-
 
 We welcome pull requests.
