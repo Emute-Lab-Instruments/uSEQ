@@ -628,14 +628,16 @@ void Interpreter::loadBuiltinDefs()
 
     Environment::builtindefs["let"] = Value("let", builtin::let_block);
 
-    Environment::builtindefs["do"]     = Value("do", builtin::do_block);
-    Environment::builtindefs["if"]     = Value("if", builtin::if_then_else);
-    Environment::builtindefs["for"]    = Value("for", builtin::for_loop);
-    Environment::builtindefs["while"]  = Value("while", builtin::while_loop);
-    Environment::builtindefs["scope"]  = Value("scope", builtin::scope);
-    Environment::builtindefs["quote"]  = Value("quote", builtin::quote);
-    Environment::builtindefs["set"]    = Value("set", builtin::set);
+    Environment::builtindefs["do"]    = Value("do", builtin::do_block);
+    Environment::builtindefs["if"]    = Value("if", builtin::if_then_else);
+    Environment::builtindefs["for"]   = Value("for", builtin::for_loop);
+    Environment::builtindefs["while"] = Value("while", builtin::while_loop);
+    Environment::builtindefs["scope"] = Value("scope", builtin::scope);
+    Environment::builtindefs["quote"] = Value("quote", builtin::quote);
+    Environment::builtindefs["set"]   = Value("set", builtin::set);
+    // Alias
     Environment::builtindefs["lambda"] = Value("lambda", builtin::lambda);
+    Environment::builtindefs["fn"]     = Value("fn", builtin::lambda);
 
     // List operations
     Environment::builtindefs["list"]   = Value("list", builtin::list);
