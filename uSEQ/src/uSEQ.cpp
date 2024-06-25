@@ -2353,23 +2353,21 @@ Value uSEQ::useq_gatesw(std::vector<Value>& args, Environment& env)
             report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
-        // Check all-pred(s)
+    }
 
-        if (i == 0 && !(args[i].is_sequential()))
-        {
-            report_error_wrong_all_pred(user_facing_name, i + 1, "a vector or list",
-                                        args[i].display());
-            return Value::error();
-        }
-        else
-        {
-            if (!(args[i].is_number()))
-            {
-                report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                            args[i].display());
-                return Value::error();
-            }
-        }
+    // Check specific preds
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a vector or list",
+                                         args[0].display());
+        return Value::error();
+    }
+
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_all_pred(user_facing_name, 2, "a number",
+                                    args[1].display());
+        return Value::error();
     }
 
     // BODY
