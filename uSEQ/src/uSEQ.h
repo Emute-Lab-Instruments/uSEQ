@@ -1,7 +1,7 @@
 #ifndef USEQ_H_
 #define USEQ_H_
 
-#define USEQ_FIRMWARE_VERSION "1.0"
+#define USEQ_FIRMWARE_VERSION "1.0.1"
 #define USEQ_FIRMWARE_RELEASE_DATE "2024-06-27"
 
 #include "dsp/tempoEstimator.h"
@@ -314,6 +314,8 @@ private:
 
     LISP_FUNC_DECL(useq_firmware_info);
     LISP_FUNC_DECL(useq_report_firmware_info);
+
+    LISP_FUNC_DECL(useq_tri);
 
     void clear_all_outputs();
     void erase_info_flash();
