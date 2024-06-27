@@ -51,8 +51,15 @@ Value::Value(std::vector<Value> params, Value ret, Environment const& env)
         // Don't capture the current value of time variables
         // TODO: there should be some globally-accessible set
         // of the special time-varying values
+
         if (atom == "time" || atom == "t" || atom == "bar" || atom == "beat" ||
             atom == "section" || atom == "phrase")
+        {
+            continue;
+        }
+
+        // Ignore atoms that are known to be args
+        if (std::find(params.begin(), params.end(), atom) != params.end())
         {
             continue;
         }
