@@ -42,7 +42,7 @@ common_src = [
   # 'uSEQ/src/uSEQ/io.h',
   # 'uSEQ/src/uSEQ/io.cpp',
   # EXTERN
-  'uSEQ/src/dsp/MAFilter.hpp',
+  'uSEQ/src/dsp/MAFilter.h',
   'uSEQ/src/dsp/tempoEstimator.h',
   'uSEQ/src/dsp/tempoEstimator.cpp',
   # 'uSEQ/src/io/pinmap.h',

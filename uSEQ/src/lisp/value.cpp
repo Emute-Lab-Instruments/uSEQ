@@ -35,7 +35,7 @@ Value::Value(std::vector<Value> params, Value ret, Environment const& env)
     : type(LAMBDA)
 {
     DBG("Value::Value (LAMBDA)");
-    // NOTE: this needs to be deleted!
+
     lambda_scope = std::make_shared<Environment>();
 
     // We store the params and the result in the list member
@@ -46,7 +46,6 @@ Value::Value(std::vector<Value> params, Value ret, Environment const& env)
     // Lambdas capture only variables that they know they will use.
     std::set<String> used_atoms = ret.get_used_atoms();
 
-    // for (size_t i = 0; i < used_atoms.size(); i++)
     for (const String& atom : used_atoms)
     {
         // Don't capture the current value of time variables
