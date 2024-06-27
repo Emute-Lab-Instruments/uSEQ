@@ -6,6 +6,7 @@
 
  ;; TODO @correctness should this check number of args?
  "list" {:body ["result = Value(args);"]
+
          :docstring "Create a list of values"}
 
  "vec" {:body ["result = Value::vector(args);"]

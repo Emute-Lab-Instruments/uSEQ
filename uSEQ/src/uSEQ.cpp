@@ -3461,8 +3461,8 @@ void uSEQ::erase_info_flash()
 bool uSEQ::flash_has_been_written_before()
 {
     // Get a char* to the start of the info block and check to see whether
-    // that points to the start of a c-style string (spelling "uSEQ" as of 1.0
-    // release)
+    // that points to the start of a c-style string (spelling "uSEQ" as
+    // of 1.0 release)
     const char* const info_start =
         (char*)(PICO_FLASH_START_ADDR + FLASH_INFO_SECTOR_OFFSET_START);
     return std::strcmp(info_start, m_flash_stamp_str) == 0;
@@ -3538,7 +3538,8 @@ void uSEQ::load_flash_info()
     {
         println("Warning: Attempted to read info from flash but it seems that "
                 "nothing has been written there yet. Try running "
-                "`(write-flash-info)` first. You will only need to do this once.");
+                "`(write-flash-info)` first. You will only need to do this "
+                "once.");
     }
 }
 
@@ -3585,7 +3586,8 @@ void uSEQ::write_flash_env()
 
     if (buffer_size % FLASH_PAGE_SIZE != 0)
     {
-        println("Error: Flash env buffer size is not a multiple of the page size: " +
+        println("Error: Flash env buffer size is not a multiple of the page "
+                "size: " +
                 String(buffer_size));
         return;
     }
@@ -3601,15 +3603,16 @@ void uSEQ::write_flash_env()
 
     if (m_FLASH_ENV_SECTOR_SIZE % FLASH_SECTOR_SIZE != 0)
     {
-        println(
-            "Error: Flash env sector size is not a multiple of the sector size: " +
-            String(buffer_size));
+        println("Error: Flash env sector size is not a multiple of the "
+                "sector size: " +
+                String(buffer_size));
         return;
     }
 
     if (m_FLASH_ENV_SECTOR_OFFSET_START % FLASH_SECTOR_SIZE != 0)
     {
-        println("Error: Flash env sector start position does not allign with flash "
+        println("Error: Flash env sector start position does not allign "
+                "with flash "
                 "sector boundaries: " +
                 String(buffer_size));
         println(String((uint)m_FLASH_ENV_SECTOR_OFFSET_START));
