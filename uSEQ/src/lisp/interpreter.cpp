@@ -589,6 +589,32 @@ Value Interpreter::apply(Value& f, LispFuncArgsVec& args, Environment& env)
             return Value::error();
         }
     }
+    case Value::VECTOR:
+    {
+        size_t size = f.list.size();
+        if (args.size() == 1 && args[0].is_number())
+        {
+            float phasor = std::clamp(fmod(args[0].as_float(), 1.0), 0.0, 1.0);
+            size_t idx   = floor(args[0].as_float() * size);
+
+            if (idx >= size)
+            {
+                idx = size - 1;
+            }
+            else if (idx < 0)
+            {
+                idx = 0;
+            }
+
+            return f.list[idx];
+        }
+        else
+        {
+            report_custom_function_error("[]",
+                                         "Vectors can only be called with a single "
+                                         "number argument, indicating an index.");
+        }
+    }
     default:
     {
         report_generic_error("Attempted to apply a non-function:");
