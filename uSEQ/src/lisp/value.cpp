@@ -327,6 +327,8 @@ Value Value::cast_to_float() const
     }
 }
 
+bool Value::operator==(const String& other) const { return str == other; }
+
 bool Value::operator==(Value other) const
 {
     // If either of these values are floats, promote the
