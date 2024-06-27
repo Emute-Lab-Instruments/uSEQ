@@ -1077,7 +1077,7 @@ void setup_analog_outs()
     DBG("uSEQ::setup_analog_outs");
     dbg(String(NUM_CONTINUOUS_OUTS));
     // PWM outputs
-    analogWriteFreq(80000);    // out of hearing range
+    analogWriteFreq(100000);    // out of hearing range
     analogWriteResolution(11); // about the best we can get
 
     // set PIO PWM state machines to run PWM outputs
@@ -2069,7 +2069,8 @@ BUILTINFUNC_MEMBER(
         report_error_wrong_num_args(user_facing_name, args.size(),
                                     NumArgsComparison::EqualTo, 1, 0);
         return Value::error();
-    } if (!(args[0].is_number())) {
+    } 
+    if (!(args[0].is_number())) {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
                                          args[0].display());
         return Value::error();
@@ -2110,6 +2111,38 @@ BUILTINFUNC_MEMBER(useq_mt_swz, ret = Value(m_input_vals[MTZSWITCH]);, 0)
 BUILTINFUNC_MEMBER(useq_swr, ret = Value(m_input_vals[USEQRS1]);, 0)
 
 BUILTINFUNC_MEMBER(useq_rot, ret = Value(m_input_vals[USEQR1]);, 0)
+
+BUILTINFUNC_MEMBER(useq_tri, 
+    constexpr const char* user_facing_name = "tri";
+    if (!(args.size() == 2)) {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 0, 0);
+        return Value::error();
+    }
+    if (!(args[0].is_number())) {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
+        return Value::error();
+    }
+    if (!(args[1].is_number())) {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[1].display());
+        return Value::error();
+    }    
+    double duty = args[0].as_float();
+    if (duty < 0.01) {
+        duty = 0.01;
+    }
+    if (duty > 0.99) {
+        duty = 0.99;
+    }
+    double phase = args[1].as_float();
+    // w - ((p-w) * (w/(1-w)))
+    if (phase > duty) {
+        phase = (duty - ((phase - duty) * (duty/(1-duty))));
+    }
+    return phase / duty;
+,2)
 
 Value uSEQ::useq_ssin(std::vector<Value>& args, Environment& env)
 {
@@ -3867,6 +3900,10 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("schedule", useq_schedule);
     INSERT_BUILTINDEF("unschedule", useq_unschedule);
 
+    INSERT_BUILTINDEF("tri", useq_tri);
+
+
+    // INSERT_BUILTINDEF("looph", useq_loopPhasor);
     INSERT_BUILTINDEF("dm", useq_dm);
     INSERT_BUILTINDEF("gates", useq_gates);
     INSERT_BUILTINDEF("gatesw", useq_gatesw);
