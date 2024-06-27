@@ -537,6 +537,10 @@
                    "                      args[4].as_float());"
                    "result = Value(m);"]}
 
+ "ard_lerp" {:args {:num "== 5"}
+             :type {:all ".is_number()"}
+             :body ["result = Value(lerp(args[0].as_float(), args[1].as_float(),args[0].as_float()));"]}
+
  "replace" {:args {:num "== 3"
                    :type {:all ".is_string()"}}
             :body ["String src = args[0].as_string();"

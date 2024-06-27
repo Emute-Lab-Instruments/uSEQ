@@ -699,6 +699,7 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["pow"]   = Value("pow", builtin::ard_pow);
     Environment::builtindefs["sqrt"]  = Value("sqrt", builtin::ard_sqrt);
     Environment::builtindefs["scale"] = Value("scale", builtin::ard_map);
+    Environment::builtindefs["lerp"]  = Value("scale", builtin::ard_lerp);
 
     Environment::builtindefs["b->u"]    = Value("b->u", builtin::b_to_u);
     Environment::builtindefs["bi->uni"] = Value("bi->uni", builtin::b_to_u);

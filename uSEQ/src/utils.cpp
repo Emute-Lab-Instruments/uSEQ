@@ -2,6 +2,13 @@
 #include <algorithm>
 // #include <iterator>
 
+float lerp(float a, float b, float t)
+{
+    // Use fma (fused multiply-add) for potentially more precise and performant
+    // computation
+    return std::fma(t, (b - a), a);
+}
+
 template <typename T>
 std::set<T> set_intersection(const std::set<T>& set1, const std::set<T>& set2)
 {

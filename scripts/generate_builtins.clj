@@ -81,6 +81,7 @@
    "ard_pow" "pow"
    "ard_sqrt" "sqrt"
    "ard_map" "scale"
+   "ard_lerp" "lerp"
    "get_type_name" "type"
    "useq_perf" "perf"
    "gen_random" "random"
@@ -415,7 +416,8 @@
                                ["#include \"generated_builtins.h\""
                                 "#include \"value.h\""
                                 "#include \"environment.h\""
-                                "#include \"interpreter.h\""])
+                                "#include \"interpreter.h\""
+                                "#include \"../utils.h\""])
           (clojure.string/join "\n"
                                ["namespace builtin"
                                 "{"])
