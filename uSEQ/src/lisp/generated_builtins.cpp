@@ -873,9 +873,9 @@ Value product(std::vector<Value>& args, Environment& env)
     for (size_t i = 1; i < args.size(); i++)
     {
         Value num = args[i];
-        if (num == 0)
+        if (num == Value(0) || num == Value(0.0))
         {
-            return Value(0);
+            return num;
         }
         else
         {
