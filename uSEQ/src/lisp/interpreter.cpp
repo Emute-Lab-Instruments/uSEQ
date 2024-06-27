@@ -113,17 +113,21 @@ Value eval_args(std::vector<Value>& args, Environment& env)
 //     return acc;
 // }
 
+}
+
+#endif // USE_STD
+
 // Get a random number between two numbers inclusively
 Value gen_random(std::vector<Value>& args, Environment& env)
 {
     // Is not a special form, so we can evaluate our args.
-    eval_args(args, env);
 
-    if (args.size() != 2)
+    if (args.size() != 2) {
         ::println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
-    // throw Error(Value("random", random), env, args.size() > 2? TOO_MANY_ARGS :
-    // TOO_FEW_ARGS);
+        return Value::error();
+    }
 
+    eval_args(args, env);
     if (args[0].is_number() && args[1].is_number())
     {
 
@@ -132,13 +136,11 @@ Value gen_random(std::vector<Value>& args, Environment& env)
     }
     else
     {
-        error("(gen_random) Both arguments should evaluate to numbers, received "
-              "this instead:");
-        error(args[0].display() + args[1].display());
+        report_generic_error("(gen_random) Both arguments should evaluate to numbers, received this instead:");
+        report_generic_error(args[0].display() + args[1].display());
+        return Value::error();
     }
 }
-
-#endif // USE_STD
 
 Value map_list(std::vector<Value>& args, Environment& env)
 {
@@ -750,12 +752,12 @@ void Interpreter::loadBuiltinDefs()
     // if (name == "quit") return Value("quit", builtin::exit);
     Environment::builtindefs["print"] = Value("print", builtin::print);
     // if (name == "input") return Value("input", builtin::input);
-    Environment::builtindefs["random"] = Value("random", builtin::gen_random);
 #else
     //
     Environment::builtindefs["print"]   = Value("print", builtin::print);
     Environment::builtindefs["println"] = Value("println", builtin::println);
 #endif
+    Environment::builtindefs["random"] = Value("random", builtin::gen_random);
 
     // String operations
     Environment::builtindefs["debug"]   = Value("debug", builtin::debug);
