@@ -150,6 +150,8 @@ public:
     Value operator/(Value other) const;
     Value operator%(Value other) const;
 
+    bool operator==(const String& str) const;
+
     // Get the name of the type of this value
     String get_type_name() const;
     int get_type_enum() const;
