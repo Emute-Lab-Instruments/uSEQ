@@ -2443,51 +2443,6 @@ Value uSEQ::useq_gatesw(std::vector<Value>& args, Environment& env)
 //     const double gate = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
 //     ret               = Value((val > 0 ? 1.0 : 0.0) * gate * amp);, 2, 4)
 
-// Value uSEQ::useq_loopPhasor(std::vector<Value>& args, Environment& env)
-// {
-//     constexpr const char* user_facing_name = "looph";
-
-//     // Checking number of args
-//     if (!(args.size() == 2))
-//     {
-//         error_wrong_num_args(user_facing_name, args.size(),
-//                              NumArgsComparison::EqualTo, 2, -1);
-//         return Value::error();
-//     }
-
-//     // Evaluating args, checking for errors & all-arg constraints
-//     for (size_t i = 0; i < args.size(); i++)
-//     {
-//         // Eval
-//         Value pre_eval = args[i];
-//         args[i]        = args[i].eval(env);
-//         if (args[i].is_error())
-//         {
-//             error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-//             return Value::error();
-//         }
-//         // Check all-pred(s)
-//         if (!(args[i].is_number()))
-//         {
-//             error_wrong_all_pred(user_facing_name, i + 1, "a number",
-//                                  args[i].display());
-//             return Value::error();
-//         }
-//     }
-
-//     // BODY
-//     Value result = Value::nil();
-
-//     auto phasor    = args[0].as_float();
-//     auto loopPoint = args[1].as_float();
-//     if (loopPoint == 0)
-//         loopPoint = 1; // avoid infinity
-//     double spedupPhasor = fast(1.0 / loopPoint, phasor);
-//     result              = spedupPhasor * loopPoint;
-
-//     return result;
-// }
-
 // (euclid <phasor> <n> <k> (<offset>) (<pulsewidth>)
 //
 //
@@ -3912,7 +3867,6 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("schedule", useq_schedule);
     INSERT_BUILTINDEF("unschedule", useq_unschedule);
 
-    // INSERT_BUILTINDEF("looph", useq_loopPhasor);
     INSERT_BUILTINDEF("dm", useq_dm);
     INSERT_BUILTINDEF("gates", useq_gates);
     INSERT_BUILTINDEF("gatesw", useq_gatesw);
