@@ -280,7 +280,6 @@ private:
     LISP_FUNC_DECL(useq_gates);
     LISP_FUNC_DECL(useq_gatesw);
     LISP_FUNC_DECL(useq_trigs);
-    LISP_FUNC_DECL(useq_loopPhasor);
     LISP_FUNC_DECL(useq_euclidean);
     LISP_FUNC_DECL(useq_eu);
 
