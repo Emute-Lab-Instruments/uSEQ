@@ -2214,6 +2214,55 @@ Value fromList(std::vector<Value>& lst, double phasor, Environment& env)
     return Interpreter::eval_in(lst[idx], env);
 }
 
+Value uSEQ::useq_toggle_select(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "toggle-sel";
+
+    // Checking number of args
+    if (!(args.size() == 2))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, 0);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a vector or list",
+                                         args[0].to_lisp_src());
+        return Value::error();
+    }
+
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[1].to_lisp_src());
+        return Value::error();
+    }
+    // BODY
+    Value result     = Value::nil();
+    std::vector list = args[0].as_sequential();
+    float phasor     = args[1].as_float();
+
+    result = Value(fromList(list, phasor, env));
+
+    return result;
+}
+
 Value uSEQ::useq_dm(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "dm";
@@ -3839,6 +3888,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("useqdw", ard_useqdw);
 
     // These are all class methods
+    INSERT_BUILTINDEF("toggle-sel", useq_toggle_select);
     INSERT_BUILTINDEF("swm", useq_swm);
     INSERT_BUILTINDEF("swt", useq_swt);
     INSERT_BUILTINDEF("swr", useq_swr);

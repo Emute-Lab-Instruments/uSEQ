@@ -270,6 +270,7 @@ private:
     LISP_FUNC_DECL(useq_ssin);
     LISP_FUNC_DECL(useq_swm);
     LISP_FUNC_DECL(useq_swt);
+    LISP_FUNC_DECL(useq_toggle_select);
     LISP_FUNC_DECL(useq_swr);
     LISP_FUNC_DECL(useq_rot);
 
