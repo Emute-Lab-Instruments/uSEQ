@@ -2,17 +2,16 @@
 #include "lisp/LispLibrary.h"
 #include "lisp/interpreter.h"
 #include "lisp/value.h"
+#include "utils.h"
+#include "utils/log.h"
 #include <cstddef>
 #include <cstdint>
 #include <sys/types.h>
+
 #ifdef ARDUINO
+#include "hardware/flash.h"
 #include "uSEQ/piopwm.h"
 #endif
-#include "utils.h"
-#include "utils/log.h"
-
-// Flash
-#include "hardware/flash.h"
 
 // #include "lisp/library.h"
 #include <cmath>
@@ -2441,17 +2440,125 @@ Value uSEQ::useq_gatesw(std::vector<Value>& args, Environment& env)
 // }
 
 // (euclid <phasor> <n> <k> (<offset>) (<pulsewidth>)
-BUILTINFUNC_VARGS_MEMBER(
-    useq_euclidean,
+//
+//
 
-    const double phasor = args[0].as_float();
-    const int n = args[1].as_int(); const int k = args[2].as_int();
-    const int offset       = (args.size() >= 4) ? args[3].as_int() : 0;
-    const float pulseWidth = (args.size() == 5) ? args[4].as_float() : 0.5;
-    const float fi = phasor * n; int i = static_cast<int>(fi);
-    const float rem                    = fi - i;
-    if (i == n) { i--; } const int idx = ((i + n - offset) * k) % n;
-    ret = Value(idx < k && rem < pulseWidth ? 1 : 0);, 3, 5)
+Value uSEQ::useq_euclidean(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "euclid";
+
+    // Checking number of args
+    if (!(3 <= args.size() <= 5))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::Between, 3, 5);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+        // Check all-pred(s)
+        if (!(args[i].is_number()))
+        {
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
+            return Value::error();
+        }
+    }
+
+    // BODY
+    Value result = Value::nil();
+
+    // NOTE: Phasor is the last arg
+    const double phasor    = args.back().as_float();
+    const int n            = args[0].as_int();
+    const int k            = args[1].as_int();
+    const int offset       = (args.size() >= 4) ? args[2].as_int() : 0;
+    const float pulseWidth = (args.size() == 5) ? args[3].as_float() : 0.5;
+    const float fi         = phasor * n;
+    int i                  = static_cast<int>(fi);
+    const float rem        = fi - i;
+    if (i == n)
+    {
+        i--;
+    }
+    const int idx = ((i + n - offset) * k) % n;
+    result        = Value(idx < k && rem < pulseWidth ? 1 : 0);
+
+    return result;
+}
+
+Value uSEQ::useq_eu(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "eu";
+
+    // Checking number of args
+    if (!(3 <= args.size() <= 5))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::Between, 3, 4);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+        // Check all-pred(s)
+        if (!(args[i].is_number()))
+        {
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
+            return Value::error();
+        }
+    }
+
+    // BODY
+    Value result = Value::nil();
+
+    // NOTE: Phasor is the last arg
+    const double phasor    = args.back().as_float();
+    const int n            = args[0].as_int();
+    const int k            = args[1].as_int();
+    const float pulseWidth = (args.size() == 4) ? args[2].as_float() : 0.5;
+    const float fi         = phasor * n;
+    int i                  = static_cast<int>(fi);
+    const float rem        = fi - i;
+    if (i == n)
+    {
+        i--;
+    }
+    // NOTE: original, testing
+    const int idx = ((i + n) * k) % n;
+    result        = Value(idx < k && rem < pulseWidth ? 1 : 0);
+
+    // NOTE: working one
+    // const int idx             = ((i + n) * k) % n;
+    // float effectivePulseWidth = (idx < k) ? pulseWidth : 0;
+    // result                    = Value(rem < effectivePulseWidth ? 1 : 0);
+
+    return result;
+}
+
+// , 3, 5)
 
 // (step <phasor> <count> (<offset>))
 
@@ -3758,6 +3865,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("gatesw", useq_gatesw);
     // INSERT_BUILTINDEF("trigs", useq_trigs);
     INSERT_BUILTINDEF("euclid", useq_euclidean);
+    INSERT_BUILTINDEF("eu", useq_eu);
     // NOTE: different names for the same function
     INSERT_BUILTINDEF("from-list", useq_fromList);
     INSERT_BUILTINDEF("seq", useq_seq);
