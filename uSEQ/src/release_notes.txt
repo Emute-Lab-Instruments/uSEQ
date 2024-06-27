@@ -1,0 +1,1 @@
+Variable duty triangle oscillator ('tri')

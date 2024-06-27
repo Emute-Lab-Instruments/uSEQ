@@ -7,31 +7,6 @@
 #include <optional>
 // class Value;
 
-#ifndef NO_ETL
-//
-#define ETL_NO_STL
-#include <Embedded_Template_Library.h> // Mandatory for Arduino IDE only
-#include <etl/map.h>
-#include <etl/string.h>
-#include <etl/unordered_map.h>
-
-namespace etl
-{
-
-template <>
-struct hash<String>
-{
-    std::size_t operator()(const String& k) const
-    {
-        using etl::hash;
-        etl::string<3> firstThree(k.substring(0, 3).c_str());
-        return hash<etl::string<3>>()(firstThree);
-    }
-};
-
-} // namespace etl
-#endif
-
 // template <size_T MAX_SIZE>
 struct ValueMap : std::map<String, Value>
 {

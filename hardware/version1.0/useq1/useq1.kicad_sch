@@ -4859,7 +4859,7 @@
     (effects (font (size 1.27 1.27)) (justify left top) (href "https://www.falstad.com/circuit/circuitjs.html?ctz=CQAgjCAMB0l3BWcZYA4BsB2ATNzZsEBOVA9EBSCkAFgGYKBTAWjDACgAnCzc9GkOlSpBAqjUzx2Ad0HDRckQRGQuPclQS8F4yXDVa+Amvx0g6dKQHNzqAaYtGoUGYvDYRvJR5c1IDSQFmOmwQVBDzUM0AfX5oyGiaDExosASYeEgiXgR0QmjWaOxohGi6V0MFSrYotRN7ATo7MwIpACV1cBpjVCowbucIP3BodCQUMecYBHYaNJBWcjAiUIjl0LTCEAA-ABUAGXoISAAdAGdh7HOwFgJzmEwQoiIabOw0iSIwBHuQK7PsLd-sxsNAEGBwnRntg6Ag5p8aL9TmcwOcQWCIRZobD4ZgXvdoI9sM9XjgPnjvtc-OdtgAXAA2R0YABNmABHAB20RZUHOIV6vIBfioyJwcEFFmgFmlMtl5H+KEBrH+D3e-QhOCIkGJvBVf3OoJoQLRGXgdHQQgQUNheDm5r1yNRZ2Yprg5st1oQtrA9oJZPVqE12uyeSpyLpjLoN1ZnO5rIAgorBRDoBC06QM+n9QDoNhMvn83RjWcYFhwgRcsTIBr8SXszRoMKC-mbsqCdWcFCkjh6KgXnQJEjru2wJ2XoHsL3+4OS6NMOXCHktTXESjqWcI0yY1yWcx46CoudeiLzpdrsWHsHiLDLH3J1pfv8lXdnYbsua4BC71qiD86460TfR50E-YQVh-P9L2Ja8rUgO8aAfNdwwZLd2R3ZlBSbTCqAVC9CX8L4QneEIkknJ0cINYsXVTfw6EkPBUAQDAwDGd4hxRE0aIsej5yY9AWK9cj8KhH1cFE0i5jDGkUKjXdYx5ZEBX+BBbjoP083QL47EDD5iVXCiUSoh50BI0lCF6EJtXYp1qN4Uy3iY-w8xVQkNK07tdNrfpkMjaM0LjPdpkFJTzzbZ1L0sSBHJvegvnI7MizC104NefpJwsb5tTyVB2NYdt4DsL4aHSqNKGwbLOMkSLoqtWK2HOEDpN8uSAAc42CgzWxfWztQsL0sBhSRiEwR8+WLUF52Kn1eDGXpoNyp0JrsYiZsc+bwvwmEbQGuiouyBqfNQtk2oUo9xUU87T06vD8FwJ5MC9R5ttGgEqLoMEmkyyB+Iyx5A2stF3qtUhKG+n0oz+kbZ1umEdUevryqkjcZL8+SMMdShguzFSksJLQ6O6AgVkY3ocrrXDWBshtypMDAJCaFYPDJk8OOdan+CEfg-sZ4Q-XxzBCeJDxHLJ7ymqO9C9yQR1Mmw7MuuBFBqxIKarU0gWmhe59FYxQNGKyLwyTmC9kzRFBwT1ygQwndUqKV5Zlu+c1sl7JHN1k7d2v+d2-OZdqZfFb2Ud3P2eQp+qziBz7J2+hBYLYWsDOfGyYDSPr+ieZITIwe41BY5BQmYIglgIZw830WR85YvoS9qDoi9rhZ+gEYuploPooimME1Fb3AW8bvpMh7+VJxAXv5EHqRK8b1uahcae-nkceVHYGx86Z8ByEcKYKm0TRtGYJJ586Q+lAPo-VEr8+z4H1wj77seR7EdgOjmLfmks2wxD+duRkmCZpZQG7twboIhLCNCEOYSA38vhTwoCBKBAhchUBtMfAa5hIEPVWJA1QNhzRgOgZEFBhCRSuHQeAwQOAMEr24MgxBlDVgkNoHoVQABDeBKDIHkMgd4JuGwCxtzSEPK+jdRxLD3uwdh1QfBCG8CIXhypwACNTn4R4CF9YOzxEQIB3lZH8D7G8C0AslFDz8AwVgAxFhN3IBfZAsQaDRBSD6cE+BUjpFgBWAoYBUjxFgFCb6hBXCz1LmIguvh-AgECH8XIYQIifxwugex8RUg4jwG43xmQQyVlKIUYo5Uyh33zk0JBCDinhIYM3duOEqH1DLnQJJCRnGjm8aUZKWS8g5O8Xk+p5RZCgPoXQihqgAD2Y8zB+GeNQNpOQOllzGeUIAA"))
     (uuid 97ee863e-a5c1-4c94-960d-8d0982238882)
   )
-  (text_box "lpf 13.2kHz\n"
+  (text_box "lpf 1.5kHz\n"
     (at 487.045 161.671 0) (size 21.844 23.114)
     (stroke (width 0) (type default))
     (fill (type none))
@@ -4873,14 +4873,14 @@
     (effects (font (size 1.27 1.27)) (justify left top) (href "https://www.falstad.com/circuit/circuitjs.html?ctz=CQAgjCAMB0l3BWcZYA4BsB2ATNzZsEBOVA9EBSCkAFgGYKBTAWjDACgAnCzc9GkOlSpBAqjUzx2Ad0HDRckQRGQuPclQS8F4yXDVa+Amvx0g6dKQHNzqAaYtGoUGYvDYRvJR5c1IDSQFmOmwQVBDzUM0AfX5oyGiaDExosASYeEgiXgR0QmjWaOxohGi6V0MFSrYotRN7ATo7MwIpACV1cBpjVCowbucIP3BodCQUMecYBHYaNJBWcjAiUIjl0LTCEAA-ABUAGXoISAAdAGdh7HOwFgJzmEwQoiIk9GfNzCI6e5Ars+xbn9mNhoAgwOE6Ag8BhDGwfqczmBzsDQeCLFDMDDeHCzg8ni8MO9IHgvtc-OdtgAXAA2R0YABNmABHAB20QZUHOIV6nP+fioCJwcF5FmgFnFEsl5D+KABrD+D2wbDmmAQcyIYHQllQPz+IJogORGXgdHQQihhDAuTG4JM8OuRtgJrNqAtYOtYLs6Hu0BwyrAqvVmu1ZIRVNpdBujNZ7MZAEFZbzwdBwanSOm079ziDsJk83m6IbcaNMZHLRDwardecaNB+fm8zd5T7IAHsH4mpWEL1TTrcUmW22O+nVT2hD6sOECJ6LF3QxSaXTo2yGcw4zneb0BTWqDKiw9iURu3R6HRskISNX-kWUTRspDUNghJGtKT+wikWdb-fu0+p6-vmLSRsCPcJT3PVBL0RckznDJdmRXeleXrZDd2ufdfX8DVcEgV08hWZ4rzlO4vxgNILEwT4YWJSAtQQQDt0RR1yLoSiSDGGi6IYzCzwIXM8JAkCiHnWDF0jVcYw5BEeT+BBbm4oU3gDEJc0jIgzSvJsSOYB48inPJVSaSEEHtJjSN9PTIwM+jwgQEygNzJTHhwtSNOgsMxKjBDYzXaZNzQxEbwPSxIAkF5TRPXgGKzM5C2bYtMjsDUsksEIaEIXJMFM1gW3gJK0i+fx2wyrBHUkEKwvoLUJC1c50A8iMvKZAAHWN-JirSgQPbALBVLCeySK84pIkFMRMXN3js4k72yz9Rq9CaNSm9thPM4DeoDfr-EGs56oXRqJNaqTzi3fzGMudD4oeAhNXoR4bQkDAiJvOhQSaOz0p6-B8DAVjTM-YI3tdNVcFYgM2D+oCbv4VjTTBR7vXc-b4MkpCP0oTcYrkq7fS0WjUEorQ0nozTbgB2snzvR9hEgTFnmJf7kQp-gSA8Xo6aIBmgLxoRCfwSASaR0SDuXHy4yQD9MlQjqbxQGjLUPbtnPHfs9RvVAUxPJpc1yR9IWyfcBy-DXfvoR8BaEHriEwWXYFzBWQKVkIVf6BqUcQmK4PExl6TayXhT+L2vN9jk91YT9XpsqFH3U0cafsgLiIBsj-H1-pbsVlZ7jUTVkFCZh1Lz5xc30WRc81PolgIFwOgLqv8-6ARC4FWg+iiKZQTUQvcCb+vBkyLvpXbEBu-kPoB7LvvC5qFxJ9+eRR5UdgbFztnwHIRwpgqbRNG0Zgklnzp96UPeD9UMvT5Pvvz9oEQe5HoexAqerfmGXI+hWGvaFzppGlzWwxDgFbiMSYEwJZQE7twboIhLCNCEOYUKgwS433fgggQqDIS1FkFgVY8DVS4KXjYXsaDIhUFgVvbgGDEHQJIWQkKqhKEv3bJoF+5DdBSGwTgEhODzDwIYRQVhiCeFsNoHoVQABDARZD4HCPgd4BY1c0h5hGIQVi41TRjSVFqFR9FHhzFdATeioUlh5lcAGPu5jwA7zMdoSxaoBCWJQQMOxL9HHPz6NoVB6wXCSOqD4IQ3gRDyPlOAfMvw6yhWII+N4-A2B2CQPqYxSoMqlgFhAJRUgOwKIGIsBR5Az7IFiDQaIKRfpgnwKkdIsBpwFDAKkeIsAzy0UIK4aeijbHV34XMDezQwSrGaOPfQABjCg1df6jNCPQduTYlDQFUXo8ESsjEmAgXADgNg+m0AiJsmhAoKhjN6awgZsx-AgECL8XIYQIghBbngIp8RUiQnSqUqpmRzy5HyIUYodzygAHsR5mD8M8agxo4DvLyOA0IRBzDsCAA"))
     (uuid cfc41707-6f85-42e6-b72e-59c27a47e121)
   )
-  (text_box "lpf 13.2kHz\n"
+  (text_box "lpf 10kHz\n"
     (at 486.791 105.029 0) (size 21.844 23.114)
     (stroke (width 0) (type default))
     (fill (type none))
     (effects (font (size 1.27 1.27)) (justify left top))
     (uuid d7623236-a492-4619-a6ca-19fd4c9f3dd1)
   )
-  (text_box "lpf 13.2kHz\n"
+  (text_box "lpf 1.5kHz\n"
     (at 486.664 49.022 0) (size 21.844 23.114)
     (stroke (width 0) (type default))
     (fill (type none))
@@ -7749,7 +7749,7 @@
     (property "Reference" "R42" (at 491.49 109.1397 90)
       (effects (font (size 1.27 1.27)))
     )
-    (property "Value" "1.2k" (at 491.49 111.5639 90)
+    (property "Value" "10k" (at 491.49 111.5639 90)
       (effects (font (size 1.27 1.27)))
     )
     (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 491.49 116.078 90)
@@ -8502,7 +8502,7 @@
     (property "Reference" "R41" (at 491.363 53.1327 90)
       (effects (font (size 1.27 1.27)))
     )
-    (property "Value" "1.2k" (at 491.363 55.5569 90)
+    (property "Value" "10k" (at 491.363 55.5569 90)
       (effects (font (size 1.27 1.27)))
     )
     (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 491.363 60.071 90)
@@ -12859,7 +12859,7 @@
     (property "Reference" "R43" (at 491.744 165.7817 90)
       (effects (font (size 1.27 1.27)))
     )
-    (property "Value" "1.2k" (at 491.744 168.2059 90)
+    (property "Value" "10k" (at 491.744 168.2059 90)
       (effects (font (size 1.27 1.27)))
     )
     (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 491.744 172.72 90)
