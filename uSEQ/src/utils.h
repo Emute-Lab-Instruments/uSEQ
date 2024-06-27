@@ -2,7 +2,10 @@
 #define UTILS_H_
 
 #include <algorithm>
+#include <cmath> // Include for the fma function
 #include <set>
+
+float lerp(float a, float b, float t);
 
 // SET HELPERS
 // template <typename T>

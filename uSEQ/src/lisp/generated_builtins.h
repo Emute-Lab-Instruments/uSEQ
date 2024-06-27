@@ -63,6 +63,7 @@ Value ard_sqrt(std::vector<Value>& args, Environment& env);
 Value print(std::vector<Value>& args, Environment& env);
 Value display(std::vector<Value>& args, Environment& env);
 Value greater_eq(std::vector<Value>& args, Environment& env);
+Value ard_lerp(std::vector<Value>& args, Environment& env);
 Value quote(std::vector<Value>& args, Environment& env);
 Value cast_to_float(std::vector<Value>& args, Environment& env);
 Value len(std::vector<Value>& args, Environment& env);

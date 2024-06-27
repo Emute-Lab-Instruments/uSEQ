@@ -1,4 +1,5 @@
 #include "generated_builtins.h"
+#include "../utils.h"
 #include "environment.h"
 #include "interpreter.h"
 #include "value.h"
@@ -2040,6 +2041,38 @@ Value greater_eq(std::vector<Value>& args, Environment& env)
     // BODY
     Value result = Value::nil();
     result       = Value(int(args[0] >= args[1]));
+    return result;
+}
+
+Value ard_lerp(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "lerp";
+
+    // Checking number of args
+    if (!(args.size() == 5))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 5, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    // BODY
+    Value result = Value::nil();
+    result = Value(lerp(args[0].as_float(), args[1].as_float(), args[0].as_float()));
     return result;
 }
 
