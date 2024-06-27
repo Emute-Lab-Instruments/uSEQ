@@ -2360,18 +2360,21 @@ Value uSEQ::useq_gates(std::vector<Value>& args, Environment& env)
         }
         // Check all-pred(s)
 
-        if (i == 0 && !(args[i].is_sequential()))
+        if (i == 0)
         {
-            report_error_wrong_all_pred(user_facing_name, i + 1, "a vector or list",
-                                        args[i].display());
-            return Value::error();
+            if (!(args[i].is_sequential()))
+            {
+                report_error_wrong_specific_pred(
+                    user_facing_name, i + 1, "a vector or list", args[i].display());
+                return Value::error();
+            }
         }
         else
         {
             if (!(args[i].is_number()))
             {
-                report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                            args[i].display());
+                report_error_wrong_specific_pred(user_facing_name, i + 1, "a number",
+                                                 args[i].display());
                 return Value::error();
             }
         }
@@ -2396,9 +2399,10 @@ Value uSEQ::useq_gates(std::vector<Value>& args, Environment& env)
         phasor     = args[1].as_float();
     }
 
-    const double val   = fromList(gates_vec, phasor, env).as_int();
-    const double gates = phasor < pulseWidth ? 1.0 : 0.0;
-    result             = Value(val * gates);
+    const double val = fromList(gates_vec, phasor, env).as_int();
+    const double gates =
+        (fmod(phasor * gates_vec.size(), 1.0)) < pulseWidth ? 1.0 : 0.0;
+    result = Value(val * gates);
 
     return result;
 }
