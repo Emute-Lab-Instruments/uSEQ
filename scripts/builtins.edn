@@ -554,8 +554,7 @@
  "debug" {:args {:num "== 1"}
           :body ["result = Value::string(args[0].to_lisp_src());"]}
 
- "println" {:args {:num "== 1"
-                   :type {0 ".is_string()"}}
+ "println" {:args {:num "== 1"}
             :body ["String s;"
                    "if (args[0].is_string())"
                    "{"
