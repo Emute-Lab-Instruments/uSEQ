@@ -873,9 +873,9 @@ Value product(std::vector<Value>& args, Environment& env)
     for (size_t i = 1; i < args.size(); i++)
     {
         Value num = args[i];
-        if (num == Value(0) || num == Value(0.0))
+        if (num == Value(0))
         {
-            return num;
+            return Value(0);
         }
         else
         {
@@ -1239,8 +1239,10 @@ Value ard_pow(std::vector<Value>& args, Environment& env)
     }
 
     // BODY
-    Value result = Value::nil();
-    result       = Value(pow(args[0].as_float(), args[1].as_float()));
+    Value result   = Value::nil();
+    float exponent = args[0].as_float();
+    float base     = args[1].as_float();
+    result         = Value(pow(base, exponent));
     return result;
 }
 
@@ -2398,7 +2400,7 @@ Value useq_pulse(std::vector<Value>& args, Environment& env)
     // args: pulse width, phasor
     double pulseWidth = args[0].as_float();
     double phasor     = args[1].as_float();
-    result            = Value(pulseWidth < phasor ? 1.0 : 0.0);
+    result            = Value(phasor < pulseWidth ? 1.0 : 0.0);
     return result;
 }
 
