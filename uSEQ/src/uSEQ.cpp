@@ -4,6 +4,7 @@
 #include "lisp/value.h"
 #include "utils.h"
 #include "utils/log.h"
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <sys/types.h>
@@ -2462,19 +2463,60 @@ Value uSEQ::useq_gatesw(std::vector<Value>& args, Environment& env)
     return result;
 }
 
-// BUILTINFUNC_VARGS_MEMBER(
-//     useq_trigs, auto lst = args[0].as_list();
-//     const double phasor     = args[1].as_float();
-//     const double speed      = args.size() == 3 ? args[2].as_float() : 1.0;
-//     const double val        = fromList(lst, fast(speed, phasor), env).as_int();
-//     const double amp        = val / 9.0;
-//     const double pulseWidth = args.size() == 4 ? args[3].as_float() : 0.1;
-//     const double gate = fast(speed * lst.size(), phasor) < pulseWidth ? 1.0 : 0.0;
-//     ret               = Value((val > 0 ? 1.0 : 0.0) * gate * amp);, 2, 4)
+Value uSEQ::useq_trigs(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "trigs";
 
-// (euclid <phasor> <n> <k> (<offset>) (<pulsewidth>)
-//
-//
+    // Checking number of args
+    if (!(2 <= args.size() <= 3))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::Between, 2, 3);
+        return Value::error();
+    }
+
+    // Evaluating args, checking for errors & all-arg constraints
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+    }
+
+    // Check specific preds
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a vector or list",
+                                         args[0].display());
+        return Value::error();
+    }
+
+    if (!(args.back().is_number()))
+    {
+        report_error_wrong_all_pred(user_facing_name, args.size() + 1, "a number",
+                                    args[1].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+
+    auto lst = args[0].as_sequential();
+    // NOTE: phasor at the end
+    const double phasor     = args.back().as_float();
+    const double val        = fromList(lst, phasor, env).as_int();
+    const double amp        = std::clamp(val / 9.0, 0.0, 1.0);
+    const double pulseWidth = args.size() == 3 ? args[1].as_float() : 0.1;
+    const double gate = fmod(phasor * lst.size(), 1.0) < pulseWidth ? 1.0 : 0.0;
+    result            = Value((val > 0 ? 1.0 : 0.0) * gate * amp);
+
+    return result;
+}
 
 Value uSEQ::useq_euclidean(std::vector<Value>& args, Environment& env)
 {
@@ -3902,7 +3944,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("dm", useq_dm);
     INSERT_BUILTINDEF("gates", useq_gates);
     INSERT_BUILTINDEF("gatesw", useq_gatesw);
-    // INSERT_BUILTINDEF("trigs", useq_trigs);
+    INSERT_BUILTINDEF("trigs", useq_trigs);
     INSERT_BUILTINDEF("euclid", useq_euclidean);
     INSERT_BUILTINDEF("eu", useq_eu);
     // NOTE: different names for the same function
