@@ -1523,10 +1523,10 @@ Value ard_map(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "scale";
 
     // Checking number of args
-    if (!(args.size() == 5))
+    if (!(3 <= args.size() <= 5))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
-                                    NumArgsComparison::EqualTo, 5, -1);
+                                    NumArgsComparison::Between, 3, 5);
         return Value::error();
     }
 
@@ -1545,11 +1545,28 @@ Value ard_map(std::vector<Value>& args, Environment& env)
     }
 
     // BODY
-    Value result = Value::nil();
-    float m      = map(args[0].as_float(), args[1].as_float(), args[2].as_float(),
-                       args[3].as_float(), args[4].as_float());
-    result       = Value(m);
-    return result;
+    float phasor = args.back().as_float();
+
+    float in_min, in_max, out_min, out_max;
+
+    if (args.size() == 5)
+    {
+        in_min = args[0].as_float();
+        in_max = args[1].as_float();
+
+        out_min = args[2].as_float();
+        out_max = args[3].as_float();
+    }
+    else
+    {
+        in_min = 0.0;
+        in_max = 1.0;
+
+        out_min = args[0].as_float();
+        out_max = args[1].as_float();
+    }
+
+    return Value(scale_value(phasor, in_min, in_max, out_min, out_max));
 }
 
 Value head(std::vector<Value>& args, Environment& env)

@@ -2,6 +2,26 @@
 #include <algorithm>
 // #include <iterator>
 
+float scale_value(float x, float in_min, float in_max, float out_min, float out_max)
+{
+    // Check to prevent division by zero
+    if (in_max == in_min)
+    {
+        // Handle the error appropriately, here returning out_min as a default
+        return out_min;
+    }
+
+    // Check for potential overflow before multiplication
+    if ((x - in_min) > (std::numeric_limits<float>::max() / (out_max - out_min)))
+    {
+        // Handle overflow, here returning out_max as a default
+        return out_max;
+    }
+
+    // Perform the scaling
+    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 float lerp(float a, float b, float t)
 {
     // Use fma (fused multiply-add) for potentially more precise and performant

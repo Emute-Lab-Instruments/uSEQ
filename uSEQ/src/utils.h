@@ -5,6 +5,11 @@
 #include <cmath> // Include for the fma function
 #include <set>
 
+// template <typename T>
+// T scale_value(T x, T in_min, T in_max, T out_min, T out_max);
+
+float scale_value(float x, float in_min, float in_max, float out_min, float out_max);
+
 float lerp(float a, float b, float t);
 
 // SET HELPERS

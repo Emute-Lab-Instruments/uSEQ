@@ -213,18 +213,66 @@
 (defn type-signature [spec]
   (str "Value " (:internal-name spec) "(std::vector<Value>& args, Environment& env)"))
 
+;; (defn parse-comparison [s]
+;;   (let [[_ op num] (re-matches #"([<>]=?|==)\s*(-?\d+)" s)]
+;;     {:op op
+;;      :num (Integer/parseInt num)}))
 (defn parse-comparison [s]
-  (let [[_ op num] (re-matches #"([<>]=?|==)\s*(-?\d+)" s)]
-    {:op op
-     :num (Integer/parseInt num)}))
+  (let [;; This captures the comparison operators:
+        ;; >, <, >=, <=, ==
+        ;; followed by a number
+        single-comp #"([<>]=?|==)\s*(-?\d+)"
+        ;; This matches comparisons on either side:
+        ;; 3 <= n < 8
+        ;; double-comp #"(-?\d+)\s*([<>]=?)\s*n\s*([<>]=?)\s*(-?\d+)"
+        single-match (re-matches single-comp s)
+        ;; double-match (re-matches double-comp s)
+        ]
+    (cond
+      ;; double-match {:op [(nth double-match 2) (nth double-match 4)]
+      ;;               :num [(Integer/parseInt (nth double-match 1))
+      ;;                     (Integer/parseInt (nth double-match 5))]}
+      single-match {:op (nth single-match 1)
+                    :num (Integer/parseInt (nth single-match 2))}
+      ;; :else (throw (IllegalArgumentException. "Invalid comparison string"))
+      )))
 
-(def comparison-ops->cpp-enum
-  {"==" "NumArgsComparison::EqualTo"
-   ">=" "NumArgsComparison::AtLeast"
-   "<=" "NumArgsComparison::AtMost"
-   ;; TODO between
-   ;; "==" "NumArgsComparison::EqualTo"
-   })
+(comment
+  (parse-comparison ">= 3]")
+  ;;
+  )
+
+(defn comparison-ops->cpp-enum  [ops]
+  (case ops
+    "==" "NumArgsComparison::EqualTo"
+    ">=" "NumArgsComparison::AtLeast"
+    "<=" "NumArgsComparison::AtMost"
+    (if (and (sequential? (:op ops))
+             (sequential? (:num ops)))))
+  ;; TODO between
+  ;;  "NumArgsComparison::EqualTo"
+  )
+
+(defn parse-comparison [s]
+  (let [single-comp #"([<>]=?|==)\s*(-?\d+)"
+        double-comp #"(-?\d+)\s*([<>]=?)\s*n\s*([<>]=?)\s*(-?\d+)"
+        single-match (re-matches single-comp s)
+        double-match (re-matches double-comp s)]
+    (cond
+      double-match {:op [(nth double-match 2) (nth double-match 4)]
+                    :num [(Integer/parseInt (nth double-match 1))
+                          (Integer/parseInt (nth double-match 5))]}
+      single-match {:op (nth single-match 1)
+                    :num (Integer/parseInt (nth single-match 2))}
+      :else (throw (IllegalArgumentException. "Invalid comparison string")))))
+
+;; Examples:
+(parse-comparison ">= 42")
+;; => {:op ">=", :num 42}
+
+(parse-comparison "3 <= n <= 5")
+;; => {:op ["<=" "<="], :num [3 5]}
+
 (defn num-args-comparison-op-str [spec]
   (-> spec
       (get-in [:args :num])
