@@ -393,9 +393,9 @@
            :docstring "Remove a value at an index from a list"}
 
  "len" {:args {:num "== 1"
-               :type {0 ".is_list()"}}
+               :type {0 ".is_sequential()"}}
         :eval-args? true
-        :body ["result = Value((int)args[0].as_list().size());"]
+        :body ["result = Value((int)args[0].as_sequential().size());"]
         :docstring "Get the length of a list"}
 
  "push" {:args {:num "== 2"}
@@ -535,10 +535,23 @@
 
  "ard_map" {:args {:num "== 5"}
             :type {:all ".is_number()"}
-            :body ["float m = map(args[0].as_float(), args[1].as_float(),"
-                   "                      args[2].as_float(), args[3].as_float(),"
-                   "                      args[4].as_float());"
-                   "result = Value(m);"]}
+            :body ["float phasor = args.back().as_float();"
+                   "float in_min, in_max, out_min, out_max;"
+                   "if (args.size() == 5)"
+                   "{"
+                   "    in_min = args[0].as_float();"
+                   "    in_max = args[1].as_float();"
+                   "    out_min = args[2].as_float();"
+                   "    out_max = args[3].as_float();"
+                   "}"
+                   "else"
+                   "{"
+                   "    in_min = 0.0;"
+                   "    in_max = 1.0;"
+                   "    out_min = args[0].as_float();"
+                   "    out_max = args[1].as_float();"
+                   "}"
+                   "result = Value(scale_value(phasor, in_min, in_max, out_min, out_max));"]}
 
  "ard_lerp" {:args {:num "== 5"}
              :type {:all ".is_number()"}
