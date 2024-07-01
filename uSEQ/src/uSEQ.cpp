@@ -2128,14 +2128,14 @@ BUILTINFUNC_MEMBER(
     useq_tri, constexpr const char* user_facing_name = "tri";
     if (!(args.size() == 2)) {
         report_error_wrong_num_args(user_facing_name, args.size(),
-                                    NumArgsComparison::EqualTo, 0, 0);
+                                    NumArgsComparison::EqualTo, 2, 0);
         return Value::error();
     } if (!(args[0].is_number())) {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
                                          args[0].display());
         return Value::error();
     } if (!(args[1].is_number())) {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
                                          args[1].display());
         return Value::error();
     } double duty = args[0].as_float();
