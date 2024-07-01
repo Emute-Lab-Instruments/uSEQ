@@ -46,15 +46,16 @@ extern "C"
 #define DISPLAY 0x1
 
 #ifndef constrain
-#define constrain(amt, low, high) ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
+#define constrain(amt, low, high)                                                   \
+    ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
 #endif
 
 #ifndef radians
-#define radians(deg) ((deg)*DEG_TO_RAD)
+#define radians(deg) ((deg) * DEG_TO_RAD)
 #endif
 
 #ifndef degrees
-#define degrees(rad) ((rad)*RAD_TO_DEG)
+#define degrees(rad) ((rad) * RAD_TO_DEG)
 #endif
 
 #ifndef sq
@@ -66,14 +67,15 @@ extern "C"
 
     // interrupts() / noInterrupts() must be defined by the core
 
-#define lowByte(w) ((uint8_t)((w)&0xff))
+#define lowByte(w) ((uint8_t)((w) & 0xff))
 #define highByte(w) ((uint8_t)((w) >> 8))
 
 #define bitRead(value, bit) (((value) >> (bit)) & 0x01)
 #define bitSet(value, bit) ((value) |= (1UL << (bit)))
 #define bitClear(value, bit) ((value) &= ~(1UL << (bit)))
 #define bitToggle(value, bit) ((value) ^= (1UL << (bit)))
-#define bitWrite(value, bit, bitvalue) ((bitvalue) ? bitSet((value), (bit)) : bitClear((value), (bit)))
+#define bitWrite(value, bit, bitvalue)                                              \
+    ((bitvalue) ? bitSet((value), (bit)) : bitClear((value), (bit)))
 
 #ifndef bit
 #define bit(b) (1UL << (b))
@@ -93,7 +95,8 @@ extern "C"
     int main() __attribute__((weak));
 
 #ifdef EXTENDED_PIN_MODE
-    // Platforms who want to declare more than 256 pins need to define EXTENDED_PIN_MODE globally
+    // Platforms who want to declare more than 256 pins need to define
+    // EXTENDED_PIN_MODE globally
     typedef uint32_t pin_size_t;
 #else
 typedef uint8_t pin_size_t;
@@ -113,12 +116,14 @@ typedef uint8_t pin_size_t;
     unsigned long pulseIn(pin_size_t pin, uint8_t state, unsigned long timeout);
     unsigned long pulseInLong(pin_size_t pin, uint8_t state, unsigned long timeout);
 
-    void shiftOut(pin_size_t dataPin, pin_size_t clockPin, BitOrder bitOrder, uint8_t val);
+    void shiftOut(pin_size_t dataPin, pin_size_t clockPin, BitOrder bitOrder,
+                  uint8_t val);
     uint8_t shiftIn(pin_size_t dataPin, pin_size_t clockPin, BitOrder bitOrder);
 
-    void attachInterrupt(pin_size_t interruptNumber, voidFuncPtr callback, PinStatus mode);
-    void attachInterruptParam(pin_size_t interruptNumber, voidFuncPtrParam callback, PinStatus mode,
-                              void* param);
+    void attachInterrupt(pin_size_t interruptNumber, voidFuncPtr callback,
+                         PinStatus mode);
+    void attachInterruptParam(pin_size_t interruptNumber, voidFuncPtrParam callback,
+                              PinStatus mode, void* param);
     void detachInterrupt(pin_size_t interruptNumber);
 
     void setup(void);
@@ -142,19 +147,19 @@ auto max(const T& a, const L& b) -> decltype((b < a) ? b : a)
 }
 #else
 #ifndef min
-#define min(a, b)                                                                                            \
-    ({                                                                                                       \
-        __typeof__(a) _a = (a);                                                                              \
-        __typeof__(b) _b = (b);                                                                              \
-        _a < _b ? _a : _b;                                                                                   \
+#define min(a, b)                                                                   \
+    ({                                                                              \
+        __typeof__(a) _a = (a);                                                     \
+        __typeof__(b) _b = (b);                                                     \
+        _a < _b ? _a : _b;                                                          \
     })
 #endif
 #ifndef max
-#define max(a, b)                                                                                            \
-    ({                                                                                                       \
-        __typeof__(a) _a = (a);                                                                              \
-        __typeof__(b) _b = (b);                                                                              \
-        _a > _b ? _a : _b;                                                                                   \
+#define max(a, b)                                                                   \
+    ({                                                                              \
+        __typeof__(a) _a = (a);                                                     \
+        __typeof__(b) _b = (b);                                                     \
+        _a > _b ? _a : _b;                                                          \
     })
 #endif
 #endif
@@ -168,7 +173,8 @@ uint16_t makeWord(byte h, byte l);
 #define word(...) makeWord(__VA_ARGS__)
 
 unsigned long pulseIn(uint8_t pin, uint8_t state, unsigned long timeout = 1000000L);
-unsigned long pulseInLong(uint8_t pin, uint8_t state, unsigned long timeout = 1000000L);
+unsigned long pulseInLong(uint8_t pin, uint8_t state,
+                          unsigned long timeout = 1000000L);
 
 void tone(uint8_t _pin, unsigned int frequency, unsigned long duration = 0);
 void noTone(uint8_t _pin);
