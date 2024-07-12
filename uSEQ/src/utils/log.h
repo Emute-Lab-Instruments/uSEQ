@@ -61,7 +61,7 @@ extern std::vector<String> error_msg_q;
 
 void message_editor(const String& s);
 
-void print(const String& s);
+// void print(const String& s);
 void println(const String& s);
 
 // void serve_message(const uSEQ_Message& msg);

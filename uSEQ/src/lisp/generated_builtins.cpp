@@ -3,6 +3,7 @@
 #include "environment.h"
 #include "interpreter.h"
 #include "value.h"
+#include "../utils/log.h"
 
 namespace builtin
 {
@@ -1063,7 +1064,7 @@ Value println(std::vector<Value>& args, Environment& env)
     {
         s = args[0].display();
     }
-    Serial.println(s);
+    message_editor(s);
     return result;
 }
 
