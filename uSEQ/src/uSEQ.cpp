@@ -1713,6 +1713,18 @@ Value uSEQ::useq_schedule(std::vector<Value>& args, Environment& env)
     v.period  = period;
     v.lastRun = 0;
     v.ast     = ast;
+    //remove if exists
+    const String searchId = args[0].as_string();
+
+    auto is_item    = [searchId](scheduledItem& candidate) { return candidate.id == searchId; };
+
+    if (auto it = std::find_if(std::begin(m_scheduledItems),
+                               std::end(m_scheduledItems), is_item);
+        it != std::end(m_scheduledItems))
+    {
+        m_scheduledItems.erase(it);
+    }
+    //add to scheduler list
     m_scheduledItems.push_back(v);
     return Value::nil();
 }
