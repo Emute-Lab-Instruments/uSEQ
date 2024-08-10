@@ -2,7 +2,10 @@
 
 Bug fixes:
 Fixed println
-(schedule) should search and replace existing items in list 
+#49 (schedule) should search and replace existing items in list 
+#107 random function has gone missing
+s7 and s8 not defined #118
+
 
 
 1.0.2

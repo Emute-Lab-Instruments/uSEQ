@@ -3920,6 +3920,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("s4", useq_s4);
     INSERT_BUILTINDEF("s5", useq_s5);
     INSERT_BUILTINDEF("s6", useq_s6);
+    INSERT_BUILTINDEF("s7", useq_s7);
+    INSERT_BUILTINDEF("s8", useq_s8);
 
     // These are not class methods, so they can be inserted normally
     INSERT_BUILTINDEF("useqaw", ard_useqaw);
