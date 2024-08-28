@@ -1,5 +1,8 @@
 1.1
 
+Features:
+Ratio sequencing: rpulse and rstep
+
 Bug fixes:
 Fixed println
 #49 (schedule) should search and replace existing items in list 
