@@ -285,7 +285,7 @@ private:
     LISP_FUNC_DECL(useq_ratiotrig);
     LISP_FUNC_DECL(useq_ratiostep);
 
-    // LISP_FUNC_DECL(useq_ratiostep);
+    LISP_FUNC_DECL(useq_phasor_offset);
 
     
 
