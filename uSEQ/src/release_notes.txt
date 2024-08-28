@@ -2,6 +2,7 @@
 
 Features:
 Ratio sequencing: rpulse and rstep
+Added 'shift' function (#75)
 
 Bug fixes:
 Fixed println

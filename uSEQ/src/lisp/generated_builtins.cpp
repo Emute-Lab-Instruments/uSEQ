@@ -317,7 +317,7 @@ Value ard_usin(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = Value(0.5 + 0.5 * sin(args[0].as_float()));
+    result       = Value(0.5 + 0.5 * sin(args[0].as_float() * (2.0 * M_PI)));
     return result;
 }
 
