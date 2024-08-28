@@ -2675,13 +2675,151 @@ Value uSEQ::useq_eu(std::vector<Value>& args, Environment& env)
     return result;
 }
 
-// , 3, 5)
 
-// (step <phasor> <count> (<offset>))
+Value uSEQ::useq_ratiotrig(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "rpulse";
 
-//////////////
-//////////////
-//////////////
+    // Checking number of args
+    if (!(3 == args.size()))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 3, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+    }
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].display());
+        return Value::error();
+    }
+    // Checking individual args
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+    if (!(args[2].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+
+
+    // BODY
+    Value result = Value::nil();
+
+    auto ratios            = args[0].as_sequential();
+    const auto pulseWidth   = args[1].as_float();
+    const auto phase    = args[2].as_float();
+
+
+    double trig=0;
+    double ratioSum = 0;
+    for(Value v: ratios) {
+        ratioSum += v.as_float();
+    }
+    double phaseAdj = ratioSum * phase;
+    double accumulatedSum=0;
+    double lastAccumulatedSum=0;
+    for(Value v : ratios) {
+        accumulatedSum += v.as_float();
+        if (phaseAdj <= accumulatedSum) {
+            //check pulse width
+            double beatPhase = (phaseAdj - lastAccumulatedSum) / (accumulatedSum - lastAccumulatedSum);
+            trig = beatPhase <= pulseWidth;
+            break;
+        }
+        lastAccumulatedSum = accumulatedSum;
+    }
+    result  = Value(trig);
+
+    return result;
+}
+
+Value uSEQ::useq_ratiostep(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "rstep";
+
+    // Checking number of args
+    if (!(2 == args.size()))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 3, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+    }
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].display());
+        return Value::error();
+    }
+    // Checking individual args
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+
+
+    // BODY
+    Value result = Value::nil();
+
+    auto ratios         = args[0].as_sequential();
+    const auto phase    = args[1].as_float();
+
+    double phaseOut=0;
+    double ratioSum = 0;
+    for(Value v: ratios) {
+        ratioSum += v.as_float();
+    }
+    double phaseAdj = ratioSum * phase;
+    double accumulatedSum=0;
+    double lastAccumulatedSum=0;
+    for(Value v : ratios) {
+        accumulatedSum += v.as_float();
+        if (phaseAdj <= accumulatedSum) {
+            phaseOut = lastAccumulatedSum;
+            break;
+        }
+        lastAccumulatedSum = accumulatedSum;
+    }
+    result  = Value(phaseOut / ratioSum);
+    return result;
+}
 
 // NOTE: doesn't eval its arguments until they're selected by the phasor
 Value uSEQ::useq_fromList(std::vector<Value>& args, Environment& env)
@@ -3991,6 +4129,9 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("trigs", useq_trigs);
     INSERT_BUILTINDEF("euclid", useq_euclidean);
     INSERT_BUILTINDEF("eu", useq_eu);
+    INSERT_BUILTINDEF("rpulse", useq_ratiotrig);
+    INSERT_BUILTINDEF("rstep", useq_ratiostep);
+
     // NOTE: different names for the same function
     INSERT_BUILTINDEF("from-list", useq_fromList);
     INSERT_BUILTINDEF("seq", useq_seq);
