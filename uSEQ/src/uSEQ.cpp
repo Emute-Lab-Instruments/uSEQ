@@ -107,6 +107,8 @@ float pdm_y   = 0;
 float pdm_err = 0;
 float pdm_w   = 0;
 
+#ifdef USEQHARDWARE_1_0
+
 bool timer_callback(repeating_timer_t* mst)
 {
     pdm_y   = pdm_w > pdm_err ? 1 : 0;
@@ -127,21 +129,22 @@ bool timer_callback(repeating_timer_t* mst)
 
     return true;
 }
+#endif
 
 void setup_leds()
 {
     DBG("uSEQ::setup_leds");
 
 #ifndef MUSICTHING
-    pinMode(LED_BOARD, OUTPUT); // test LED
-    digitalWrite(LED_BOARD, 1);
-    pinMode(USEQ_PIN_LED_I1, OUTPUT_2MA);
-    pinMode(USEQ_PIN_LED_I2, OUTPUT_2MA);
+    // pinMode(LED_BOARD, OUTPUT); // test LED
+    // digitalWrite(LED_BOARD, 1);
 #endif
 
 #ifdef USEQHARDWARE_1_0
     pinMode(USEQ_PIN_LED_AI1, OUTPUT_2MA);
     pinMode(USEQ_PIN_LED_AI2, OUTPUT_2MA);
+    pinMode(USEQ_PIN_LED_I1, OUTPUT_2MA);
+    pinMode(USEQ_PIN_LED_I2, OUTPUT_2MA);
 #endif
 
     for (int i = 0; i < 6; i++)
@@ -151,13 +154,14 @@ void setup_leds()
     }
 }
 
+#ifdef USEQHARDWARE_1_0
 void start_pdm()
 {
     static repeating_timer_t mst;
 
     add_repeating_timer_us(150, timer_callback, NULL, &mst);
 }
-
+#endif
 void uSEQ::init()
 {
     DBG("uSEQ::init");
@@ -177,7 +181,10 @@ void uSEQ::init()
     // eval_lisp_library();
 
     led_animation();
+#ifdef USEQHARDWARE_1_0
     start_pdm();
+#endif
+
     setup_IO();
 
     // dbg("Lisp library loaded.");
@@ -218,7 +225,7 @@ void uSEQ::led_animation()
         digitalWrite(useq_output_led_pins[3], 0);
         delay(ledDelay);
         digitalWrite(useq_output_led_pins[1], 0);
-        ledDelauy -= 3;
+        ledDelay -= 3;
     }
 #endif
 #ifdef USEQHARDWARE_0_2
@@ -486,28 +493,32 @@ void uSEQ::update_inputs()
 #endif
 
     // inputs are input_pullup, so invert
-    auto now              = micros();
+    // auto now              = micros();
     const double recp4096 = 0.000244141; // 1/4096
     const double recp2048 = 1 / 2048.0;
     const double recp1024 = 1 / 1024.0;
 
 #ifdef MUSICTHING
     const size_t muxdelay = 2;
+    
     // unroll loop for efficiency
     digitalWrite(MUX_LOGIC_A, 0);
     digitalWrite(MUX_LOGIC_B, 0);
     delayMicroseconds(muxdelay);
     m_input_vals[MTMAINKNOB] = analogRead(MUX_IN_1) * recp4096;
-    m_input_vals[USEQAI1]    = analogRead(MUX_IN_2) * recp4096;
+    m_input_vals[USEQAI1]    = 1.0 - (analogRead(MUX_IN_2) * recp4096);
+
     digitalWrite(MUX_LOGIC_A, 0);
     digitalWrite(MUX_LOGIC_B, 1);
     delayMicroseconds(muxdelay);
     m_input_vals[MTYKNOB] = analogRead(MUX_IN_1) * recp4096;
+    
     digitalWrite(MUX_LOGIC_A, 1);
     digitalWrite(MUX_LOGIC_B, 0);
     delayMicroseconds(muxdelay);
     m_input_vals[MTXKNOB] = analogRead(MUX_IN_1) * recp4096;
-    m_input_vals[USEQAI2] = analogRead(MUX_IN_2) * recp4096;
+    m_input_vals[USEQAI2] = 1.0 - (analogRead(MUX_IN_2) * recp4096);
+    
     digitalWrite(MUX_LOGIC_A, 1);
     digitalWrite(MUX_LOGIC_B, 1);
     delayMicroseconds(muxdelay);
@@ -534,12 +545,12 @@ void uSEQ::update_inputs()
     // Serial.print("\t");
     // Serial.println(m_input_vals[MTZSWITCH]);
 
-    const int input1 = 1 - digitalRead(USEQ_PIN_I1);
-    const int input2 = 1 - digitalRead(USEQ_PIN_I2);
-    digitalWrite(useq_output_led_pins[4], input1);
-    digitalWrite(useq_output_led_pins[5], input2);
-    m_input_vals[USEQI1] = input1;
-    m_input_vals[USEQI2] = input2;
+    // const int input1 = 1 - digitalRead(USEQ_PIN_I1);
+    // const int input2 = 1 - digitalRead(USEQ_PIN_I2);
+    // digitalWrite(useq_output_led_pins[4], input1);
+    // digitalWrite(useq_output_led_pins[5], input2);
+    // m_input_vals[USEQI1] = input1;
+    // m_input_vals[USEQI2] = input2;
 
 #else
 
@@ -1263,16 +1274,17 @@ void uSEQ::setup_switches()
 #ifdef ANALOG_INPUTS
 void uSEQ::setup_analog_ins()
 {
-    analogReadResolution(11);
 #ifdef USEQHARDWARE_1_0
+    analogReadResolution(11);
     pinMode(USEQ_PIN_AI1, INPUT);
     pinMode(USEQ_PIN_AI2, INPUT);
 #endif
 #ifdef MUSICTHING
+    analogReadResolution(12);
     pinMode(MUX_IN_1, INPUT);
     pinMode(MUX_IN_2, INPUT);
-    pinMode(AUDIO_IN_1, INPUT);
-    pinMode(AUDIO_IN_2, INPUT);
+    pinMode(AUDIO_IN_L, INPUT);
+    pinMode(AUDIO_IN_R, INPUT);
 #endif
 }
 #endif
@@ -1945,6 +1957,30 @@ Value uSEQ::useq_ain2(std::vector<Value>& args, Environment& env)
     return Value(m_input_vals[USEQAI2]);
 }
 
+
+#ifdef MUSICTHING
+
+Value uSEQ::useq_mt_knob(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_input_vals[MTMAINKNOB]);
+}
+
+
+Value uSEQ::useq_mt_knobx(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_input_vals[MTXKNOB]);
+}
+
+Value uSEQ::useq_mt_knoby(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_input_vals[MTYKNOB]);
+}
+
+Value uSEQ::useq_mt_swz(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_input_vals[MTZSWITCH]);
+}
+#endif
 // clock sources
 
 // BUILTINFUNC_MEMBER(
@@ -2113,12 +2149,6 @@ BUILTINFUNC_MEMBER(
 
     return Value::nil();, 2)
 
-#ifdef MUSICTHING
-BUILTINFUNC_MEMBER(useq_mt_knob, ret = Value(m_input_vals[MTMAINKNOB]);, 0)
-BUILTINFUNC_MEMBER(useq_mt_knobx, ret = Value(m_input_vals[MTXKNOB]);, 0)
-BUILTINFUNC_MEMBER(useq_mt_knoby, ret = Value(m_input_vals[MTYKNOB]);, 0)
-BUILTINFUNC_MEMBER(useq_mt_swz, ret = Value(m_input_vals[MTZSWITCH]);, 0)
-#endif
 
 BUILTINFUNC_MEMBER(useq_swr, ret = Value(m_input_vals[USEQRS1]);, 0)
 
@@ -3980,10 +4010,10 @@ void uSEQ::init_builtinfuncs()
 
     // TODO
 #ifdef MUSICTHING
-    Environment::builtindefs["knob"]  = Value("knob", builtin::useq_mt_knob);
-    Environment::builtindefs["knobx"] = Value("knobx", builtin::useq_mt_knobx);
-    Environment::builtindefs["knoby"] = Value("knoby", builtin::useq_mt_knoby);
-    Environment::builtindefs["swz"]   = Value("swz", builtin::useq_mt_swz);
+    INSERT_BUILTINDEF("knob", useq_mt_knob);
+    INSERT_BUILTINDEF("knobx", useq_mt_knobx);
+    INSERT_BUILTINDEF("knoby", useq_mt_knoby);
+    INSERT_BUILTINDEF("swz", useq_mt_swz);
 #endif
 
 #ifdef MIDIOUT
@@ -4029,6 +4059,9 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, //
                                               // println(USEQ_FIRMWARE_VERSION);
                           String msg = "uSEQ Firmware Version: " +
                                        String(USEQ_FIRMWARE_VERSION);
+#ifdef MUSICTHING
+                        msg += " (Music Thing Workshop Computer Edition)";
+#endif                                       
                           ret = Value::string(msg);, 0)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_report_firmware_info, //

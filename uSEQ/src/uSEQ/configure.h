@@ -9,7 +9,7 @@
 
 // #define USEQHARDWARE_0_2
 #define USEQHARDWARE_1_0 
-/* #define MUSICTHING */
+// #define MUSICTHING
 
 // NOTE: this needs to be included after the above define
 #include "pinmap.h"
@@ -17,22 +17,10 @@
 #define NUM_SERIAL_INS 32
 #define NUM_SERIAL_OUTS 8
 
-// TODO move definitions regarding num of IO here,
-// leave mapping of pins to pinmap.h
-#if defined(USEQHARDWARE_0_2)
 
-// TODO restore num ins
-/* #define NUM_CONTINUOUS_INS 0 */
-/* #define NUM_BINARY_INS 0 */
-
-#define NUM_CONTINUOUS_OUTS 2
-#define NUM_BINARY_OUTS (6 - NUM_CONTINUOUS_OUTS)
-
-#endif
-
-#if defined(MUSICTHING) || defined(USEQHARDWARE_1_0)
+// #if defined(MUSICTHING) || defined(USEQHARDWARE_1_0)
 #define ANALOG_INPUTS
-#endif
+// #endif
 
 /* // NUM OUTS */
 /* #if !defined(NUM_CONTINUOUS_OUTS) */
