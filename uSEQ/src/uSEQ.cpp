@@ -2820,6 +2820,57 @@ Value uSEQ::useq_ratiostep(std::vector<Value>& args, Environment& env)
     result  = Value(phaseOut / ratioSum);
     return result;
 }
+Value uSEQ::useq_phasor_offset(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "shift";
+
+    // Checking number of args
+    if (!(2 == args.size()))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 3, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+    }
+    // Checking individual args
+    if (!(args[0].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+
+
+    // BODY
+    Value result = Value::nil();
+
+    const auto offset         = args[0].as_float();
+    auto phase    = args[1].as_float();
+
+    phase = std::fmod(phase + offset, 1.0);
+    result  = Value(phase);
+    
+    return result;
+}
 
 // NOTE: doesn't eval its arguments until they're selected by the phasor
 Value uSEQ::useq_fromList(std::vector<Value>& args, Environment& env)
@@ -4131,6 +4182,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("eu", useq_eu);
     INSERT_BUILTINDEF("rpulse", useq_ratiotrig);
     INSERT_BUILTINDEF("rstep", useq_ratiostep);
+    INSERT_BUILTINDEF("shift", useq_phasor_offset);
 
     // NOTE: different names for the same function
     INSERT_BUILTINDEF("from-list", useq_fromList);
