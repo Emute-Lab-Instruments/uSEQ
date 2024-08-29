@@ -323,7 +323,7 @@ Value ard_usin(std::vector<Value>& args, Environment& env)
 
 Value index(std::vector<Value>& args, Environment& env)
 {
-    constexpr const char* user_facing_name = "index";
+    constexpr const char* user_facing_name = "index (or nth)";
 
     // Checking number of args
     if (!(args.size() == 2))
