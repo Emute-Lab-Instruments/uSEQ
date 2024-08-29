@@ -671,6 +671,7 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["list"]   = Value("list", builtin::list);
     Environment::builtindefs["insert"] = Value("insert", builtin::insert);
     Environment::builtindefs["index"]  = Value("index", builtin::index);
+    Environment::builtindefs["nth"]  = Value("nth", builtin::index);
     Environment::builtindefs["remove"] = Value("remove", builtin::remove);
     Environment::builtindefs["len"]    = Value("len", builtin::len);
     Environment::builtindefs["push"]   = Value("push", builtin::push);
