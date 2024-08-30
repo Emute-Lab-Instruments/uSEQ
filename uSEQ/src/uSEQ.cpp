@@ -2762,7 +2762,7 @@ Value uSEQ::useq_ratiostep(std::vector<Value>& args, Environment& env)
     if (!(2 == args.size()))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
-                                    NumArgsComparison::EqualTo, 3, -1);
+                                    NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
@@ -2770,10 +2770,10 @@ Value uSEQ::useq_ratiostep(std::vector<Value>& args, Environment& env)
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
-        Value pre_eval = args[i];
         args[i]        = args[i].eval(env);
         if (args[i].is_error())
         {
+            Value pre_eval = args[i];
             report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
@@ -2820,6 +2820,153 @@ Value uSEQ::useq_ratiostep(std::vector<Value>& args, Environment& env)
     result  = Value(phaseOut / ratioSum);
     return result;
 }
+
+LISP_FUNC_DECL(uSEQ::useq_ratioindex)
+// Value uSEQ::useq_ratioindex(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ridx";
+
+    // Checking number of args
+    if (!(2 == args.size()))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            Value pre_eval = args[i];
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+    }
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].display());
+        return Value::error();
+    }
+    // Checking individual args
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+
+
+    // BODY
+    Value result = Value::nil();
+
+    auto ratios         = args[0].as_sequential();
+    const auto phase    = args[1].as_float();
+
+    double index=0;
+    double ratioSum = 0;
+    for(Value v: ratios) {
+        ratioSum += v.as_float();
+    }
+    double phaseAdj = ratioSum * phase;
+    double accumulatedSum=0;
+    for(Value v : ratios) {
+        accumulatedSum += v.as_float();
+        if (phaseAdj <= accumulatedSum) {
+            break;
+        }
+        index++;
+    }
+    index /= static_cast<double>(ratios.size());
+    result = Value(index);
+    return result;
+}
+
+LISP_FUNC_DECL(uSEQ::useq_ratiowarp)
+// Value uSEQ::useq_ratiowarp(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "rwarp";
+
+    // Checking number of args
+    if (!(2 == args.size()))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            Value pre_eval = args[i];
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+    }
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].display());
+        return Value::error();
+    }
+    // Checking individual args
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+
+
+    // BODY
+    Value result = Value::nil();
+
+    auto ratios         = args[0].as_sequential();
+    const auto phase    = args[1].as_float();
+
+    double output=0;
+
+    if (ratios.size() > 0) {
+        double index=0;
+        double indexWidth = 1.0 / ratios.size();
+
+        double ratioSum = 0;
+        for(Value v: ratios) {
+            ratioSum += v.as_float();
+        }
+
+        double phaseAdj = ratioSum * phase;
+        double accumulatedSum=0;
+        double lastAccumulatedSum=0;
+        for(Value v : ratios) {
+            accumulatedSum += v.as_float();
+            if (phaseAdj <= accumulatedSum) {
+                double beatPhase = (phaseAdj - lastAccumulatedSum) / (accumulatedSum - lastAccumulatedSum);
+                output = (index * indexWidth) + (beatPhase * indexWidth);
+                break;
+            }
+            lastAccumulatedSum = accumulatedSum;
+            index++;
+        }
+    }
+
+    result  = Value(output);
+    return result;
+}
+
+
 Value uSEQ::useq_phasor_offset(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "shift";
@@ -4182,6 +4329,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("eu", useq_eu);
     INSERT_BUILTINDEF("rpulse", useq_ratiotrig);
     INSERT_BUILTINDEF("rstep", useq_ratiostep);
+    INSERT_BUILTINDEF("ridx", useq_ratioindex);
+    INSERT_BUILTINDEF("rwarp", useq_ratiowarp);
     INSERT_BUILTINDEF("shift", useq_phasor_offset);
 
     // NOTE: different names for the same function
