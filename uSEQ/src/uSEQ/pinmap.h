@@ -210,12 +210,12 @@ const int useq_output_led_pins[] = { USEQ_PIN_LED_A1, USEQ_PIN_LED_A2,
 #define HAS_INPUTS 0
 #define HAS_CONTROLS 0
 
-#define NUM_CONTINUOUS_OUTS 0
-#define NUM_BINARY_OUTS 8
+#define NUM_CONTINUOUS_OUTS 8
+#define NUM_BINARY_OUTS 0
 
 // TODO
-const int useq_output_pins[]     = { 21, 20, 19, 18, 17, 16 };
-const int useq_output_led_pins[] = { /* ...  */ };
+const int useq_output_pins[]     = { 14,13,11,10,7,8,3,5};
+const int useq_output_led_pins[] = { 15,20,17,12,9,6,2,0};
 
 #endif // USEQHARDWARE_EXPANDER_OUT_0_1
 
