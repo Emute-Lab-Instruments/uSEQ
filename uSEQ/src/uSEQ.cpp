@@ -3491,7 +3491,7 @@ Value uSEQ::useq_step(std::vector<Value>& args, Environment& env)
     return result;
 }
 
-Value uSEQ::useq_send_to(std::vector<Value>& args, Environment& env)
+Value uSEQ::useq_i2c_send_to(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "send-to";
 
@@ -3547,7 +3547,7 @@ Value uSEQ::useq_send_to(std::vector<Value>& args, Environment& env)
     return result;
 }
 
-Value uSEQ::useq_host_start(std::vector<Value>& args, Environment& env)
+Value uSEQ::useq_i2c_host_start(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "i2c-host-start";
 
@@ -4527,8 +4527,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("useq-report-firmware-info", useq_report_firmware_info);
     // INSERT_BUILTINDEF("useq-clear-flash", useq_clear_non_program_flash);
 
-    INSERT_BUILTINDEF("send-to", useq_send_to);
-    INSERT_BUILTINDEF("i2c-host-start", useq_host_start);
+    INSERT_BUILTINDEF("send-to", useq_i2c_send_to);
+    INSERT_BUILTINDEF("i2c-host-start", useq_i2c_host_start);
 }
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, //

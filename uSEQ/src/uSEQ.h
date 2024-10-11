@@ -325,7 +325,7 @@ private:
 
     // i2c
     LISP_FUNC_DECL(useq_i2c_host_start);
-    LISP_FUNC_DECL(useq_send_to);
+    LISP_FUNC_DECL(useq_i2c_send_to);
 
     void clear_all_outputs();
     void erase_info_flash();
