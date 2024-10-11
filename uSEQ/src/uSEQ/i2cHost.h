@@ -22,7 +22,7 @@ void i2cScanForExpanders()
     char b[10]; // buffer for sending/reveiving messages to found devices
     int nRecdChars;
 
-    Serial.println("Scanning...");
+    println("Scanning...");
 
     nDevices = 0;
     for (address = 1; address < 127; address++)
@@ -35,8 +35,8 @@ void i2cScanForExpanders()
 
         if (error == 0)
         {
-            Serial.print("I2C device found at address 0x");
-            Serial.println(address);
+            println("I2C device found at address 0x");
+            println(String(address));
 
             // found a device so request its type
             i2cHOST->beginTransmission(address);
@@ -58,7 +58,7 @@ void i2cScanForExpanders()
             // add null termination
             b[nRecdChars] = 0;
             // look for known strings here to id tify expanders and set them up
-            Serial.println(b);
+            println(b);
 
             // analog out expander "aoutxx" where xx is going to be version
             if (strstr(b, "aout"))
@@ -66,7 +66,7 @@ void i2cScanForExpanders()
                 // save address
                 aOutExpanderAddr[nOutExpander] = address;
                 nOutExpander++;
-                Serial.println("aout found");
+                println("aout found");
             }
 
             nDevices++;
@@ -74,20 +74,22 @@ void i2cScanForExpanders()
         else if (error == 4)
         {
             // error handling not added as yet!
-            Serial.print("Unknown error at address 0x");
+           println("Unknown error at address 0x");
             if (address < 16)
-                Serial.print("0");
-            Serial.println(address, HEX);
+               println("0");
+            println(String(address));
         }
     }
     if (nDevices == 0)
-        Serial.println("No I2C devices found\n");
+        println("No I2C devices found\n");
     else
-        Serial.println("done\n");
+        println("done\n");
 }
 
 void setup_i2cHOST()
 {
+    bI2CclientMode = false;
+    bI2ChostMode = true;
     if (bI2ChostMode && bI2CclientMode)
     {
         i2cHOST = &_talkingToMyslefBus_;
@@ -98,8 +100,11 @@ void setup_i2cHOST()
     else if (bI2ChostMode && !bI2CclientMode)
     {
         i2cHOST = &_defaultBus_;
-        i2cHOST->setSDA(4); // ELI2040 SDA
-        i2cHOST->setSCL(1); // ELI2040 CLK
+        i2cHOST->end();
+        //i2cHOST->setSDA(4); // ELI2040 SDA
+        //i2cHOST->setSCL(1); // ELI2040 CLK
+        i2cHOST->setSDA(0); // uSEQ SDA
+        i2cHOST->setSCL(1); // uSEQ CLK
         i2cHOST->begin();
     }
 
@@ -137,12 +142,12 @@ void i2cWriteString(int expander, String msg)
 
 String getI2CResults(int expander)
 {
-    // Serial.println("request results");
+    // println("request results");
     String res = "";
     i2cWriteString(expander, "$getreslen");
     i2cHOST->requestFrom(aOutExpanderAddr[expander - 1], 1);
     int c = i2cHOST->read();
-    // Serial.println(c, DEC);
+    // println(c, DEC);
     i2cWriteString(expander, "$getresponse");
     int nRecdChars     = 0;
     int nCharRequested = 0;
@@ -158,7 +163,7 @@ String getI2CResults(int expander)
         {
             // b[nRecdChars] = (char)i2cHOST->read();
             res += String((char)i2cHOST->read());
-            // Serial.print(b[nRecdChars]);
+            //println(b[nRecdChars]);
             nRecdChars++;
         }
     }
@@ -169,7 +174,7 @@ void printAllI2CReports()
 {
     for (int i = 0; i < nOutExpander; i++)
     {
-        Serial.println(getI2CResults(i));
+        println(getI2CResults(i));
     }
 }
 
