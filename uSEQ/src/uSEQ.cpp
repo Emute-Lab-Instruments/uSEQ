@@ -2,6 +2,7 @@
 #include "lisp/LispLibrary.h"
 #include "lisp/interpreter.h"
 #include "lisp/value.h"
+#include "uSEQ/i2cHost.h"
 #include "utils.h"
 #include "utils/log.h"
 #include <algorithm>
@@ -3540,8 +3541,9 @@ Value uSEQ::useq_send_to(std::vector<Value>& args, Environment& env)
 
     i2cWriteString(i2c_idx, body_str);
 
-    print("String being sent to i2c: ");
-    print(body_str);
+    println("String being sent to i2c: ");
+    println(body_str);
+
     return result;
 }
 
