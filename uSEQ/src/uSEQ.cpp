@@ -382,7 +382,7 @@ void uSEQ::tick()
     ts = micros();
 
 // Read & cache the hardware & software inputs
-#ifdef HAS_INPUTS
+#if HAS_INPUTS
     update_inputs();
 #endif
     // Update time
@@ -394,7 +394,7 @@ void uSEQ::tick()
     update_signals();
 
     // Write cached output signals to hardware and/or software outputs
-#ifdef HAS_OUTPUTS
+#if HAS_OUTPUTS
     update_outs();
 #endif
 
@@ -494,7 +494,7 @@ void uSEQ::setup_rotary_encoder()
 
 MedianFilter mf1(51), mf2(51);
 
-#ifdef HAS_INPUTS
+#if HAS_INPUTS
 void uSEQ::update_inputs()
 {
     DBG("uSEQ::update_inputs");
@@ -938,7 +938,7 @@ void uSEQ::update_signals()
     m_update_loop_evaluation  = false;
 }
 
-#ifdef HAS_OUTPUTS
+#if HAS_OUTPUTS
 void uSEQ::update_outs()
 {
     DBG("uSEQ::update_outs");
@@ -1132,7 +1132,7 @@ void uSEQ::update_midi_out()
 }
 #endif // end of MIDI OUT SECTION
 
-#ifdef HAS_OUTPUTS
+#if HAS_OUTPUTS
 void uSEQ::setup_outs()
 {
     DBG("uSEQ::setup_outs");
@@ -1188,7 +1188,7 @@ void setup_analog_outs()
 
 void uSEQ::set_input_val(size_t index, double value) { m_input_vals[index] = value; }
 
-#ifdef HAS_INPUTS
+#if HAS_INPUTS
 void uSEQ::update_clock_from_external(double ts)
 {
     double newBPM = tempoI1.averageBPM(ts);
@@ -1267,7 +1267,7 @@ void uSEQ::setup_digital_ins()
 }
 #endif // HAS_INPUTS
 
-#ifdef HAS_CONTROLS
+#if HAS_CONTROLS
 void uSEQ::setup_switches()
 {
 #ifdef USEQHARDWARE_1_0
@@ -1308,17 +1308,17 @@ void uSEQ::setup_IO()
 {
     DBG("uSEQ::setup_IO");
 
-#ifdef HAS_OUTPUTS
+#if HAS_OUTPUTS
     setup_outs();
     setup_analog_outs();
 #endif
-#ifdef HAS_INPUTS
+#if HAS_INPUTS
     setup_digital_ins();
 #ifdef ANALOG_INPUTS
     setup_analog_ins();
 #endif // ANALOG_INPUTS
 #endif // HAS_INPUTS
-#ifdef HAS_CONTROLS
+#if HAS_CONTROLS
     setup_switches();
 #endif
 #ifdef USEQHARDWARE_0_2
