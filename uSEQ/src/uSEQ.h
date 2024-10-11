@@ -281,15 +281,13 @@ private:
     LISP_FUNC_DECL(useq_trigs);
     LISP_FUNC_DECL(useq_euclidean);
     LISP_FUNC_DECL(useq_eu);
-    
+
     LISP_FUNC_DECL(useq_ratiotrig);
     LISP_FUNC_DECL(useq_ratiostep);
     LISP_FUNC_DECL(useq_ratioindex);
     LISP_FUNC_DECL(useq_ratiowarp);
 
     LISP_FUNC_DECL(useq_phasor_offset);
-
-    
 
     LISP_FUNC_DECL(useq_flatten);
     LISP_FUNC_DECL(useq_step);
@@ -324,6 +322,9 @@ private:
     LISP_FUNC_DECL(useq_report_firmware_info);
 
     LISP_FUNC_DECL(useq_tri);
+
+    // i2c
+    LISP_FUNC_DECL(useq_send_to);
 
     void clear_all_outputs();
     void erase_info_flash();
