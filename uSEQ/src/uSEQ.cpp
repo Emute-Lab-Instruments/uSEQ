@@ -381,16 +381,23 @@ void uSEQ::tick()
     set("qt", Value(updateSpeed * 0.001));
     ts = micros();
 
-    // Read & cache the hardware & software inputs
+// Read & cache the hardware & software inputs
+#ifdef HAS_INPUTS
     update_inputs();
+#endif
     // Update time
     update_time();
     check_code_quant_phasor();
     run_scheduled_items();
     // Re-run & cache output signal forms
+
     update_signals();
+
     // Write cached output signals to hardware and/or software outputs
+#ifdef HAS_OUTPUTS
     update_outs();
+#endif
+
     // Check for new code and eval (or schedule it)
     check_and_handle_user_input();
 
@@ -429,7 +436,7 @@ int digital_out_pin(int out)
 {
     int res    = -1;
     int pindex = NUM_CONTINUOUS_OUTS + out;
-    if (pindex <= 6)
+    if (pindex <= (NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS))
         res = useq_output_pins[pindex - 1];
     return res;
 }
@@ -487,6 +494,7 @@ void uSEQ::setup_rotary_encoder()
 
 MedianFilter mf1(51), mf2(51);
 
+#ifdef HAS_INPUTS
 void uSEQ::update_inputs()
 {
     DBG("uSEQ::update_inputs");
@@ -642,6 +650,7 @@ void uSEQ::update_inputs()
 
     dbg("updating inputs...DONE");
 }
+#endif // HAS_INPUTS
 
 // return true if either serial or I2C has new code
 bool is_new_code_waiting() { return Serial.available() || bNewI2CMessage; }
@@ -929,6 +938,7 @@ void uSEQ::update_signals()
     m_update_loop_evaluation  = false;
 }
 
+#ifdef HAS_OUTPUTS
 void uSEQ::update_outs()
 {
     DBG("uSEQ::update_outs");
@@ -989,6 +999,8 @@ void uSEQ::update_serial_outs()
                                              SerialMsg::serial_message_rate_limit);
     }
 }
+
+#endif // HAS_OUTPUTS
 
 // Max value that size_t can hold before overflow
 constexpr TimeValue max_size_t = static_cast<TimeValue>((size_t)-1);
@@ -1120,6 +1132,7 @@ void uSEQ::update_midi_out()
 }
 #endif // end of MIDI OUT SECTION
 
+#ifdef HAS_OUTPUTS
 void uSEQ::setup_outs()
 {
     DBG("uSEQ::setup_outs");
@@ -1159,7 +1172,23 @@ void setup_analog_outs()
         pio_pwm_set_period(pioInstance, smIdx, (1u << 11) - 1);
     }
 }
+#endif // HAS_OUTPUTS
 
+/*
+    const auto input1    = 1 - digitalRead(USEQ_PIN_I1);
+    const auto input2    = 1 - digitalRead(USEQ_PIN_I2);
+    m_input_vals[USEQI1] = input1;
+    m_input_vals[USEQI2] = input2;
+
+    digitalWrite(USEQ_PIN_LED_I1, input1);
+    digitalWrite(USEQ_PIN_LED_I2, input2);
+
+    m_input_vals[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
+*/
+
+void uSEQ::set_input_val(size_t index, double value) { m_input_vals[index] = value; }
+
+#ifdef HAS_INPUTS
 void uSEQ::update_clock_from_external(double ts)
 {
     double newBPM = tempoI1.averageBPM(ts);
@@ -1201,20 +1230,6 @@ void uSEQ::update_clock_from_external(double ts)
     }
 }
 
-/*
-    const auto input1    = 1 - digitalRead(USEQ_PIN_I1);
-    const auto input2    = 1 - digitalRead(USEQ_PIN_I2);
-    m_input_vals[USEQI1] = input1;
-    m_input_vals[USEQI2] = input2;
-
-    digitalWrite(USEQ_PIN_LED_I1, input1);
-    digitalWrite(USEQ_PIN_LED_I2, input2);
-
-    m_input_vals[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
-*/
-
-void uSEQ::set_input_val(size_t index, double value) { m_input_vals[index] = value; }
-
 void uSEQ::gpio_irq_gate1()
 {
     double ts         = static_cast<double>(micros());
@@ -1241,59 +1256,6 @@ void uSEQ::gpio_irq_gate2()
     }
 }
 
-// TODO: delete if not needed
-// void uSEQ::update_clock_from_external(double ts)
-// {
-//     double newBPM = tempoI1.averageBPM(ts);
-//     if (ext_clock_tracker.count == 0)
-//     {
-//         newBPM *= (4.0 / meter_numerator / ext_clock_tracker.div);
-//         // println(String(newBPM));
-//         // println(String(beatCountI1));
-//         // println("bar: " + String(barCountI1));
-//         // println("barpf: " + String(m_bars_per_phrase));
-//         double std = tempoI1.std();
-//         // println("std: " + String(std));
-//         bool highstd = std > 100.0;
-//         // adjust every bar in high variance, otherwise every phrase
-//         if ((ext_clock_tracker.beat_count == 0 & highstd) ||
-//             ext_clock_tracker.beat_count == 0)
-//         {
-//             // println("----------------------------------------reset");
-//             set_bpm(newBPM, 0);
-//             reset_logical_time();
-//         }
-//         ext_clock_tracker.beat_count++;
-//         if (meter_denominator == ext_clock_tracker.beat_count)
-//         {
-//             ext_clock_tracker.beat_count = 0;
-//             ext_clock_tracker.bar_count++;
-//             if (ext_clock_tracker.bar_count ==
-//                 static_cast<size_t>(m_bars_per_phrase))
-//             {
-//                 ext_clock_tracker.bar_count = 0;
-//             }
-//         }
-//     }
-//     ext_clock_tracker.count++;
-//     if (ext_clock_tracker.count == ext_clock_tracker.div)
-//     {
-//         ext_clock_tracker.count = 0;
-//         // println("clock=0");
-//     }
-// }
-/*
-    const auto input1    = 1 - digitalRead(USEQ_PIN_I1);
-    const auto input2    = 1 - digitalRead(USEQ_PIN_I2);
-    m_input_vals[USEQI1] = input1;
-    m_input_vals[USEQI2] = input2;
-
-    digitalWrite(USEQ_PIN_LED_I1, input1);
-    digitalWrite(USEQ_PIN_LED_I2, input2);
-
-    m_input_vals[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
-*/
-
 void uSEQ::setup_digital_ins()
 {
     pinMode(USEQ_PIN_I1, INPUT_PULLUP);
@@ -1303,7 +1265,9 @@ void uSEQ::setup_digital_ins()
     attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I2), uSEQ::gpio_irq_gate2,
                     CHANGE);
 }
+#endif // HAS_INPUTS
 
+#ifdef HAS_CONTROLS
 void uSEQ::setup_switches()
 {
 #ifdef USEQHARDWARE_1_0
@@ -1320,6 +1284,7 @@ void uSEQ::setup_switches()
     pinMode(USEQ_PIN_SWITCH_T2, INPUT_PULLUP);
 #endif
 }
+#endif // HAS_CONTROLS
 
 #ifdef ANALOG_INPUTS
 void uSEQ::setup_analog_ins()
@@ -1343,15 +1308,21 @@ void uSEQ::setup_IO()
 {
     DBG("uSEQ::setup_IO");
 
+#ifdef HAS_OUTPUTS
     setup_outs();
     setup_analog_outs();
-    setup_digital_ins();
-    setup_switches();
-#ifdef USEQHARDWARE_0_2
-    setup_rotary_encoder();
 #endif
+#ifdef HAS_INPUTS
+    setup_digital_ins();
 #ifdef ANALOG_INPUTS
     setup_analog_ins();
+#endif // ANALOG_INPUTS
+#endif // HAS_INPUTS
+#ifdef HAS_CONTROLS
+    setup_switches();
+#endif
+#ifdef USEQHARDWARE_0_2
+    setup_rotary_encoder();
 #endif
 
 #ifdef MIDIOUT

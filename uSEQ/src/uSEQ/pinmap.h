@@ -40,6 +40,10 @@ ___ .-.     .--.
 */
 #ifdef MUSICTHING
 
+#define HAS_OUTPUTS 1
+#define HAS_INPUTS 1
+#define HAS_CONTROLS 1
+
 #define USEQ_PIN_I1 2
 #define USEQ_PIN_I2 3
 
@@ -93,6 +97,10 @@ ___\   \  ',  / :  ,      .-./  `--'---'  |   :   .'  ;   :      ; |           ;
 */
 
 #ifdef USEQHARDWARE_1_0
+
+#define HAS_OUTPUTS 1
+#define HAS_INPUTS 1
+#define HAS_CONTROLS 1
 
 #define LED_BOARD 6
 
@@ -155,6 +163,10 @@ const int useq_output_led_pins[] = { USEQ_PIN_LED_A1, USEQ_PIN_LED_A2,
 ///////////////////////////////////////////
 #ifdef USEQHARDWARE_0_2
 
+#define HAS_OUTPUTS 1
+#define HAS_INPUTS 1
+#define HAS_CONTROLS 1
+
 #define LED_BOARD 25
 
 #define USEQ_PIN_I1 8
@@ -193,6 +205,10 @@ const int useq_output_led_pins[] = { USEQ_PIN_LED_A1, USEQ_PIN_LED_A2,
 
 ///////////////////////////////////////////
 #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
+
+#define HAS_OUTPUTS 1
+#define HAS_INPUTS 0
+#define HAS_CONTROLS 0
 
 #define NUM_CONTINUOUS_OUTS 0
 #define NUM_BINARY_OUTS 8
