@@ -101,10 +101,10 @@ void setup_i2cHOST()
     {
         i2cHOST = &_defaultBus_;
         i2cHOST->end();
-        //i2cHOST->setSDA(4); // ELI2040 SDA
-        //i2cHOST->setSCL(1); // ELI2040 CLK
-        i2cHOST->setSDA(0); // uSEQ SDA
-        i2cHOST->setSCL(1); // uSEQ CLK
+        i2cHOST->setSDA(4); // ELI2040 SDA
+        i2cHOST->setSCL(1); // ELI2040 CLK
+        //i2cHOST->setSDA(0); // uSEQ SDA
+        //i2cHOST->setSCL(1); // uSEQ CLK
         i2cHOST->begin();
     }
 
