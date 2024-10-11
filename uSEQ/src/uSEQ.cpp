@@ -3653,6 +3653,22 @@ BUILTINFUNC_NOEVAL_MEMBER(
         ret              = Value::atom("d6");
     },
     1)
+BUILTINFUNC_NOEVAL_MEMBER(
+    useq_d7,
+    if (NUM_BINARY_OUTS >= 6) {
+        set_expr("d7", args[0]);
+        m_binary_ASTs[5] = { args[0] };
+        ret              = Value::atom("d7");
+    },
+    1)
+BUILTINFUNC_NOEVAL_MEMBER(
+    useq_d8,
+    if (NUM_BINARY_OUTS >= 6) {
+        set_expr("d8", args[0]);
+        m_binary_ASTs[5] = { args[0] };
+        ret              = Value::atom("d8");
+    },
+    1)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set_expr("s1", args[0]);
                           m_serial_ASTs[0] = { args[0] }; ret = Value::atom("s1");
@@ -4381,6 +4397,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("d4", useq_d4);
     INSERT_BUILTINDEF("d5", useq_d5);
     INSERT_BUILTINDEF("d6", useq_d6);
+    INSERT_BUILTINDEF("d7", useq_d7);
+    INSERT_BUILTINDEF("d8", useq_d8);
     // s
     INSERT_BUILTINDEF("s1", useq_s1);
     INSERT_BUILTINDEF("s2", useq_s2);
