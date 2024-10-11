@@ -69,6 +69,7 @@ void i2cRecv(int len) {
     bNewI2CMessage = false;
     nI2CBytesRead = 0;
   }
+
 }
 
 // Called when the I2C i2cCLIENT is read from - should be following a Receive -
@@ -113,9 +114,12 @@ void i2cReq() {
 
 void setup_i2cCLIENT() {
   if (!bI2CclientMode) return;
-  i2cCLIENT.setSDA(4);  //ELI2040 SDA
-  i2cCLIENT.setSCL(1);  //ELI2040 CLK
+  //i2cCLIENT.setSDA(4);  //ELI2040 SDA
+  //i2cCLIENT.setSCL(1);  //ELI2040 CLK
+    i2cCLIENT.setSDA(0);  //uSEQ SDA
+  i2cCLIENT.setSCL(1);  //uSEQ CLK
   i2cCLIENT.begin(generateChipAddress());
   i2cCLIENT.onReceive(i2cRecv);
   i2cCLIENT.onRequest(i2cReq);
 }
+
