@@ -3547,6 +3547,25 @@ Value uSEQ::useq_send_to(std::vector<Value>& args, Environment& env)
     return result;
 }
 
+Value uSEQ::useq_host_start(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "i2c-host-start";
+
+    if (!(args.size() == 0))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+
+    setup_i2cHOST();
+
+    return result;
+}
+
 #ifdef MIDIOUT
 // midi drum out
 BUILTINFUNC_MEMBER(
@@ -4509,6 +4528,7 @@ void uSEQ::init_builtinfuncs()
     // INSERT_BUILTINDEF("useq-clear-flash", useq_clear_non_program_flash);
 
     INSERT_BUILTINDEF("send-to", useq_send_to);
+    INSERT_BUILTINDEF("i2c-host-start", useq_host_start);
 }
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, //
