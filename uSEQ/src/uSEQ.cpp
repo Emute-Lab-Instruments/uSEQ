@@ -301,6 +301,35 @@ void uSEQ::led_animation()
         ledDelay -= 3;
     }
 #endif
+#ifdef USEQHARDWARE_EXPANDER_OUT_0_1
+    for (int i = 0; i < 8; i++)
+    {
+        digitalWrite(useq_output_pins[0], 1);
+        delay(ledDelay);
+        digitalWrite(useq_output_pins[1], 1);
+        delay(ledDelay);
+        digitalWrite(useq_output_pins[0], 0);
+        digitalWrite(useq_output_pins[2], 1);
+        delay(ledDelay);
+        digitalWrite(useq_output_pins[1], 0);
+        digitalWrite(useq_output_pins[3], 1);
+        delay(ledDelay);
+        digitalWrite(useq_output_pins[2], 0);
+        digitalWrite(useq_output_pins[4], 1);
+        delay(ledDelay);
+        digitalWrite(useq_output_pins[3], 0);
+        digitalWrite(useq_output_pins[5], 1);
+        delay(ledDelay);
+        digitalWrite(useq_output_pins[4], 0);
+        digitalWrite(useq_output_pins[6], 1);
+        delay(ledDelay);
+        digitalWrite(useq_output_pins[5], 0);
+        digitalWrite(useq_output_pins[7], 1);
+        delay(ledDelay);
+
+        ledDelay -= 3;
+    }
+#endif
 }
 
 void uSEQ::run_scheduled_items()
