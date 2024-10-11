@@ -8,7 +8,8 @@
 /* #define USEQHARDWARE_0_1 */
 
 // #define USEQHARDWARE_0_2
-#define USEQHARDWARE_1_0 
+/* #define USEQHARDWARE_1_0  */
+#define USEQHARDWARE_EXPANDER_OUT_0_1
 // #define MUSICTHING
 
 // NOTE: this needs to be included after the above define
@@ -16,7 +17,6 @@
 
 #define NUM_SERIAL_INS 32
 #define NUM_SERIAL_OUTS 8
-
 
 // #if defined(MUSICTHING) || defined(USEQHARDWARE_1_0)
 #define ANALOG_INPUTS

@@ -46,9 +46,10 @@ ___ .-.     .--.
 #define USEQ_PIN_LED_I1 14
 #define USEQ_PIN_LED_I2 15
 
-
 const int useq_output_pins[]     = { 23, 22, 8, 9 };
-const int useq_output_led_pins[] = { 10, 11, 12, 13,  USEQ_PIN_LED_I1, USEQ_PIN_LED_I2  };
+const int useq_output_led_pins[] = {
+    10, 11, 12, 13, USEQ_PIN_LED_I1, USEQ_PIN_LED_I2
+};
 
 #define MUX_IN_1 28
 #define MUX_IN_2 29
@@ -151,6 +152,7 @@ const int useq_output_led_pins[] = { USEQ_PIN_LED_A1, USEQ_PIN_LED_A2,
 
 */
 
+///////////////////////////////////////////
 #ifdef USEQHARDWARE_0_2
 
 #define LED_BOARD 25
@@ -187,6 +189,18 @@ const int useq_output_led_pins[] = { USEQ_PIN_LED_A1, USEQ_PIN_LED_A2,
 #define NUM_CONTINUOUS_OUTS 2
 #define NUM_BINARY_OUTS (6 - NUM_CONTINUOUS_OUTS)
 
-#endif
+#endif // USEQHARDWARE_0_2
+
+///////////////////////////////////////////
+#ifdef USEQHARDWARE_EXPANDER_OUT_0_1
+
+#define NUM_CONTINUOUS_OUTS 0
+#define NUM_BINARY_OUTS 8
+
+// TODO
+const int useq_output_pins[]     = { 21, 20, 19, 18, 17, 16 };
+const int useq_output_led_pins[] = { /* ...  */ };
+
+#endif // USEQHARDWARE_EXPANDER_OUT_0_1
 
 #endif
