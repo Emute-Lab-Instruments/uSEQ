@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <sys/types.h>
 
+#include "uSEQ/i2cClient.h"
+
 #ifdef ARDUINO
 #include "hardware/flash.h"
 #include "uSEQ/piopwm.h"
@@ -640,9 +642,20 @@ void uSEQ::update_inputs()
     dbg("updating inputs...DONE");
 }
 
-bool is_new_code_waiting() { return Serial.available(); }
+//return true if either serial or I2C has new code
+bool is_new_code_waiting() { return Serial.available() || bNewI2CMessage; }
 
-String get_code_waiting() { return Serial.readStringUntil('\n'); }
+String get_code_waiting() { 
+    //we might get arway with just return i2cInBuff... :)
+    if (bNewI2CMessage) {
+        String mC = String(i2cInBuff);
+        //rrplce with substr (was a hack)
+        mC.remove(0,1);
+        mC.remove(mC.length()-1,1);
+        Serial.println(mC);
+        return mC;
+    } else return Serial.readStringUntil('\n'); 
+}
 
 void uSEQ::check_and_handle_user_input()
 {
@@ -653,7 +666,12 @@ void uSEQ::check_and_handle_user_input()
     {
         m_manual_evaluation = true;
 
-        int first_byte = Serial.read();
+        int first_byte;
+        // Incomming serial stream isn't implemented on I2C
+        // but sending I2C host should add the correct run now or later firstByte
+        if (bNewI2CMessage) first_byte = i2cInBuff[0];
+        else first_byte = Serial.read();
+
         // SERIAL
         if (first_byte == SerialMsg::message_begin_marker /*31*/)
         {
@@ -672,11 +690,18 @@ void uSEQ::check_and_handle_user_input()
         {
             // Read code
             m_last_received_code = get_code_waiting();
+            //Serial.print(m_last_received_code);
+            //Serial.print(m_last_received_code.length());
+            //Serial.println("*");
 
             if (m_last_received_code == exit_command)
             {
                 m_should_quit = true;
             }
+
+            // I2C specific routing could be filtered here - note the first_byte gets passed to preserve execution time
+            // if (first_byte == '$') i2cParse(first_byte+m_last_received_code); //in i2cHost.h
+            // else if ...
             // EXECUTE NOW
             if (first_byte == SerialMsg::execute_now_marker /*'@'*/)
             {
@@ -687,17 +712,20 @@ void uSEQ::check_and_handle_user_input()
 
                 if (error_msg_q.size() > 0)
                 {
-                    println(error_msg_q[0]);
+                    if (bNewI2CMessage) i2cPrintStr += error_msg_q[0]; //maybe move this routing to within println? //TODO add i2c ID
+                        else println(error_msg_q[0]);
                 }
 
-                println(result);
+                if (bNewI2CMessage) i2cPrintStr += result;
+                    else println(result);
             }
             // SCHEDULE FOR LATER
             else
             {
                 m_last_received_code =
                     String((char)first_byte) + m_last_received_code;
-                println(m_last_received_code);
+                if (bNewI2CMessage) i2cPrintStr += m_last_received_code;
+                    else println(m_last_received_code);
                 Value expr = parse(m_last_received_code);
                 m_runQueue.push_back(expr);
             }
@@ -705,6 +733,12 @@ void uSEQ::check_and_handle_user_input()
 
         m_manual_evaluation = false;
         // flush_print_jobs();
+
+        //clear new i2c message flags if required
+        if (bNewI2CMessage){
+            bNewI2CMessage = false;
+            nI2CBytesRead = 0;
+        }
     }
 }
 
@@ -1320,6 +1354,12 @@ void uSEQ::setup_IO()
     // controller
     //  Wire.begin();
 #endif
+
+#ifdef ENABLEI2CCLIENT
+    bI2CclientMode = true;
+    bI2ChostMode = false;
+    setup_i2cCLIENT();
+ #endif
 }
 
 void uSEQ::init_ASTs()
