@@ -324,6 +324,7 @@ private:
     LISP_FUNC_DECL(useq_tri);
 
     // i2c
+    LISP_FUNC_DECL(useq_i2c_host_start);
     LISP_FUNC_DECL(useq_send_to);
 
     void clear_all_outputs();
