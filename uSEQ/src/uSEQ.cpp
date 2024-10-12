@@ -3684,7 +3684,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d7,
-    if (NUM_BINARY_OUTS >= 6) {
+    if (NUM_BINARY_OUTS >= 7) {
         set_expr("d7", args[0]);
         m_binary_ASTs[5] = { args[0] };
         ret              = Value::atom("d7");
@@ -3692,7 +3692,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     1)
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_d8,
-    if (NUM_BINARY_OUTS >= 6) {
+    if (NUM_BINARY_OUTS >= 8) {
         set_expr("d8", args[0]);
         m_binary_ASTs[5] = { args[0] };
         ret              = Value::atom("d8");
