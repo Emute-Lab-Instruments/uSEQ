@@ -1466,7 +1466,7 @@ void uSEQ::analog_write_with_led(int output, double val)
     }
 
     // led
-    // int led_pin   = analog_out_LED_pin(output + 1);
+    int led_pin   = analog_out_LED_pin(output + 1);
     int pwm_pin   = analog_out_pin(output + 1);
     int ledsigval = scaled_val; // >> 2; // shift to 11 bit range for the LED
 
@@ -1481,11 +1481,17 @@ void uSEQ::analog_write_with_led(int output, double val)
 
     // // write pwm
     // pio_pwm_set_level(output < 4 ? pio0 : pio1, output % 4, scaled_val);
-    // // write led
-    // analogWrite(led_pin, ledsigval);
 
-    // write pwm
-    pio_pwm_set_level(pio0, output, ledsigval);
+    #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
+     // write led
+     analogWrite(led_pin, ledsigval);
+    #elif 
+       // write pwm
+    pio_pwm_set_level(pio0, output, ledsigval); 
+    #endif
+   
+
+    
     // write led
     analogWrite(pwm_pin, scaled_val);
 }
@@ -3632,6 +3638,22 @@ BUILTINFUNC_NOEVAL_MEMBER(
         ret                  = Value::atom("a6");
     },
     1)
+BUILTINFUNC_NOEVAL_MEMBER(
+    useq_a7,
+    if (NUM_CONTINUOUS_OUTS >= 7) {
+        set_expr("a7", args[0]);
+        m_continuous_ASTs[6] = { args[0] };
+        ret                  = Value::atom("a7");
+    },
+    1)
+BUILTINFUNC_NOEVAL_MEMBER(
+    useq_a8,
+    if (NUM_CONTINUOUS_OUTS >= 8) {
+        set_expr("a6", args[0]);
+        m_continuous_ASTs[7] = { args[0] };
+        ret                  = Value::atom("a8");
+    },
+    1)
 
 // DIGITAL OUTS
 BUILTINFUNC_NOEVAL_MEMBER(
@@ -4419,6 +4441,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("a4", useq_a4);
     INSERT_BUILTINDEF("a5", useq_a5);
     INSERT_BUILTINDEF("a6", useq_a6);
+    INSERT_BUILTINDEF("a7", useq_a7);
+    INSERT_BUILTINDEF("a8", useq_a8);
     // d
     INSERT_BUILTINDEF("d1", useq_d1);
     INSERT_BUILTINDEF("d2", useq_d2);
