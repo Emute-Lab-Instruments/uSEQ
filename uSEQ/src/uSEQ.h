@@ -219,6 +219,9 @@ private:
     LISP_FUNC_DECL(useq_a4);
     LISP_FUNC_DECL(useq_a5);
     LISP_FUNC_DECL(useq_a6);
+    LISP_FUNC_DECL(useq_a7);
+    LISP_FUNC_DECL(useq_a8);
+
     // d
     LISP_FUNC_DECL(useq_d1);
     LISP_FUNC_DECL(useq_d2);
