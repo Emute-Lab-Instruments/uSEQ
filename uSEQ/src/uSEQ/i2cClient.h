@@ -114,8 +114,10 @@ void i2cReq() {
 
 void setup_i2cCLIENT() {
   if (!bI2CclientMode) return;
-  i2cCLIENT.setSDA(4);  //ELI2040 SDA
-  i2cCLIENT.setSCL(1);  //ELI2040 CLK
+  i2cCLIENT.setSDA(_USEQ_SDA_PIN_);  //ELI2040 SDA
+  i2cCLIENT.setSCL(_USEQ_SCL_PIN_);
+  //i2cCLIENT.setSDA(4);  //ELI2040 SDA
+  //i2cCLIENT.setSCL(1);  //ELI2040 CLK
   //i2cCLIENT.setSDA(0);  //uSEQ SDA
   //i2cCLIENT.setSCL(1);  //uSEQ CLK
   i2cCLIENT.begin(generateChipAddress());
