@@ -411,9 +411,9 @@
         :docstring "Remove an item from the end of a list"}
 
  "head" {:args {:num "== 1"
-                :type {0 ".is_list()"}}
-         :eval-args? false
-         :body ["std::vector<Value> list = args[0].as_list();"
+                :type {0 ".is_sequential()"}}
+         :eval-args? true
+         :body ["std::vector<Value> list = args[0].as_sequential();"
                 "if (list.empty())"
                 "{"
                 "    report_error(INDEX_OUT_OF_RANGE);"
@@ -425,12 +425,12 @@
          :docstring "Get the first element of list"}
 
  ;; TODO @performance might be better to use stl to copy vec subset?
- "tail" {:args {:num "== 1"}
-         :eval-args? false
-         :body ["std::vector<Value> acc, list = args[0].as_list();"
-                "for (size_t i = 1; i < list.size(); i++)"
-                "    acc.push_back(list[i]);"
-                "result = Value(acc);"]
+ "tail" {:args {:num "== 1"
+                :type {0 ".is_sequential()"}}
+         :eval-args? true
+         :body ["std::vector<Value> content_list = args[0].as_sequential();"
+                "std::vector<Value> result_list(content_list.begin() + 1, content_list.end());"    // Make sure we return same type
+                "result = args[0].is_vector() ? Value::vector(result_list) : Value(result_list);"]
          :docstring "Get all elements after the first"}
 
  "ard_delay"
