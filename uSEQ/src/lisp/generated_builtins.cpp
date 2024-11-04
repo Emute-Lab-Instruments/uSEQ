@@ -1605,17 +1605,31 @@ Value head(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
-    // Checking individual args
-    if (!(args[0].is_list()))
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
     {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a list",
-                                         args[0].to_lisp_src());
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].to_lisp_src());
         return Value::error();
     }
 
     // BODY
     Value result            = Value::nil();
-    std::vector<Value> list = args[0].as_list();
+    std::vector<Value> list = args[0].as_sequential();
     if (list.empty())
     {
         report_error(INDEX_OUT_OF_RANGE);
