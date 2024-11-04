@@ -20,12 +20,35 @@ Value tail(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].to_lisp_src());
+        return Value::error();
+    }
+
     // BODY
     Value result = Value::nil();
-    std::vector<Value> acc, list = args[0].as_list();
-    for (size_t i = 1; i < list.size(); i++)
-        acc.push_back(list[i]);
-    result = Value(acc);
+
+    std::vector<Value> content_list = args[0].as_sequential();
+    std::vector<Value> result_list(content_list.begin() + 1, content_list.end());
+    // Make sure we return same type
+    result = args[0].is_vector() ? Value::vector(result_list) : Value(result_list);
     return result;
 }
 
@@ -370,7 +393,7 @@ Value index(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result            = Value::nil();
-    std::vector<Value> list = args[0].as_vector();
+    std::vector<Value> list = args[0].as_sequential();
     int i                   = args[1].as_int();
     if (i < list.size())
     {
@@ -724,7 +747,7 @@ Value pop(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = args[0].pop();
+    result = args[0].pop();
     return result;
 }
 
