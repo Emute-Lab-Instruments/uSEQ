@@ -1482,16 +1482,14 @@ void uSEQ::analog_write_with_led(int output, double val)
     // // write pwm
     // pio_pwm_set_level(output < 4 ? pio0 : pio1, output % 4, scaled_val);
 
-    #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
-     // write led
-     analogWrite(led_pin, ledsigval);
-    #elif 
-       // write pwm
-    pio_pwm_set_level(pio0, output, ledsigval); 
-    #endif
-   
+#ifdef USEQHARDWARE_EXPANDER_OUT_0_1
+    // write led
+    analogWrite(led_pin, ledsigval);
+#else
+    // write pwm
+    pio_pwm_set_level(pio0, output, ledsigval);
+#endif
 
-    
     // write led
     analogWrite(pwm_pin, scaled_val);
 }
