@@ -676,6 +676,7 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["len"]    = Value("len", builtin::len);
     Environment::builtindefs["push"]   = Value("push", builtin::push);
     Environment::builtindefs["pop"]    = Value("pop", builtin::pop);
+    Environment::builtindefs["slice"]    = Value("slice", builtin::slice);
     Environment::builtindefs["head"]   = Value("head", builtin::head);
     Environment::builtindefs["tail"]   = Value("tail", builtin::tail);
     Environment::builtindefs["first"]  = Value("first", builtin::head);
