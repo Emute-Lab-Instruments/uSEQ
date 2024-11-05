@@ -1963,10 +1963,11 @@ Value insert(std::vector<Value>& args, Environment& env)
     }
 
     // Checking individual args
-    if (!(args[0].is_list()))
+    if (!(args[0].is_sequential()))
     {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a list",
-                                         args[0].to_lisp_src());
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].to_lisp_src());
         return Value::error();
     }
     if (!(args[1].is_number()))
@@ -1978,12 +1979,14 @@ Value insert(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result            = Value::nil();
-    std::vector<Value> list = args[0].as_list();
+    std::vector<Value> list = args[0].as_sequential();
     int i                   = args[1].as_int();
-    if (i < list.size())
-        Serial.println(INDEX_OUT_OF_RANGE);
-    else
-        list.insert(list.begin() + args[1].as_int(), args[2].as_int());
+    if (i > list.size() || i < 0) {
+        message_editor(INDEX_OUT_OF_RANGE);
+    }
+    else {
+        list.insert(list.begin() + i, args[2]);
+    }
     result = Value(list);
     return result;
 }
