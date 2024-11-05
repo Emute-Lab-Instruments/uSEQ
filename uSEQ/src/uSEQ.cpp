@@ -3172,7 +3172,7 @@ Value flatten_impl(const Value& val, Environment& env)
     //     result = Value::vector(flattened);
     // }
 
-    result = Value::vector(flattened);
+    result = val.is_vector() ? Value::vector(flattened): Value(flattened);
     return result;
 }
 

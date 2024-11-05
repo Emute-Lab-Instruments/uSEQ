@@ -213,7 +213,7 @@ Value range(std::vector<Value>& args, Environment& env)
     if (low >= high)
         return Value(result);
 
-    while (low < high)
+    while (low <= high)
     {
         result.push_back(low);
         low = low + Value(1);
