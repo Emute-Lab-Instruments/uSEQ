@@ -682,6 +682,7 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["first"]  = Value("first", builtin::head);
     Environment::builtindefs["last"]   = Value("last", builtin::pop);
     Environment::builtindefs["range"]  = Value("range", builtin::range);
+    Environment::builtindefs["vec"]  = Value("vec", builtin::vec);
 
     // Functional operations
     Environment::builtindefs["map"]    = Value("map", builtin::map_list);
