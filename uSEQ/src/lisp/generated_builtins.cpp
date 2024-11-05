@@ -1322,7 +1322,7 @@ Value remove(std::vector<Value>& args, Environment& env)
     }
 
     // Checking individual args
-    if (!(args[0].is_list()))
+    if (!(args[0].is_sequential()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a list",
                                          args[0].to_lisp_src());
@@ -1337,7 +1337,7 @@ Value remove(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result            = Value::nil();
-    std::vector<Value> list = args[0].as_list();
+    std::vector<Value> list = args[0].as_sequential();
     int i                   = args[1].as_int();
     if (list.empty() || i >= (int)list.size())
         report_error(INDEX_OUT_OF_RANGE);
