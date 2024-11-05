@@ -27,6 +27,7 @@ Value ard_millis(std::vector<Value>& args, Environment& env);
 Value sum(std::vector<Value>& args, Environment& env);
 Value for_loop(std::vector<Value>& args, Environment& env);
 Value pop(std::vector<Value>& args, Environment& env);
+Value slice(std::vector<Value>& args, Environment& env);
 Value ard_min(std::vector<Value>& args, Environment& env);
 Value push(std::vector<Value>& args, Environment& env);
 Value greater(std::vector<Value>& args, Environment& env);
