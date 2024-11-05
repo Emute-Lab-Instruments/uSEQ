@@ -218,7 +218,7 @@ Value range(std::vector<Value>& args, Environment& env)
         result.push_back(low);
         low = low + Value(1);
     }
-    return Value(result);
+    return Value::vector(result);
 }
 
 BUILTINFUNC(ard_digitalWrite, int pinNumber = args[0].as_int();
