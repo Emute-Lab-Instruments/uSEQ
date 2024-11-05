@@ -1605,17 +1605,31 @@ Value head(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
-    // Checking individual args
-    if (!(args[0].is_list()))
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
     {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a list",
-                                         args[0].to_lisp_src());
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].to_lisp_src());
         return Value::error();
     }
 
     // BODY
     Value result            = Value::nil();
-    std::vector<Value> list = args[0].as_list();
+    std::vector<Value> list = args[0].as_sequential();
     if (list.empty())
     {
         report_error(INDEX_OUT_OF_RANGE);
@@ -1623,6 +1637,82 @@ Value head(std::vector<Value>& args, Environment& env)
     else
     {
         result = list[0];
+    }
+    return result;
+}
+Value slice(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "slice";
+
+    // Checking number of args
+    if (!(args.size() == 3))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 3, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    if (!(args[0].is_sequential()))
+    {
+        report_error_wrong_specific_pred(
+            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
+            args[0].to_lisp_src());
+        return Value::error();
+    }
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].to_lisp_src());
+        return Value::error();
+    }
+    if (!(args[2].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
+                                         args[1].to_lisp_src());
+        return Value::error();
+    }
+
+
+    // BODY
+    Value result            = Value::nil();
+    std::vector<Value> list = args[0].as_sequential();
+    if (list.empty())
+    {
+        //report_error(INDEX_OUT_OF_RANGE);
+        //just return nothing
+        result = list;
+    }
+    else
+    {
+        long startIdx = args[1].as_int();
+        long endIdx = args[2].as_int();
+        //ensure in the range of the list
+        if (startIdx < 0) {
+            startIdx = list.size() + startIdx;
+        }
+        startIdx = std::max(0L, std::min((long)list.size(), startIdx));
+        if (endIdx < 0) {
+            endIdx = list.size() + endIdx;
+        }
+        // message_editor(Value((int)startIdx).display());
+        // message_editor(Value((int)endIdx).display());
+        endIdx = std::max(0L, std::min((long)list.size(), endIdx));
+        endIdx = std::max(endIdx, startIdx);
+        result = std::vector<Value>(list.begin() + startIdx, list.begin() + endIdx);
     }
     return result;
 }
