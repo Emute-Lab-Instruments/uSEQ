@@ -21,7 +21,7 @@
 #define LISP_FUNC_RETURN_TYPE Value
 #define LISP_FUNC_TYPE LISP_FUNC_RETURN_TYPE(LISP_FUNC_ARGS_TYPE)
 // For declaring builtin functions as class members
-#define LISP_FUNC_DECL(__name__) LISP_FUNC_RETURN_TYPE __name__(LISP_FUNC_ARGS)
+#define LISP_FUNC_DECL(__name__)  LISP_FUNC_RETURN_TYPE __name__(LISP_FUNC_ARGS)
 
 using TimeValue  = double;
 using PhaseValue = double;
