@@ -1,7 +1,7 @@
 #ifndef USEQ_H_
 #define USEQ_H_
 
-#define USEQ_FIRMWARE_VERSION "1.1.0"
+#define USEQ_FIRMWARE_VERSION "1.1.1"
 
 #include "dsp/tempoEstimator.h"
 // #include "dsp/MAFilter.h"
