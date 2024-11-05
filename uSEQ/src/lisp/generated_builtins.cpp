@@ -114,7 +114,7 @@ Value zeros(std::vector<Value>& args, Environment& env)
     Value result = Value::nil();
     int length   = args[0].as_int();
     std::vector<Value> zeroList(length, Value(0));
-    result = Value(zeroList);
+    result = Value::vector(zeroList);
     return result;
 }
 
@@ -1343,7 +1343,8 @@ Value remove(std::vector<Value>& args, Environment& env)
         report_error(INDEX_OUT_OF_RANGE);
     else
         list.erase(list.begin() + i);
-    result = Value(list);
+    // result = Value(list);
+    result = args[0].is_vector() ? Value::vector(list) : Value(list);
     return result;
 }
 
@@ -1694,7 +1695,7 @@ Value slice(std::vector<Value>& args, Environment& env)
     {
         //report_error(INDEX_OUT_OF_RANGE);
         //just return nothing
-        result = list;
+        // result = list;
     }
     else
     {
@@ -1712,8 +1713,9 @@ Value slice(std::vector<Value>& args, Environment& env)
         // message_editor(Value((int)endIdx).display());
         endIdx = std::max(0L, std::min((long)list.size(), endIdx));
         endIdx = std::max(endIdx, startIdx);
-        result = std::vector<Value>(list.begin() + startIdx, list.begin() + endIdx);
+        list = std::vector<Value>(list.begin() + startIdx, list.begin() + endIdx);
     }
+    result = args[0].is_vector() ? Value::vector(list) : Value(list);
     return result;
 }
 
@@ -1987,7 +1989,7 @@ Value insert(std::vector<Value>& args, Environment& env)
     else {
         list.insert(list.begin() + i, args[2]);
     }
-    result = Value(list);
+    result = args[0].is_vector() ? Value::vector(list) : Value(list);
     return result;
 }
 
