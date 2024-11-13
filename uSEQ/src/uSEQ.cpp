@@ -150,7 +150,7 @@ void setup_leds()
     pinMode(USEQ_PIN_LED_I2, OUTPUT_2MA);
 #endif
 
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < (NUM_CONTINUOUS_OUTS+NUM_CONTINUOUS_OUTS); i++)
     {
         pinMode(useq_output_led_pins[i], OUTPUT_2MA);
         gpio_set_slew_rate(useq_output_led_pins[i], GPIO_SLEW_RATE_SLOW);
@@ -302,6 +302,7 @@ void uSEQ::led_animation()
     }
 #endif
 #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
+    ledDelay = 60;
     for (int i = 0; i < 8; i++)
     {
         digitalWrite(useq_output_led_pins[0], 1);
@@ -321,11 +322,14 @@ void uSEQ::led_animation()
         digitalWrite(useq_output_led_pins[5], 1);
         delay(ledDelay);
         digitalWrite(useq_output_led_pins[4], 0);
-        digitalWrite(useq_output_led_pins[6], 1);
+        digitalWrite(useq_output_led_pins[6], 1); 
         delay(ledDelay);
         digitalWrite(useq_output_led_pins[5], 0);
         digitalWrite(useq_output_led_pins[7], 1);
         delay(ledDelay);
+        digitalWrite(useq_output_led_pins[6], 0);
+        delay(ledDelay);
+        digitalWrite(useq_output_led_pins[7], 0);
 
         ledDelay -= 3;
     }
@@ -1184,6 +1188,7 @@ void setup_analog_outs()
     analogWriteFreq(100000);   // out of hearing range
     analogWriteResolution(11); // about the best we can get
 
+    #ifndef USEQHARDWARE_EXPANDER_OUT_0_1  //NOT EXPANDER WHICH IS NON PIO
     // set PIO PWM state machines to run PWM outputs
     uint offset  = pio_add_program(pio0, &pwm_program);
     uint offset2 = pio_add_program(pio1, &pwm_program);
@@ -1200,6 +1205,7 @@ void setup_analog_outs()
         pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_led_pins[i]);
         pio_pwm_set_period(pioInstance, smIdx, (1u << 11) - 1);
     }
+    #endif // NOT EXPANDER
 }
 #endif // HAS_OUTPUTS
 
@@ -1361,8 +1367,9 @@ void uSEQ::setup_IO()
 #endif
 
 #ifdef USEQHARDWARE_1_0
-    Wire.setSDA(0);
-    Wire.setSCL(1);
+    //i2c now setup below
+    //Wire.setSDA(0);
+    //Wire.setSCL(1);
     // peripheral
     //  Wire.begin(4);
     //  Wire.onReceive(receiveEvent);
@@ -1371,6 +1378,7 @@ void uSEQ::setup_IO()
     //  Wire.begin();
 #endif
 
+// all default to CLIENT - will change
 #ifdef ENABLEI2CCLIENT
     bI2CclientMode = true;
     bI2ChostMode   = false;
@@ -1485,14 +1493,14 @@ void uSEQ::analog_write_with_led(int output, double val)
     #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
      // write led
      analogWrite(led_pin, ledsigval);
-    #elif 
+    #else 
        // write pwm
     pio_pwm_set_level(pio0, output, ledsigval); 
     #endif
    
 
     
-    // write led
+    // write led -- output surely? ***
     analogWrite(pwm_pin, scaled_val);
 }
 
