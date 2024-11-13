@@ -8,7 +8,7 @@
 /* #define USEQHARDWARE_0_1 */
 
 // #define USEQHARDWARE_0_2
-/* #define USEQHARDWARE_1_0  */
+//#define USEQHARDWARE_1_0  
 #define USEQHARDWARE_EXPANDER_OUT_0_1
 // #define MUSICTHING
 
