@@ -4,6 +4,7 @@
 
 void message_editor(const String& s)
 {
+#ifdef ARDUINO
     if (Serial.availableForWrite())
     {
         Serial.write(SerialMsg::message_begin_marker);
@@ -11,10 +12,12 @@ void message_editor(const String& s)
         Serial.println(s);
         // Serial.write(SerialMsg::message_end_marker);
     }
+#endif // ARDUINO
 }
 
 void println(const String& s)
 {
+#ifdef ARDUINO
     if (Serial.availableForWrite())
     {
         Serial.write(SerialMsg::message_begin_marker);
@@ -22,6 +25,7 @@ void println(const String& s)
         Serial.println(s);
         // Serial.write(SerialMsg::message_end_marker);
     }
+#endif // ARDUINO
 }
 
 // ERRORS
@@ -140,7 +144,9 @@ void report_custom_function_error(const String& function_name, const String& msg
     report_error("(`" + function_name + "`) " + msg);
 }
 
+#ifdef ARDUINO
 int free_heap() { return rp2040.getFreeHeap() / 1024; }
+#endif // ARDUINO
 
 // DebugLogger
 

@@ -9,6 +9,9 @@
 #include "parser.h"
 #include "value.h"
 #include <cmath>
+#ifndef ARDUINO
+#include <cstdlib>
+#endif // ARDUINO
 
 // Static Class-wide flag
 // bool Interpreter::m_builtindefs_init = false;
@@ -112,17 +115,21 @@ Value eval_args(std::vector<Value>& args, Environment& env)
 //     println();
 //     return acc;
 // }
-
 }
 
 #endif // USE_STD
+
+#ifndef ARDUINO
+int random(int low, int high) { return low + std::rand() % (high - low + 1); }
+#endif // ndef ARDUINO
 
 // Get a random number between two numbers inclusively
 Value gen_random(std::vector<Value>& args, Environment& env)
 {
     // Is not a special form, so we can evaluate our args.
 
-    if (args.size() != 2) {
+    if (args.size() != 2)
+    {
         ::println(args.size() > 2 ? TOO_MANY_ARGS : TOO_FEW_ARGS);
         return Value::error();
     }
@@ -132,11 +139,13 @@ Value gen_random(std::vector<Value>& args, Environment& env)
     {
 
         int low = args[0].as_int(), high = args[1].as_int();
+
         return Value((int)random(low, high));
     }
     else
     {
-        report_generic_error("(gen_random) Both arguments should evaluate to numbers, received this instead:");
+        report_generic_error("(gen_random) Both arguments should evaluate to "
+                             "numbers, received this instead:");
         report_generic_error(args[0].display() + args[1].display());
         return Value::error();
     }
@@ -221,12 +230,15 @@ Value range(std::vector<Value>& args, Environment& env)
     return Value(result);
 }
 
+#ifdef ARDUINO
 BUILTINFUNC(ard_digitalWrite, int pinNumber = args[0].as_int();
             int onOff = args[1].as_int(); digitalWrite(pinNumber, onOff);
             ret       = args[0];, 2)
 
 BUILTINFUNC(ard_digitalRead, int pinNumber = args[0].as_int();
             int val = digitalRead(pinNumber); ret = Value(val);, 1)
+
+#endif // ARDUINO
 
 BUILTINFUNC(useq_perf, String report = "fps0: ";
             report += env.get("fps").value().as_float();
@@ -249,7 +261,9 @@ BUILTINFUNC(useq_perf, String report = "fps0: ";
             // report += ", ts1: ";
             // report += env.get("perf_ts1").as_float();
             report += ", heap free: ";
+#ifdef ARDUINO
             report += rp2040.getFreeHeap() / 1024; ::println(report); ret = Value();
+#endif // ARDUINO
             , 0)
 
 } // namespace builtin
@@ -750,11 +764,9 @@ void Interpreter::loadBuiltinDefs()
 #ifdef USE_STD
     // if (name == "exit") return Value("exit", builtin::exit);
     // if (name == "quit") return Value("quit", builtin::exit);
-    Environment::builtindefs["print"] = Value("print", builtin::print);
     // if (name == "input") return Value("input", builtin::input);
 #else
     //
-    Environment::builtindefs["print"]   = Value("print", builtin::print);
     Environment::builtindefs["println"] = Value("println", builtin::println);
 #endif
     Environment::builtindefs["random"] = Value("random", builtin::gen_random);
@@ -772,8 +784,10 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["endl"] = Value::string("\n");
 
     //// IO
+#ifdef ARDUINO
     Environment::builtindefs["dw"] = Value("dw", builtin::ard_digitalWrite);
     Environment::builtindefs["dr"] = Value("dr", builtin::ard_digitalRead);
+#endif // ARDUINO
 }
 
 // #endif

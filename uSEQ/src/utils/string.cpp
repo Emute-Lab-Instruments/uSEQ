@@ -30,7 +30,7 @@
 
 // nothing
 
-#elif defined(USE_ARDUINO_STR)
+#elif defined(USE_OWN_ARDUINO_STR)
 
 /*
   String library for Wiring & Arduino
@@ -53,10 +53,10 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#include "Common.h"
-#include "String.h"
-#include "deprecated-avr-comp/avr/dtostrf.h"
+#include "common.h"
+#include "dtostrf.h"
 #include "itoa.h"
+#include "string.h"
 
 #include <float.h>
 

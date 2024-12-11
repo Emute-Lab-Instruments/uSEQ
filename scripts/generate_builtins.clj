@@ -248,7 +248,9 @@
     ">=" "NumArgsComparison::AtLeast"
     "<=" "NumArgsComparison::AtMost"
     (if (and (sequential? (:op ops))
-             (sequential? (:num ops)))))
+             (sequential? (:num ops)))
+      "AOEU"
+      "AOEU"))
   ;; TODO between
   ;;  "NumArgsComparison::EqualTo"
   )

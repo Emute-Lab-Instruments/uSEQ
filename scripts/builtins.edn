@@ -444,7 +444,9 @@
  {:args {:num "== 1"
          :type {0 ".is_number()"}}
   :body ["int  delaytime = args[0].as_int();"
+         "#ifdef ARDUINO"
          "delayMicroseconds(delaytime);"
+         "#endif // ARDUINO"
          "result = args[0];"]}
 
  "ard_millis"
@@ -497,11 +499,11 @@
 
  "ard_min" {:args {:num "== 2"
                    :type {:all ".is_number()"}}
-            :body ["result = Value(min(args[0].as_float(), args[1].as_float()));"]}
+            :body ["result = Value(std::min(args[0].as_float(), args[1].as_float()));"]}
 
  "ard_max" {:args {:num "== 2"
                    :type {:all ".is_number()"}}
-            :body ["result = Value(max(args[0].as_float(), args[1].as_float()));"]}
+            :body ["result = Value(std::max(args[0].as_float(), args[1].as_float()));"]}
 
  "ard_pow" {:args {:num "== 2"
                    :type {:all ".is_number()"}}

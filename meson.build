@@ -10,6 +10,8 @@ src_inc = include_directories('uSEQ')
 # Common source files
 common_src = [
   # UTILS
+  'uSEQ/src/utils.h',
+  'uSEQ/src/utils.cpp',
   'uSEQ/src/utils/string.h',
   'uSEQ/src/utils/string.cpp',
   'uSEQ/src/utils/common.h',
@@ -63,7 +65,8 @@ standalone_args = [
   '-DUSE_OWN_ARDUINO_STR',
   '-DUSE_STD_IO',
   '-DNO_ETL',
-  # '-DPICO_NO_HARDWARE'
+  # '-DPICO_NO_HARDWARE',
+  '-fmax-errors=1'  # Stop compilation after first error
 ]
 
 arduino_args = [

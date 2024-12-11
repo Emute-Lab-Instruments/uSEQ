@@ -85,6 +85,7 @@ void uSEQ::eval_lisp_library()
 }
 
 // Write `level` to TX FIFO. State machine will copy this into X.
+#ifdef ARDUINO
 void pio_pwm_set_level(PIO pio, uint sm, uint32_t level)
 {
     DBG("uSEQ::pio_pwm_set_level");
@@ -102,11 +103,13 @@ void pio_pwm_set_period(PIO pio, uint sm, uint32_t period)
     pio_sm_exec(pio, sm, pio_encode_out(pio_isr, 32));
     pio_sm_set_enabled(pio, sm, true);
 }
+#endif // ARDUINO
 
 float pdm_y   = 0;
 float pdm_err = 0;
 float pdm_w   = 0;
 
+#ifdef ARDUINO
 bool timer_callback(repeating_timer_t* mst)
 {
     pdm_y   = pdm_w > pdm_err ? 1 : 0;
@@ -127,7 +130,9 @@ bool timer_callback(repeating_timer_t* mst)
 
     return true;
 }
+#endif // ARDUINO
 
+#ifdef ARDUINO
 void setup_leds()
 {
     DBG("uSEQ::setup_leds");
@@ -150,18 +155,23 @@ void setup_leds()
         gpio_set_slew_rate(useq_output_led_pins[i], GPIO_SLEW_RATE_SLOW);
     }
 }
+#endif // ARDUINO
 
+#ifdef ARDUINO
 void start_pdm()
 {
     static repeating_timer_t mst;
 
     add_repeating_timer_us(150, timer_callback, NULL, &mst);
 }
+#endif // ARDUINO
 
 void uSEQ::init()
 {
     DBG("uSEQ::init");
+#ifdef ARDUINO
     setup_leds();
+#endif // ARDUINO
 
     // dbg("free heap (start):" + String(free_heap()));
     // if (!m_initialised)
@@ -176,9 +186,11 @@ void uSEQ::init()
     init_builtinfuncs();
     // eval_lisp_library();
 
+#ifdef ARDUINO
     led_animation();
     start_pdm();
     setup_IO();
+#endif // ARDUINO
 
     // dbg("Lisp library loaded.");
 
@@ -187,11 +199,14 @@ void uSEQ::init()
     update_time();
     init_ASTs();
 
+#ifdef ARDUINO
     autoload_flash();
+#endif // ARDUINO
 
     m_initialised = true;
 }
 
+#ifdef ARDUINO
 void uSEQ::led_animation()
 {
     int ledDelay = 30;
@@ -292,6 +307,7 @@ void uSEQ::led_animation()
     }
 #endif
 }
+#endif // ARDUINO
 
 void uSEQ::run_scheduled_items()
 {
@@ -310,7 +326,7 @@ void uSEQ::run_scheduled_items()
         for (size_t j = 0; j < numRuns; j++)
         {
             // run the statement
-            //             Serial.println(m_scheduledItems[i].id);
+            //             println(m_scheduledItems[i].id);
             // TODO: #99
             eval(m_scheduledItems[i].ast);
         }
@@ -333,7 +349,7 @@ void uSEQ::update_Q0()
     Value result = eval(m_q0AST);
     if (result.is_error())
     {
-        Serial.println("Error in q0 output function, clearing");
+        println("Error in q0 output function, clearing");
         m_q0AST = {};
     }
 }
@@ -385,7 +401,9 @@ void uSEQ::tick()
     check_and_handle_user_input();
 
     // tiny delay to allow for interrupts etc
+#ifdef ARDUINO
     delayMicroseconds(100);
+#endif // ARDUINO
 }
 
 ///////////////////////////////////////////////////////////
@@ -430,6 +448,7 @@ static uint16_t store       = 0;
 #ifdef USEQHARDWARE_0_2
 int8_t read_rotary()
 {
+#ifdef ARDUINO
     static int8_t rot_enc_table[] = {
         0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0
     };
@@ -454,6 +473,7 @@ int8_t read_rotary()
             return 1;
     }
     return 0;
+#endif // ARDUINO
 }
 
 void uSEQ::read_rotary_encoders()
@@ -479,6 +499,7 @@ MedianFilter mf1(51), mf2(51);
 
 void uSEQ::update_inputs()
 {
+#ifdef ARDUINO
     DBG("uSEQ::update_inputs");
 
 #ifdef USEQHARDWARE_0_2
@@ -526,13 +547,13 @@ void uSEQ::update_inputs()
     }
     m_input_vals[MTZSWITCH] = switchVal;
 
-    // Serial.print(m_input_vals[MTMAINKNOB]);
-    // Serial.print("\t");
-    // Serial.print(m_input_vals[MTXKNOB]);
-    // Serial.print("\t");
-    // Serial.print(m_input_vals[MTYKNOB]);
-    // Serial.print("\t");
-    // Serial.println(m_input_vals[MTZSWITCH]);
+    // print(m_input_vals[MTMAINKNOB]);
+    // print("\t");
+    // print(m_input_vals[MTXKNOB]);
+    // print("\t");
+    // print(m_input_vals[MTYKNOB]);
+    // print("\t");
+    // println(m_input_vals[MTZSWITCH]);
 
     const int input1 = 1 - digitalRead(USEQ_PIN_I1);
     const int input2 = 1 - digitalRead(USEQ_PIN_I2);
@@ -626,17 +647,33 @@ void uSEQ::update_inputs()
     m_input_vals[USEQAI2] = filt2;
 #endif
 
+#endif // ARDUINO
     dbg("updating inputs...DONE");
 }
 
-bool is_new_code_waiting() { return Serial.available(); }
+bool is_new_code_waiting()
+{
+#ifdef ARDUINO
+    return Serial.available();
+#else
+    return false; // FIXME
+#endif // ARDUINO
+}
 
-String get_code_waiting() { return Serial.readStringUntil('\n'); }
+String get_code_waiting()
+{
+#ifdef ARDUINO
+    return Serial.readStringUntil('\n');
+#else
+    return ""; // FIXME
+#endif // ARDUINO
+}
 
 void uSEQ::check_and_handle_user_input()
 {
     DBG("uSEQ::check_and_handle_user_input");
     // m_repl.check_and_handle_input();
+#ifdef ARDUINO
 
     if (is_new_code_waiting())
     {
@@ -649,7 +686,7 @@ void uSEQ::check_and_handle_user_input()
             // incoming serial stream
             size_t channel = Serial.read();
             char buffer[8];
-            Serial.readBytes(buffer, 8);
+            readBytes(buffer, 8);
             if (channel > 0 && channel <= m_num_serial_ins)
             {
                 double v = 0;
@@ -695,6 +732,7 @@ void uSEQ::check_and_handle_user_input()
         m_manual_evaluation = false;
         // flush_print_jobs();
     }
+#endif // ARDUINO
 }
 
 /// UPDATE methods
@@ -1034,11 +1072,11 @@ void uSEQ::update_midi_out()
                 // wrap phasor
                 if (t_step < 0)
                     t_step += 1.0;
-                // Serial.println(t_step);
+                // println(t_step);
                 mdoArgs[0] = Value(t_step);
                 Value val  = midiFunction.apply(mdoArgs, env);
 
-                // Serial.println(val.as_float());
+                // println(val.as_float());
                 if (val > prev)
                 {
                     Serial1.write(0x99);
@@ -1061,6 +1099,7 @@ void uSEQ::update_midi_out()
 
 void uSEQ::setup_outs()
 {
+#ifdef ARDUINO
     DBG("uSEQ::setup_outs");
     for (int i = 0; i < NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS; i++)
     {
@@ -1071,10 +1110,12 @@ void uSEQ::setup_outs()
     pinMode(MUX_LOGIC_A, OUTPUT);
     pinMode(MUX_LOGIC_B, OUTPUT);
 #endif
+#endif // ARDUINO
 }
 
 void setup_analog_outs()
 {
+#ifdef ARDUINO
     DBG("uSEQ::setup_analog_outs");
     dbg(String(NUM_CONTINUOUS_OUTS));
     // PWM outputs
@@ -1097,6 +1138,7 @@ void setup_analog_outs()
         pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_led_pins[i]);
         pio_pwm_set_period(pioInstance, smIdx, (1u << 11) - 1);
     }
+#endif // ARDUINO
 }
 
 void uSEQ::update_clock_from_external(double ts)
@@ -1156,6 +1198,7 @@ void uSEQ::set_input_val(size_t index, double value) { m_input_vals[index] = val
 
 void uSEQ::gpio_irq_gate1()
 {
+#ifdef ARDUINO
     double ts         = static_cast<double>(micros());
     const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
     uSEQ::instance->set_input_val(USEQI1, input1);
@@ -1165,10 +1208,12 @@ void uSEQ::gpio_irq_gate1()
     {
         uSEQ::instance->update_clock_from_external(ts);
     }
+#endif // ARDUINO
 }
 
 void uSEQ::gpio_irq_gate2()
 {
+#ifdef ARDUINO
     double ts         = static_cast<double>(micros());
     const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
     uSEQ::instance->set_input_val(USEQI2, input2);
@@ -1178,6 +1223,7 @@ void uSEQ::gpio_irq_gate2()
     {
         uSEQ::instance->update_clock_from_external(ts);
     }
+#endif // ARDUINO
 }
 
 // TODO: delete if not needed
@@ -1235,16 +1281,19 @@ void uSEQ::gpio_irq_gate2()
 
 void uSEQ::setup_digital_ins()
 {
+#ifdef ARDUINO
     pinMode(USEQ_PIN_I1, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I1), uSEQ::gpio_irq_gate1,
                     CHANGE);
     pinMode(USEQ_PIN_I2, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I2), uSEQ::gpio_irq_gate2,
                     CHANGE);
+#endif // ARDUINO
 }
 
 void uSEQ::setup_switches()
 {
+#ifdef ARDUINO
 #ifdef USEQHARDWARE_1_0
     pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);
 
@@ -1258,11 +1307,13 @@ void uSEQ::setup_switches()
     pinMode(USEQ_PIN_SWITCH_T1, INPUT_PULLUP);
     pinMode(USEQ_PIN_SWITCH_T2, INPUT_PULLUP);
 #endif
+#endif // ARDUINO
 }
 
 #ifdef ANALOG_INPUTS
 void uSEQ::setup_analog_ins()
 {
+#ifdef ARDUINO
     analogReadResolution(11);
 #ifdef USEQHARDWARE_1_0
     pinMode(USEQ_PIN_AI1, INPUT);
@@ -1274,11 +1325,13 @@ void uSEQ::setup_analog_ins()
     pinMode(AUDIO_IN_1, INPUT);
     pinMode(AUDIO_IN_2, INPUT);
 #endif
+#endif // ARDUINO
 }
 #endif
 
 void uSEQ::setup_IO()
 {
+#ifdef ARDUINO
     DBG("uSEQ::setup_IO");
 
     setup_outs();
@@ -1308,6 +1361,7 @@ void uSEQ::setup_IO()
     // controller
     //  Wire.begin();
 #endif
+#endif // ARDUINO
 }
 
 void uSEQ::init_ASTs()
@@ -1417,14 +1471,17 @@ void uSEQ::analog_write_with_led(int output, double val)
     // analogWrite(led_pin, ledsigval);
 
     // write pwm
+#ifdef ARDUINO
     pio_pwm_set_level(pio0, output, ledsigval);
     // write led
     analogWrite(pwm_pin, scaled_val);
+#endif // ARDUINO
 }
 
 // NOTE: outputs are 0-indexed,
 void uSEQ::digital_write_with_led(int output, int val)
 {
+#ifdef ARDUINO
     DBG("uSEQ::digital_write_with_led");
 
     int pin     = digital_out_pin(output + 1);
@@ -1443,10 +1500,12 @@ void uSEQ::digital_write_with_led(int output, int val)
 #endif
     // write led
     digitalWrite(led_pin, val > 0);
+#endif // ARDUINO
 }
 
 void uSEQ::serial_write(int out, double val)
 {
+#ifdef ARDUINO
     DBG("uSEQ::serial_write");
 
     Serial.write(SerialMsg::message_begin_marker);
@@ -1457,6 +1516,7 @@ void uSEQ::serial_write(int out, double val)
     {
         Serial.write(byteArray[b]);
     }
+#endif // ARDUINO
 }
 
 void uSEQ::set_time_sig(double numerator, double denominator)
@@ -1713,10 +1773,11 @@ Value uSEQ::useq_schedule(std::vector<Value>& args, Environment& env)
     v.period  = period;
     v.lastRun = 0;
     v.ast     = ast;
-    //remove if exists
+    // remove if exists
     const String searchId = args[0].as_string();
 
-    auto is_item    = [searchId](scheduledItem& candidate) { return candidate.id == searchId; };
+    auto is_item = [searchId](scheduledItem& candidate)
+    { return candidate.id == searchId; };
 
     if (auto it = std::find_if(std::begin(m_scheduledItems),
                                std::end(m_scheduledItems), is_item);
@@ -1724,7 +1785,7 @@ Value uSEQ::useq_schedule(std::vector<Value>& args, Environment& env)
     {
         m_scheduledItems.erase(it);
     }
-    //add to scheduler list
+    // add to scheduler list
     m_scheduledItems.push_back(v);
     return Value::nil();
 }
@@ -3189,7 +3250,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
 BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set_expr("s1", args[0]);
                           m_serial_ASTs[0] = { args[0] }; ret = Value::atom("s1");
                           ,
-                          // Serial.println(m_serial_ASTs.size());,
+                          // println(m_serial_ASTs.size());,
                           1)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_s2, set_expr("s2", args[0]);
@@ -3355,6 +3416,7 @@ Environment uSEQ::make_env_for_time(TimeValue t_micros)
 
 // FLASH
 
+#ifdef ARDUINO
 constexpr uintptr_t PICO_FLASH_START_ADDR = reinterpret_cast<uintptr_t>(XIP_BASE);
 constexpr uintptr_t NUM_SECTORS = PICO_FLASH_SIZE_BYTES / FLASH_SECTOR_SIZE;
 
@@ -3401,6 +3463,7 @@ void print_flash_vars()
     println("FLASH_INFO_SECTOR_OFFSET_START: " +
             String(FLASH_INFO_SECTOR_OFFSET_START));
 }
+#endif // ARDUINO
 
 // Lisp interfaces
 BUILTINFUNC_NOEVAL_MEMBER(useq_reboot,
@@ -3409,26 +3472,34 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_reboot,
                           , 0)
 
 BUILTINFUNC_MEMBER(useq_write_flash_info,
-                   //
+//
+#ifdef ARDUINO
                    write_flash_info();
+#endif // ARDUINO
                    , 0)
 
 BUILTINFUNC_MEMBER(useq_load_flash_info,
-                   //
-                   // print_flash_vars();
+//
+// print_flash_vars();
+#ifdef ARDUINO
                    load_flash_info();
+#endif // ARDUINO
                    , 0)
 
 BUILTINFUNC_MEMBER(useq_write_flash_env,
-                   //
+//
+#ifdef ARDUINO
                    write_flash_env();
+#endif // ARDUINO
                    , 0)
 
 BUILTINFUNC_MEMBER(useq_load_flash_env,
-                   //
-                   // print_flash_vars();
-                   // println("Free heap: " + String(free_heap()));
+//
+// print_flash_vars();
+// println("Free heap: " + String(free_heap()));
+#ifdef ARDUINO
                    load_flash_env();
+#endif // ARDUINO
                    , 0)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_get_my_id,
@@ -3437,8 +3508,10 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_get_my_id,
                           , 0)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_autoload_flash,
-                          //
+//
+#ifdef ARDUINO
                           autoload_flash();
+#endif // ARDUINO
                           , 0)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_rewind_logical_time,
@@ -3458,13 +3531,21 @@ BUILTINFUNC_MEMBER(
     ,
     1)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_memory_save, write_flash_env();, 0)
+BUILTINFUNC_NOEVAL_MEMBER(useq_memory_save,
+#ifdef ARDUINO
+                          write_flash_env();
+#endif // ARDUINO
+                          , 0)
 BUILTINFUNC_NOEVAL_MEMBER(useq_memory_restore, //
+#ifdef ARDUINO
                           load_flash_info();
                           load_flash_env(); //
+#endif                                      // ARDUINO
                           , 0);
 BUILTINFUNC_NOEVAL_MEMBER(useq_memory_erase, //
+#ifdef ARDUINO
                           reset_flash_env_var_info();
+#endif // ARDUINO
                           , 0)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_stop_all, //
@@ -3498,7 +3579,9 @@ void uSEQ::clear_all_outputs()
 void uSEQ::set_my_id(int num)
 {
     m_my_id = num;
+#ifdef ARDUINO
     write_flash_info();
+#endif // ARDUINO
 }
 
 // Utils
@@ -3539,12 +3622,15 @@ size_t pad_to_nearest_multiple_of(size_t in, size_t quant)
     return in + padding_to_nearest_multiple_of(in, quant);
 }
 
+#ifdef ARDUINO
 void uSEQ::erase_info_flash()
 {
     flash_range_erase(FLASH_INFO_SECTOR_OFFSET_START, FLASH_INFO_SECTOR_SIZE);
     println("Erased info flash.");
 }
+#endif // ARDUINO
 
+#ifdef ARDUINO
 bool uSEQ::flash_has_been_written_before()
 {
     // Get a char* to the start of the info block and check to see whether
@@ -3554,7 +3640,9 @@ bool uSEQ::flash_has_been_written_before()
         (char*)(PICO_FLASH_START_ADDR + FLASH_INFO_SECTOR_OFFSET_START);
     return std::strcmp(info_start, m_flash_stamp_str) == 0;
 }
+#endif // ARDUINO
 
+#ifdef ARDUINO
 void uSEQ::write_flash_info()
 {
     // 4k buffer
@@ -3629,6 +3717,7 @@ void uSEQ::load_flash_info()
                 "once.");
     }
 }
+#endif // ARDUINO
 
 std::pair<size_t, size_t> uSEQ::num_bytes_def_strs() const
 {
@@ -3660,6 +3749,7 @@ std::pair<size_t, size_t> uSEQ::num_bytes_def_strs() const
     return { defs_size, exprs_size };
 }
 
+#ifdef ARDUINO
 void uSEQ::write_flash_env()
 {
     // 1. Collect all env strings and figure out their total size
@@ -3842,6 +3932,7 @@ void uSEQ::autoload_flash()
         // println("Flash NOT written before - ignoring.");
     }
 }
+#endif // ARDUINO
 
 // FIXME hangs
 // void uSEQ::clear_non_program_flash()
@@ -3869,10 +3960,13 @@ void uSEQ::autoload_flash()
 
 void uSEQ::reboot()
 {
+#ifdef ARDUINO
 #define AIRCR_Register (*((volatile uint32_t*)(PPB_BASE + 0x0ED0C)))
     AIRCR_Register = 0x5FA0004;
+#endif // ARDUINO
 }
 
+#ifdef ARDUINO
 void uSEQ::reset_flash_env_var_info()
 {
     m_FLASH_ENV_SECTOR_SIZE         = 0;
@@ -3883,6 +3977,7 @@ void uSEQ::reset_flash_env_var_info()
     m_FLASH_ENV_STRING_BUFFER_SIZE  = 0;
     write_flash_info();
 }
+#endif // ARDUINO
 
 //////////////////////////
 

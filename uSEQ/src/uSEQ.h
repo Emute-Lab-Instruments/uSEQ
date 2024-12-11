@@ -293,9 +293,10 @@ private:
     LISP_FUNC_DECL(ard_useqaw);
     LISP_FUNC_DECL(ard_useqdw);
 
+    LISP_FUNC_DECL(useq_reboot);
+
     LISP_FUNC_DECL(useq_load_flash_info);
     LISP_FUNC_DECL(useq_write_flash_info);
-    LISP_FUNC_DECL(useq_reboot);
     LISP_FUNC_DECL(useq_set_my_id);
     LISP_FUNC_DECL(useq_get_my_id);
     // LISP_FUNC_DECL(useq_test_flash);

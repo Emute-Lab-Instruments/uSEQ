@@ -1,9 +1,9 @@
 #include "generated_builtins.h"
 #include "../utils.h"
+#include "../utils/log.h"
 #include "environment.h"
 #include "interpreter.h"
 #include "value.h"
-#include "../utils/log.h"
 
 namespace builtin
 {
@@ -764,7 +764,7 @@ Value ard_min(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = Value(min(args[0].as_float(), args[1].as_float()));
+    result       = Value(std::min(args[0].as_float(), args[1].as_float()));
     return result;
 }
 
@@ -1438,7 +1438,7 @@ Value ard_max(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = Value(max(args[0].as_float(), args[1].as_float()));
+    result       = Value(std::max(args[0].as_float(), args[1].as_float()));
     return result;
 }
 
@@ -1818,7 +1818,9 @@ Value ard_delaymicros(std::vector<Value>& args, Environment& env)
     // BODY
     Value result  = Value::nil();
     int delaytime = args[0].as_int();
+#ifdef ARDUINO
     delayMicroseconds(delaytime);
+#endif // ARDUINO
     result = args[0];
     return result;
 }
@@ -1868,7 +1870,7 @@ Value insert(std::vector<Value>& args, Environment& env)
     std::vector<Value> list = args[0].as_list();
     int i                   = args[1].as_int();
     if (i < list.size())
-        Serial.println(INDEX_OUT_OF_RANGE);
+        ::println(INDEX_OUT_OF_RANGE);
     else
         list.insert(list.begin() + args[1].as_int(), args[2].as_int());
     result = Value(list);
@@ -1948,47 +1950,6 @@ Value ard_sqrt(std::vector<Value>& args, Environment& env)
     // BODY
     Value result = Value::nil();
     result       = Value(sqrt(args[0].as_float()));
-    return result;
-}
-
-Value print(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "print";
-
-    // Checking number of args
-    if (!(args.size() == 1))
-    {
-        report_error_wrong_num_args(user_facing_name, args.size(),
-                                    NumArgsComparison::EqualTo, 1, -1);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1,
-                                      pre_eval.to_lisp_src());
-            return Value::error();
-        }
-    }
-
-    // BODY
-    Value result = Value::nil();
-    String s;
-    if (args[0].is_string())
-    {
-        s = args[0].as_string();
-    }
-    else
-    {
-        s = args[0].display();
-    }
-    Serial.print(s);
     return result;
 }
 

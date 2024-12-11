@@ -4,5 +4,5 @@
 cd "$(dirname "$0")/.."
 
 # Run Meson setup and Ninja
-meson setup build
+meson setup build --fatal-meson-errors
 ninja -C build
