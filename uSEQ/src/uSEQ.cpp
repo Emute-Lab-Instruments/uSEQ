@@ -302,7 +302,6 @@ void uSEQ::led_animation()
     }
 #endif
 #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
-    ledDelay = 60;
     for (int i = 0; i < 8; i++)
     {
         digitalWrite(useq_output_led_pins[0], 1);

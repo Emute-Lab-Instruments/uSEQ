@@ -14,7 +14,7 @@ int i2cRequest = _i2c_req_none;
 //************************
 // Define a type for this module
 //************************
-String expanderTypeID = "aout01";  //used to distinguish between expanders
+
 
 
 static char i2cInBuff[500];   // buffer for incomming messages
@@ -79,7 +79,7 @@ void i2cReq() {
   //respond to gettype request
   if (i2cRequest == _i2c_req_gettype) {
     // Serial.println("Type ID request");
-    expanderTypeID.toCharArray(i2cOutBuff, 7);
+    hardwareTypeID.toCharArray(i2cOutBuff, 7);
     i2cCLIENT.write(i2cOutBuff, 7);
     i2cRequest = _i2c_req_none;
   }
