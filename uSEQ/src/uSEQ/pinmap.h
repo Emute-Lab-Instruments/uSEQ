@@ -137,6 +137,8 @@ const int useq_output_led_pins[] = { USEQ_PIN_LED_A1, USEQ_PIN_LED_A2,
 #define NUM_CONTINUOUS_OUTS 3
 #define NUM_BINARY_OUTS (6 - NUM_CONTINUOUS_OUTS)
 
+const String hardwareTypeID = "uSEQ10";  //used to distinguish between hardware on i2c
+
 #define _USEQ_SDA_PIN_ 0
 #define _USEQ_SCL_PIN_ 1
 
@@ -208,7 +210,7 @@ const int useq_output_led_pins[] = { USEQ_PIN_LED_A1, USEQ_PIN_LED_A2,
 
 ///////////////////////////////////////////
 #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
-
+const String hardwareTypeID = "aout08";  //used to distinguish between hardware on i2c
 #define HAS_OUTPUTS 1
 #define HAS_INPUTS 0
 #define HAS_CONTROLS 0
