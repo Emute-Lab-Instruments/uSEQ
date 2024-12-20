@@ -2027,6 +2027,109 @@ Value uSEQ::useq_ain2(std::vector<Value>& args, Environment& env)
     return Value(m_input_vals[USEQAI2]);
 }
 
+
+Value uSEQ::useq_get_a1(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[0]);
+}
+Value uSEQ::useq_get_a2(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[1]);
+}
+Value uSEQ::useq_get_a3(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[2]);
+}
+Value uSEQ::useq_get_a4(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[3]);
+}
+Value uSEQ::useq_get_a5(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[4]);
+}
+Value uSEQ::useq_get_a6(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[5]);
+}
+Value uSEQ::useq_get_a7(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[6]);
+}
+Value uSEQ::useq_get_a8(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[7]);
+}
+
+
+Value uSEQ::useq_get_d1(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[0]);
+}
+Value uSEQ::useq_get_d2(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[1]);
+}
+Value uSEQ::useq_get_d3(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[2]);
+}
+Value uSEQ::useq_get_d4(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[3]);
+}
+Value uSEQ::useq_get_d5(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[4]);
+}
+Value uSEQ::useq_get_d6(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[5]);
+}
+Value uSEQ::useq_get_d7(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[6]);
+}
+Value uSEQ::useq_get_d8(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[7]);
+}
+
+
+// Value uSEQ::useq_get_s1(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[0]);
+// }
+// Value uSEQ::useq_get_s2(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[1]);
+// }
+// Value uSEQ::useq_get_s3(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[2]);
+// }
+// Value uSEQ::useq_get_s4(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[3]);
+// }
+// Value uSEQ::useq_get_s5(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[4]);
+// }
+// Value uSEQ::useq_get_s6(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[5]);
+// }
+// Value uSEQ::useq_get_s7(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[6]);
+// }
+// Value uSEQ::useq_get_s8(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[7]);
+// }
+
+
 #ifdef MUSICTHING
 
 Value uSEQ::useq_mt_knob(std::vector<Value>& args, Environment& env)
@@ -4487,6 +4590,33 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("gin2", useq_in2);
     INSERT_BUILTINDEF("ain1", useq_ain1);
     INSERT_BUILTINDEF("ain2", useq_ain2);
+
+    INSERT_BUILTINDEF("get-a1", useq_get_a1);
+    INSERT_BUILTINDEF("get-a2", useq_get_a2);
+    INSERT_BUILTINDEF("get-a3", useq_get_a3);
+    INSERT_BUILTINDEF("get-a4", useq_get_a4);
+    INSERT_BUILTINDEF("get-a5", useq_get_a5);
+    INSERT_BUILTINDEF("get-a6", useq_get_a6);
+    INSERT_BUILTINDEF("get-a7", useq_get_a7);
+    INSERT_BUILTINDEF("get-a8", useq_get_a8);
+
+    INSERT_BUILTINDEF("get-d1", useq_get_d1);
+    INSERT_BUILTINDEF("get-d2", useq_get_d2);
+    INSERT_BUILTINDEF("get-d3", useq_get_d3);
+    INSERT_BUILTINDEF("get-d4", useq_get_d4);
+    INSERT_BUILTINDEF("get-d5", useq_get_d5);
+    INSERT_BUILTINDEF("get-d6", useq_get_d6);
+    INSERT_BUILTINDEF("get-d7", useq_get_d7);
+    INSERT_BUILTINDEF("get-d8", useq_get_d8);
+
+    // INSERT_BUILTINDEF("get-s1", useq_get_s1);
+    // INSERT_BUILTINDEF("get-s2", useq_get_s2);
+    // INSERT_BUILTINDEF("get-s3", useq_get_s3);
+    // INSERT_BUILTINDEF("get-s4", useq_get_s4);
+    // INSERT_BUILTINDEF("get-s5", useq_get_s5);
+    // INSERT_BUILTINDEF("get-s6", useq_get_s6);
+    // INSERT_BUILTINDEF("get-s7", useq_get_s7);
+    // INSERT_BUILTINDEF("get-s8", useq_get_s8);
 
     INSERT_BUILTINDEF("slow", useq_slow);
     INSERT_BUILTINDEF("fast", useq_fast);
