@@ -67,6 +67,12 @@
     "visible_layers": "ff3ffff_fffffffe",
     "zone_display_mode": 0
   },
+  "git": {
+    "repo_password": "",
+    "repo_type": "",
+    "repo_username": "",
+    "ssh_key": ""
+  },
   "meta": {
     "filename": "fr4panel.kicad_prl",
     "version": 3
