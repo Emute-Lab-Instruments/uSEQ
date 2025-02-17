@@ -14,6 +14,11 @@
 #include <cstring>
 #include <memory>
 #include <sys/types.h>
+#include "uSEQ/board.h"
+
+#include "dsp/dsp-engine.hpp"
+
+
 // #include "utils/serial_message.h"
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
@@ -45,8 +50,11 @@ public:
     void init();
     void run();
 
+    void initDSP();
+
     void start_loop_blocking();
     void tick();
+    void tick_dsp();
     void update_logical_time_variables(TimeValue);
 
     // NOTE: this should probably be considered
@@ -421,6 +429,8 @@ private:
 
     // void clear_non_program_flash();
     static String current_output_being_processed;
+
+    std::unique_ptr<uSEQDSPEngine> dspEngine;
 };
 
 #endif // USEQ_H_
