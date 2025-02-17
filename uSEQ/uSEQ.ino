@@ -12,6 +12,8 @@
 // this define - maybe an issue with Arduino IDE?
 // #define USEQHARDWARE_0_2
 
+bool core1_separate_stack = true;
+
 #include "src/uSEQ.h"
 
 // NOTE: this has to be done here, as opposed to e.g. inside uSEQ::init,
@@ -43,3 +45,13 @@ void setup()
 }
 
 void loop() { u.tick(); }
+
+
+//core 1
+void setup1() {
+    u.initDSP();
+}
+
+void loop1() {
+    u.tick_dsp();
+}

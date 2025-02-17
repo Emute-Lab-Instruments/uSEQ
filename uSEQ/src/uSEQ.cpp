@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <sys/types.h>
 
+
 #ifdef ARDUINO
 #include "hardware/flash.h"
 #include "uSEQ/piopwm.h"
@@ -4416,3 +4417,16 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_report_firmware_info, //
                           // msg += "\"}";                                 //
                           // println(msg);
                           , 0)
+
+
+void uSEQ::initDSP() {
+    dspEngine = std::make_unique<uSEQDSPEngine>();
+    dspEngine->setup();
+}
+
+
+void FAST_FUNC(uSEQ::tick_dsp)() {
+    Serial.printf("core1 %s\n", HOST);
+    delay(1000);
+}
+

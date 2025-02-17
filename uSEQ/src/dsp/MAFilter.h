@@ -5,6 +5,7 @@
 #include <numeric>
 #include <functional>
 #include <math.h>
+#include <algorithm>
 
 class MovingAverageFilter
 {
