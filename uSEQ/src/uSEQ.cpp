@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <sys/types.h>
+// #include "dsp/dsp-queues.hpp"
 
 
 #ifdef ARDUINO
@@ -163,9 +164,21 @@ void start_pdm()
     add_repeating_timer_us(150, timer_callback, NULL, &mst);
 }
 #endif
+
+void init_dsp_queues() {
+    for (int i = 0; i < N_INPUT_QUEUES; i++) {
+        queue_init(&DSPQ::q_inputs[i], sizeof(double), 1);
+    }
+
+    for (int i = 0; i < N_OUTPUT_QUEUES; i++) {
+        queue_init(&DSPQ::q_outputs[i], sizeof(double), 1);
+    }    
+}
+
 void uSEQ::init()
 {
     DBG("uSEQ::init");
+    init_dsp_queues();
     setup_leds();
 
     // dbg("free heap (start):" + String(free_heap()));
@@ -370,7 +383,7 @@ void uSEQ::check_code_quant_phasor()
 // TODO does order matter?
 // e.g. when user code is evaluated, does it make
 // a difference if the inputs have been updated already?
-void uSEQ::tick()
+void __not_in_flash_func(uSEQ::tick())
 {
     DBG("uSEQ::tick");
 
@@ -378,6 +391,11 @@ void uSEQ::tick()
     set("fps", Value(1000000.0 / updateSpeed));
     set("qt", Value(updateSpeed * 0.001));
     ts = micros();
+
+    double tmp;
+    if(queue_try_remove(&DSPQ::q_outputs[0], &tmp)) {
+        Serial.println(tmp);
+    }
 
     // Read & cache the hardware & software inputs
     update_inputs();
@@ -4428,10 +4446,6 @@ void uSEQ::initDSP() {
 
 void FAST_FUNC(uSEQ::tick_dsp)() {
     Serial.printf("core1 %s\n", HOST);
-    double tmp;
-    if(queue_try_remove(dspEngine->getOutputQueue(0), &tmp)) {
-        Serial.println(tmp);
-    }
 
     delay(1000);
 }

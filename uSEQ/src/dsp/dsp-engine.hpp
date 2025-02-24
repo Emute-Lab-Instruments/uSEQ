@@ -2,7 +2,7 @@
 #define __DSP_ENGINE_HPP
 
 #include "dspatch/include/DSPatch_Embedded.h"
-#include "pico/util/queue.h"
+#include "dsp-queues.hpp"
 #include <array>
 #include <unordered_map>
 
@@ -90,15 +90,7 @@ public:
         circuit->AddComponent(testugen);
         circuit->AddComponent(counter);
 
-        for(auto &v : q_inputs) {
-            queue_init(&v, sizeof(double), 1);
-        }
-
-        for(auto &v : q_outputs) {
-            queue_init(&v, sizeof(double), 1);
-        }
-
-        testOutput = std::make_shared<uSeqGen_QueueOutput>(&q_outputs[0]);
+        testOutput = std::make_shared<uSeqGen_QueueOutput>(&DSPQ::q_outputs[0]);
         circuit->AddComponent(testOutput);
     }
 
@@ -115,22 +107,12 @@ public:
         return true;
     }    
 
-    inline queue_t* getOutputQueue(const size_t idx) {
-        return &q_outputs[idx];
-    }
-    
 private:
     std::shared_ptr<DSPatch::Circuit> circuit = std::make_shared<DSPatch::Circuit>();
 
     componentPtr testugen = std::make_shared<uSeqGen_SerialPrint>();
     componentPtr counter = std::make_shared<uSeqGen_Counter>();
     repeating_timer_t timer;
-
-    queue_t q_engine_commands;
-    queue_t q_engine_messages;
-
-    std::array<queue_t, 8> q_inputs;
-    std::array<queue_t, 8> q_outputs;
 
     std::unordered_map<size_t, componentPtr> components;
 
