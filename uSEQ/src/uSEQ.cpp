@@ -4422,11 +4422,17 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_report_firmware_info, //
 void uSEQ::initDSP() {
     dspEngine = std::make_unique<uSEQDSPEngine>();
     dspEngine->setup();
+    dspEngine->run(2);
 }
 
 
 void FAST_FUNC(uSEQ::tick_dsp)() {
     Serial.printf("core1 %s\n", HOST);
+    double tmp;
+    if(queue_try_remove(dspEngine->getOutputQueue(0), &tmp)) {
+        Serial.println(tmp);
+    }
+
     delay(1000);
 }
 
