@@ -338,6 +338,8 @@ private:
     LISP_FUNC_DECL(useq_report_firmware_info);
 
     LISP_FUNC_DECL(useq_tri);
+    LISP_FUNC_DECL(useq_dsp_start);
+    LISP_FUNC_DECL(useq_dsp_stop);
 
     void clear_all_outputs();
     void erase_info_flash();

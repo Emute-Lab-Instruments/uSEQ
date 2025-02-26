@@ -4426,6 +4426,11 @@ void uSEQ::init_builtinfuncs()
     // NOTE: for editor use only
     INSERT_BUILTINDEF("useq-report-firmware-info", useq_report_firmware_info);
     // INSERT_BUILTINDEF("useq-clear-flash", useq_clear_non_program_flash);
+
+    // DSP engine
+    INSERT_BUILTINDEF("ppp-go", useq_dsp_start);
+    INSERT_BUILTINDEF("ppp-stop", useq_dsp_stop);
+
 }
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, //
@@ -4448,11 +4453,49 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_report_firmware_info, //
                           // println(msg);
                           , 0)
 
+Value uSEQ::useq_dsp_start(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-go";
+
+    // Checking number of args
+    if (!(args.size() == 1))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+    if (!(args[0].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+
+    uSEQDSPEngine::command_info cmd = { uSEQDSPEngine::COMMANDS::START, args[0].as_float() };
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+    return Value::string("PPP Started");
+}
+
+Value uSEQ::useq_dsp_stop(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-stop";
+
+    // Checking number of args
+    if (!(args.size() == 0))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
+
+    uSEQDSPEngine::command_info cmd = { uSEQDSPEngine::COMMANDS::STOP, 0};
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+    return Value::string("PPP Stopped");
+}
 
 void uSEQ::initDSP() {
     dspEngine = std::make_unique<uSEQDSPEngine>();
     dspEngine->setup();
-    dspEngine->run(2);
 }
 
 
