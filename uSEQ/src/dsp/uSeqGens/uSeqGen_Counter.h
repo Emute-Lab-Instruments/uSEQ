@@ -1,13 +1,13 @@
 #ifndef USEQGEN_COUNTER_H
 #define USEQGEN_COUNTER_H
 
-#include "../dspatch/include/DSPatch_Embedded.h"
+#include "uSeqGen_Base.h"
 
-class uSeqGen_Counter final : public DSPatch::Component
+class uSeqGen_Counter final : public uSeqGen_Base
 {
 public:
     uSeqGen_Counter()
-        : Component(ProcessOrder::OutOfOrder)
+        : uSeqGen_Base()
     {
         SetInputCount_(0);
         SetOutputCount_(1);

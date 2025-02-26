@@ -1,14 +1,14 @@
 #ifndef USEQGEN_QUEUEINPUT_H
 #define USEQGEN_QUEUEINPUT_H
 
-#include "../dspatch/include/DSPatch_Embedded.h"
+#include "uSeqGen_Base.h"
 #include "pico/util/queue.h"
 
-class uSeqGen_QueueInput final : public DSPatch::Component
+class uSeqGen_QueueInput final : public uSeqGen_Base
 {
 public:
     uSeqGen_QueueInput(queue_t *src) 
-        : Component(ProcessOrder::OutOfOrder), queue(src)
+        : uSeqGen_Base()
     {
         SetInputCount_(0);
         SetOutputCount_(1);
