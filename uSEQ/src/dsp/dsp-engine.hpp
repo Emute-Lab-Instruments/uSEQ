@@ -11,7 +11,7 @@
 #include <array>
 #include <unordered_map>
 
-using componentPtr = std::shared_ptr<DSPatch::Component>;
+using componentPtr = std::shared_ptr<uSeqGen_Base>;
 
 class uSEQDSPEngine {
 public:
@@ -21,8 +21,8 @@ public:
         double data;
     };
     void setup() {
-        circuit->AddComponent(testugen);
-        circuit->AddComponent(counter);
+        // circuit->AddComponent(testugen);
+        // circuit->AddComponent(counter);
 
         testOutput = std::make_shared<uSeqGen_QueueOutput>(&DSPQ::q_outputs[0]);
         circuit->AddComponent(testOutput);
@@ -74,8 +74,8 @@ private:
 
     std::shared_ptr<DSPatch::Circuit> circuit = std::make_shared<DSPatch::Circuit>();
 
-    componentPtr testugen = std::make_shared<uSeqGen_SerialPrint>();
-    componentPtr counter = std::make_shared<uSeqGen_Counter>();
+    // componentPtr testugen = std::make_shared<uSeqGen_SerialPrint>();
+    // componentPtr counter = std::make_shared<uSeqGen_Counter>();
     repeating_timer_t timer, command_timer;
 
     std::unordered_map<size_t, componentPtr> components;

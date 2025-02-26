@@ -1,13 +1,13 @@
 #ifndef USEQGEN_SERIALPRINT_H
 #define USEQGEN_SERIALPRINT_H
 
-#include "../dspatch/include/DSPatch_Embedded.h"
+#include "uSeqGen_Base.h"
 
-class uSeqGen_SerialPrint final : public DSPatch::Component
+class uSeqGen_SerialPrint final : public uSeqGen_Base
 {
 public:
     uSeqGen_SerialPrint()
-        : Component(ProcessOrder::OutOfOrder)
+        : uSeqGen_Base()
     {
         SetInputCount_(0);
         SetOutputCount_(1);

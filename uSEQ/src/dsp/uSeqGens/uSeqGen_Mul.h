@@ -1,19 +1,7 @@
 #ifndef USEQGEN_MUL_H
 #define USEQGEN_MUL_H
 
-#include "../dspatch/include/DSPatch_Embedded.h"
-
-class uSeqGen_Base : public DSPatch::Component
-{
-public:
-    uSeqGen_Base()
-        : Component(ProcessOrder::OutOfOrder)
-    {
-    }
-
-protected:
-private:
-};
+#include "uSeqGen_Base.h"
 
 class uSeqGen_Mul final : public uSeqGen_Base
 {
