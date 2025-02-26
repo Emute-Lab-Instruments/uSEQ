@@ -3,82 +3,15 @@
 
 #include "dspatch/include/DSPatch_Embedded.h"
 #include "dsp-queues.hpp"
+#include "uSeqGens/uSeqGen_SerialPrint.h"
+#include "uSeqGens/uSeqGen_Counter.h"
+#include "uSeqGens/uSeqGen_Mul.h"
+#include "uSeqGens/uSeqGen_QueueOutput.h"
+#include "uSeqGens/uSeqGen_QueueInput.h"
 #include <array>
 #include <unordered_map>
 
 using componentPtr = std::shared_ptr<DSPatch::Component>;
-
-class uSeqGen_SerialPrint final : public DSPatch::Component
-{
-public:
-    uSeqGen_SerialPrint()
-        // the order in which buffers are Process_()'ed is not important
-        : Component( ProcessOrder::OutOfOrder )
-    {
-        SetInputCount_(0);
-        SetOutputCount_( 1 );
-    }
-
-
-protected:
-    void __not_in_flash_func(Process_)( DSPatch::SignalBus&, DSPatch::SignalBus& outputs ) override
-    {
-      Serial.println("ugen");
-      outputs.SetValue( 0, 0);
-    }
-private:
-};
-
-class uSeqGen_Counter final : public DSPatch::Component
-{
-public:
-    uSeqGen_Counter()
-        // the order in which buffers are Process_()'ed is not important
-        : Component( ProcessOrder::OutOfOrder )
-    {
-        SetInputCount_(0);
-        SetOutputCount_( 1 );
-    }
-
-
-protected:
-    void __not_in_flash_func(Process_)( DSPatch::SignalBus&, DSPatch::SignalBus& outputs ) override
-    {
-        outputs.SetValue( 0, count);
-        count++;
-    }
-private:
-    float count=0;
-};
-
-class uSeqGen_QueueOutput final : public DSPatch::Component
-{
-public:
-    uSeqGen_QueueOutput(queue_t *dest) 
-        // the order in which buffers are Process_()'ed is not important
-        : Component( ProcessOrder::OutOfOrder ), queue(dest)
-    {
-        SetInputCount_(1);
-        SetOutputCount_( 0 );
-
-    }
-    
-    ~uSeqGen_QueueOutput() {
-    }
-
-
-protected:
-    void __not_in_flash_func(Process_)( DSPatch::SignalBus& inputs, DSPatch::SignalBus& ) override
-    {
-        const double sig0 = *inputs.GetValue<double>(0);        
-        queue_try_add(queue, &tmp);
-        tmp+= 0.11;
-    }
-private:
-    queue_t *queue;
-    double tmp=0;
-
-};
 
 class uSEQDSPEngine {
 public:
@@ -118,7 +51,7 @@ private:
 
     componentPtr testOutput;
 
-    size_t nextComponentKey=0;
+    size_t nextComponentKey = 0;
 };
 
 #endif

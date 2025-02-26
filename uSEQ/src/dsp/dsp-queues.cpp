@@ -8,4 +8,5 @@ namespace DSPQ {
     
     queue_t __not_in_flash("DSP")  q_engine_commands;
     queue_t __not_in_flash("DSP")  q_engine_messages;    
+
 }
