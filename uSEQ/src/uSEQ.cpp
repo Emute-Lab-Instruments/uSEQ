@@ -165,14 +165,30 @@ void start_pdm()
 }
 #endif
 
-void init_dsp_queues() {
+void uSEQ::init_dsp_queues() {
     for (int i = 0; i < N_INPUT_QUEUES; i++) {
         queue_init(&DSPQ::q_inputs[i], sizeof(double), 1);
     }
 
     for (int i = 0; i < N_OUTPUT_QUEUES; i++) {
         queue_init(&DSPQ::q_outputs[i], sizeof(double), 1);
-    }    
+        dsp_output_names[i] = "ppp" + String(i);
+        set(dsp_output_names[i],0);
+    }  
+    
+    queue_init(&DSPQ::q_engine_commands, sizeof(uSEQDSPEngine::command_info), 8);
+    
+}
+
+
+
+void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
+    double tmp;
+    for (size_t i = 0; i < N_OUTPUT_QUEUES; i++) {
+        if (queue_try_remove(&DSPQ::q_outputs[i], &tmp)) {
+            set(dsp_output_names[i], tmp);
+        }
+    }
 }
 
 void uSEQ::init()
@@ -392,11 +408,7 @@ void __not_in_flash_func(uSEQ::tick())
     set("qt", Value(updateSpeed * 0.001));
     ts = micros();
 
-    double tmp;
-    if(queue_try_remove(&DSPQ::q_outputs[0], &tmp)) {
-        Serial.println(tmp);
-    }
-
+    check_dsp_output_queues();
     // Read & cache the hardware & software inputs
     update_inputs();
     // Update time
@@ -4445,7 +4457,7 @@ void uSEQ::initDSP() {
 
 
 void FAST_FUNC(uSEQ::tick_dsp)() {
-    Serial.printf("core1 %s\n", HOST);
+    // Serial.printf("core1 %s\n", HOST);
 
     delay(1000);
 }

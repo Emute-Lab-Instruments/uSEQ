@@ -47,6 +47,7 @@ class uSEQ : public Interpreter
 public:
     uSEQ() {}
 
+    void init_dsp_queues();
     void init();
     void run();
 
@@ -166,6 +167,11 @@ private:
     double m_bpm        = m_defaultBPM;
     void set_bpm(double newBpm, double changeThreshold);
     void update_bpm_variables();
+
+    //queue and dsp
+    std::array<String, N_OUTPUT_QUEUES> dsp_output_names;
+    void check_dsp_output_queues();
+
 
     //// UPDATE methods
     // main user interaction logic
