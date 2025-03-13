@@ -500,7 +500,7 @@ void uSEQ::update_inputs()
 
 #ifdef MUSICTHING
     const size_t muxdelay = 2;
-    
+
     // unroll loop for efficiency
     digitalWrite(MUX_LOGIC_A, 0);
     digitalWrite(MUX_LOGIC_B, 0);
@@ -512,13 +512,13 @@ void uSEQ::update_inputs()
     digitalWrite(MUX_LOGIC_B, 1);
     delayMicroseconds(muxdelay);
     m_input_vals[MTYKNOB] = analogRead(MUX_IN_1) * recp4096;
-    
+
     digitalWrite(MUX_LOGIC_A, 1);
     digitalWrite(MUX_LOGIC_B, 0);
     delayMicroseconds(muxdelay);
     m_input_vals[MTXKNOB] = analogRead(MUX_IN_1) * recp4096;
     m_input_vals[USEQAI2] = 1.0 - (analogRead(MUX_IN_2) * recp4096);
-    
+
     digitalWrite(MUX_LOGIC_A, 1);
     digitalWrite(MUX_LOGIC_B, 1);
     delayMicroseconds(muxdelay);
@@ -1128,7 +1128,6 @@ void uSEQ::update_clock_from_external(double ts)
         if ((ext_clock_tracker.beat_count == 0 & highstd) ||
             ext_clock_tracker.beat_count == 0)
         {
-            // println("----------------------------------------reset");
             set_bpm(newBPM, 0);
 
             // Calculate how many complete bars we've moved through
@@ -1141,6 +1140,7 @@ void uSEQ::update_clock_from_external(double ts)
             // to move backward
             m_transport_time_offset += nearest_bar_time - m_transport_time;
         }
+
         ext_clock_tracker.beat_count++;
         if (meter_denominator == ext_clock_tracker.beat_count)
         {
@@ -1735,10 +1735,11 @@ Value uSEQ::useq_schedule(std::vector<Value>& args, Environment& env)
     v.period  = period;
     v.lastRun = 0;
     v.ast     = ast;
-    //remove if exists
+    // remove if exists
     const String searchId = args[0].as_string();
 
-    auto is_item    = [searchId](scheduledItem& candidate) { return candidate.id == searchId; };
+    auto is_item = [searchId](scheduledItem& candidate)
+    { return candidate.id == searchId; };
 
     if (auto it = std::find_if(std::begin(m_scheduledItems),
                                std::end(m_scheduledItems), is_item);
@@ -1746,7 +1747,7 @@ Value uSEQ::useq_schedule(std::vector<Value>& args, Environment& env)
     {
         m_scheduledItems.erase(it);
     }
-    //add to scheduler list
+    // add to scheduler list
     m_scheduledItems.push_back(v);
     return Value::nil();
 }
@@ -1967,14 +1968,12 @@ Value uSEQ::useq_ain2(std::vector<Value>& args, Environment& env)
     return Value(m_input_vals[USEQAI2]);
 }
 
-
 #ifdef MUSICTHING
 
 Value uSEQ::useq_mt_knob(std::vector<Value>& args, Environment& env)
 {
     return Value(m_input_vals[MTMAINKNOB]);
 }
-
 
 Value uSEQ::useq_mt_knobx(std::vector<Value>& args, Environment& env)
 {
@@ -2158,7 +2157,6 @@ BUILTINFUNC_MEMBER(
     println("Clock divisor: " + String(args[1].as_int()));
 
     return Value::nil();, 2)
-
 
 BUILTINFUNC_MEMBER(useq_swr, ret = Value(m_input_vals[USEQRS1]);, 0)
 
@@ -2685,7 +2683,6 @@ Value uSEQ::useq_eu(std::vector<Value>& args, Environment& env)
     return result;
 }
 
-
 Value uSEQ::useq_ratiotrig(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "rpulse";
@@ -2709,7 +2706,6 @@ Value uSEQ::useq_ratiotrig(std::vector<Value>& args, Environment& env)
             report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
-
     }
     if (!(args[0].is_sequential()))
     {
@@ -2732,34 +2728,36 @@ Value uSEQ::useq_ratiotrig(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
-
     // BODY
     Value result = Value::nil();
 
-    auto ratios            = args[0].as_sequential();
-    const auto pulseWidth   = args[1].as_float();
-    const auto phase    = args[2].as_float();
+    auto ratios           = args[0].as_sequential();
+    const auto pulseWidth = args[1].as_float();
+    const auto phase      = args[2].as_float();
 
-
-    double trig=0;
+    double trig     = 0;
     double ratioSum = 0;
-    for(Value v: ratios) {
+    for (Value v : ratios)
+    {
         ratioSum += v.as_float();
     }
-    double phaseAdj = ratioSum * phase;
-    double accumulatedSum=0;
-    double lastAccumulatedSum=0;
-    for(Value v : ratios) {
+    double phaseAdj           = ratioSum * phase;
+    double accumulatedSum     = 0;
+    double lastAccumulatedSum = 0;
+    for (Value v : ratios)
+    {
         accumulatedSum += v.as_float();
-        if (phaseAdj <= accumulatedSum) {
-            //check pulse width
-            double beatPhase = (phaseAdj - lastAccumulatedSum) / (accumulatedSum - lastAccumulatedSum);
+        if (phaseAdj <= accumulatedSum)
+        {
+            // check pulse width
+            double beatPhase = (phaseAdj - lastAccumulatedSum) /
+                               (accumulatedSum - lastAccumulatedSum);
             trig = beatPhase <= pulseWidth;
             break;
         }
         lastAccumulatedSum = accumulatedSum;
     }
-    result  = Value(trig);
+    result = Value(trig);
 
     return result;
 }
@@ -2780,14 +2778,13 @@ Value uSEQ::useq_ratiostep(std::vector<Value>& args, Environment& env)
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             Value pre_eval = args[i];
             report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
-
     }
     if (!(args[0].is_sequential()))
     {
@@ -2804,30 +2801,32 @@ Value uSEQ::useq_ratiostep(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
-
     // BODY
     Value result = Value::nil();
 
-    auto ratios         = args[0].as_sequential();
-    const auto phase    = args[1].as_float();
+    auto ratios      = args[0].as_sequential();
+    const auto phase = args[1].as_float();
 
-    double phaseOut=0;
+    double phaseOut = 0;
     double ratioSum = 0;
-    for(Value v: ratios) {
+    for (Value v : ratios)
+    {
         ratioSum += v.as_float();
     }
-    double phaseAdj = ratioSum * phase;
-    double accumulatedSum=0;
-    double lastAccumulatedSum=0;
-    for(Value v : ratios) {
+    double phaseAdj           = ratioSum * phase;
+    double accumulatedSum     = 0;
+    double lastAccumulatedSum = 0;
+    for (Value v : ratios)
+    {
         accumulatedSum += v.as_float();
-        if (phaseAdj <= accumulatedSum) {
+        if (phaseAdj <= accumulatedSum)
+        {
             phaseOut = lastAccumulatedSum;
             break;
         }
         lastAccumulatedSum = accumulatedSum;
     }
-    result  = Value(phaseOut / ratioSum);
+    result = Value(phaseOut / ratioSum);
     return result;
 }
 
@@ -2848,14 +2847,13 @@ LISP_FUNC_DECL(uSEQ::useq_ratioindex)
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             Value pre_eval = args[i];
             report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
-
     }
     if (!(args[0].is_sequential()))
     {
@@ -2872,23 +2870,25 @@ LISP_FUNC_DECL(uSEQ::useq_ratioindex)
         return Value::error();
     }
 
-
     // BODY
     Value result = Value::nil();
 
-    auto ratios         = args[0].as_sequential();
-    const auto phase    = args[1].as_float();
+    auto ratios      = args[0].as_sequential();
+    const auto phase = args[1].as_float();
 
-    double index=0;
+    double index    = 0;
     double ratioSum = 0;
-    for(Value v: ratios) {
+    for (Value v : ratios)
+    {
         ratioSum += v.as_float();
     }
-    double phaseAdj = ratioSum * phase;
-    double accumulatedSum=0;
-    for(Value v : ratios) {
+    double phaseAdj       = ratioSum * phase;
+    double accumulatedSum = 0;
+    for (Value v : ratios)
+    {
         accumulatedSum += v.as_float();
-        if (phaseAdj <= accumulatedSum) {
+        if (phaseAdj <= accumulatedSum)
+        {
             break;
         }
         index++;
@@ -2915,14 +2915,13 @@ LISP_FUNC_DECL(uSEQ::useq_ratiowarp)
     for (size_t i = 0; i < args.size(); i++)
     {
         // Eval
-        args[i]        = args[i].eval(env);
+        args[i] = args[i].eval(env);
         if (args[i].is_error())
         {
             Value pre_eval = args[i];
             report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
-
     }
     if (!(args[0].is_sequential()))
     {
@@ -2939,31 +2938,35 @@ LISP_FUNC_DECL(uSEQ::useq_ratiowarp)
         return Value::error();
     }
 
-
     // BODY
     Value result = Value::nil();
 
-    auto ratios         = args[0].as_sequential();
-    const auto phase    = args[1].as_float();
+    auto ratios      = args[0].as_sequential();
+    const auto phase = args[1].as_float();
 
-    double output=0;
+    double output = 0;
 
-    if (ratios.size() > 0) {
-        double index=0;
+    if (ratios.size() > 0)
+    {
+        double index      = 0;
         double indexWidth = 1.0 / ratios.size();
 
         double ratioSum = 0;
-        for(Value v: ratios) {
+        for (Value v : ratios)
+        {
             ratioSum += v.as_float();
         }
 
-        double phaseAdj = ratioSum * phase;
-        double accumulatedSum=0;
-        double lastAccumulatedSum=0;
-        for(Value v : ratios) {
+        double phaseAdj           = ratioSum * phase;
+        double accumulatedSum     = 0;
+        double lastAccumulatedSum = 0;
+        for (Value v : ratios)
+        {
             accumulatedSum += v.as_float();
-            if (phaseAdj <= accumulatedSum) {
-                double beatPhase = (phaseAdj - lastAccumulatedSum) / (accumulatedSum - lastAccumulatedSum);
+            if (phaseAdj <= accumulatedSum)
+            {
+                double beatPhase = (phaseAdj - lastAccumulatedSum) /
+                                   (accumulatedSum - lastAccumulatedSum);
                 output = (index * indexWidth) + (beatPhase * indexWidth);
                 break;
             }
@@ -2972,10 +2975,9 @@ LISP_FUNC_DECL(uSEQ::useq_ratiowarp)
         }
     }
 
-    result  = Value(output);
+    result = Value(output);
     return result;
 }
-
 
 Value uSEQ::useq_phasor_offset(std::vector<Value>& args, Environment& env)
 {
@@ -3000,7 +3002,6 @@ Value uSEQ::useq_phasor_offset(std::vector<Value>& args, Environment& env)
             report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
-
     }
     // Checking individual args
     if (!(args[0].is_number()))
@@ -3016,16 +3017,15 @@ Value uSEQ::useq_phasor_offset(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
-
     // BODY
     Value result = Value::nil();
 
-    const auto offset         = args[0].as_float();
-    auto phase    = args[1].as_float();
+    const auto offset = args[0].as_float();
+    auto phase        = args[1].as_float();
 
-    phase = std::fmod(phase + offset, 1.0);
-    result  = Value(phase);
-    
+    phase  = std::fmod(phase + offset, 1.0);
+    result = Value(phase);
+
     return result;
 }
 
@@ -4412,8 +4412,8 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, //
                           String msg = "uSEQ Firmware Version: " +
                                        String(USEQ_FIRMWARE_VERSION);
 #ifdef MUSICTHING
-                        msg += " (Music Thing Workshop Computer Edition)";
-#endif                                       
+                          msg += " (Music Thing Workshop Computer Edition)";
+#endif
                           ret = Value::string(msg);, 0)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_report_firmware_info, //
