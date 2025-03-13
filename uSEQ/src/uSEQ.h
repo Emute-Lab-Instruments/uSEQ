@@ -124,6 +124,10 @@ private:
     TimeValue m_last_transport_reset_time = 0.0;
     // time /since/ last "transport" reset by user
     TimeValue m_transport_time = 0.0;
+    // Offset to be added to transport time before
+    // being used in calculations, e.g. for nudging
+    // when using an external clock
+    TimeValue m_transport_time_offset = 0.0;
     // last known transport time
     TimeValue m_last_transport_time = 0.0;
 

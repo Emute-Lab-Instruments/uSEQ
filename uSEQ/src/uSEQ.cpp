@@ -980,6 +980,7 @@ void uSEQ::update_logical_time(TimeValue actual_time)
 
     // Update the main UI timekeeping variable
     m_transport_time = actual_time - m_last_transport_reset_time;
+    m_transport_time += m_transport_time_offset;
 
     // Phasors
     m_beat_phase    = beat_at_time(m_transport_time);
@@ -1129,7 +1130,16 @@ void uSEQ::update_clock_from_external(double ts)
         {
             // println("----------------------------------------reset");
             set_bpm(newBPM, 0);
-            reset_logical_time();
+
+            // Calculate how many complete bars we've moved through
+            TimeValue num_bars_current = m_transport_time / m_bar_length;
+            // Find the nearest bar boundary
+            // round to find the nearest bar boundary
+            TimeValue nearest_bar_time = round(num_bars_current) * m_bar_length;
+            // Calculate the offset needed to align with the nearest bar boundary
+            // This will be positive if we need to move forward, negative if we need
+            // to move backward
+            m_transport_time_offset += nearest_bar_time - m_transport_time;
         }
         ext_clock_tracker.beat_count++;
         if (meter_denominator == ext_clock_tracker.beat_count)
