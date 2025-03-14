@@ -35,12 +35,28 @@ common_src = [
   'uSEQ/src/lisp/configure.h',
   'uSEQ/src/lisp/generated_builtins.h',
   'uSEQ/src/lisp/generated_builtins.cpp',
-  # uSEQ
+  # uSEQ - Core modules
   'uSEQ/src/uSEQ.h',
+  # Keep the original for now
   'uSEQ/src/uSEQ.cpp',
-  # TODO should these be moved separately?
-  # 'uSEQ/src/uSEQ/io.h',
-  # 'uSEQ/src/uSEQ/io.cpp',
+  # Modular implementation files that will replace uSEQ.cpp
+  'uSEQ/src/uSEQ_Core.cpp',
+  'uSEQ/src/uSEQ_Init.h',
+  'uSEQ/src/uSEQ_Init.cpp',
+  'uSEQ/src/uSEQ_Timing.h',
+  'uSEQ/src/uSEQ_Timing.cpp',
+  'uSEQ/src/uSEQ_IO.h',
+  'uSEQ/src/uSEQ_IO.cpp',
+  'uSEQ/src/uSEQ_Signals.h',
+  'uSEQ/src/uSEQ_Signals.cpp',
+  'uSEQ/src/uSEQ_Scheduler.h',
+  'uSEQ/src/uSEQ_Scheduler.cpp',
+  'uSEQ/src/uSEQ_Storage.h',
+  'uSEQ/src/uSEQ_Storage.cpp',
+  'uSEQ/src/uSEQ_LispFunctions.h',
+  'uSEQ/src/uSEQ_LispFunctions.cpp',
+  'uSEQ/src/uSEQ_HardwareControl.h',
+  'uSEQ/src/uSEQ_HardwareControl.cpp',
   # EXTERN
   'uSEQ/src/dsp/MAFilter.h',
   'uSEQ/src/dsp/tempoEstimator.h',

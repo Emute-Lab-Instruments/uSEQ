@@ -2,6 +2,7 @@
 #define USEQ_H_
 
 #define USEQ_FIRMWARE_VERSION "1.1.0"
+#define DEFAULT_BPM 130.0
 
 #include "dsp/tempoEstimator.h"
 // #include "dsp/MAFilter.h"
@@ -16,6 +17,31 @@
 #include <sys/types.h>
 // #include "utils/serial_message.h"
 
+// Define necessary constants
+#ifndef NUM_ANALOG_INS
+#define NUM_ANALOG_INS 2
+#endif
+
+#ifndef NUM_DIGITAL_INS
+#define NUM_DIGITAL_INS 4 // Momentary and toggle switches
+#endif
+
+// Include the module headers - these will provide the declarations
+// without necessarily implementing them based on the configuration
+#include "uSEQ_Signals.h"
+#include "uSEQ_IO.h"
+#include "uSEQ_Init.h"
+#include "uSEQ_Timing.h"
+#include "uSEQ_Scheduler.h"
+#include "uSEQ_Storage.h"
+#include "uSEQ_HardwareControl.h"
+// uSEQ_LispFunctions.h is included by implementation files as needed
+
+// Include the module configuration header after all other includes
+// This allows the module headers to be included regardless of whether
+// the implementation is enabled
+#include "uSEQ_Modules.h"
+
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
 #define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
 #define LISP_FUNC_RETURN_TYPE Value
@@ -25,17 +51,6 @@
 
 using TimeValue  = double;
 using PhaseValue = double;
-
-class maxiFilter
-{
-private:
-    double z      = 0;
-    double output = 0;
-
-public:
-    maxiFilter() {}
-    double lopass(double input, double cutoff);
-};
 
 class uSEQ : public Interpreter
 {
@@ -110,8 +125,20 @@ private:
     std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
 
     double m_input_vals[14];
+    double m_analog_inputs[NUM_ANALOG_INS];  // Added for analog inputs
+    double m_digital_inputs[NUM_DIGITAL_INS];
     // NOTE this was a std vector before, init with 0
     double m_serial_input_streams[NUM_SERIAL_INS];
+    
+    // Output structure definitions
+    struct OutputData {
+        bool active;
+        double current_value;
+    };
+    
+    OutputData m_continuous_outputs[NUM_CONTINUOUS_OUTS];
+    OutputData m_binary_outputs[NUM_BINARY_OUTS];
+    OutputData m_serial_outputs[NUM_SERIAL_OUTS];
 
     // Timing (NOTE: in micros)
     // actual time that module has been running for
@@ -156,6 +183,18 @@ private:
     // BPM
     double m_defaultBPM = 130;
     double m_bpm        = m_defaultBPM;
+    double m_nominal_bpm = 130;
+    bool m_external_clock_source = false;
+    double m_encoder_delta = 0;
+    
+    // Additional timing variables that will be used in full implementation
+    TimeValue m_last_logical_time = 0;
+    TimeValue m_logical_time = 0;
+    TimeValue m_logical_time_int = 0;
+    TimeValue m_time_since_last_beat = 0;
+    TimeValue m_beat_duration = 0;
+    TimeValue m_time_scale = 1.0;
+    int m_beat_counter = 0;
     void set_bpm(double newBpm, double changeThreshold);
     void update_bpm_variables();
 
@@ -163,6 +202,8 @@ private:
     // main user interaction logic
     void check_and_handle_user_input();
     void update_inputs();
+    void update_analog_inputs();
+    void update_digital_inputs();
     // timing-related stuff
     void update_time();
     void reset_logical_time();
@@ -375,6 +416,8 @@ private:
 #endif
 
     // INIT
+    void init_hardware();
+    void init_variables();
     void init_ASTs();
     void init_builtinfuncs();
 
@@ -389,6 +432,24 @@ private:
     void setup_rotary_encoder();
     void read_rotary_encoders();
 #endif
+
+#ifdef USEQHARDWARE_1_0
+    void setup_pdm();
+#endif
+
+// Flash info
+struct FlashInfo {
+    uint32_t magic;
+    double nominal_bpm;
+};
+
+// Flash constants
+static constexpr uint32_t FLASH_INFO_MAGIC = 0x5551FEAA;
+static constexpr uint32_t FLASH_INFO_OFFSET = 0x180000;
+static constexpr uint32_t FLASH_ENV_OFFSET = 0x181000;
+static constexpr uint32_t FLASH_MAX_ENV_SIZE = 0x10000; // 64K
+
+// Constants defined at the top of the file
 
 #ifdef ANALOG_INPUTS
     void setup_analog_ins();
@@ -428,6 +489,20 @@ private:
 
     // void clear_non_program_flash();
     static String current_output_being_processed;
+    
+    // AST mem management
+    class ASTPool {
+    public:
+        void init() {}
+    };
+    
+    class ASTAllocator {
+    public:
+        void init(ASTPool* pool) {}
+    };
+    
+    ASTPool m_ast_pool;
+    ASTAllocator m_ast_allocator;
 };
 
 #endif // USEQ_H_

@@ -13,6 +13,7 @@
 // #define USEQHARDWARE_0_2
 
 #include "src/uSEQ.h"
+// Include headers for new modular structure - implementations are disabled for now
 
 // NOTE: this has to be done here, as opposed to e.g. inside uSEQ::init,
 // to prevent anything trying to write to serial before it's been set up
