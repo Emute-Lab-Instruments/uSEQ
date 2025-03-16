@@ -15,10 +15,7 @@
 #include <memory>
 #include <sys/types.h>
 // #include "utils/serial_message.h"
-#include <Arduino.h>
-#include <vector>
-#include <string>
-#include <optional>
+#include "io/io.h"
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
 #define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
@@ -27,63 +24,11 @@
 // For declaring builtin functions as class members
 #define LISP_FUNC_DECL(__name__) LISP_FUNC_RETURN_TYPE __name__(LISP_FUNC_ARGS_TYPE);
 
-// Forward Declarations
-class Value;
-class Environment;
-
-// Constants - Moved from uSEQ.cpp for global access
-namespace SerialMsg {
-    constexpr byte message_begin_marker = 31;
-    enum serial_message_types {
-        STREAM,
-        MIDI
-    };
-    constexpr unsigned long serial_message_rate_limit = 5000; // microseconds
-    constexpr int execute_now_marker = '@';
-}
-
-// Define value types
 using TimeValue  = double;
 using PhaseValue = double;
-typedef double SERIAL_OUTPUT_VALUE_TYPE;
 
-// Constants - Moved from uSEQ.cpp for hardware definitions
-#ifdef ARDUINO
-
-//Hardware constants
-constexpr int NUM_CONTINUOUS_OUTS = 6;
-constexpr int NUM_BINARY_OUTS = 6;
-constexpr int NUM_SERIAL_OUTS = 8;
-constexpr int FLASH_SECTOR_SIZE = 4096;
-constexpr int FLASH_PAGE_SIZE = 256; // 256 bytes, always
-
-extern const int useq_output_pins;
-extern const int useq_output_led_pins;
-
-#endif
-
-// Structure Definitions
-struct scheduledItem {
-    String id;
-    double period;
-    size_t lastRun;
-    Value ast;
-};
-
-enum CLOCK_SOURCES {
-    INTERNAL,
-    EXTERNAL_I1,
-    EXTERNAL_I2
-};
-
-struct extClockStruct {
-    size_t div = 1;
-    size_t count = 0;
-    size_t beat_count = 0;
-    size_t bar_count = 0;
-};
-
-class maxiFilter {
+class maxiFilter
+{
 private:
     double z      = 0;
     double output = 0;
@@ -95,266 +40,186 @@ public:
 
 class uSEQ : public Interpreter
 {
+private:
+    // Add IO member
+    std::unique_ptr<IO> m_io;
+
 public:
-    // Statics
-    static uSEQ* instance;
-
-    // Constructor/Destructor
-    uSEQ() = default;
-    ~uSEQ() = default;
-
-    // Core Functionality
-    void run();
-    void tick();
-
-    // Initialization
-    void init();
-    void eval_lisp_library();
-
-    // Loop
-    void start_loop_blocking();
-
-    // Time Management
-    void update_time();
-    void update_logical_time(TimeValue actual_time);
-    void reset_logical_time();
-
-    // BPM Management
-    void set_bpm(double newBpm, double changeThreshold);
-
-    // Input Management
-    void update_inputs();
-
-    // Output Management
-    void update_signals();
-    void update_outs();
-
-    // Lisp Integration
-    void update_lisp_time_variables();
-    Value eval(String code);
-    Value parse(String code);
-    void set(String name, Value val);
-    std::optional<Value> get(String name);
-    void set_expr(String name, Value val);
-    std::optional<Value> get_expr(String name);
-    Environment make_env_for_time(TimeValue t_micros);
-    Value eval_at_time(Value& expr, Environment& env, TimeValue time_micros);
-
-    // API Functions
-    Value ard_useqdw(std::vector<Value>& args, Environment& env);
-    Value ard_useqaw(std::vector<Value>& args, Environment& env);
-    Value useq_fast(std::vector<Value>& args, Environment& env);
-    Value useq_slow(std::vector<Value>& args, Environment& env);
-    Value useq_offset_time(std::vector<Value>& args, Environment& env);
-    Value useq_schedule(std::vector<Value>& args, Environment& env);
-    Value useq_unschedule(std::vector<Value>& args, Environment& env);
-    Value useq_setbpm(std::vector<Value>& args, Environment& env);
-    Value useq_get_input_bpm(std::vector<Value>& args, Environment& env);
-    Value useq_set_time_sig(std::vector<Value>& args, Environment& env);
-    Value useq_in1(std::vector<Value>& args, Environment& env);
-    Value useq_in2(std::vector<Value>& args, Environment& env);
-    Value useq_ain1(std::vector<Value>& args, Environment& env);
-    Value useq_ain2(std::vector<Value>& args, Environment& env);
-
-    Value useq_toggle_select(std::vector<Value>& args, Environment& env);
-    Value useq_dm(std::vector<Value>& args, Environment& env);
-    Value useq_gates(std::vector<Value>& args, Environment& env);
-    Value useq_gatesw(std::vector<Value>& args, Environment& env);
-    Value useq_trigs(std::vector<Value>& args, Environment& env);
-    Value useq_euclidean(std::vector<Value>& args, Environment& env);
-    Value useq_eu(std::vector<Value>& args, Environment& env);
-    Value useq_fromList(std::vector<Value>& args, Environment& env);
-    Value useq_seq(std::vector<Value>& args, Environment& env);
-    Value useq_flatten(std::vector<Value>& args, Environment& env);
-    Value useq_flatseq(std::vector<Value>& args, Environment& env);
-    Value useq_fromFlattenedList(std::vector<Value>& args, Environment& env);
-    Value useq_interpolate(std::vector<Value>& args, Environment& env);
-    Value useq_step(std::vector<Value>& args, Environment& env);
-    Value useq_ssin(std::vector<Value>& args, Environment& env);
-    Value useq_swm(std::vector<Value>& args, Environment& env);
-    Value useq_swt(std::vector<Value>& args, Environment& env);
-    Value useq_swr(std::vector<Value>& args, Environment& env);
-    Value useq_rot(std::vector<Value>& args, Environment& env);
-
-    Value useq_fast(std::vector<Value>& args, Environment& env);
-    Value useq_slow(std::vector<Value>& args, Environment& env);
-    Value useq_offset_time(std::vector<Value>& args, Environment& env);
-    Value useq_tri(std::vector<Value>& args, Environment& env);
-
-    // Flash Storage
-    void write_flash_info();
-    void load_flash_info();
-    void write_flash_env();
-    void load_flash_env();
-    void autoload_flash();
-    void clear_all_outputs();
-    void set_my_id(int num);
-    void reset_flash_env_var_info();
-    std::pair<size_t, size_t> num_bytes_def_strs() const;
-    void copy_def_strings_to_buffer(char* buffer);
-    bool flash_has_been_written_before();
-    void erase_info_flash();
-
-    // MIDI
-    void update_midi_out();
-
-    // Accessors
-    CLOCK_SOURCES getClockSource() { return useq_clock_source; }
-    void set_ext_clock_div(size_t val) { ext_clock_tracker.div = val; }
-    void reset_ext_tracking() {
-        ext_clock_tracker.beat_count = 0;
-        ext_clock_tracker.bar_count = 0;
-        tempoI1.reset();
+    uSEQ() {
+#if defined(USEQ_PLATFORM_ARDUINO)
+        m_io = std::make_unique<ArduinoIO>();
+#else
+        m_io = std::make_unique<PCIO>();
+#endif
     }
 
+    void init();
+    void run();
+
+    void start_loop_blocking();
+    void tick();
+    void update_logical_time_variables(TimeValue);
+
+    // NOTE: this should probably be considered
+    // part of the interpreter instead
+    Value eval_at_time(Value&, Environment&, double);
+
+    void write_flash_env();
+    void load_flash_env();
+
+    static void gpio_irq_gate1();
+    static void gpio_irq_gate2();
+    tempoEstimator tempoI1, tempoI2;
+    void update_clock_from_external(double ts);
+
+    double delme = 928.22234;
+
+    static uSEQ* instance;
+    void set_input_val(size_t index, double value);
+
+    enum CLOCK_SOURCES
+    {
+        INTERNAL = 0,
+        EXTERNAL_I1,
+        EXTERNAL_I2
+    };
+
+    uSEQ::CLOCK_SOURCES getClockSource() { return useq_clock_source; }
+
 private:
+    // IO m_io;
 
-    // Constants
-    static constexpr const char* m_flash_stamp_str = "uSEQ";
-    static constexpr uint m_flash_stamp_size_bytes = strlen(m_flash_stamp_str) + 1;
-    Value default_continuous_expr = Value::number(0.5);
-    Value default_binary_expr = Value::number(0.0);
-    Value default_serial_expr = Value::nil();
-    String exit_command = "@@exit";
+    //     std::vector<Output> m_outputs;
+    // std::vector<Input> m_inputs;
 
-    // Time Management
-    TimeValue m_micros_raw = 0;
-    TimeValue m_micros_raw_last = 0;
-    TimeValue m_time_since_boot = 0;
-    TimeValue m_last_known_time_since_boot = 0;
-    TimeValue m_transport_time = 0;
-    TimeValue m_last_transport_reset_time = 0;
-    size_t m_overflow_counter = 0;
-    double updateSpeed = 0;
-    double ts = 0;
-    double lastCQP = 0;
+    // NOTE these may be useful later on for
+    // dynamically adding/removing outputs
+    // when running in virtual mode
+    uint m_num_continuous_outs = NUM_CONTINUOUS_OUTS;
+    uint m_num_binary_outs     = NUM_BINARY_OUTS;
+    uint m_num_serial_outs     = NUM_SERIAL_OUTS;
+    // uint m_num_continuous_ins  = NUM_CONTINUOUS_INS;
+    // uint m_num_binary_ins      = NUM_BINARY_INS;
+    uint m_num_serial_ins = NUM_SERIAL_INS;
 
-    // BPM Management
-    double m_defaultBPM = 120.0;
-    double m_bpm = m_defaultBPM;
-    TimeValue m_beat_length = 0;
-    TimeValue m_bar_length = 0;
-    TimeValue m_phrase_length = 0;
-    TimeValue m_section_length = 0;
+    // Flags
+    bool m_initialised        = false;
+    bool m_should_quit        = false;
+    bool m_current_expr_sound = true;
 
-    // Meter Management
-    double meter_denominator = 4.0;
-    double meter_numerator = 4.0;
-    double m_bars_per_phrase = 4;
-    double m_phrases_per_section = 4;
-
-    // UI
-    bool m_should_quit = false;
-    bool m_manual_evaluation = false;
-    String m_last_received_code = "";
-    String m_atom_currently_being_evaluated = "";
-    bool m_attempt_expr_eval_first = false;
-    bool m_update_loop_evaluation = false;
-
-    // Hardware
-    bool m_initialised = false;
-
-    // Scheduled Items
-    std::vector<scheduledItem> m_scheduledItems;
-
-    // Lisp
+    //// OUTPUTS
+    // Output forms
     Value m_q0AST;
-    double m_last_CQP = 0;
-    std::vector<Value> m_runQueue;
 
-    // Output Signals
-    int m_num_binary_outs = NUM_BINARY_OUTS;
-    std::vector<Value> m_binary_ASTs;
-    std::vector<int> m_binary_vals;
-
-    int m_num_continuous_outs = NUM_CONTINUOUS_OUTS;
     std::vector<Value> m_continuous_ASTs;
-    std::vector<double> m_continuous_vals;
+    std::vector<SERIAL_OUTPUT_VALUE_TYPE> m_continuous_vals;
 
-    int m_num_serial_outs = NUM_SERIAL_OUTS;
+    std::vector<Value> m_binary_ASTs;
+    std::vector<BINARY_INPUT_VALUE_TYPE> m_binary_vals;
+
     std::vector<Value> m_serial_ASTs;
     std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
-    unsigned long serial_out_timestamp = 0;
 
-    // Input Signals
-    int m_num_serial_ins = 8; // Arbitrary limit for now
-    std::vector<double> m_serial_input_streams = std::vector<double>(m_num_serial_ins, 0.0);
-    std::vector<double> m_input_vals = std::vector<double>(16, 0.0);
+    double m_input_vals[14];
+    // NOTE this was a std vector before, init with 0
+    double m_serial_input_streams[NUM_SERIAL_INS];
 
-    // Flash Storage
-    int m_my_id = 0;
-    size_t m_FLASH_ENV_SECTOR_SIZE = 0;
-    size_t m_FLASH_ENV_DEFS_SIZE = 0;
-    size_t m_FLASH_ENV_EXPRS_SIZE = 0;
-    uintptr_t m_FLASH_ENV_SECTOR_OFFSET_START = 0;
-    uintptr_t m_FLASH_ENV_SECTOR_OFFSET_END = 0;
-    size_t m_FLASH_ENV_STRING_BUFFER_SIZE = 0;
-    bool m_is_env_stored = false;
+    // Timing (NOTE: in micros)
+    // actual time that module has been running for
+    u_int8_t m_overflow_counter            = 0;
+    size_t m_micros_raw                    = 0;
+    size_t m_micros_raw_last               = 0.0;
+    TimeValue m_time_since_boot            = 0.0;
+    TimeValue m_last_known_time_since_boot = -1;
+    // time /of/ last "transport" reset by user
+    TimeValue m_last_transport_reset_time = 0.0;
+    // time /since/ last "transport" reset by user
+    TimeValue m_transport_time = 0.0;
+    // last known transport time
+    TimeValue m_last_transport_time = 0.0;
 
-    // Structures
-    CLOCK_SOURCES useq_clock_source = CLOCK_SOURCES::INTERNAL;
-    extClockStruct ext_clock_tracker;
+    // Durations (NOTE: in micros)
+    TimeValue m_beat_length    = 0.0;
+    TimeValue m_bar_length     = 0.0;
+    TimeValue m_phrase_length  = 0.0;
+    TimeValue m_section_length = 0.0;
+    // Normalised phasors
+    PhaseValue m_beat_phase    = 0.0;
+    PhaseValue m_bar_phase     = 0.0;
+    PhaseValue m_phrase_phase  = 0.0;
+    PhaseValue m_section_phase = 0.0;
 
-    // Lisp API
-    void init_builtinfuncs();
+    PhaseValue beat_at_time(TimeValue);
+    PhaseValue bar_at_time(TimeValue);
+    PhaseValue phrase_at_time(TimeValue);
+    PhaseValue section_at_time(TimeValue);
+
+    // Meter
+    double meter_numerator   = 4;
+    double meter_denominator = 4;
+
+    // TODO: better to have custom specified long phasors e.g. (addPhasor phasorName
+    // (lambda () (beats * 17)))
+    // - to be stored in std::map<String, Double[2]>
+    double m_bars_per_phrase     = 16;
+    double m_phrases_per_section = 16;
+
+    // BPM
+    double m_defaultBPM = 130;
+    double m_bpm        = m_defaultBPM;
+    void set_bpm(double newBpm, double changeThreshold);
+    void update_bpm_variables();
+
+    //// UPDATE methods
+    // main user interaction logic
+    void check_and_handle_user_input();
+    void update_inputs();
+    // timing-related stuff
+    void update_time();
+    void reset_logical_time();
+    void update_logical_time(TimeValue);
+    void update_lisp_time_variables();
+
+    // updating the (cached) outputs of stored forms
     void update_signals();
-
-    PhaseValue beat_at_time(TimeValue time);
-    PhaseValue bar_at_time(TimeValue time);
-    PhaseValue phrase_at_time(TimeValue time);
-    PhaseValue section_at_time(TimeValue time);
-
-    // IO
+    void update_continuous_signals();
+    void update_binary_signals();
+    void update_serial_signals();
+    // updating (i.e. writing to) the actual outputs
+    void update_outs();
     void update_continuous_outs();
     void update_binary_outs();
     void update_serial_outs();
-    void check_and_handle_user_input();
-    void run_scheduled_items();
-    void check_code_quant_phasor();
     void update_Q0();
 
-    // Internal Functions
-    void analog_write_with_led(int output, double val);
-    void digital_write_with_led(int output, int val);
-    void serial_write(int out, double val);
-    void update_bpm_variables();
-    void init_ASTs();
-    void reboot();
+    CLOCK_SOURCES useq_clock_source = CLOCK_SOURCES::INTERNAL;
+    struct ext_clock_tracking
+    {
+        size_t beat_count = 0;
+        size_t bar_count  = 0;
+        size_t count      = 0;
+        size_t div        = 1;
+    } ext_clock_tracker;
 
-    //Hardware functions
-    void gpio_irq_gate1();
-    void gpio_irq_gate2();
-    void setup_IO();
-    void setup_outs();
-    void setup_continuous_outs();
-    void setup_discrete_outs();
-    void setup_digital_ins();
-    void setup_switches();
-#ifdef USEQHARDWARE_0_2
-    void setup_rotary_encoder();
-    void read_rotary_encoders();
-#endif
-    void led_animation();
-    void update_clock_from_external(double ts);
-    void set_input_val(size_t index, double value);
-#ifdef ANALOG_INPUTS
-    void setup_analog_ins();
-#endif
+    void reset_ext_tracking()
+    {
+        ext_clock_tracker.beat_count = ext_clock_tracker.bar_count =
+            ext_clock_tracker.count  = 0;
+    }
 
-    // MIDI
-#ifdef MIDIOUT
-    std::map<int, Value> useqMDOMap;
-    LISP_FUNC_DECL(useq_mdo);
-#endif
+    void set_ext_clock_div(size_t val)
+    {
+        ext_clock_tracker.div = val;
+        reset_ext_tracking();
+    }
 
-    // Variables
-    Environment env;
-    ValueMap m_defs;
-    ValueMap m_def_exprs;
+    unsigned long serial_out_timestamp = 0;
 
-    tempoEstimator tempoI1, tempoI2;
+    Value default_continuous_expr = Value::nil();
+    Value default_binary_expr     = Value::nil();
+    Value default_serial_expr     = Value::nil();
 
-    String current_output_being_processed;
+    String m_last_received_code = "";
 
     LISP_FUNC_DECL(useq_eval_at_time);
     // expr-updating methods
@@ -467,14 +332,21 @@ private:
 
     void set_my_id(int num);
 
-    void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val);
-    void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
+    void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val) {
+        m_io->analogWrite(output, val);
+    }
+
+    void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val) {
+        m_io->digitalWrite(output, val);
+    }
+
     void serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val);
 
     void set_time_sig(double, double);
 
     std::vector<Value> m_runQueue;
     Value m_cqpAST = parse("bar");
+
     struct scheduledItem
     {
         //    Value statement;
@@ -487,6 +359,7 @@ private:
     std::vector<scheduledItem> m_scheduledItems;
     // SCHEDULED ITEMS
     void run_scheduled_items();
+
     void check_code_quant_phasor();
 
     double m_last_CQP;
@@ -512,6 +385,7 @@ private:
     void setup_continuous_outs();
     void setup_discrete_outs();
     void setup_switches();
+
 #ifdef USEQHARDWARE_0_2
     void setup_rotary_encoder();
     void read_rotary_encoders();
@@ -525,6 +399,7 @@ private:
     void led_animation();
     static constexpr u_int8_t m_serial_stream_begin_marker = 31;
     static constexpr char m_execute_now_marker             = '@';
+
     Environment make_env_for_time(TimeValue);
 
     void load_flash_info();
@@ -545,11 +420,13 @@ private:
 
     std::pair<size_t, size_t> num_bytes_def_strs() const;
     void copy_def_strings_to_buffer(char*);
+
     static constexpr const char* m_flash_stamp_str = "uSEQ";
     static constexpr uint m_flash_stamp_size_bytes = strlen(m_flash_stamp_str) + 1;
 
     bool flash_has_been_written_before();
     void autoload_flash();
+
     // void clear_non_program_flash();
     static String current_output_being_processed;
 };
