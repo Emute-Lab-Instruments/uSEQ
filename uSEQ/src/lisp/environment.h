@@ -61,7 +61,7 @@ public:
     void set_global_expr(const String name, Value value);
 
     void combine(Environment const& other);
-    String toString(Environment const& e);
+    String toString();
 
     void set_parent_scope(Environment* parent) { m_parent_env = parent; }
 
