@@ -175,11 +175,11 @@ void Environment::combine(Environment const& other)
 }
 
 // TODO flesh out serialization
-String Environment::toString(Environment const& e)
+String Environment::toString()
 {
-    auto itr  = e.m_defs.begin();
+    auto itr  = m_defs.begin();
     String os = "{ ";
-    for (; itr != e.m_defs.end(); itr++)
+    for (; itr != m_defs.end(); itr++)
     {
 
         os += '\'';
