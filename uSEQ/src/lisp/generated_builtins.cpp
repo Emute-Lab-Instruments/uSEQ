@@ -1800,7 +1800,8 @@ Value divide(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = args[0] / args[1];
+    // Default to floating point division
+    result       = Value(args[0].as_float() / args[1].as_float());
     return result;
 }
 
