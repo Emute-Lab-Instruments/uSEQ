@@ -132,6 +132,8 @@ private:
     TimeValue m_bar_length     = 0.0;
     TimeValue m_phrase_length  = 0.0;
     TimeValue m_section_length = 0.0;
+    uint32_t m_current_beat_num = 0;
+    uint32_t m_current_bar_num = 0;
     // Normalised phasors
     PhaseValue m_beat_phase    = 0.0;
     PhaseValue m_bar_phase     = 0.0;
@@ -139,9 +141,13 @@ private:
     PhaseValue m_section_phase = 0.0;
 
     PhaseValue beat_at_time(TimeValue);
+    uint32_t beat_num_at_time(TimeValue);
     PhaseValue bar_at_time(TimeValue);
+    uint32_t bar_num_at_time(TimeValue);
     PhaseValue phrase_at_time(TimeValue);
     PhaseValue section_at_time(TimeValue);
+
+    double simple_hashing_function(uint32_t);
 
     // Meter
     double meter_numerator   = 4;
@@ -332,6 +338,9 @@ private:
     LISP_FUNC_DECL(useq_i2c_host_start);
     LISP_FUNC_DECL(useq_i2c_send_to);
 
+
+    LISP_FUNC_DECL(useq_random);
+
     void clear_all_outputs();
     void erase_info_flash();
 
@@ -428,6 +437,8 @@ private:
 
     // void clear_non_program_flash();
     static String current_output_being_processed;
+
+    uint32_t m_random_seed = 0x9E3779B9;
 };
 
 #endif // USEQ_H_

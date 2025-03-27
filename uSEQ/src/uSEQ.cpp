@@ -1074,7 +1074,9 @@ void uSEQ::update_logical_time(TimeValue actual_time)
 
     // Phasors
     m_beat_phase    = beat_at_time(m_transport_time);
+    m_current_beat_num = beat_num_at_time(m_transport_time);
     m_bar_phase     = bar_at_time(m_transport_time);
+    m_current_bar_num = bar_num_at_time(m_transport_time);
     m_phrase_phase  = phrase_at_time(m_transport_time);
     m_section_phase = section_at_time(m_transport_time);
 
@@ -1100,7 +1102,9 @@ void uSEQ::update_lisp_time_variables()
     // dbg("norm_section = " + String(norm_section));
 
     set("beat", Value(m_beat_phase));
+    set("beat-num", Value(static_cast<int>(m_current_beat_num)));
     set("bar", Value(m_bar_phase));
+    set("bar-num", Value(static_cast<int>(m_current_bar_num)));
     set("phrase", Value(m_phrase_phase));
     set("section", Value(m_section_phase));
 }
@@ -3236,6 +3240,81 @@ Value flatten_impl(const Value& val, Environment& env)
     return result;
 }
 
+
+double uSEQ::simple_hashing_function(uint32_t input) {
+    // Combine input with seed using a fast mixing technique
+    input ^= m_random_seed;
+    input = ((input >> 16) ^ input) * 0x45d9f3b;
+    input = ((input >> 16) ^ input) * 0x45d9f3b;
+    input = (input >> 16) ^ input;
+
+    // Convert to float in range [0, 1)
+    // Uses bit manipulation to avoid floating-point division
+    union {
+        uint32_t i;
+        float f;
+    } convert;
+
+    convert.i = (input & 0x007fffff) | 0x3f800000;
+    return convert.f - 1.0f;
+}
+
+Value uSEQ::useq_random(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "random";
+
+    // Checking number of args
+    if (!(0 <= args.size() <= 2))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::Between, 0, 2);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+        // Check all-pred(s)
+        if (!(args[i].is_number()))
+        {
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
+            return Value::error();
+        }
+    }
+
+    bool scale = args.size() > 0;
+    bool lower_bound_provided = args.size() == 2;
+
+    // BODY
+    Value result = Value::nil();
+
+    uint32_t current_beat_num = static_cast<uint32_t>(env.get("beat-num").value_or(Value(static_cast<int>(m_current_beat_num))).as_int());
+
+    double rand_val = simple_hashing_function(current_beat_num);
+
+    if (scale)
+    {
+        double low = lower_bound_provided ? args[0].as_float() : 0.0;
+        double high = args[1].as_float();
+        rand_val = low + (rand_val * (high - low));
+    }
+
+    // TODO
+    result        = Value(rand_val);
+
+    return result;
+}
+
 // TODO test
 Value uSEQ::useq_flatten(std::vector<Value>& args, Environment& env)
 {
@@ -3841,11 +3920,21 @@ PhaseValue uSEQ::beat_at_time(TimeValue time)
     return fmod(time, m_beat_length) / m_beat_length;
 }
 
+uint32_t uSEQ::beat_num_at_time(TimeValue time)
+{
+    return static_cast<uint32_t>(time / m_beat_length);
+}
+
 PhaseValue uSEQ::bar_at_time(TimeValue time)
 {
     // println("time: " + String(time));
     // println("m_bar_length: " + String(time));
     return fmod(time, m_bar_length) / m_bar_length;
+}
+
+uint32_t uSEQ::bar_num_at_time(TimeValue time)
+{
+    return static_cast<uint32_t>(time / m_bar_length);
 }
 
 PhaseValue uSEQ::phrase_at_time(TimeValue time)
@@ -3879,7 +3968,9 @@ Environment uSEQ::make_env_for_time(TimeValue t_micros)
     // env.set("time", Value(time_s));
     env.set("t", Value(t_s));
     env.set("beat", Value(beat_at_time(t_micros)));
+    env.set("beat-num", Value(static_cast<int>(beat_num_at_time(t_micros))));
     env.set("bar", Value(bar_at_time(t_micros)));
+    env.set("bar-num", Value(static_cast<int>(bar_num_at_time(t_micros))));
     env.set("phrase", Value(phrase_at_time(t_micros)));
     env.set("section", Value(section_at_time(t_micros)));
 
@@ -4520,6 +4611,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("get-clock-source", useq_get_clock_source);
     INSERT_BUILTINDEF("set-clock-int", useq_set_clock_internal);
     INSERT_BUILTINDEF("set-clock-ext", useq_set_clock_external);
+
+    INSERT_BUILTINDEF("random", useq_random);
 
     // TODO
 #ifdef MUSICTHING

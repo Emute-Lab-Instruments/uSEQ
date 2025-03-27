@@ -758,7 +758,7 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["print"]   = Value("print", builtin::print);
     Environment::builtindefs["println"] = Value("println", builtin::println);
 #endif
-    Environment::builtindefs["random"] = Value("random", builtin::gen_random);
+    //Environment::builtindefs["random"] = Value("random", builtin::gen_random);
 
     // String operations
     Environment::builtindefs["debug"]   = Value("debug", builtin::debug);
