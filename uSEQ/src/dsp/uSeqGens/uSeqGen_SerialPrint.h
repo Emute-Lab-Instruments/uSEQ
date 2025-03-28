@@ -2,6 +2,7 @@
 #define USEQGEN_SERIALPRINT_H
 
 #include "uSeqGen_Base.h"
+#include "../../utils/log.h"
 
 class uSeqGen_SerialPrint final : public uSeqGen_Base
 {
@@ -16,7 +17,7 @@ public:
 protected:
     void __not_in_flash_func(Process_)(DSPatch::SignalBus&, DSPatch::SignalBus& outputs) override
     {
-        Serial.println("ugen");
+        println("ugen");
         outputs.SetValue(0, 0);
     }
 private:

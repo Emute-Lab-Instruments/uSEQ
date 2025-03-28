@@ -4430,6 +4430,7 @@ void uSEQ::init_builtinfuncs()
     // DSP engine
     INSERT_BUILTINDEF("ppp-go", useq_dsp_start);
     INSERT_BUILTINDEF("ppp-stop", useq_dsp_stop);
+    INSERT_BUILTINDEF("ppp-create", useq_dsp_create);
 
 }
 
@@ -4470,8 +4471,9 @@ Value uSEQ::useq_dsp_start(std::vector<Value>& args, Environment& env)
                                          args[1].display());
         return Value::error();
     }
-
-    uSEQDSPEngine::command_info cmd = { uSEQDSPEngine::COMMANDS::START, args[0].as_float() };
+    uSEQDSPEngine::command_info cmd;
+    cmd.command= uSEQDSPEngine::COMMANDS::START;
+    cmd.data.start.sampleRate = args[0].as_float();
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
     return Value::string("PPP Started");
 }
@@ -4488,14 +4490,53 @@ Value uSEQ::useq_dsp_stop(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
-    uSEQDSPEngine::command_info cmd = { uSEQDSPEngine::COMMANDS::STOP, 0};
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::STOP;
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
     return Value::string("PPP Stopped");
 }
 
+Value uSEQ::useq_dsp_create(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-create";
+
+    // Checking number of args
+    if (!(args.size() == 2))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Checking individual args
+    if (!(args[0].is_symbol()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
+                                         args[0].to_lisp_src());
+        return Value::error();
+    }
+
+    // BODY
+
+
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::CREATE;
+    cmd.data.create.key=dspEngine.nextKey++;
+    cmd.data.create.processor = uSEQDSPEngine::UGENS::TEST_UGEN;
+    
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+
+    String name  = args[0].display();
+    // env.set_expr(name, );
+    env.set(name, Value(static_cast<int>(cmd.data.create.key)));
+
+    return Value::string("Ugen creating...");
+}
+
 void uSEQ::initDSP() {
-    dspEngine = std::make_unique<uSEQDSPEngine>();
-    dspEngine->setup();
+    dspEngine.obj = std::make_unique<uSEQDSPEngine>();
+    dspEngine.obj->setup();
+    // dspEngine->run(2);
 }
 
 

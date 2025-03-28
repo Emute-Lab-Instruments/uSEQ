@@ -338,8 +338,6 @@ private:
     LISP_FUNC_DECL(useq_report_firmware_info);
 
     LISP_FUNC_DECL(useq_tri);
-    LISP_FUNC_DECL(useq_dsp_start);
-    LISP_FUNC_DECL(useq_dsp_stop);
 
     void clear_all_outputs();
     void erase_info_flash();
@@ -438,7 +436,20 @@ private:
     // void clear_non_program_flash();
     static String current_output_being_processed;
 
-    std::unique_ptr<uSEQDSPEngine> dspEngine;
+
+    // DSP ENGINE
+
+    struct dsp_engine_info
+    {
+        std::unique_ptr<uSEQDSPEngine> obj;
+        size_t nextKey=0;
+    } dspEngine;
+
+    LISP_FUNC_DECL(useq_dsp_start);
+    LISP_FUNC_DECL(useq_dsp_stop);
+    LISP_FUNC_DECL(useq_dsp_create);
+
+
 };
 
 #endif // USEQ_H_
