@@ -3,7 +3,6 @@
 
 #include "../dspatch/include/DSPatch_Embedded.h"
 
-// Your code here
 class uSeqGen_Base : public DSPatch::Component
 {
 public:

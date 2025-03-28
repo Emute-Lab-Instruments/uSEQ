@@ -11,23 +11,40 @@
 #include <array>
 #include <unordered_map>
 
-using componentPtr = std::shared_ptr<uSeqGen_Base>;
+using componentPtr = std::shared_ptr<DSPatch::Component>;
 
 class uSEQDSPEngine {
 public:
-    enum COMMANDS {START, STOP};
+    enum UGENS {QUEUE_OUTPUT=0, QUEUE_INPUT, COUNTER, TEST_UGEN};
+    enum COMMANDS {START, STOP, CREATE, DESTROY, CONNECT, DISCONNECT};
+    struct command_data_start {
+        double sampleRate;
+    };
+    struct command_data_create {
+        UGENS processor;
+        size_t key;
+    };
+    struct command_data_destroy {
+        size_t processor_ref;
+    };
+    union command_data {
+        command_data_start start;
+        command_data_create create;
+        command_data_destroy destroy;
+    };
+
     struct command_info {
         COMMANDS command;
-        double data;
+        command_data data;
     };
     void setup() {
-        // circuit->AddComponent(testugen);
-        // circuit->AddComponent(counter);
+        circuit->AddComponent(testugen);
+        circuit->AddComponent(counter);
 
-        testOutput = std::make_shared<uSeqGen_QueueOutput>(&DSPQ::q_outputs[0]);
-        circuit->AddComponent(testOutput);
+        // testOutput = std::make_shared<uSeqGen_QueueOutput>(&DSPQ::q_outputs[0]);
+        // circuit->AddComponent(testOutput);
 
-        //start to listen for commands
+        // //start to listen for commands
         add_repeating_timer_ms(50, [](repeating_timer_t *rt) -> bool {
             return static_cast<uSEQDSPEngine*>(rt->user_data)->command_timer_callback();
         }, this, &command_timer);
@@ -44,18 +61,44 @@ public:
         while(queue_try_remove(&DSPQ::q_engine_commands, &cmd)) {
             switch(cmd.command) {
                 case START:
-                    run(cmd.data);
+                    run(cmd.data.start.sampleRate);
                     break;
                 case STOP:
                     stop();
+                    break;
+                case CREATE:
+                    create(cmd.data.create.processor);
                     break;
             }
         }
         return true;
     }    
 
-private:
+    void FAST_FUNC(create)(UGENS processor) {
+        componentPtr newProcessor;
+        switch(processor) {
+            case QUEUE_OUTPUT:
+                newProcessor = std::make_shared<uSeqGen_QueueOutput>(&DSPQ::q_outputs[0]);
+                break;
+            case QUEUE_INPUT:
+                newProcessor = std::make_shared<uSeqGen_QueueInput>(&DSPQ::q_inputs[0]);
+                break;
+            case COUNTER:
+                newProcessor = std::make_shared<uSeqGen_Counter>();
+                break;
+            case TEST_UGEN:
+                newProcessor = std::make_shared<uSeqGen_SerialPrint>();
+                break;
+        }
+        circuit->AddComponent(newProcessor);
+        components[nextComponentKey] = newProcessor;
+        nextComponentKey++;
+    
+    }
+    
     bool FAST_FUNC(run)(double sampleRate) {
+        Serial.printf("Run:\n");
+
         if (isRunning) {
             stop();
         }
@@ -72,10 +115,11 @@ private:
         isRunning = false;
     }
 
+private:
     std::shared_ptr<DSPatch::Circuit> circuit = std::make_shared<DSPatch::Circuit>();
 
-    // componentPtr testugen = std::make_shared<uSeqGen_SerialPrint>();
-    // componentPtr counter = std::make_shared<uSeqGen_Counter>();
+    componentPtr testugen = std::make_shared<uSeqGen_SerialPrint>();
+    componentPtr counter = std::make_shared<uSeqGen_Counter>();
     repeating_timer_t timer, command_timer;
 
     std::unordered_map<size_t, componentPtr> components;
