@@ -10,15 +10,20 @@ public:
     uSeqGen_SerialPrint()
         : uSeqGen_Base()
     {
-        SetInputCount_(0);
-        SetOutputCount_(1);
+        SetInputCount_(1);
+        SetOutputCount_(0);
     }
 
 protected:
-    void __not_in_flash_func(Process_)(DSPatch::SignalBus&, DSPatch::SignalBus& outputs) override
+    void __not_in_flash_func(Process_)(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
     {
-        println("ugen");
-        outputs.SetValue(0, 0);
+        println("ugen " + String(key));
+        if (auto sig0 = inputs.GetValue<double>(0)) {
+            String s = "sig " + String(*sig0);
+        }            
+        // println(;
+        // println("ugen");
+        // outputs.SetValue(0, 0);
     }
 private:
 };

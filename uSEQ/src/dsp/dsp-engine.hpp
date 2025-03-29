@@ -11,7 +11,7 @@
 #include <array>
 #include <unordered_map>
 
-using componentPtr = std::shared_ptr<DSPatch::Component>;
+using componentPtr = std::shared_ptr<uSeqGen_Base>;
 
 class uSEQDSPEngine {
 public:
@@ -27,10 +27,17 @@ public:
     struct command_data_destroy {
         size_t key;
     };
+    struct command_data_connect {
+        size_t srcKey;
+        size_t channelSrc;
+        size_t destKey;
+        size_t channelDest;
+    };
     union command_data {
         command_data_start start;
         command_data_create create;
         command_data_destroy destroy;
+        command_data_connect connect;
     };
 
     struct command_info {
@@ -38,8 +45,8 @@ public:
         command_data data;
     };
     void setup() {
-        circuit->AddComponent(testugen);
-        circuit->AddComponent(counter);
+        // circuit->AddComponent(testugen);
+        // circuit->AddComponent(counter);
 
         // testOutput = std::make_shared<uSeqGen_QueueOutput>(&DSPQ::q_outputs[0]);
         // circuit->AddComponent(testOutput);
@@ -72,10 +79,23 @@ public:
                 case CREATE:
                     create(cmd.data.create.processor, cmd.data.create.key);
                     break;
+                case CONNECT:   
+                    connect(cmd.data.connect.srcKey, cmd.data.connect.channelSrc, cmd.data.connect.destKey, cmd.data.connect.channelDest);
+                    break;
             }
         }
         return true;
     }    
+
+    void FAST_FUNC(connect)(size_t srcKey, size_t channelSrc, size_t destKey, size_t channelDest) {
+        auto src = components[srcKey];
+        auto dest = components[destKey];
+        if (src && dest) {
+            circuit->ConnectOutToIn(src, channelSrc, dest, channelDest);
+        }else{
+            println("Processor(s) not found: " + String(srcKey) + " or " + String(destKey));
+        }
+    }
 
     void FAST_FUNC(destroy)(size_t key) {
         auto processor = components[key];
@@ -104,6 +124,7 @@ public:
                 break;
         }
         circuit->AddComponent(newProcessor);
+        newProcessor->key = key;
         components[key] = newProcessor;
     
     }
@@ -130,8 +151,8 @@ public:
 private:
     std::shared_ptr<DSPatch::Circuit> circuit = std::make_shared<DSPatch::Circuit>();
 
-    componentPtr testugen = std::make_shared<uSeqGen_SerialPrint>();
-    componentPtr counter = std::make_shared<uSeqGen_Counter>();
+    // componentPtr testugen = std::make_shared<uSeqGen_SerialPrint>();
+    // componentPtr counter = std::make_shared<uSeqGen_Counter>();
     repeating_timer_t timer, command_timer;
 
     std::unordered_map<size_t, componentPtr> components;
