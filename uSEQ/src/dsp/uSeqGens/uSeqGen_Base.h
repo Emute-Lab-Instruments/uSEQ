@@ -11,6 +11,8 @@ public:
     {
     }
 
+    size_t key;
+
 protected:
 private:
 };

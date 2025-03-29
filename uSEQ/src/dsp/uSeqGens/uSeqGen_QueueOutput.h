@@ -4,11 +4,11 @@
 #include "uSeqGen_Base.h"
 #include "pico/util/queue.h"
 
-class uSeqGen_QueueOutput final : public DSPatch::Component //uSeqGen_Base
+class uSeqGen_QueueOutput final : public uSeqGen_Base //uSeqGen_Base
 {
 public:
     uSeqGen_QueueOutput(queue_t *dest) 
-        : Component(ProcessOrder::OutOfOrder)//uSeqGen_Base()
+        : uSeqGen_Base()
     {
         SetInputCount_(1);
         SetOutputCount_(0);

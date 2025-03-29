@@ -449,6 +449,7 @@ private:
     LISP_FUNC_DECL(useq_dsp_stop);
     LISP_FUNC_DECL(useq_dsp_create);
     LISP_FUNC_DECL(useq_dsp_kill);
+    LISP_FUNC_DECL(useq_dsp_connect);
 
 
 };

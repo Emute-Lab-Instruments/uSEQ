@@ -4432,6 +4432,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-stop", useq_dsp_stop);
     INSERT_BUILTINDEF("ppp-mount", useq_dsp_create);
     INSERT_BUILTINDEF("ppp-unmount", useq_dsp_kill);
+    INSERT_BUILTINDEF("ppp-patch", useq_dsp_connect);
+
 
 }
 
@@ -4469,7 +4471,7 @@ Value uSEQ::useq_dsp_start(std::vector<Value>& args, Environment& env)
     if (!(args[0].is_number()))
     {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[1].display());
+                                         args[0].display());
         return Value::error();
     }
     uSEQDSPEngine::command_info cmd;
@@ -4517,13 +4519,20 @@ Value uSEQ::useq_dsp_create(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+
     // BODY
 
 
     uSEQDSPEngine::command_info cmd;
     cmd.command = uSEQDSPEngine::COMMANDS::CREATE;
     cmd.data.create.key=dspEngine.nextKey++;
-    cmd.data.create.processor = uSEQDSPEngine::UGENS::TEST_UGEN;
+    cmd.data.create.processor = static_cast<uSEQDSPEngine::UGENS>(args[1].as_int());
     
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
 
@@ -4545,12 +4554,12 @@ Value uSEQ::useq_dsp_kill(std::vector<Value>& args, Environment& env)
     }
 
     // Checking individual args
-    if (!(args[0].is_symbol()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
-                                         args[0].to_lisp_src());
-        return Value::error();
-    }
+    // if (!(args[0].is_symbol()))
+    // {
+    //     report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
+    //                                      args[0].to_lisp_src());
+    //     return Value::error();
+    // }
 
     // BODY
 
@@ -4562,6 +4571,35 @@ Value uSEQ::useq_dsp_kill(std::vector<Value>& args, Environment& env)
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
 
     return Value::string("Ugen unmounting...");
+}
+
+Value uSEQ::useq_dsp_connect(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-patch";
+
+    // Checking number of args
+    if (!(args.size() == 4))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 4, -1);
+        return Value::error();
+    }
+
+    // BODY
+
+    //todo: error checking
+
+    String srcname  = args[0].display();
+    String destname  = args[2].display();
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::CONNECT;
+    cmd.data.connect.srcKey=static_cast<size_t>(env.get(srcname)->as_int());
+    cmd.data.connect.channelSrc=static_cast<size_t>(args[1].as_int());
+    cmd.data.connect.destKey=static_cast<size_t>(env.get(destname)->as_int());
+    cmd.data.connect.channelDest=static_cast<size_t>(args[3].as_int());
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+
+    return Value::string("Ugen patching...");
 }
 
 void uSEQ::initDSP() {
