@@ -4430,7 +4430,8 @@ void uSEQ::init_builtinfuncs()
     // DSP engine
     INSERT_BUILTINDEF("ppp-go", useq_dsp_start);
     INSERT_BUILTINDEF("ppp-stop", useq_dsp_stop);
-    INSERT_BUILTINDEF("ppp-create", useq_dsp_create);
+    INSERT_BUILTINDEF("ppp-mount", useq_dsp_create);
+    INSERT_BUILTINDEF("ppp-unmount", useq_dsp_kill);
 
 }
 
@@ -4498,7 +4499,7 @@ Value uSEQ::useq_dsp_stop(std::vector<Value>& args, Environment& env)
 
 Value uSEQ::useq_dsp_create(std::vector<Value>& args, Environment& env)
 {
-    constexpr const char* user_facing_name = "ppp-create";
+    constexpr const char* user_facing_name = "ppp-mount";
 
     // Checking number of args
     if (!(args.size() == 2))
@@ -4527,10 +4528,40 @@ Value uSEQ::useq_dsp_create(std::vector<Value>& args, Environment& env)
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
 
     String name  = args[0].display();
-    // env.set_expr(name, );
     env.set(name, Value(static_cast<int>(cmd.data.create.key)));
 
-    return Value::string("Ugen creating...");
+    return Value::string("Ugen mounting...");
+}
+Value uSEQ::useq_dsp_kill(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-unmount";
+
+    // Checking number of args
+    if (!(args.size() == 1))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Checking individual args
+    if (!(args[0].is_symbol()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
+                                         args[0].to_lisp_src());
+        return Value::error();
+    }
+
+    // BODY
+
+
+    String name  = args[0].display();
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::DESTROY;
+    cmd.data.destroy.key=static_cast<size_t>(env.get(name)->as_int());
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+
+    return Value::string("Ugen unmounting...");
 }
 
 void uSEQ::initDSP() {
