@@ -25,7 +25,7 @@ public:
         size_t key;
     };
     struct command_data_destroy {
-        size_t processor_ref;
+        size_t key;
     };
     union command_data {
         command_data_start start;
@@ -66,15 +66,28 @@ public:
                 case STOP:
                     stop();
                     break;
+                case DESTROY:
+                    destroy(cmd.data.destroy.key);
+                    break;
                 case CREATE:
-                    create(cmd.data.create.processor);
+                    create(cmd.data.create.processor, cmd.data.create.key);
                     break;
             }
         }
         return true;
     }    
 
-    void FAST_FUNC(create)(UGENS processor) {
+    void FAST_FUNC(destroy)(size_t key) {
+        auto processor = components[key];
+        if (processor) {
+            circuit->RemoveComponent(processor);
+            components.erase(key);
+        }else{
+            println("Processor not found: " + String(key));
+        }
+    }
+
+    void FAST_FUNC(create)(UGENS processor, size_t key) {
         componentPtr newProcessor;
         switch(processor) {
             case QUEUE_OUTPUT:
@@ -91,8 +104,7 @@ public:
                 break;
         }
         circuit->AddComponent(newProcessor);
-        components[nextComponentKey] = newProcessor;
-        nextComponentKey++;
+        components[key] = newProcessor;
     
     }
     
@@ -125,8 +137,6 @@ private:
     std::unordered_map<size_t, componentPtr> components;
 
     componentPtr testOutput;
-
-    size_t nextComponentKey = 0;
 
     bool isRunning = false;
 };
