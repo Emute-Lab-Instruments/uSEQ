@@ -177,7 +177,11 @@ void uSEQ::init_dsp_queues() {
     }  
     
     queue_init(&DSPQ::q_engine_commands, sizeof(uSEQDSPEngine::command_info), 8);
-    
+    queue_init(&DSPQ::q_engine_responses, sizeof(uSEQDSPEngine::response_info), 8);
+
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::GETUGENINFO;
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
 }
 
 
@@ -187,6 +191,18 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
     for (size_t i = 0; i < N_OUTPUT_QUEUES; i++) {
         if (queue_try_remove(&DSPQ::q_outputs[i], &tmp)) {
             set(dsp_output_names[i], tmp);
+        }
+    }
+
+    uSEQDSPEngine::response_info response;
+    if (queue_try_remove(&DSPQ::q_engine_responses, &response)) {
+        switch (response.response) {
+            case uSEQDSPEngine::RESPONSES::UGENINFO:
+                println("ugen info: " + String(response.data.ugenInfo.key) + " " + response.data.ugenInfo.name);
+                set("ugen-" + String(response.data.ugenInfo.name), Value(static_cast<int>(response.data.ugenInfo.key)));
+                break;
+            default:
+                break;
         }
     }
 }
@@ -4433,6 +4449,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-mount", useq_dsp_create);
     INSERT_BUILTINDEF("ppp-unmount", useq_dsp_kill);
     INSERT_BUILTINDEF("ppp-patch", useq_dsp_connect);
+    INSERT_BUILTINDEF("ppp-getugens", useq_dsp_getugens);
+    
 
 
 }
@@ -4518,6 +4536,8 @@ Value uSEQ::useq_dsp_create(std::vector<Value>& args, Environment& env)
                                          args[0].to_lisp_src());
         return Value::error();
     }
+    
+    args[1] = args[1].eval(env);
 
     if (!(args[1].is_number()))
     {
@@ -4532,7 +4552,7 @@ Value uSEQ::useq_dsp_create(std::vector<Value>& args, Environment& env)
     uSEQDSPEngine::command_info cmd;
     cmd.command = uSEQDSPEngine::COMMANDS::CREATE;
     cmd.data.create.key=dspEngine.nextKey++;
-    cmd.data.create.processor = static_cast<uSEQDSPEngine::UGENS>(args[1].as_int());
+    cmd.data.create.processor = args[1].as_int();
     
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
 
@@ -4563,11 +4583,15 @@ Value uSEQ::useq_dsp_kill(std::vector<Value>& args, Environment& env)
 
     // BODY
 
-
-    String name  = args[0].display();
     uSEQDSPEngine::command_info cmd;
     cmd.command = uSEQDSPEngine::COMMANDS::DESTROY;
-    cmd.data.destroy.key=static_cast<size_t>(env.get(name)->as_int());
+    if ((args[0].is_symbol())) {
+        String name  = args[0].display();
+        cmd.data.destroy.key=static_cast<size_t>(env.get(name)->as_int());
+    }else{
+        cmd.data.destroy.key=static_cast<size_t>(args[0].as_int());
+    }
+
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
 
     return Value::string("Ugen unmounting...");
@@ -4600,6 +4624,13 @@ Value uSEQ::useq_dsp_connect(std::vector<Value>& args, Environment& env)
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
 
     return Value::string("Ugen patching...");
+}
+
+Value uSEQ::useq_dsp_getugens(std::vector<Value>& args, Environment& env) {
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::GETUGENINFO;
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+    return Value::string("ugens requested");
 }
 
 void uSEQ::initDSP() {

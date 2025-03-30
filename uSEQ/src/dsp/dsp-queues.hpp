@@ -11,7 +11,7 @@ namespace DSPQ {
     extern queue_t q_outputs[N_OUTPUT_QUEUES];
     
     extern queue_t q_engine_commands;
-    extern queue_t q_engine_messages;    
+    extern queue_t q_engine_responses;    
 }
 
 #endif

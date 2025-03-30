@@ -15,13 +15,15 @@ using componentPtr = std::shared_ptr<uSeqGen_Base>;
 
 class uSEQDSPEngine {
 public:
-    enum UGENS {QUEUE_OUTPUT=0, QUEUE_INPUT, COUNTER, TEST_UGEN};
-    enum COMMANDS {START, STOP, CREATE, DESTROY, CONNECT, DISCONNECT};
+    // enum UGENS {QUEUE_OUTPUT=0, QUEUE_INPUT, COUNTER, TEST_UGEN, ENUM_END};
+    enum COMMANDS {START, STOP, CREATE, DESTROY, CONNECT, DISCONNECT, GETUGENINFO};
+    enum RESPONSES {UGENINFO};
+
     struct command_data_start {
         double sampleRate;
     };
     struct command_data_create {
-        UGENS processor;
+        size_t processor;
         size_t key;
     };
     struct command_data_destroy {
@@ -44,9 +46,27 @@ public:
         COMMANDS command;
         command_data data;
     };
+
+    struct response_data_ugeninfo {
+        size_t key;
+        char name[64];
+    };
+    union response_data {
+        response_data_ugeninfo ugenInfo;
+    };
+    struct response_info {
+        RESPONSES response;
+        response_data data;
+    };
+
     void setup() {
 
         circuit = std::make_shared<DSPatch::Circuit>();
+        registerUGen<uSeqGen_SerialPrint>("SerialPrint");
+        registerUGen<uSeqGen_Counter>("Counter");
+        // registerUGen<uSeqGen_QueueOutput>("QueueOutput");
+        // registerUGen<uSeqGen_QueueInput>("QueueInput");
+        // registerUGen<uSeqGen_Mul>("Mul");
 
         // testugen = std::make_shared<uSeqGen_SerialPrint>();
         // counter = std::make_shared<uSeqGen_Counter>();
@@ -89,6 +109,9 @@ public:
                 case CONNECT:   
                     connect(cmd.data.connect.srcKey, cmd.data.connect.channelSrc, cmd.data.connect.destKey, cmd.data.connect.channelDest);
                     break;
+                case GETUGENINFO:
+                    request_ugen_info();
+                    break;
             }
         }
         return true;
@@ -114,26 +137,16 @@ public:
         }
     }
 
-    void FAST_FUNC(create)(UGENS processor, size_t key) {
-        componentPtr newProcessor;
-        switch(processor) {
-            case QUEUE_OUTPUT:
-                newProcessor = std::make_shared<uSeqGen_QueueOutput>(&DSPQ::q_outputs[0]);
-                break;
-            case QUEUE_INPUT:
-                newProcessor = std::make_shared<uSeqGen_QueueInput>(&DSPQ::q_inputs[0]);
-                break;
-            case COUNTER:
-                newProcessor = std::make_shared<uSeqGen_Counter>();
-                break;
-            case TEST_UGEN:
-                newProcessor = std::make_shared<uSeqGen_SerialPrint>();
-                break;
+    void FAST_FUNC(create)(size_t processor, size_t key) {
+        if (processor < uGenFactories.size()) {
+            componentPtr newProcessor = uGenFactories[processor].create();
+            circuit->AddComponent(newProcessor);
+            newProcessor->key = key;
+            components[key] = newProcessor;
+            println("Created processor: " + String(key) + " " + uGenFactories[processor].name);
+        }else{
+            println("Processor not found: " + String(processor));
         }
-        circuit->AddComponent(newProcessor);
-        newProcessor->key = key;
-        components[key] = newProcessor;
-    
     }
     
     bool FAST_FUNC(run)(double sampleRate) {
@@ -155,8 +168,38 @@ public:
         isRunning = false;
     }
 
+    void FAST_FUNC(request_ugen_info)() {
+        for(size_t i=0; i< uGenFactories.size() ; i++) {
+            auto factory = uGenFactories[i];
+            response_info resp;
+            resp.response = RESPONSES::UGENINFO;
+            resp.data.ugenInfo.key = i;
+            std::strncpy(resp.data.ugenInfo.name, factory.name.c_str(), 63);
+            resp.data.ugenInfo.name[63] = '\0';
+            queue_try_add(&DSPQ::q_engine_responses, &resp);
+            println("UGENINFO: " + String(resp.data.ugenInfo.key) + " " + factory.name);
+        }
+    }
+
 private:
     std::shared_ptr<DSPatch::Circuit> circuit;
+
+    struct uGenFactory {
+        String name;
+        std::function<componentPtr()> create;
+    };
+
+    std::vector<uGenFactory> uGenFactories;
+
+    template <typename ugenType>
+    void registerUGen(const String& ugenName) {
+        uGenFactories.push_back({
+            ugenName,
+            []() -> componentPtr {
+                return std::make_shared<ugenType>();
+            }
+        });
+    };
 
     componentPtr testugen; 
     componentPtr counter;

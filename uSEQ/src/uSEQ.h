@@ -450,6 +450,7 @@ private:
     LISP_FUNC_DECL(useq_dsp_create);
     LISP_FUNC_DECL(useq_dsp_kill);
     LISP_FUNC_DECL(useq_dsp_connect);
+    LISP_FUNC_DECL(useq_dsp_getugens);
 
 
 };
