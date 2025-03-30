@@ -11,7 +11,7 @@ public:
     {
     }
 
-    size_t key;
+    size_t key=0;
 
 protected:
 private:

@@ -16,6 +16,7 @@ public:
 protected:
     void __not_in_flash_func(Process_)(DSPatch::SignalBus&, DSPatch::SignalBus& outputs) override
     {
+        println("counter " + String(count));
         outputs.SetValue(0, count);
         count++;
     }
