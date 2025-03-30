@@ -11,16 +11,20 @@ public:
         : uSeqGen_Base()
     {
         SetInputCount_(1);
-        SetOutputCount_(0);
+        SetOutputCount_(1);
     }
 
 protected:
     void __not_in_flash_func(Process_)(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
     {
         println("ugen " + String(key));
-        if (auto sig0 = inputs.GetValue<double>(0)) {
+        auto sig0 = inputs.GetValue<float>(0);
+        if (sig0) {
             String s = "sig " + String(*sig0);
-        }            
+            println(s);
+        }       else{
+            println("sig0 is null");
+        }     
         // println(;
         // println("ugen");
         // outputs.SetValue(0, 0);

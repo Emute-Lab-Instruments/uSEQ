@@ -45,14 +45,21 @@ public:
         command_data data;
     };
     void setup() {
+
+        circuit = std::make_shared<DSPatch::Circuit>();
+
+        // testugen = std::make_shared<uSeqGen_SerialPrint>();
+        // counter = std::make_shared<uSeqGen_Counter>();
+    
         // circuit->AddComponent(testugen);
         // circuit->AddComponent(counter);
+        // circuit->ConnectOutToIn(counter,0, testugen, 0);
 
         // testOutput = std::make_shared<uSeqGen_QueueOutput>(&DSPQ::q_outputs[0]);
         // circuit->AddComponent(testOutput);
 
         // //start to listen for commands
-        add_repeating_timer_ms(50, [](repeating_timer_t *rt) -> bool {
+        add_repeating_timer_ms(-50, [](repeating_timer_t *rt) -> bool {
             return static_cast<uSEQDSPEngine*>(rt->user_data)->command_timer_callback();
         }, this, &command_timer);
     }
@@ -135,8 +142,8 @@ public:
         if (isRunning) {
             stop();
         }
-        size_t quantum = 1.0e6/sampleRate;
-        add_repeating_timer_us(quantum, [](repeating_timer_t *rt) -> bool {
+        int quantum = static_cast<int>(1.0e6/sampleRate);
+        add_repeating_timer_us(-quantum, [](repeating_timer_t *rt) -> bool {
             return static_cast<uSEQDSPEngine*>(rt->user_data)->timer_callback();
         }, this, &timer);
         isRunning = true;
@@ -149,10 +156,10 @@ public:
     }
 
 private:
-    std::shared_ptr<DSPatch::Circuit> circuit = std::make_shared<DSPatch::Circuit>();
+    std::shared_ptr<DSPatch::Circuit> circuit;
 
-    // componentPtr testugen = std::make_shared<uSeqGen_SerialPrint>();
-    // componentPtr counter = std::make_shared<uSeqGen_Counter>();
+    componentPtr testugen; 
+    componentPtr counter;
     repeating_timer_t timer, command_timer;
 
     std::unordered_map<size_t, componentPtr> components;
