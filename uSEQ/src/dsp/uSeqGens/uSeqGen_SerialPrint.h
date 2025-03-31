@@ -7,8 +7,8 @@
 class uSeqGen_SerialPrint final : public uSeqGen_Base
 {
 public:
-    uSeqGen_SerialPrint()
-        : uSeqGen_Base()
+    uSeqGen_SerialPrint(queue_t *q)
+        : uSeqGen_Base(q)
     {
         SetInputCount_(1);
         SetOutputCount_(1);
@@ -25,6 +25,7 @@ protected:
         }       else{
             println("sig0 is null");
         }     
+        send_message("ugenspr " + String(key));
         // println(;
         // println("ugen");
         // outputs.SetValue(0, 0);

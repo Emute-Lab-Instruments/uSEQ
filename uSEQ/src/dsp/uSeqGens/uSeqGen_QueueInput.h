@@ -7,8 +7,8 @@
 class uSeqGen_QueueInput final : public uSeqGen_Base
 {
 public:
-    uSeqGen_QueueInput(queue_t *src) 
-        : uSeqGen_Base()
+    uSeqGen_QueueInput(queue_t *q) 
+        : uSeqGen_Base(q)
     {
         SetInputCount_(0);
         SetOutputCount_(1);
@@ -21,13 +21,13 @@ protected:
     void __not_in_flash_func(Process_)(DSPatch::SignalBus&, DSPatch::SignalBus& outputs) override
     {
         double tmp;
-        if (queue_try_remove(queue, &tmp)) {
-            val = tmp;
-            outputs.SetValue(0, val);
-        }
+        // if (queue_try_remove(queue, &tmp)) {
+        //     val = tmp;
+        //     outputs.SetValue(0, val);
+        // }
     }
 private:
-    queue_t *queue;
+    // queue_t *queue;
     double val = 0;
 };
 
