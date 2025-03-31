@@ -2,18 +2,42 @@
 #define USEQGEN_BASE_H
 
 #include "../dspatch/include/DSPatch_Embedded.h"
+#include "pico/util/queue.h"
+#include "../dsp-q-data.hpp"
+#include <vector>
 
 class uSeqGen_Base : public DSPatch::Component
 {
 public:
-    uSeqGen_Base()
-        : Component(ProcessOrder::OutOfOrder)
+    uSeqGen_Base(queue_t *q)
+        : Component(ProcessOrder::OutOfOrder), q_message(q)
     {
+
     }
 
     size_t key=0;
 
+    struct queue_spec {
+        size_t nFloats;
+        size_t key;
+    };
+
+    std::vector<uSeqGen_Base::queue_spec> outputQueues;
+    std::vector<uSeqGen_Base::queue_spec> inputQueues;
+
 protected:
+
+    queue_t *q_message;
+
+    void send_message(String s) {
+        DSPQ::response_info resp;
+        resp.response = DSPQ::RESPONSES::MESSAGE;
+        resp.data.ugenMessage.key = key;
+        std::strncpy(resp.data.ugenMessage.msg, s.c_str(), 63);
+        resp.data.ugenInfo.name[63] = '\0';
+        queue_try_add(q_message, &resp);
+    }
+
 private:
 };
 

@@ -7,11 +7,13 @@
 class uSeqGen_QueueOutput final : public uSeqGen_Base //uSeqGen_Base
 {
 public:
-    uSeqGen_QueueOutput(queue_t *dest) 
-        : uSeqGen_Base()
+    uSeqGen_QueueOutput(queue_t *q) 
+        : uSeqGen_Base(q)
     {
         SetInputCount_(1);
         SetOutputCount_(0);
+
+
     }
     
     ~uSeqGen_QueueOutput() {
@@ -21,11 +23,10 @@ protected:
     void __not_in_flash_func(Process_)(DSPatch::SignalBus& inputs, DSPatch::SignalBus&) override
     {
         const double sig0 = *inputs.GetValue<double>(0);        
-        queue_try_add(queue, &tmp);
-        tmp += 0.11;
+        // queue_try_add(queue, sig0);
     }
 private:
-    queue_t *queue;
+    // queue_t *queue;
     double tmp = 0;
 };
 

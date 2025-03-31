@@ -10,14 +10,13 @@
 #include "uSeqGens/uSeqGen_QueueInput.h"
 #include <array>
 #include <unordered_map>
+#include "dsp-q-data.hpp"
 
 using componentPtr = std::shared_ptr<uSeqGen_Base>;
 
 class uSEQDSPEngine {
 public:
-    // enum UGENS {QUEUE_OUTPUT=0, QUEUE_INPUT, COUNTER, TEST_UGEN, ENUM_END};
-    enum COMMANDS {START, STOP, CREATE, DESTROY, CONNECT, DISCONNECT, GETUGENINFO};
-    enum RESPONSES {UGENINFO};
+    enum COMMANDS {SETUP, START, STOP, CREATE, DESTROY, CONNECT, DISCONNECT, GETUGENINFO};
 
     struct command_data_start {
         double sampleRate;
@@ -47,23 +46,19 @@ public:
         command_data data;
     };
 
-    struct response_data_ugeninfo {
-        size_t key;
-        char name[64];
-    };
-    union response_data {
-        response_data_ugeninfo ugenInfo;
-    };
-    struct response_info {
-        RESPONSES response;
-        response_data data;
-    };
+    uSEQDSPEngine() {
+        circuit = std::make_shared<DSPatch::Circuit>();
+        // //start to listen for commands
+        add_repeating_timer_ms(-40, [](repeating_timer_t *rt) -> bool {
+            return static_cast<uSEQDSPEngine*>(rt->user_data)->command_timer_callback();
+        }, this, &command_timer);
+
+    }
 
     void setup() {
 
-        circuit = std::make_shared<DSPatch::Circuit>();
-        registerUGen<uSeqGen_SerialPrint>("SerialPrint");
-        registerUGen<uSeqGen_Counter>("Counter");
+        registerUGen<uSeqGen_SerialPrint>("serial-print");
+        registerUGen<uSeqGen_Counter>("counter");
         // registerUGen<uSeqGen_QueueOutput>("QueueOutput");
         // registerUGen<uSeqGen_QueueInput>("QueueInput");
         // registerUGen<uSeqGen_Mul>("Mul");
@@ -78,10 +73,6 @@ public:
         // testOutput = std::make_shared<uSeqGen_QueueOutput>(&DSPQ::q_outputs[0]);
         // circuit->AddComponent(testOutput);
 
-        // //start to listen for commands
-        add_repeating_timer_ms(-50, [](repeating_timer_t *rt) -> bool {
-            return static_cast<uSEQDSPEngine*>(rt->user_data)->command_timer_callback();
-        }, this, &command_timer);
     }
 
 
@@ -94,6 +85,9 @@ public:
         command_info cmd;
         while(queue_try_remove(&DSPQ::q_engine_commands, &cmd)) {
             switch(cmd.command) {
+                case SETUP:
+                    setup();
+                    break;
                 case START:
                     run(cmd.data.start.sampleRate);
                     break;
@@ -171,8 +165,8 @@ public:
     void FAST_FUNC(request_ugen_info)() {
         for(size_t i=0; i< uGenFactories.size() ; i++) {
             auto factory = uGenFactories[i];
-            response_info resp;
-            resp.response = RESPONSES::UGENINFO;
+            DSPQ::response_info resp;
+            resp.response = DSPQ::RESPONSES::UGENINFO;
             resp.data.ugenInfo.key = i;
             std::strncpy(resp.data.ugenInfo.name, factory.name.c_str(), 63);
             resp.data.ugenInfo.name[63] = '\0';
@@ -196,7 +190,7 @@ private:
         uGenFactories.push_back({
             ugenName,
             []() -> componentPtr {
-                return std::make_shared<ugenType>();
+                return std::make_shared<ugenType>(&DSPQ::q_engine_responses);
             }
         });
     };

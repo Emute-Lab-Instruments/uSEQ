@@ -6,8 +6,8 @@
 class uSeqGen_Counter final : public uSeqGen_Base
 {
 public:
-    uSeqGen_Counter()
-        : uSeqGen_Base()
+    uSeqGen_Counter(queue_t *q)
+        : uSeqGen_Base(q)
     {
         SetInputCount_(0);
         SetOutputCount_(1);

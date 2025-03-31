@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <sys/types.h>
 // #include "dsp/dsp-queues.hpp"
+#include "dsp/dsp-q-data.hpp"
 
 
 #ifdef ARDUINO
@@ -177,9 +178,12 @@ void uSEQ::init_dsp_queues() {
     }  
     
     queue_init(&DSPQ::q_engine_commands, sizeof(uSEQDSPEngine::command_info), 8);
-    queue_init(&DSPQ::q_engine_responses, sizeof(uSEQDSPEngine::response_info), 8);
+    queue_init(&DSPQ::q_engine_responses, sizeof(DSPQ::response_info), 16);
 
     uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::SETUP;
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+
     cmd.command = uSEQDSPEngine::COMMANDS::GETUGENINFO;
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
 }
@@ -194,12 +198,15 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
         }
     }
 
-    uSEQDSPEngine::response_info response;
+    DSPQ::response_info response;
     if (queue_try_remove(&DSPQ::q_engine_responses, &response)) {
         switch (response.response) {
-            case uSEQDSPEngine::RESPONSES::UGENINFO:
+            case DSPQ::RESPONSES::UGENINFO:
                 println("ugen info: " + String(response.data.ugenInfo.key) + " " + response.data.ugenInfo.name);
                 set("ugen-" + String(response.data.ugenInfo.name), Value(static_cast<int>(response.data.ugenInfo.key)));
+                break;
+            case DSPQ::RESPONSES::MESSAGE:
+                println("ugen message from " + String(response.data.ugenMessage.key) + ": " + response.data.ugenMessage.msg);
                 break;
             default:
                 break;
@@ -4536,7 +4543,7 @@ Value uSEQ::useq_dsp_create(std::vector<Value>& args, Environment& env)
                                          args[0].to_lisp_src());
         return Value::error();
     }
-    
+
     args[1] = args[1].eval(env);
 
     if (!(args[1].is_number()))
@@ -4635,7 +4642,7 @@ Value uSEQ::useq_dsp_getugens(std::vector<Value>& args, Environment& env) {
 
 void uSEQ::initDSP() {
     dspEngine.obj = std::make_unique<uSEQDSPEngine>();
-    dspEngine.obj->setup();
+    // dspEngine.obj->setup();
     // dspEngine->run(2);
 }
 
