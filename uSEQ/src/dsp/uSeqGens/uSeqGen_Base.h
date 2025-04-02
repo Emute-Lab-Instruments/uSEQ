@@ -34,7 +34,7 @@ protected:
         resp.response = DSPQ::RESPONSES::MESSAGE;
         resp.data.ugenMessage.key = key;
         std::strncpy(resp.data.ugenMessage.msg, s.c_str(), 63);
-        resp.data.ugenInfo.name[63] = '\0';
+        resp.data.ugenMessage.msg[63] = '\0';
         queue_try_add(q_message, &resp);
     }
 

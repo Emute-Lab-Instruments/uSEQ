@@ -19,8 +19,10 @@ namespace DSPQ {
     };
 
     struct response_data_queue {
+        size_t key;
         //pointer to queue
-        size_t queueptr;
+        // size_t queueptr;
+        queue_t *queueptr;
     };
 
     union response_data {
