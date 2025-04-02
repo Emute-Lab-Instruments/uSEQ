@@ -59,7 +59,7 @@ public:
 
         registerUGen<uSeqGen_SerialPrint>("serial-print");
         registerUGen<uSeqGen_Counter>("counter");
-        // registerUGen<uSeqGen_QueueOutput>("QueueOutput");
+        registerUGen<uSeqGen_QueueOutput>("queue-output");
         // registerUGen<uSeqGen_QueueInput>("QueueInput");
         // registerUGen<uSeqGen_Mul>("Mul");
 

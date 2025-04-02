@@ -167,15 +167,15 @@ void start_pdm()
 #endif
 
 void uSEQ::init_dsp_queues() {
-    for (int i = 0; i < N_INPUT_QUEUES; i++) {
-        queue_init(&DSPQ::q_inputs[i], sizeof(double), 1);
-    }
+    // for (int i = 0; i < N_INPUT_QUEUES; i++) {
+    //     queue_init(&DSPQ::q_inputs[i], sizeof(double), 1);
+    // }
 
-    for (int i = 0; i < N_OUTPUT_QUEUES; i++) {
-        queue_init(&DSPQ::q_outputs[i], sizeof(double), 1);
-        dsp_output_names[i] = "ppp" + String(i);
-        set(dsp_output_names[i],0);
-    }  
+    // for (int i = 0; i < N_OUTPUT_QUEUES; i++) {
+    //     queue_init(&DSPQ::q_outputs[i], sizeof(double), 1);
+    //     dsp_output_names[i] = "ppp" + String(i);
+    //     set(dsp_output_names[i],0);
+    // }  
     
     queue_init(&DSPQ::q_engine_commands, sizeof(uSEQDSPEngine::command_info), 8);
     queue_init(&DSPQ::q_engine_responses, sizeof(DSPQ::response_info), 16);
@@ -191,12 +191,12 @@ void uSEQ::init_dsp_queues() {
 
 
 void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
-    double tmp;
-    for (size_t i = 0; i < N_OUTPUT_QUEUES; i++) {
-        if (queue_try_remove(&DSPQ::q_outputs[i], &tmp)) {
-            set(dsp_output_names[i], tmp);
-        }
-    }
+    // double tmp;
+    // for (size_t i = 0; i < N_OUTPUT_QUEUES; i++) {
+    //     if (queue_try_remove(&DSPQ::q_outputs[i], &tmp)) {
+    //         set(dsp_output_names[i], tmp);
+    //     }
+    // }
 
     DSPQ::response_info response;
     if (queue_try_remove(&DSPQ::q_engine_responses, &response)) {
@@ -207,6 +207,9 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
                 break;
             case DSPQ::RESPONSES::MESSAGE:
                 println("ugen message from " + String(response.data.ugenMessage.key) + ": " + response.data.ugenMessage.msg);
+                break;
+            case DSPQ::RESPONSES::ADD_OUTPUT_QUEUE:
+                println("queue received from" + String(response.data.queueInfo.key));
                 break;
             default:
                 break;

@@ -11,23 +11,33 @@ public:
         : uSeqGen_Base(q)
     {
         SetInputCount_(1);
-        SetOutputCount_(0);
+        SetOutputCount_(1);
+
+        //create an output queue
+        queue_init(&q_output, sizeof(float), 1);
 
 
+        //share it with the interpreter
+        DSPQ::response_info resp;
+        resp.response = DSPQ::RESPONSES::ADD_OUTPUT_QUEUE;
+        resp.data.queueInfo.key = key;
+        resp.data.queueInfo.queueptr = &q_output;
+        queue_try_add(q_message, &resp);
     }
     
     ~uSeqGen_QueueOutput() {
+        queue_free(&q_output);
     }
 
 protected:
-    void __not_in_flash_func(Process_)(DSPatch::SignalBus& inputs, DSPatch::SignalBus&) override
+    void __not_in_flash_func(Process_)(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
     {
-        const double sig0 = *inputs.GetValue<double>(0);        
-        // queue_try_add(queue, sig0);
+        const float sig0 = *inputs.GetValue<float>(0);    
+        queue_try_add(&q_output, &sig0);
+        outputs.SetValue(0, sig0);
     }
 private:
-    // queue_t *queue;
-    double tmp = 0;
+    queue_t q_output;
 };
 
 #endif // USEQGEN_QUEUEOUTPUT_H
