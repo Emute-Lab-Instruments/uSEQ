@@ -349,7 +349,7 @@ void uSEQ::run_scheduled_items()
         for (size_t j = 0; j < numRuns; j++)
         {
             // run the statement
-            //             Serial.println(m_scheduledItems[i].id);
+            //             println(m_scheduledItems[i].id);
             // TODO: #99
             eval(m_scheduledItems[i].ast);
         }
@@ -372,7 +372,7 @@ void uSEQ::update_Q0()
     Value result = eval(m_q0AST);
     if (result.is_error())
     {
-        Serial.println("Error in q0 output function, clearing");
+        println("Error in q0 output function, clearing");
         m_q0AST = {};
     }
 }
@@ -577,13 +577,13 @@ void uSEQ::update_inputs()
     }
     m_input_vals[MTZSWITCH] = switchVal;
 
-    // Serial.print(m_input_vals[MTMAINKNOB]);
-    // Serial.print("\t");
-    // Serial.print(m_input_vals[MTXKNOB]);
-    // Serial.print("\t");
-    // Serial.print(m_input_vals[MTYKNOB]);
-    // Serial.print("\t");
-    // Serial.println(m_input_vals[MTZSWITCH]);
+    // println(m_input_vals[MTMAINKNOB]);
+    // println("\t");
+    // println(m_input_vals[MTXKNOB]);
+    // println("\t");
+    // println(m_input_vals[MTYKNOB]);
+    // println("\t");
+    // println(m_input_vals[MTZSWITCH]);
 
     // const int input1 = 1 - digitalRead(USEQ_PIN_I1);
     // const int input2 = 1 - digitalRead(USEQ_PIN_I2);
@@ -693,7 +693,7 @@ String get_code_waiting()
         // rrplce with substr (was a hack)
         mC.remove(0, 1);
         mC.remove(mC.length() - 1, 1);
-        Serial.println(mC);
+        println(mC);
         return mC;
     }
     else
@@ -735,9 +735,9 @@ void uSEQ::check_and_handle_user_input()
         {
             // Read code
             m_last_received_code = get_code_waiting();
-            // Serial.print(m_last_received_code);
-            // Serial.print(m_last_received_code.length());
-            // Serial.println("*");
+            // println(m_last_received_code);
+            // println(m_last_received_code.length());
+            // println("*");
 
             if (m_last_received_code == exit_command)
             {
@@ -1115,6 +1115,7 @@ void uSEQ::update_midi_out()
 {
     DBG("uSEQ::update_midi_out");
     const double midiRes        = 48 * meter_numerator * 1;
+    // FIXME: where is this barDur supposed to be coming from?
     const double timeUnitMillis = (barDur / midiRes);
 
     const double timeDeltaMillis = t - last_midi_t;
@@ -1140,11 +1141,11 @@ void uSEQ::update_midi_out()
                 // wrap phasor
                 if (t_step < 0)
                     t_step += 1.0;
-                // Serial.println(t_step);
+                // println(t_step);
                 mdoArgs[0] = Value(t_step);
                 Value val  = midiFunction.apply(mdoArgs, env);
 
-                // Serial.println(val.as_float());
+                // println(val.as_float());
                 if (val > prev)
                 {
                     Serial1.write(0x99);
@@ -1660,7 +1661,12 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
     double current_time_s  = env.get("t").value().as_float();
     double factor          = args[0].as_float();
     double new_time_micros = (current_time_s * factor) * 1e+6;
-    result                 = eval_at_time(args[1], env, new_time_micros);
+
+    // Make an env with just the updated beat-dur and bar-dur
+    Environment env_with_updated_durs = make_env_with_updated_time_durs(env, 1.0/factor);
+    env_with_updated_durs.set_parent_scope(&env);
+
+    result                 = eval_at_time(args[1], env_with_updated_durs, new_time_micros);
     return result;
 }
 
@@ -1698,7 +1704,12 @@ Value uSEQ::useq_slow(std::vector<Value>& args, Environment& env)
     double current_time_s  = env.get("t").value().as_float();
     double factor          = args[0].as_float();
     double new_time_micros = (current_time_s / factor) * 1e+6;
-    result                 = eval_at_time(args[1], env, new_time_micros);
+
+    // Make an env with just the updated beat-dur and bar-dur
+    Environment env_with_updated_durs = make_env_with_updated_time_durs(env, factor);
+    env_with_updated_durs.set_parent_scope(&env);
+
+    result                 = eval_at_time(args[1], env_with_updated_durs, new_time_micros);
     return result;
 }
 
@@ -3842,7 +3853,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
 BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set_expr("s1", args[0]);
                           m_serial_ASTs[0] = { args[0] }; ret = Value::atom("s1");
                           ,
-                          // Serial.println(m_serial_ASTs.size());,
+                          // println(m_serial_ASTs.size());,
                           1)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_s2, set_expr("s2", args[0]);
@@ -3990,9 +4001,12 @@ PhaseValue uSEQ::section_at_time(TimeValue time)
 
 Value uSEQ::eval_at_time(Value& expr, Environment& env, TimeValue time_micros)
 {
+
     // Prepare new env with appropriate time vars
     // and current env as parent
+
     Environment new_env = make_env_for_time(time_micros);
+    
     new_env.set_parent_scope(&env);
     // Eval in new env
     Value result = Interpreter::eval_in(expr, new_env);
