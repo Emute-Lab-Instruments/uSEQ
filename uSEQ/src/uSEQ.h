@@ -1,7 +1,7 @@
 #ifndef USEQ_H_
 #define USEQ_H_
 
-#define USEQ_FIRMWARE_VERSION "1.1.0"
+#define USEQ_FIRMWARE_VERSION "1.1.1"
 
 #include "dsp/tempoEstimator.h"
 // #include "dsp/MAFilter.h"
@@ -21,7 +21,7 @@
 #define LISP_FUNC_RETURN_TYPE Value
 #define LISP_FUNC_TYPE LISP_FUNC_RETURN_TYPE(LISP_FUNC_ARGS_TYPE)
 // For declaring builtin functions as class members
-#define LISP_FUNC_DECL(__name__) LISP_FUNC_RETURN_TYPE __name__(LISP_FUNC_ARGS)
+#define LISP_FUNC_DECL(__name__)  LISP_FUNC_RETURN_TYPE __name__(LISP_FUNC_ARGS)
 
 using TimeValue  = double;
 using PhaseValue = double;
@@ -246,6 +246,35 @@ private:
     LISP_FUNC_DECL(useq_s6);
     LISP_FUNC_DECL(useq_s7);
     LISP_FUNC_DECL(useq_s8);
+
+    //echoed output values
+    LISP_FUNC_DECL(useq_get_a1);
+    LISP_FUNC_DECL(useq_get_a2);
+    LISP_FUNC_DECL(useq_get_a3);
+    LISP_FUNC_DECL(useq_get_a4);
+    LISP_FUNC_DECL(useq_get_a5);
+    LISP_FUNC_DECL(useq_get_a6);
+    LISP_FUNC_DECL(useq_get_a7);
+    LISP_FUNC_DECL(useq_get_a8);
+
+    LISP_FUNC_DECL(useq_get_d1);
+    LISP_FUNC_DECL(useq_get_d2);
+    LISP_FUNC_DECL(useq_get_d3);
+    LISP_FUNC_DECL(useq_get_d4);
+    LISP_FUNC_DECL(useq_get_d5);
+    LISP_FUNC_DECL(useq_get_d6);
+    LISP_FUNC_DECL(useq_get_d7);
+    LISP_FUNC_DECL(useq_get_d8);
+
+    // LISP_FUNC_DECL(useq_get_s1);
+    // LISP_FUNC_DECL(useq_get_s2);
+    // LISP_FUNC_DECL(useq_get_s3);
+    // LISP_FUNC_DECL(useq_get_s4);
+    // LISP_FUNC_DECL(useq_get_s5);
+    // LISP_FUNC_DECL(useq_get_s6);
+    // LISP_FUNC_DECL(useq_get_s7);
+    // LISP_FUNC_DECL(useq_get_s8);
+
 
     // Manipulating time
     LISP_FUNC_DECL(useq_slow);
