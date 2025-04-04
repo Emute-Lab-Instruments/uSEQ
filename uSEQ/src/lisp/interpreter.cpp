@@ -213,12 +213,12 @@ Value range(std::vector<Value>& args, Environment& env)
     if (low >= high)
         return Value(result);
 
-    while (low < high)
+    while (low <= high)
     {
         result.push_back(low);
         low = low + Value(1);
     }
-    return Value(result);
+    return Value::vector(result);
 }
 
 BUILTINFUNC(ard_digitalWrite, int pinNumber = args[0].as_int();
@@ -676,11 +676,13 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["len"]    = Value("len", builtin::len);
     Environment::builtindefs["push"]   = Value("push", builtin::push);
     Environment::builtindefs["pop"]    = Value("pop", builtin::pop);
+    Environment::builtindefs["slice"]    = Value("slice", builtin::slice);
     Environment::builtindefs["head"]   = Value("head", builtin::head);
     Environment::builtindefs["tail"]   = Value("tail", builtin::tail);
     Environment::builtindefs["first"]  = Value("first", builtin::head);
     Environment::builtindefs["last"]   = Value("last", builtin::pop);
     Environment::builtindefs["range"]  = Value("range", builtin::range);
+    Environment::builtindefs["vec"]  = Value("vec", builtin::vec);
 
     // Functional operations
     Environment::builtindefs["map"]    = Value("map", builtin::map_list);

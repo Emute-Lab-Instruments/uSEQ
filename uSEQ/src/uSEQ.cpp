@@ -150,7 +150,7 @@ void setup_leds()
     pinMode(USEQ_PIN_LED_I2, OUTPUT_2MA);
 #endif
 
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < (NUM_CONTINUOUS_OUTS+NUM_CONTINUOUS_OUTS); i++)
     {
         pinMode(useq_output_led_pins[i], OUTPUT_2MA);
         gpio_set_slew_rate(useq_output_led_pins[i], GPIO_SLEW_RATE_SLOW);
@@ -321,11 +321,14 @@ void uSEQ::led_animation()
         digitalWrite(useq_output_led_pins[5], 1);
         delay(ledDelay);
         digitalWrite(useq_output_led_pins[4], 0);
-        digitalWrite(useq_output_led_pins[6], 1);
+        digitalWrite(useq_output_led_pins[6], 1); 
         delay(ledDelay);
         digitalWrite(useq_output_led_pins[5], 0);
         digitalWrite(useq_output_led_pins[7], 1);
         delay(ledDelay);
+        digitalWrite(useq_output_led_pins[6], 0);
+        delay(ledDelay);
+        digitalWrite(useq_output_led_pins[7], 0);
 
         ledDelay -= 3;
     }
@@ -1189,6 +1192,7 @@ void setup_analog_outs()
     analogWriteFreq(100000);   // out of hearing range
     analogWriteResolution(11); // about the best we can get
 
+    #ifndef USEQHARDWARE_EXPANDER_OUT_0_1  //NOT EXPANDER WHICH IS NON PIO
     // set PIO PWM state machines to run PWM outputs
     uint offset  = pio_add_program(pio0, &pwm_program);
     uint offset2 = pio_add_program(pio1, &pwm_program);
@@ -1205,6 +1209,7 @@ void setup_analog_outs()
         pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_led_pins[i]);
         pio_pwm_set_period(pioInstance, smIdx, (1u << 11) - 1);
     }
+    #endif // NOT EXPANDER
 }
 #endif // HAS_OUTPUTS
 
@@ -1366,8 +1371,9 @@ void uSEQ::setup_IO()
 #endif
 
 #ifdef USEQHARDWARE_1_0
-    Wire.setSDA(0);
-    Wire.setSCL(1);
+    //i2c now setup below
+    //Wire.setSDA(0);
+    //Wire.setSCL(1);
     // peripheral
     //  Wire.begin(4);
     //  Wire.onReceive(receiveEvent);
@@ -1376,6 +1382,7 @@ void uSEQ::setup_IO()
     //  Wire.begin();
 #endif
 
+// all default to CLIENT - will change
 #ifdef ENABLEI2CCLIENT
     bI2CclientMode = true;
     bI2ChostMode   = false;
@@ -1487,15 +1494,17 @@ void uSEQ::analog_write_with_led(int output, double val)
     // // write pwm
     // pio_pwm_set_level(output < 4 ? pio0 : pio1, output % 4, scaled_val);
 
-#ifdef USEQHARDWARE_EXPANDER_OUT_0_1
-    // write led
-    analogWrite(led_pin, ledsigval);
-#else
-    // write pwm
-    pio_pwm_set_level(pio0, output, ledsigval);
-#endif
+    #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
+     // write led
+     analogWrite(led_pin, ledsigval);
+    #else 
+       // write pwm
+    pio_pwm_set_level(pio0, output, ledsigval); 
+    #endif
+   
 
-    // write led
+    
+    // write led -- output surely? ***
     analogWrite(pwm_pin, scaled_val);
 }
 
@@ -2032,6 +2041,109 @@ Value uSEQ::useq_ain2(std::vector<Value>& args, Environment& env)
 {
     return Value(m_input_vals[USEQAI2]);
 }
+
+
+Value uSEQ::useq_get_a1(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[0]);
+}
+Value uSEQ::useq_get_a2(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[1]);
+}
+Value uSEQ::useq_get_a3(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[2]);
+}
+Value uSEQ::useq_get_a4(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[3]);
+}
+Value uSEQ::useq_get_a5(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[4]);
+}
+Value uSEQ::useq_get_a6(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[5]);
+}
+Value uSEQ::useq_get_a7(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[6]);
+}
+Value uSEQ::useq_get_a8(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_continuous_vals[7]);
+}
+
+
+Value uSEQ::useq_get_d1(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[0]);
+}
+Value uSEQ::useq_get_d2(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[1]);
+}
+Value uSEQ::useq_get_d3(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[2]);
+}
+Value uSEQ::useq_get_d4(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[3]);
+}
+Value uSEQ::useq_get_d5(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[4]);
+}
+Value uSEQ::useq_get_d6(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[5]);
+}
+Value uSEQ::useq_get_d7(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[6]);
+}
+Value uSEQ::useq_get_d8(std::vector<Value>& args, Environment& env)
+{
+    return Value(m_binary_vals[7]);
+}
+
+
+// Value uSEQ::useq_get_s1(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[0]);
+// }
+// Value uSEQ::useq_get_s2(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[1]);
+// }
+// Value uSEQ::useq_get_s3(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[2]);
+// }
+// Value uSEQ::useq_get_s4(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[3]);
+// }
+// Value uSEQ::useq_get_s5(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[4]);
+// }
+// Value uSEQ::useq_get_s6(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[5]);
+// }
+// Value uSEQ::useq_get_s7(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[6]);
+// }
+// Value uSEQ::useq_get_s8(std::vector<Value>& args, Environment& env)
+// {
+//     return Value(m_serial_vals[7]);
+// }
+
 
 #ifdef MUSICTHING
 
@@ -3247,7 +3359,7 @@ Value flatten_impl(const Value& val, Environment& env)
     //     result = Value::vector(flattened);
     // }
 
-    result = Value::vector(flattened);
+    result = val.is_vector() ? Value::vector(flattened): Value(flattened);
     return result;
 }
 
@@ -4637,6 +4749,33 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("gin2", useq_in2);
     INSERT_BUILTINDEF("ain1", useq_ain1);
     INSERT_BUILTINDEF("ain2", useq_ain2);
+
+    INSERT_BUILTINDEF("get-a1", useq_get_a1);
+    INSERT_BUILTINDEF("get-a2", useq_get_a2);
+    INSERT_BUILTINDEF("get-a3", useq_get_a3);
+    INSERT_BUILTINDEF("get-a4", useq_get_a4);
+    INSERT_BUILTINDEF("get-a5", useq_get_a5);
+    INSERT_BUILTINDEF("get-a6", useq_get_a6);
+    INSERT_BUILTINDEF("get-a7", useq_get_a7);
+    INSERT_BUILTINDEF("get-a8", useq_get_a8);
+
+    INSERT_BUILTINDEF("get-d1", useq_get_d1);
+    INSERT_BUILTINDEF("get-d2", useq_get_d2);
+    INSERT_BUILTINDEF("get-d3", useq_get_d3);
+    INSERT_BUILTINDEF("get-d4", useq_get_d4);
+    INSERT_BUILTINDEF("get-d5", useq_get_d5);
+    INSERT_BUILTINDEF("get-d6", useq_get_d6);
+    INSERT_BUILTINDEF("get-d7", useq_get_d7);
+    INSERT_BUILTINDEF("get-d8", useq_get_d8);
+
+    // INSERT_BUILTINDEF("get-s1", useq_get_s1);
+    // INSERT_BUILTINDEF("get-s2", useq_get_s2);
+    // INSERT_BUILTINDEF("get-s3", useq_get_s3);
+    // INSERT_BUILTINDEF("get-s4", useq_get_s4);
+    // INSERT_BUILTINDEF("get-s5", useq_get_s5);
+    // INSERT_BUILTINDEF("get-s6", useq_get_s6);
+    // INSERT_BUILTINDEF("get-s7", useq_get_s7);
+    // INSERT_BUILTINDEF("get-s8", useq_get_s8);
 
     INSERT_BUILTINDEF("slow", useq_slow);
     INSERT_BUILTINDEF("fast", useq_fast);

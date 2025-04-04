@@ -1,0 +1,19 @@
+I2C Branch to do
+================
+
+- refactor host and client files to single system
+- there are no hosts 
+	- modules with input share by grabbing the bus *** modules in sync so this might happen at same time *** need a conductor? conductor prob easiest to code - as we don't have to worry about bus clashes and hanging till it comes free?
+	- names negotiated ... first to grab bus at startup and name checks for clash of own name and shifts - stops if i2c bus clash detected
+- build soft list of names and modules
+- set and store names
+- share input data between modules
+	- save to variable name (define bob.in1 23) - can we use existing send-to fn?
+- (bob.a1 (blah blah)) is an implicit (send-to bobNUM (a1 (blah blah)))
+- 
+
+
+
+done
+=======
+19/11/24 - add hardware type id 
