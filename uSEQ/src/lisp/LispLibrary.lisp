@@ -54,6 +54,6 @@
 ;;(defun swr () (useqGetInput 6))
 ;;(defun rot () (useqGetInput 7))
 
-(defun seq (lst speed)  (fromList lst (every speed beatDur)))
+(defun seq (lst speed)  (fromList lst (every speed beat-dur)))
 
 ;;(defun gates (lst ph speed pw) (* (fromList lst (fast speed ph)) (pulse (fast (* speed (len lst)) ph) pw)))

@@ -1441,8 +1441,8 @@ void uSEQ::update_bpm_variables()
     set("bpm", Value(m_bpm));
     set("bps", Value(m_bpm / 60.0));
     // These should appear as seconds in Lisp-land
-    set("beatDur", Value(m_beat_length * 1e-6));
-    set("barDur", Value(m_bar_length * 1e-6));
+    set("beat-dur", Value(m_beat_length * 1e-6));
+    set("bar-dur", Value(m_bar_length * 1e-6));
     set("phraseDur", Value(m_phrase_length * 1e-6));
     set("sectionDur", Value(m_section_length * 1e-6));
 }
