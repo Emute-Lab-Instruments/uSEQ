@@ -15,7 +15,7 @@ const String PROGMEM LispLibrary[] = {
     "(defun clamp01 (x) (clamp 0.0 1.0 x))",
     "(defun every (amt dur) (/ (% t (* amt dur)) (* amt dur)))",
     "(define q-form 0)",
-    /* "(defun seq (lst speed)  (fromList lst (every speed beatDur)))" */
+    /* "(defun seq (lst speed)  (fromList lst (every speed beat-dur)))" */
 };
 
 const int LispLibrarySize = 14;
