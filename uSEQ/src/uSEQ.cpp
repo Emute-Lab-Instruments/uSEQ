@@ -3315,6 +3315,47 @@ Value uSEQ::useq_random(std::vector<Value>& args, Environment& env)
     return result;
 }
 
+Value uSEQ::useq_loop_at_time(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "loop-at-time";
+
+    // Checking number of args
+    if (!(args.size() == 2))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, 2);
+        return Value::error();
+    }
+
+
+    Value pre_eval = args[0];
+    args[0]        = args[0].eval(env);
+    if (args[0].is_error())
+    {
+        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        return Value::error();
+    }
+
+    // Checking individual args
+    if (!(args[0].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
+        return Value::error();
+    }
+
+    // BODY
+    Value result           = Value::nil();
+    double current_time_s  = env.get("t").value().as_float();
+    double modulo_time_s          = args[0].as_float();
+    double new_time_seconds = fmod(current_time_s, modulo_time_s);
+    double new_time_micros = new_time_seconds * 1e+6;
+    
+    result                 = eval_at_time(args[1], env, new_time_micros);
+
+    return result;
+}
+
 // TODO test
 Value uSEQ::useq_flatten(std::vector<Value>& args, Environment& env)
 {
@@ -3977,6 +4018,19 @@ Environment uSEQ::make_env_for_time(TimeValue t_micros)
     return env;
 }
 
+Environment uSEQ::make_env_with_updated_time_durs(const Environment& parent_env, TimeValue factor)
+{
+    Environment env;
+
+    TimeValue current_beat_dur = parent_env.get("beat-dur").value().as_float();
+    env.set("beat-dur", Value(current_beat_dur * factor));
+
+    TimeValue current_bar_dur = parent_env.get("bar-dur").value().as_float();
+    env.set("bar-dur", Value(current_bar_dur * factor));
+
+    return env;
+}
+
 // FLASH
 
 constexpr uintptr_t PICO_FLASH_START_ADDR = reinterpret_cast<uintptr_t>(XIP_BASE);
@@ -4613,6 +4667,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("set-clock-ext", useq_set_clock_external);
 
     INSERT_BUILTINDEF("random", useq_random);
+    INSERT_BUILTINDEF("loop-at", useq_loop_at_time);
 
     // TODO
 #ifdef MUSICTHING

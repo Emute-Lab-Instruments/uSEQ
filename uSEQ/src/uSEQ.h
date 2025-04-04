@@ -52,7 +52,7 @@ public:
     // NOTE: this should probably be considered
     // part of the interpreter instead
     Value eval_at_time(Value&, Environment&, double);
-
+    
     void write_flash_env();
     void load_flash_env();
 
@@ -341,6 +341,9 @@ private:
 
     LISP_FUNC_DECL(useq_random);
 
+    LISP_FUNC_DECL(useq_loop_at_time);
+
+
     void clear_all_outputs();
     void erase_info_flash();
 
@@ -409,6 +412,9 @@ private:
     static constexpr char m_execute_now_marker             = '@';
 
     Environment make_env_for_time(TimeValue);
+
+    Environment make_env_with_updated_time_durs(const Environment&, TimeValue);
+
 
     void load_flash_info();
     void write_flash_info();
