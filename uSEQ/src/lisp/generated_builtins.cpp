@@ -1162,10 +1162,10 @@ Value subtract(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "-";
 
     // Checking number of args
-    if (!(args.size() == 2))
+    if (!(args.size() >= 2))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
-                                    NumArgsComparison::EqualTo, 2, -1);
+                                    NumArgsComparison::AtLeast, 2, -1);
         return Value::error();
     }
 
@@ -1193,7 +1193,14 @@ Value subtract(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = args[0] - args[1];
+
+    Value accum = args[0];
+
+    for (size_t i = 1; i < args.size(); i++)
+    {
+        accum = accum - args[i];
+    }
+    result = accum;
     return result;
 }
 
