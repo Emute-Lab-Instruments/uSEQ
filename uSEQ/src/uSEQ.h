@@ -1,7 +1,7 @@
 #ifndef USEQ_H_
 #define USEQ_H_
 
-#define USEQ_FIRMWARE_VERSION "1.1.1"
+#define USEQ_FIRMWARE_VERSION "1.2.0"
 
 #include "dsp/tempoEstimator.h"
 // #include "dsp/MAFilter.h"
@@ -369,9 +369,12 @@ private:
 
 
     LISP_FUNC_DECL(useq_random);
+    LISP_FUNC_DECL(useq_index_rand);
 
     LISP_FUNC_DECL(useq_loop_at_time);
-
+    
+    LISP_FUNC_DECL(useq_enter_bootloader_mode);
+    
 
     void clear_all_outputs();
     void erase_info_flash();

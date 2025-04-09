@@ -3382,6 +3382,59 @@ double uSEQ::simple_hashing_function(uint32_t input) {
     return convert.f - 1.0f;
 }
 
+
+Value uSEQ::useq_index_rand(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "index-rand";
+
+    // Checking number of args
+    if (!(1 <= args.size() <= 3))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::Between, 0, 2);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+        // Check all-pred(s)
+        if (!(args[i].is_number()))
+        {
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
+            return Value::error();
+        }
+    }
+
+
+    bool scale = args.size() > 1;
+    bool lower_bound_provided = args.size() == 3;
+
+    // BODY
+    Value result = Value::nil();
+
+    double index = args[args.size() - 1].as_float();
+    double lo = (scale && lower_bound_provided) ? args[0].as_float() : 0.0;
+    double hi = scale ? args[args.size() - 1].as_float() : 1.0;
+
+    double rand_val = simple_hashing_function(index);
+    rand_val = lo + (rand_val * (hi - lo));     
+    // TODO
+    result        = Value(rand_val);
+
+    return result;
+}
+
 Value uSEQ::useq_random(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "random";
@@ -4647,6 +4700,19 @@ void uSEQ::autoload_flash()
     }
 }
 
+
+// extern "C" {
+//     #include "pico/bootrom.h"
+// }
+
+#include "pico/bootrom.h"
+
+BUILTINFUNC_NOEVAL_MEMBER(useq_enter_bootloader_mode, 
+    reset_usb_boot(0, 0); // delay_ms=0, interface=0
+
+                              , 0)
+
+
 // FIXME hangs
 // void uSEQ::clear_non_program_flash()
 // {
@@ -4820,6 +4886,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("set-clock-ext", useq_set_clock_external);
 
     INSERT_BUILTINDEF("random", useq_random);
+    INSERT_BUILTINDEF("index-rand", useq_index_rand);
     INSERT_BUILTINDEF("loop-at", useq_loop_at_time);
 
     // TODO
@@ -4870,6 +4937,13 @@ void uSEQ::init_builtinfuncs()
 
     INSERT_BUILTINDEF("send-to", useq_i2c_send_to);
     INSERT_BUILTINDEF("i2c-host-start", useq_i2c_host_start);
+
+    INSERT_BUILTINDEF("useq-enter-bootloader-mode", useq_enter_bootloader_mode);
+
+
+
+
+
 }
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, //
