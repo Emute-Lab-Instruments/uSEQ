@@ -644,6 +644,11 @@ void Interpreter::loadBuiltinDefs()
     DBG("Interpreter::loadBuiltinDefs");
 
     //// LISP
+    // Constants
+    Environment::builtindefs["PI"] = Value(3.14159265358979323846);    
+    Environment::builtindefs["pi"] = Value(3.14159265358979323846);    
+
+
     // Special forms
     Environment::builtindefs["get-expr"] = Value("get-expr", builtin::get_expr);
 
@@ -760,7 +765,7 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["print"]   = Value("print", builtin::print);
     Environment::builtindefs["println"] = Value("println", builtin::println);
 #endif
-    //Environment::builtindefs["random"] = Value("random", builtin::gen_random);
+    Environment::builtindefs["random'"] = Value("random", builtin::gen_random);
 
     // String operations
     Environment::builtindefs["debug"]   = Value("debug", builtin::debug);
