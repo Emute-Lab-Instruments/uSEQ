@@ -6,7 +6,7 @@
 class uSeqGen_Mul final : public uSeqGen_Base
 {
 public:
-    uSeqGen_Mul(queue_t *q) : uSeqGen_Base(q)
+    uSeqGen_Mul(queue_t *q, size_t key) : uSeqGen_Base(q, key)
     {
         SetInputCount_(2);
         SetOutputCount_(1);

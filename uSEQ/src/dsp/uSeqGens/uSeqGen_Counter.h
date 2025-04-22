@@ -6,8 +6,8 @@
 class uSeqGen_Counter final : public uSeqGen_Base
 {
 public:
-    uSeqGen_Counter(queue_t *q)
-        : uSeqGen_Base(q)
+    uSeqGen_Counter(queue_t *q, size_t key)
+        : uSeqGen_Base(q, key)
     {
         SetInputCount_(0);
         SetOutputCount_(1);
@@ -16,7 +16,6 @@ public:
 protected:
     void __not_in_flash_func(Process_)(DSPatch::SignalBus&, DSPatch::SignalBus& outputs) override
     {
-        println("counter " + String(count));
         outputs.SetValue(0, count);
         count++;
     }

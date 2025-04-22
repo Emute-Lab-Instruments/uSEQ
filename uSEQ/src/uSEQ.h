@@ -439,10 +439,29 @@ private:
 
     // DSP ENGINE
 
+    struct ugenOutputQueue {
+        queue_t *q;
+        size_t index;
+        size_t queueSize;
+        size_t key;
+        std::vector<float> lastValue = {0.f}; //TODO: expand for list outputs
+    };
+
+    struct ugenInputQueue {
+        queue_t *q;
+        size_t index;
+        size_t queueSize;
+        size_t key;
+    };
+
     struct dsp_engine_info
     {
         std::unique_ptr<uSEQDSPEngine> obj;
         size_t nextKey=0;
+
+        std::unordered_map<size_t, String> ugenInstances;
+        std::unordered_map<size_t, ugenOutputQueue> ugenOutputQueues;
+        std::unordered_map<size_t, ugenInputQueue> ugenInputQueues;
     } dspEngine;
 
     LISP_FUNC_DECL(useq_dsp_start);
@@ -451,6 +470,8 @@ private:
     LISP_FUNC_DECL(useq_dsp_kill);
     LISP_FUNC_DECL(useq_dsp_connect);
     LISP_FUNC_DECL(useq_dsp_getugens);
+    LISP_FUNC_DECL(useq_dsp_qget);
+    LISP_FUNC_DECL(useq_dsp_qset);
 
 
 };
