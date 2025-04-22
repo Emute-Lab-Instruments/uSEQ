@@ -7,8 +7,8 @@
 class uSeqGen_SerialPrint final : public uSeqGen_Base
 {
 public:
-    uSeqGen_SerialPrint(queue_t *q)
-        : uSeqGen_Base(q)
+    uSeqGen_SerialPrint(queue_t *q, size_t key)
+        : uSeqGen_Base(q, key)
     {
         SetInputCount_(1);
         SetOutputCount_(1);
@@ -17,7 +17,6 @@ public:
 protected:
     void __not_in_flash_func(Process_)(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
     {
-        println("ugen " + String(key));
         auto sig0 = inputs.GetValue<float>(0);
         if (sig0) {
             String s = "sig " + String(*sig0);
@@ -25,7 +24,7 @@ protected:
         }       else{
             println("sig0 is null");
         }     
-        send_message("ugenspr " + String(key));
+        // send_message("ugenspr " + String(key));
         // println(;
         // println("ugen");
         // outputs.SetValue(0, 0);

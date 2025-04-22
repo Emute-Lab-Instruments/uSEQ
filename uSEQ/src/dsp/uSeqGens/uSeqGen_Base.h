@@ -6,11 +6,15 @@
 #include "../dsp-q-data.hpp"
 #include <vector>
 
+#define GET_INPUT_SAFE(inputs, type, index, defaultVal) \
+    (inputs.GetValue<type>(index) ? *inputs.GetValue<type>(index) : (defaultVal))
+
+
 class uSeqGen_Base : public DSPatch::Component
 {
 public:
-    uSeqGen_Base(queue_t *q)
-        : Component(ProcessOrder::OutOfOrder), q_message(q)
+    uSeqGen_Base(queue_t *q, size_t key)
+        : Component(ProcessOrder::OutOfOrder), q_message(q), key(key)
     {
 
     }

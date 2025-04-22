@@ -60,7 +60,9 @@ public:
         registerUGen<uSeqGen_SerialPrint>("serial-print");
         registerUGen<uSeqGen_Counter>("counter");
         registerUGen<uSeqGen_QueueOutput>("queue-output");
-        // registerUGen<uSeqGen_QueueInput>("QueueInput");
+        registerUGen<uSeqGen_QueueInput>("queue-input");
+
+        
         // registerUGen<uSeqGen_Mul>("Mul");
 
         // testugen = std::make_shared<uSeqGen_SerialPrint>();
@@ -133,9 +135,8 @@ public:
 
     void FAST_FUNC(create)(size_t processor, size_t key) {
         if (processor < uGenFactories.size()) {
-            componentPtr newProcessor = uGenFactories[processor].create();
+            componentPtr newProcessor = uGenFactories[processor].create(key);
             circuit->AddComponent(newProcessor);
-            newProcessor->key = key;
             components[key] = newProcessor;
             println("Created processor: " + String(key) + " " + uGenFactories[processor].name);
         }else{
@@ -180,7 +181,7 @@ private:
 
     struct uGenFactory {
         String name;
-        std::function<componentPtr()> create;
+        std::function<componentPtr(size_t)> create;
     };
 
     std::vector<uGenFactory> uGenFactories;
@@ -189,8 +190,8 @@ private:
     void registerUGen(const String& ugenName) {
         uGenFactories.push_back({
             ugenName,
-            []() -> componentPtr {
-                return std::make_shared<ugenType>(&DSPQ::q_engine_responses);
+            [](size_t key) -> componentPtr {
+                return std::make_shared<ugenType>(&DSPQ::q_engine_responses, key);
             }
         });
     };

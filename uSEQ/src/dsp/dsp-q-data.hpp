@@ -6,7 +6,7 @@
 // Your code goes here
 namespace DSPQ {
 
-    enum RESPONSES {UGENINFO, MESSAGE, ADD_OUTPUT_QUEUE};
+    enum RESPONSES {UGENINFO, MESSAGE, ADD_OUTPUT_QUEUE, ADD_INPUT_QUEUE};
 
     struct response_data_ugeninfo {
         size_t key;
@@ -21,8 +21,9 @@ namespace DSPQ {
     struct response_data_queue {
         size_t key;
         //pointer to queue
-        // size_t queueptr;
         queue_t *queueptr;
+        size_t index;
+        size_t queueSize;
     };
 
     union response_data {
