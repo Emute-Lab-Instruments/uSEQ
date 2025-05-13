@@ -11,6 +11,7 @@
 #include "uSeqGens/uSeqGen_QueueInput.h"
 #include "uSeqGens/uSeqGen_I2COut.h"
 #include "uSeqGens/uSeqGen_Euclidean.h"
+#include "uSeqGens/uSeqGen_NN.h"
 #include <array>
 #include <unordered_map>
 #include "dsp-q-data.hpp"
@@ -19,8 +20,8 @@ using componentPtr = std::shared_ptr<uSeqGen_Base>;
 
 class uSEQDSPEngine {
 public:
-    enum COMMANDS {SETUP, START, STOP, CREATE, DESTROY, RESET, CONNECT, DISCONNECT, GETUGENINFO};
-
+    enum COMMANDS {SETUP, START, STOP, CREATE, DESTROY, RESET, CONNECT, DISCONNECT, GETUGENINFO, MESSAGE};
+    static constexpr size_t MAX_MSG_KEY_LENGTH = 16;
     struct command_data_start {
         double sampleRate;
     };
@@ -37,11 +38,17 @@ public:
         size_t destKey;
         size_t channelDest;
     };
+    struct command_data_message {
+        size_t ugen_key;
+        char message[MAX_MSG_KEY_LENGTH];
+        float value;
+    };
     union command_data {
         command_data_start start;
         command_data_create create;
         command_data_destroy destroy;
         command_data_connect connect;
+        command_data_message message;
     };
 
     struct command_info {
@@ -67,19 +74,8 @@ public:
         registerUGen<uSeqGen_Phasor>("phasor"); 
         registerUGen<uSeqGen_I2COut>("i2c-out"); 
         registerUGen<uSeqGen_Euclidean>("euclid"); 
+        registerUGen<uSeqGen_Euclidean>("nn"); 
 
-        
-        // registerUGen<uSeqGen_Mul>("Mul");
-
-        // testugen = std::make_shared<uSeqGen_SerialPrint>();
-        // counter = std::make_shared<uSeqGen_Counter>();
-    
-        // circuit->AddComponent(testugen);
-        // circuit->AddComponent(counter);
-        // circuit->ConnectOutToIn(counter,0, testugen, 0);
-
-        // testOutput = std::make_shared<uSeqGen_QueueOutput>(&DSPQ::q_outputs[0]);
-        // circuit->AddComponent(testOutput);
 
     }
 
@@ -116,6 +112,18 @@ public:
                     break;
                 case RESET:
                     reset();
+                    break;
+                case MESSAGE:
+                    {
+                        auto it = components.find(cmd.data.message.ugen_key);
+                        if (it != components.end()) {
+                            it->second->message(String(cmd.data.message.message), cmd.data.message.value);
+                        } else {
+                            println("Processor not found: " + String(cmd.data.message.ugen_key));
+                        }
+                    }
+                    break;
+                default:
                     break;
             }
         }

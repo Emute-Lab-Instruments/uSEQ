@@ -10,8 +10,20 @@ public:
     {
         SetInputCount_(5);
         SetOutputCount_(1);
-    }
 
+        addMessageHandler("n", [this](float value) {
+            n = static_cast<size_t>(value);
+        });        
+        addMessageHandler("k", [this](float value) {
+            k = static_cast<size_t>(value);
+        });
+        addMessageHandler("offset", [this](float value) {
+            offset = static_cast<size_t>(value);
+        });
+        addMessageHandler("pulseWidth", [this](float value) {
+            pulseWidth = value;
+        });
+    }
 
 protected:
 
@@ -23,7 +35,7 @@ protected:
         INPUT_PULSE_WIDTH = 4,
     };
 
-    bool euclidean(float phase, const size_t n, const size_t k, const size_t offset, const float pulseWidth)
+    bool __force_inline euclidean(float phase, const size_t n, const size_t k, const size_t offset, const float pulseWidth)
     {
         // Euclidean function
         const float fi = phase * n;
@@ -39,12 +51,20 @@ protected:
 
     void __force_inline Process_(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
     {
-        const float phase = GET_INPUT_SAFE(inputs, float, INPUT_PHASE, 0.0f);
-        const bool output = euclidean(phase, 12, 5, 0, 0.5f);
+        const float _phase = GET_INPUT_SAFE(inputs, float, INPUT_PHASE, 0.0f);
+        const size_t _n = GET_INPUT_SAFE(inputs, float, INPUT_N, n);
+        const size_t _k = GET_INPUT_SAFE(inputs, float, INPUT_K, k);
+        // const size_t _offset = GET_INPUT_SAFE(inputs, float, INPUT_OFFSET, offset);
+        // const float _pw = GET_INPUT_SAFE(inputs, float, INPUT_PULSE_WIDTH, pulseWidth);
+        const bool output = euclidean(_phase, _n, _k, 0, 0.5f);
         outputs.SetValue(0, output ? 1.0f : 0.0f);
     }
 
 private:
+    size_t n = 12;
+    size_t k = 5;
+    size_t offset = 0;
+    float pulseWidth = 0.5f;
 
 };
 
