@@ -7,6 +7,11 @@
 #include <vector>
 #include "Arduino.h"
 #include <cstring>
+#include <map>
+#include <functional>
+#include "../../utils/log.h"
+
+
 
 #define GET_INPUT_SAFE(inputs, type, index, defaultVal) \
     (inputs.GetValue<type>(index) ? *inputs.GetValue<type>(index) : (defaultVal))
@@ -15,6 +20,9 @@
 class uSeqGen_Base : public DSPatch::Component
 {
 public:
+
+    using MessageHandlerFunction = std::function<void(float)>;
+
     uSeqGen_Base(queue_t *q, size_t key)
         : Component(ProcessOrder::OutOfOrder), q_message(q), key(key)
     {}
@@ -34,6 +42,19 @@ public:
         uSeqGen_Base::sampleRateRcpr = 1.f/sr;
     }
 
+    void addMessageHandler(const String& name, MessageHandlerFunction func) {
+        msgHandlerMap[name] = func;
+    }
+
+    void message(String s, float value) {
+        auto it = msgHandlerMap.find(s);
+        if (it != msgHandlerMap.end()) {
+            it->second(value);
+        } else {
+           println("Message handler not found for: " + s);
+        }
+    }
+    
     static float sampleRate;
     static float sampleRateRcpr;
 
@@ -50,12 +71,12 @@ protected:
         queue_try_add(q_message, &resp);
     }
 
+
+    std::map<String, MessageHandlerFunction> msgHandlerMap;
+
 private:
+
 };
-
-// float __not_in_flash("ppp") uSeqGen_Base::sampleRate= 10.f;
-// float __not_in_flash("ppp") uSeqGen_Base::sampleRateRcpr = 0.1f;
-
 
 
 #endif // USEQGEN_BASE_H

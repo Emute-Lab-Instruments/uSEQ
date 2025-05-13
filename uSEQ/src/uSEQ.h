@@ -473,6 +473,7 @@ private:
     LISP_FUNC_DECL(useq_dsp_qget);
     LISP_FUNC_DECL(useq_dsp_qset);
     LISP_FUNC_DECL(useq_dsp_reset);
+    LISP_FUNC_DECL(useq_dsp_message);
 
 
 };

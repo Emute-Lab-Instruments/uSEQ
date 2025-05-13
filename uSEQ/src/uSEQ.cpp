@@ -4500,6 +4500,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-get", useq_dsp_qget);
     INSERT_BUILTINDEF("ppp-set", useq_dsp_qset);
     INSERT_BUILTINDEF("ppp-reset", useq_dsp_reset);
+    INSERT_BUILTINDEF("ppp-msg", useq_dsp_message);
     
 
 
@@ -4620,7 +4621,7 @@ Value uSEQ::useq_dsp_kill(std::vector<Value>& args, Environment& env)
     if (!(args.size() == 1))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
-                                    NumArgsComparison::EqualTo, 2, -1);
+                                    NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
@@ -4694,6 +4695,56 @@ Value uSEQ::useq_dsp_reset(std::vector<Value>& args, Environment& env) {
     dspEngine.ugenOutputQueues.clear();
     dspEngine.ugenInputQueues.clear();
     return Value::string("reset requested");
+}
+
+Value uSEQ::useq_dsp_message(std::vector<Value>& args, Environment& env) {
+    constexpr const char* user_facing_name = "ppp-msg";
+
+    if (!(args.size() == 3))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 3, -1);
+        return Value::error();
+    }
+    if (!(args[0].is_symbol() || args[0].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a symbol or a number",
+                                         args[0].to_lisp_src());
+        return Value::error();
+    }
+    if (!(args[1].is_symbol()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a symbol",
+                                         args[1].display());
+        return Value::error();
+    }
+    if (!(args[2].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 3, "a number",
+                                         args[2].to_lisp_src());
+        return Value::error();
+    }
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::MESSAGE;
+    if ((args[0].is_symbol())) {
+        String name  = args[0].display();
+        auto val = env.get(name);
+        if (!val) {
+            println("Warning: " + name + " not found in environment");
+            return Value::error();
+        }
+        cmd.data.message.ugen_key=static_cast<size_t>(val->as_int());
+    }else{
+        cmd.data.message.ugen_key=static_cast<size_t>(args[0].as_int());
+    }
+    std::strncpy(cmd.data.message.message, args[1].display().c_str(), uSEQDSPEngine::MAX_MSG_KEY_LENGTH-2);
+    cmd.data.message.message[uSEQDSPEngine::MAX_MSG_KEY_LENGTH-2] = '\0';
+    cmd.data.message.value = args[2].as_float();
+    println("msg: " + String(cmd.data.message.message));
+    println("ugen_key: " + String(cmd.data.message.ugen_key));
+    println("value: " + String(cmd.data.message.value));
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+    return Value::string("msg sent");
 }
 
 Value uSEQ::useq_dsp_qget(std::vector<Value>& args, Environment& env)
