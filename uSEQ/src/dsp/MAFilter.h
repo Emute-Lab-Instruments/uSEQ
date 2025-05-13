@@ -24,7 +24,7 @@ public:
         sum_ = 0.0;
     } 
 
-    double process(double inputValue)
+    inline double process(double inputValue)
     {
         // Subtract the oldest value from the sum
         sum_ -= circularBuffer_[currentIndex_];

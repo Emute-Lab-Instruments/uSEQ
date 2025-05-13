@@ -38,6 +38,13 @@ ___ .-.     .--.
                                                                                                 `.__.
 
 */
+
+#ifdef MEMLNAUT
+#define USEQ_I2C_SDA_PIN 38
+#define USEQ_I2C_SCL_PIN 39
+#endif
+
+
 #ifdef MUSICTHING
 
 #define USEQ_PIN_I1 2

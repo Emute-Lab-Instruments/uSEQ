@@ -13,10 +13,10 @@ public:
     }
 
 protected:
-    void __not_in_flash_func(Process_)(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
+    void __force_inline Process_(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
     {
-        const double sig0 = *inputs.GetValue<double>(0);        
-        const double sig1 = *inputs.GetValue<double>(1);        
+        const float sig0 = *inputs.GetValue<float>(0);        
+        const float sig1 = *inputs.GetValue<float>(1);        
         outputs.SetValue(0, sig0 * sig1);
         count++;
     }

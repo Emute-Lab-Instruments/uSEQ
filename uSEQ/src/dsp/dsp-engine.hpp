@@ -6,8 +6,11 @@
 #include "uSeqGens/uSeqGen_SerialPrint.h"
 #include "uSeqGens/uSeqGen_Counter.h"
 #include "uSeqGens/uSeqGen_Mul.h"
+#include "uSeqGens/uSeqGen_Phasor.h"
 #include "uSeqGens/uSeqGen_QueueOutput.h"
 #include "uSeqGens/uSeqGen_QueueInput.h"
+#include "uSeqGens/uSeqGen_I2COut.h"
+#include "uSeqGens/uSeqGen_Euclidean.h"
 #include <array>
 #include <unordered_map>
 #include "dsp-q-data.hpp"
@@ -16,7 +19,7 @@ using componentPtr = std::shared_ptr<uSeqGen_Base>;
 
 class uSEQDSPEngine {
 public:
-    enum COMMANDS {SETUP, START, STOP, CREATE, DESTROY, CONNECT, DISCONNECT, GETUGENINFO};
+    enum COMMANDS {SETUP, START, STOP, CREATE, DESTROY, RESET, CONNECT, DISCONNECT, GETUGENINFO};
 
     struct command_data_start {
         double sampleRate;
@@ -61,6 +64,9 @@ public:
         registerUGen<uSeqGen_Counter>("counter");
         registerUGen<uSeqGen_QueueOutput>("queue-output");
         registerUGen<uSeqGen_QueueInput>("queue-input");
+        registerUGen<uSeqGen_Phasor>("phasor"); 
+        registerUGen<uSeqGen_I2COut>("i2c-out"); 
+        registerUGen<uSeqGen_Euclidean>("euclid"); 
 
         
         // registerUGen<uSeqGen_Mul>("Mul");
@@ -108,6 +114,9 @@ public:
                 case GETUGENINFO:
                     request_ugen_info();
                     break;
+                case RESET:
+                    reset();
+                    break;
             }
         }
         return true;
@@ -133,6 +142,15 @@ public:
         }
     }
 
+    void FAST_FUNC(reset)() {
+        if (isRunning) {
+            stop();
+        }
+        circuit->RemoveAllComponents();
+        components.clear();
+        println("PPP reset");
+    }
+
     void FAST_FUNC(create)(size_t processor, size_t key) {
         if (processor < uGenFactories.size()) {
             componentPtr newProcessor = uGenFactories[processor].create(key);
@@ -151,6 +169,7 @@ public:
             stop();
         }
         int quantum = static_cast<int>(1.0e6/sampleRate);
+        uSeqGen_Base::setSampleRate(sampleRate);
         add_repeating_timer_us(-quantum, [](repeating_timer_t *rt) -> bool {
             return static_cast<uSEQDSPEngine*>(rt->user_data)->timer_callback();
         }, this, &timer);
