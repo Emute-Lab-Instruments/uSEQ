@@ -39,7 +39,7 @@ private:
 
 public:
     maxiFilter() {}
-    double lopass(double input, double cutoff);
+    double __force_inline lopass(double input, double cutoff);
 };
 
 class uSEQ : public Interpreter
@@ -472,6 +472,7 @@ private:
     LISP_FUNC_DECL(useq_dsp_getugens);
     LISP_FUNC_DECL(useq_dsp_qget);
     LISP_FUNC_DECL(useq_dsp_qset);
+    LISP_FUNC_DECL(useq_dsp_reset);
 
 
 };

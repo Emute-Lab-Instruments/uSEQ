@@ -25,7 +25,7 @@ public:
         centreIndex = fSize / 2;
     } 
 
-    double process(double inputValue)
+    inline double process(double inputValue)
     {
 
         // Store the new value in the circular buffer

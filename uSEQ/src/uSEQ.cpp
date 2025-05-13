@@ -21,7 +21,7 @@
 #include <cmath>
 
 // statics
-uSEQ* uSEQ::instance;
+uSEQ* __not_in_flash("useq") uSEQ::instance;
 
 double maxiFilter::lopass(double input, double cutoff)
 {
@@ -472,8 +472,9 @@ void __not_in_flash_func(uSEQ::tick())
     update_inputs();
     // Update time
     update_time();
-    check_code_quant_phasor();
+    // check_code_quant_phasor();
     run_scheduled_items();
+    update_Q0();
     // Re-run & cache output signal forms
     update_signals();
     // Write cached output signals to hardware and/or software outputs
@@ -811,7 +812,8 @@ void uSEQ::update_continuous_signals()
     {
         // Clear error queue
         error_msg_q.clear();
-        String expr_name                 = "a" + (i + 1);
+        static const __not_in_flash("mem") String outputnames[16] = {"a1", "a2", "a3", "a4", "a5", "a6","a7", "a8", "a9", "a10", "a11", "a12", "a13", "a14", "a15", "a16"};
+        String expr_name                 = outputnames[i]; //"a" + (i + 1);
         m_atom_currently_being_evaluated = expr_name;
 
         Value expr = m_continuous_ASTs[i];
@@ -4378,6 +4380,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("s6", useq_s6);
     INSERT_BUILTINDEF("s7", useq_s7);
     INSERT_BUILTINDEF("s8", useq_s8);
+    //q
+    INSERT_BUILTINDEF("q0", useq_q0);
 
     // These are not class methods, so they can be inserted normally
     INSERT_BUILTINDEF("useqaw", ard_useqaw);
@@ -4495,6 +4499,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-getugens", useq_dsp_getugens);
     INSERT_BUILTINDEF("ppp-get", useq_dsp_qget);
     INSERT_BUILTINDEF("ppp-set", useq_dsp_qset);
+    INSERT_BUILTINDEF("ppp-reset", useq_dsp_reset);
     
 
 
@@ -4681,6 +4686,16 @@ Value uSEQ::useq_dsp_getugens(std::vector<Value>& args, Environment& env) {
     return Value::string("ugens requested");
 }
 
+Value uSEQ::useq_dsp_reset(std::vector<Value>& args, Environment& env) {
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::RESET;
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+    dspEngine.ugenInstances.clear();
+    dspEngine.ugenOutputQueues.clear();
+    dspEngine.ugenInputQueues.clear();
+    return Value::string("reset requested");
+}
+
 Value uSEQ::useq_dsp_qget(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "ppp-get";
@@ -4772,6 +4787,10 @@ Value uSEQ::useq_dsp_qset(std::vector<Value>& args, Environment& env)
         // println("get: " + name + String(queueIndex));
         
         //use index to get queue info
+        if (queueIndex >= dspEngine.ugenInputQueues.size()) {
+            println("Warning: queue index out of range");
+            return Value::error();
+        }
         ugenInputQueue *qInfo =  &(dspEngine.ugenInputQueues[queueIndex]);
         queue_try_add(qInfo->q, &qvalue);
     }else{

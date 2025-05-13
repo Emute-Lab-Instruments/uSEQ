@@ -35,23 +35,24 @@ void init_random()
 #endif
 }
 
-uSEQ u;
+std::unique_ptr<uSEQ> u;
 
 void setup()
 {
     init_serial();
     init_random();
-    u.init();
+    u = std::make_unique<uSEQ>();
+    u->init();
 }
 
-void loop() { u.tick(); }
+void loop() { u->tick(); }
 
 
 //core 1
 void setup1() {
-    u.initDSP();
+    u->initDSP();
 }
 
 void loop1() {
-    u.tick_dsp();
+    u->tick_dsp();
 }
