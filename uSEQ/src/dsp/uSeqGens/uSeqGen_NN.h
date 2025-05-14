@@ -15,8 +15,6 @@ public:
         };
         const bool use_constant_weight_init = false;
         const float constant_weight_init = 0;
-        size_t n_inputs = 2;
-        size_t n_outputs = 1;
         // Layer size definitions
         const std::vector<size_t> layers_nodes = {
             n_inputs + kBias,
@@ -37,6 +35,11 @@ public:
         SetInputCount_(n_inputs);
         SetOutputCount_(n_outputs);
 
+        nnInputs.resize(n_inputs+kBias);
+        nnInputs[n_inputs] = 1.f; // bias
+        nnOutputs.resize(n_outputs);
+        
+
         // addMessageHandler("n", [this](float value) {
         //     n = static_cast<size_t>(value);
         // });        
@@ -47,13 +50,28 @@ protected:
 
     void __force_inline Process_(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
     {
-        outputs.SetValue(0, 0.49f);
+        if (divCount == 0) {
+            for(size_t i=0; i < n_inputs; i++) {
+                nnInputs[i] = GET_INPUT_SAFE(inputs, float, i, 0.0);;
+            }
+            mlp->GetOutput(nnInputs, &nnOutputs);
+            for(size_t i=0; i < n_outputs; i++) {
+                outputs.SetValue(i, &nnOutputs[i]);
+            }
+        }
+        divCount++;
     }
 
     std::unique_ptr<MLP<float>> mlp;
 
 
 private:
+    size_t divisor=10;
+    size_t divCount=0;
+    std::vector<float> nnOutputs, nnInputs;
+    size_t n_inputs = 1;
+    size_t n_outputs = 1;
+
 };
 
 #endif 

@@ -4838,8 +4838,8 @@ Value uSEQ::useq_dsp_qset(std::vector<Value>& args, Environment& env)
         // println("get: " + name + String(queueIndex));
         
         //use index to get queue info
-        if (queueIndex >= dspEngine.ugenInputQueues.size()) {
-            println("Warning: queue index out of range");
+        if (dspEngine.ugenInputQueues.count(queueIndex) == 0) {
+            println("Warning: queue not found");
             return Value::error();
         }
         ugenInputQueue *qInfo =  &(dspEngine.ugenInputQueues[queueIndex]);
