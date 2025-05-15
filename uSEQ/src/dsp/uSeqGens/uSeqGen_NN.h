@@ -38,11 +38,14 @@ public:
         nnInputs.resize(n_inputs+kBias);
         nnInputs[n_inputs] = 1.f; // bias
         nnOutputs.resize(n_outputs);
+        for(size_t i=0; i < n_outputs; i++) {
+            nnOutputs[i] = 0.f;
+        }
         
 
-        // addMessageHandler("n", [this](float value) {
-        //     n = static_cast<size_t>(value);
-        // });        
+        addMessageHandler("rand", [this](float value) {
+            mlp->DrawWeights();
+        });        
     }
 
 protected:
@@ -55,11 +58,15 @@ protected:
                 nnInputs[i] = GET_INPUT_SAFE(inputs, float, i, 0.0);;
             }
             mlp->GetOutput(nnInputs, &nnOutputs);
-            for(size_t i=0; i < n_outputs; i++) {
-                outputs.SetValue(i, &nnOutputs[i]);
-            }
         }
+        for(size_t i=0; i < n_outputs; i++) {
+            outputs.SetValue(i, nnOutputs[i]);
+        }
+
         divCount++;
+        if (divCount >= divisor) {
+            divCount = 0;
+        }
     }
 
     std::unique_ptr<MLP<float>> mlp;
@@ -69,8 +76,8 @@ private:
     size_t divisor=10;
     size_t divCount=0;
     std::vector<float> nnOutputs, nnInputs;
-    size_t n_inputs = 1;
-    size_t n_outputs = 1;
+    size_t n_inputs = 2;
+    size_t n_outputs = 8;
 
 };
 

@@ -47,6 +47,7 @@ public:
     }
 
     void message(String s, float value) {
+        println("Message: " + s + " " + String(value));
         auto it = msgHandlerMap.find(s);
         if (it != msgHandlerMap.end()) {
             it->second(value);

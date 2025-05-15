@@ -14,7 +14,42 @@ public:
         Wire1.setSDA(38);
         Wire1.setSCL(39);
         Wire1.begin();
+        delay(10);
+        for(size_t i=0; i<8; i++) {
+            amps[i] = 1.f;
+        }
+        addMessageHandler("amp0", [this](float value) {
+            amps[0] = value;
+        });
+        addMessageHandler("amp1", [this](float value) {
+            amps[1] = value;
+        }); 
+        addMessageHandler("amp2", [this](float value) {
+            amps[2] = value;
+        });
+        addMessageHandler("amp3", [this](float value) {
+            amps[3] = value;
+        });
+        addMessageHandler("amp4", [this](float value) {
+            amps[4] = value;
+        });
+        addMessageHandler("amp5", [this](float value) {
+            amps[5] = value;
+        });
+        addMessageHandler("amp6", [this](float value) {
+            amps[6] = value;
+        });
+        addMessageHandler("amp7", [this](float value) {
+            amps[7] = value;
+        });        
+
     }
+
+    ~uSeqGen_I2COut() override
+    {
+        Wire1.end();
+    }
+
 
 
 protected:
@@ -30,6 +65,7 @@ protected:
 
 private:
     float values[8];
+    float amps[8];
 
 };
 

@@ -74,7 +74,7 @@ public:
         registerUGen<uSeqGen_Phasor>("phasor"); 
         registerUGen<uSeqGen_I2COut>("i2c-out"); 
         registerUGen<uSeqGen_Euclidean>("euclid"); 
-        registerUGen<uSeqGen_Euclidean>("nn"); 
+        registerUGen<uSeqGen_NN>("nn"); 
 
 
     }
