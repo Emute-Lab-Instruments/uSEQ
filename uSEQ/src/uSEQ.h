@@ -124,6 +124,7 @@ private:
     TimeValue m_last_transport_reset_time = 0.0;
     // time /since/ last "transport" reset by user
     TimeValue m_transport_time = 0.0;
+    TimeValue m_transport_time_offset = 0.0;
     // last known transport time
     TimeValue m_last_transport_time = 0.0;
 
@@ -217,6 +218,12 @@ private:
     String m_last_received_code = "";
 
     LISP_FUNC_DECL(useq_eval_at_time);
+
+    // time nudging
+    LISP_FUNC_DECL(useq_nudge_time);
+    LISP_FUNC_DECL(useq_set_time_offset);
+
+
     // expr-updating methods
     // a
     LISP_FUNC_DECL(useq_a1);

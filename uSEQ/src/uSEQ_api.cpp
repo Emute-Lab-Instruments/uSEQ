@@ -184,6 +184,11 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("i2c-host-start", useq_i2c_host_start);
 
     INSERT_BUILTINDEF("useq-enter-bootloader-mode", useq_enter_bootloader_mode);
+    
+    
+    // Transport offsets
+    INSERT_BUILTINDEF("useq-set-time-offset", useq_set_time_offset);
+    INSERT_BUILTINDEF("useq-nudge-time", useq_nudge_time);
 
 
 
@@ -192,6 +197,90 @@ void uSEQ::init_builtinfuncs()
 }
 
 
+
+////////////////////
+// USEQ API
+Value uSEQ::useq_set_time_offset(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "useq-set-time-offset";
+
+    if (!(args.size() == 1))
+    {
+        // error_wrong_num_args(user_facing_name, args.size(),
+        //                      NumArgsComparison::Between, 2, 3);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+        if (!(args[i].is_number()))
+        {
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
+            return Value::error();
+        }
+    }
+
+    // BODY
+    m_transport_time_offset = args[0].as_float();
+    set("useq-time-offset", m_transport_time_offset);
+
+    return args[0];
+}
+
+Value uSEQ::useq_nudge_time(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "useq-nudge-time";
+
+    if (!(args.size() == 1))
+    {
+        // error_wrong_num_args(user_facing_name, args.size(),
+        //                      NumArgsComparison::Between, 2, 3);
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; i < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+        if (!(args[i].is_number()))
+        {
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
+            return Value::error();
+        }
+    }
+
+    // BODY
+    m_transport_time_offset += args[0].as_float();
+    set("useq-time-offset", m_transport_time_offset);
+
+    return args[0];
+}
+
+    
 
 
 ////////////////////
@@ -2476,7 +2565,10 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = args[0];, 1
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a1,
     if (NUM_CONTINUOUS_OUTS >= 1) {
-        set_expr("a1", args[0]);
+                        std::vector<Value> new_form;
+                        new_form.push_back(Value::atom("lambda"));
+                        new_form.push_back(args[0]);
+        set_expr("a1", Value(new_form));
         m_continuous_ASTs[0] = args[0];
         ret                  = Value::atom("a1");
     },
