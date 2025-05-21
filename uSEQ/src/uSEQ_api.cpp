@@ -184,6 +184,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("i2c-host-start", useq_i2c_host_start);
 
     INSERT_BUILTINDEF("useq-enter-bootloader-mode", useq_enter_bootloader_mode);
+    INSERT_BUILTINDEF("useq-enter-sync-mode", useq_enter_sync_mode);
     
     
     // Transport offsets
@@ -196,6 +197,31 @@ void uSEQ::init_builtinfuncs()
 
 }
 
+
+
+LISP_FUNC_DECL(uSEQ::useq_enter_sync_mode)
+// Value uSEQ::useq_enter_sync_mode(std::vector<Value>& args, Environment& env) // Equivalent non-macro form
+{
+    constexpr const char* user_facing_name = "useq-enter-sync-mode";
+
+    // Checking number of args - should be 0
+    if (!args.empty()) {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 0, 0);
+        return Value::error();
+    }
+
+    // Set the flag
+    this->g_sync_mode_active = true; 
+    // Or just g_sync_mode_active = true; if directly in class scope, 
+    // but 'this->' is safer if there's any ambiguity or if it's not directly a member.
+    // Given it's a member of uSEQ, 'this->' is appropriate.
+
+    // Optional: print a message to console for debugging/confirmation
+    // println("(useq-enter-sync-mode) activated"); 
+
+    return Value::nil(); // Or Value::atom("ok");
+}
 
 
 ////////////////////

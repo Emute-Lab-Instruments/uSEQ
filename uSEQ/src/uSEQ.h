@@ -42,6 +42,8 @@ class uSEQ : public Interpreter
 public:
     uSEQ() {}
 
+    bool g_sync_mode_active = false;
+
     void init();
     void run();
 
@@ -381,6 +383,7 @@ private:
     LISP_FUNC_DECL(useq_loop_at_time);
     
     LISP_FUNC_DECL(useq_enter_bootloader_mode);
+    LISP_FUNC_DECL(useq_enter_sync_mode);
     
 
     void clear_all_outputs();

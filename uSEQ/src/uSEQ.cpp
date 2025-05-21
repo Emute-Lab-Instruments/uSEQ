@@ -193,13 +193,63 @@ void uSEQ::tick()
     check_code_quant_phasor();
     run_scheduled_items();
     // Re-run & cache output signal forms
+    if (!this->g_sync_mode_active) {
+        update_signals();
 
-    update_signals();
+        // Write cached output signals to hardware and/or software outputs
+    #if HAS_OUTPUTS
+        update_outs();
+    #endif
+    }
 
-    // Write cached output signals to hardware and/or software outputs
-#if HAS_OUTPUTS
-    update_outs();
-#endif
+    if (this->g_sync_mode_active) {
+        // Sync mode active: Check for triggers here
+
+        // Momentary Switch Check (assuming USEQM1 is the correct enum/index for the momentary switch)
+        // Ensure m_input_vals has been updated by update_inputs() before this point in tick().
+        bool momentary_switch_pressed = (this->m_input_vals[USEQM1] > 0.5); // Use 0.5 for digital inputs that are 0 or 1
+
+        // Analog Input Check
+        // Define a threshold for "HIGH" (e.g., for values normalized 0.0-1.0)
+        const double ANALOG_HIGH_THRESHOLD = 0.8; 
+        bool analog_trigger = false;
+
+        // Check analog inputs based on USEQHARDWARE version.
+        // These indices (USEQAI1, USEQAI2) should be defined in pinmap.h or be accessible.
+        // Assuming m_input_vals stores normalized values (0.0 to 1.0).
+        #if defined(USEQHARDWARE_1_0) || defined(MUSICTHING)
+            if (this->m_input_vals[USEQAI1] > ANALOG_HIGH_THRESHOLD) {
+                analog_trigger = true;
+            }
+            if (!analog_trigger && this->m_input_vals[USEQAI2] > ANALOG_HIGH_THRESHOLD) { // Check USEQAI2 only if USEQAI1 didn't trigger
+                analog_trigger = true;
+            }
+        #endif
+        // Add more analog inputs here if other hardware versions have them and need to be checked.
+        // For example, if there was a USEQAI3:
+        // #if defined(SOME_OTHER_HARDWARE)
+        //     if (!analog_trigger && this->m_input_vals[USEQAI3] > ANALOG_HIGH_THRESHOLD) {
+        //         analog_trigger = true;
+        //     }
+        // #endif
+
+        if (momentary_switch_pressed || analog_trigger) {
+            // Action: Write 1 to all digital outputs
+            // m_num_binary_outs is a class member storing the count of binary outputs.
+            for (unsigned int i = 0; i < this->m_num_binary_outs; ++i) {
+                this->digital_write_with_led(i, 1); // Assuming val=1 means HIGH
+            }
+
+            // Action: Set transport to 0
+            this->reset_logical_time();
+
+            // Action: Exit sync mode
+            this->g_sync_mode_active = false;
+
+            // Optional: Print a message for debugging
+            // this->println("Sync mode exited, transport reset."); 
+        }
+    }
 
     // Check for new code and eval (or schedule it)
     check_and_handle_user_input();
