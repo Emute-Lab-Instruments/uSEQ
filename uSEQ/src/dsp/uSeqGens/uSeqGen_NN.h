@@ -46,6 +46,19 @@ public:
         addMessageHandler("rand", [this](float value) {
             mlp->DrawWeights();
         });        
+
+        addMessageHandler("collect", [this](float value) {
+            //store most recent input/output pair in training data
+        });        
+
+        addMessageHandler("clear", [this](float value) {
+        });        
+
+        addMessageHandler("train", [this](float value) {
+        });        
+
+        addMessageHandler("postdata", [this](float value) {
+        });        
     }
 
 protected:
