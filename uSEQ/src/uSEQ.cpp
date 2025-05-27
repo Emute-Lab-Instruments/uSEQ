@@ -184,6 +184,13 @@ void uSEQ::tick()
     set("qt", Value(updateSpeed * 0.001));
     ts = micros();
 
+    // Don't run the rest of the update loop if we're in sync mode
+    if (m_waiting_for_sync_trigger)
+    {
+        delayMicroseconds(100);
+        return;
+    }
+    
 // Read & cache the hardware & software inputs
 #if HAS_INPUTS
     update_inputs();

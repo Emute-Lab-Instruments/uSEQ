@@ -189,6 +189,10 @@ void uSEQ::init_builtinfuncs()
     // Transport offsets
     INSERT_BUILTINDEF("useq-set-time-offset", useq_set_time_offset);
     INSERT_BUILTINDEF("useq-nudge-time", useq_nudge_time);
+    
+    // Sync functions
+    INSERT_BUILTINDEF("useq-enter-sync-mode", useq_enter_sync_mode);
+    INSERT_BUILTINDEF("useq-send-sync-trigger", useq_send_sync_trigger);
 
 
 

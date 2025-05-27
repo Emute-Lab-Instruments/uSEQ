@@ -169,3 +169,59 @@ PhaseValue uSEQ::section_at_time(TimeValue time)
 {
     return fmod(time, m_section_length) / m_section_length;
 }
+
+// SYNC FUNCTIONS
+
+Value uSEQ::useq_enter_sync_mode(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "useq-enter-sync-mode";
+    
+    // Check no arguments
+    if (args.size() != 0)
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
+    
+    // Enable waiting for sync trigger
+    m_waiting_for_sync_trigger = true;
+
+    return Value::nil();
+}
+
+Value uSEQ::useq_send_sync_trigger(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "useq-send-sync-trigger";
+    
+    // Check no arguments
+    if (args.size() != 0)
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
+    
+    // Send high on all digital outputs
+    for (int i = 0; i < m_num_binary_outs; i++)
+    {
+        digital_write_with_led(i, 1);
+    }
+    
+    // Reset our own transport
+    reset_logical_time();
+    
+    // Brief delay to ensure the trigger is registered
+    delayMicroseconds(100);
+    
+    // Return outputs to low
+    for (int i = 0; i < m_num_binary_outs; i++)
+    {
+        digital_write_with_led(i, 0);
+    }
+    
+    // Exit sync mode, if it was enabled
+    m_waiting_for_sync_trigger == false;
+
+    return Value::nil();
+}
