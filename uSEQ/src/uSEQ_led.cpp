@@ -20,7 +20,7 @@ void setup_leds()
     pinMode(USEQ_PIN_LED_I2, OUTPUT_2MA);
 #endif
 
-    for (int i = 0; i < (NUM_CONTINUOUS_OUTS+NUM_CONTINUOUS_OUTS); i++)
+    for (int i = 0; i < (NUM_CONTINUOUS_OUTS+NUM_BINARY_OUTS); i++)
     {
         pinMode(useq_output_led_pins[i], OUTPUT_2MA);
         gpio_set_slew_rate(useq_output_led_pins[i], GPIO_SLEW_RATE_SLOW);
