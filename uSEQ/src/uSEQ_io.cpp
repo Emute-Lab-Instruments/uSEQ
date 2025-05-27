@@ -105,6 +105,16 @@ void uSEQ::gpio_irq_gate1()
     const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
     uSEQ::instance->set_input_val(USEQI1, input1);
     digitalWrite(USEQ_PIN_LED_I1, input1);
+    
+    // Check for sync trigger
+    if (uSEQ::instance->m_waiting_for_sync_trigger && input1 == 1)
+    {
+        uSEQ::instance->m_waiting_for_sync_trigger = false;
+        uSEQ::instance->reset_logical_time();
+        // TODO propagate the trigger to connected I2C devices
+        return;
+    }
+    
     if (input1 == 1 &&
         uSEQ::instance->getClockSource() == uSEQ::CLOCK_SOURCES::EXTERNAL_I1)
     {
@@ -118,6 +128,16 @@ void uSEQ::gpio_irq_gate2()
     const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
     uSEQ::instance->set_input_val(USEQI2, input2);
     digitalWrite(USEQ_PIN_LED_I2, input2);
+    
+    // Check for sync trigger
+    if (uSEQ::instance->m_waiting_for_sync_trigger && input2 == 1)
+    {
+        uSEQ::instance->m_waiting_for_sync_trigger = false;
+        uSEQ::instance->reset_logical_time();
+        // TODO propagate the trigger to connected I2C devices
+        return;
+    }
+    
     if (input2 == 1 &&
         uSEQ::instance->getClockSource() == uSEQ::CLOCK_SOURCES::EXTERNAL_I2)
     {

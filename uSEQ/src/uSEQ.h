@@ -95,6 +95,7 @@ private:
     bool m_initialised        = false;
     bool m_should_quit        = false;
     bool m_current_expr_sound = true;
+    bool m_waiting_for_sync_trigger = false;
 
     //// OUTPUTS
     // Output forms
@@ -382,6 +383,12 @@ private:
     
     LISP_FUNC_DECL(useq_enter_bootloader_mode);
     
+    // SYNCING FUNCTIONS
+    LISP_FUNC_DECL(useq_enter_sync_mode);
+    LISP_FUNC_DECL(useq_send_sync_trigger);
+
+    
+
 
     void clear_all_outputs();
     void erase_info_flash();
