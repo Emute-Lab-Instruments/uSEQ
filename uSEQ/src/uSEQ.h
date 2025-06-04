@@ -476,6 +476,8 @@ private:
     LISP_FUNC_DECL(useq_dsp_message);
 
 
+    LISP_FUNC_DECL(useq_send_sync_trigger_i2c);
+
 };
 
 #endif // USEQ_H_

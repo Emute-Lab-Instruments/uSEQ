@@ -3536,7 +3536,7 @@ BUILTINFUNC_MEMBER(
                                                2)
 #endif
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = args[0];, 1)
+BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = args[0]; ret = Value::atom("q0");, 1)
 
 // TODO: there is potentially a lot of duplicated/wasted memory by storing
 // the exprs in both the environment and the class member vectors
@@ -4501,6 +4501,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-set", useq_dsp_qset);
     INSERT_BUILTINDEF("ppp-reset", useq_dsp_reset);
     INSERT_BUILTINDEF("ppp-msg", useq_dsp_message);
+
+    INSERT_BUILTINDEF("useq-send-sync-trigger-i2c", useq_send_sync_trigger_i2c);
     
 
 
@@ -4863,3 +4865,86 @@ void FAST_FUNC(uSEQ::tick_dsp)() {
     delay(1000);
 }
 
+Value uSEQ::useq_send_sync_trigger_i2c(std::vector<Value>& args, Environment& env)
+
+
+
+{
+
+
+    constexpr const char* user_facing_name = "useq-send-sync-trigger";
+
+
+    
+
+
+    // Check no arguments
+
+
+    if (args.size() != 0)
+
+
+    {
+
+
+        report_error_wrong_num_args(user_facing_name, args.size(),
+
+
+                                    NumArgsComparison::EqualTo, 0, -1);
+
+
+        return Value::error();
+
+
+    }
+
+
+    
+
+
+    // Send high on all digital outputs
+
+    Wire1.setSDA(38);
+    Wire1.setSCL(39);
+    Wire1.begin();
+    delay(100);
+    float tmp_outputs[8];
+
+    // digital_write_with_led(i, 1);
+    for(size_t i=0; i<8; i++) {
+        tmp_outputs[i] = 1;
+    }
+    Wire1.beginTransmission(1);
+    Wire1.write((uint8_t*) &tmp_outputs, sizeof(tmp_outputs));
+    int res = Wire1.endTransmission(true);         
+
+
+  // Reset our own transport
+
+
+
+    reset_logical_time();
+
+    // Brief delay to ensure the trigger is registered
+
+    delay(50);
+
+    // Return outputs to low
+
+
+    // digital_write_with_led(i, 1);
+    for(size_t i=0; i<8; i++) {
+        tmp_outputs[i] = 0;
+    }
+    Wire1.beginTransmission(1);
+    Wire1.write((uint8_t*) &tmp_outputs, sizeof(tmp_outputs));
+    res = Wire1.endTransmission(true);    
+    delay(10);     
+
+    Wire1.end();
+
+    println("Sync sent");
+
+
+    return Value::nil();
+}

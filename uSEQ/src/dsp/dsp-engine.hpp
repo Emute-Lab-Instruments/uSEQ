@@ -12,6 +12,8 @@
 #include "uSeqGens/uSeqGen_I2COut.h"
 #include "uSeqGens/uSeqGen_Euclidean.h"
 #include "uSeqGens/uSeqGen_NN.h"
+#include "uSeqGens/uSeqGen_MT_DAC.h"
+#include "uSeqGens/uSeqGen_LoopPlayer.h"
 #include <array>
 #include <unordered_map>
 #include "dsp-q-data.hpp"
@@ -66,7 +68,6 @@ public:
     }
 
     void setup() {
-
         registerUGen<uSeqGen_SerialPrint>("serial-print");
         registerUGen<uSeqGen_Counter>("counter");
         registerUGen<uSeqGen_QueueOutput>("queue-output");
@@ -75,8 +76,8 @@ public:
         registerUGen<uSeqGen_I2COut>("i2c-out"); 
         registerUGen<uSeqGen_Euclidean>("euclid"); 
         registerUGen<uSeqGen_NN>("nn"); 
-
-
+        registerUGen<uSeqGen_MT_DAC>("dac");
+        registerUGen<uSeqGen_LoopPlayer>("loop");
     }
 
 
