@@ -10,12 +10,18 @@ public:
     {
         SetInputCount_(0);
         SetOutputCount_(1);
+
+        addMessageHandler("freq", [this](float value) {
+            setFrequency(value);
+        });        
     }
 
     void setFrequency(float freq) {
-         inc = freq * uSeqGen_Base::sampleRateRcpr;
+         inc = freq * uSeqGen_Base::sampleRateRcpr * 0.5f;
          frequency = freq;
     }
+
+
 
 protected:
     void __force_inline Process_(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
@@ -28,9 +34,9 @@ protected:
     }
 private:
     float count = 0;
-    float frequency = 10;
-    float phase=0.f;
-    float inc=0.1f;
+    float frequency = 100.0;
+    float phase=-1.f;
+    float inc=0.02f;
 
 };
 

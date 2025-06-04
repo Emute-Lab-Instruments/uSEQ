@@ -3,6 +3,8 @@
 
 #include "uSeqGen_Base.h"
 #include "memlp/MLP.h"
+#include "memlp/Dataset.hpp"
+
 
 class uSeqGen_NN final : public uSeqGen_Base
 {
@@ -42,6 +44,9 @@ public:
             nnOutputs[i] = 0.f;
         }
         
+        // Create dataset
+        dataset = std::make_unique<Dataset>();
+
 
         addMessageHandler("rand", [this](float value) {
             mlp->DrawWeights();
@@ -49,12 +54,48 @@ public:
 
         addMessageHandler("collect", [this](float value) {
             //store most recent input/output pair in training data
+            dataset->Add(nnInputs, nnOutputs);
+            println("Added data point");
+            println(String(dataset->GetFeatures().size()));
         });        
 
         addMessageHandler("clear", [this](float value) {
+            dataset->Clear();
         });        
 
         addMessageHandler("train", [this](float value) {
+            size_t n_iterations = static_cast<size_t>(value);
+            MLP<float>::training_pair_t ds(dataset->GetFeatures(), dataset->GetLabels());
+            // Check and report on dataset size
+            println("Feature size ");
+            println(String(ds.first.size()));
+            println(", label size ");
+            println(String(ds.second.size()));
+            if (!ds.first.size() || !ds.second.size()) {
+                println("Empty dataset!");
+                return;
+            }
+            println("Feature dim ");
+            println(String(ds.first[0].size()));
+            println(", label dim ");
+            println(String(ds.second[0].size()));
+            if (!ds.first[0].size() || !ds.second[0].size()) {
+                println("Empty dataset dimensions!");
+                return;
+            }
+
+            // Training loop
+            println("Training for max ");
+            println(String(n_iterations));
+            println(" iterations...");
+            // float loss = mlp->Train(ds,
+            //         1.,
+            //         n_iterations,
+            //         0.0001,
+            //         false);
+            // println("Trained, loss = ");
+            // println(String(loss));
+
         });        
 
         addMessageHandler("postdata", [this](float value) {
@@ -83,6 +124,8 @@ protected:
     }
 
     std::unique_ptr<MLP<float>> mlp;
+    std::unique_ptr<Dataset> dataset;
+
 
 
 private:
