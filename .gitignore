@@ -52,3 +52,7 @@ hardware/version1.0/useq1/useq-backups/
 hardware/version1.0/useq1/useq1-backups/
 samples/buttercup.wav
 samples/buttercup.bin
+samples/headers.c
+samples/ixilang_audio.bin
+samples/ixilangRedux_audio.bin
+samples/load.sh

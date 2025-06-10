@@ -14,6 +14,7 @@
 #include "uSeqGens/uSeqGen_NN.h"
 #include "uSeqGens/uSeqGen_MT_DAC.h"
 #include "uSeqGens/uSeqGen_LoopPlayer.h"
+#include "uSeqGens/uSeqGen_Sampler.h"
 #include <array>
 #include <unordered_map>
 #include "dsp-q-data.hpp"
@@ -40,6 +41,7 @@ public:
         size_t destKey;
         size_t channelDest;
     };
+    //todo: message should be a union of string/float/int etc and ugen should choose how to interpret it
     struct command_data_message {
         size_t ugen_key;
         char message[MAX_MSG_KEY_LENGTH];
@@ -77,7 +79,8 @@ public:
         registerUGen<uSeqGen_Euclidean>("euclid"); 
         registerUGen<uSeqGen_NN>("nn"); 
         registerUGen<uSeqGen_MT_DAC>("dac");
-        registerUGen<uSeqGen_LoopPlayer>("loop");
+        // registerUGen<uSeqGen_LoopPlayer>("loop");
+        registerUGen<uSeqGen_Sampler>("sampler");
     }
 
 
