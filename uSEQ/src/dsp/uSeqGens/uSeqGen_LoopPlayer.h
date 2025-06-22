@@ -23,8 +23,8 @@ public:
         SetInputCount_(2);
         SetOutputCount_(1);
 
-        addMessageHandler("rate", [this](float value) {
-            rate = value;
+        addMessageHandler("rate", [this](command_data_message_data &data) {
+            rate = data.floatData.value;
         });        
         audio_samples = (float*)(AUDIO_FLASH_ADDRESS + 8);         
     }

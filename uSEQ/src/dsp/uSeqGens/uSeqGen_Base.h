@@ -17,11 +17,30 @@
     (inputs.GetValue<type>(index) ? *inputs.GetValue<type>(index) : (defaultVal))
 
 
+
 class uSeqGen_Base : public DSPatch::Component
 {
 public:
 
-    using MessageHandlerFunction = std::function<void(float)>;
+    static constexpr size_t MAX_MSG_VALUE_LENGTH = 32;
+
+    struct command_data_message_float {
+        float value;
+    };
+    struct command_data_message_int {
+        int32_t value;
+    };
+    struct command_data_message_string {
+        char value[MAX_MSG_VALUE_LENGTH];
+    };
+
+    union command_data_message_data{
+        command_data_message_float floatData;
+        // command_data_message_int intData;
+        command_data_message_string stringData;
+    };
+
+    using MessageHandlerFunction = std::function<void(command_data_message_data&)>;
 
     uSeqGen_Base(queue_t *q, size_t key)
         : Component(ProcessOrder::OutOfOrder), q_message(q), key(key)
@@ -46,11 +65,11 @@ public:
         msgHandlerMap[name] = func;
     }
 
-    void message(String s, float value) {
-        println("Message: " + s + " " + String(value));
+    void message(String s, command_data_message_data &data) {
+        // println("Message: " + s + " " + String(value));
         auto it = msgHandlerMap.find(s);
         if (it != msgHandlerMap.end()) {
-            it->second(value);
+            it->second(data);
         } else {
            println("Message handler not found for: " + s);
         }

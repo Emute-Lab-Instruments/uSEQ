@@ -4702,10 +4702,10 @@ Value uSEQ::useq_dsp_reset(std::vector<Value>& args, Environment& env) {
 Value uSEQ::useq_dsp_message(std::vector<Value>& args, Environment& env) {
     constexpr const char* user_facing_name = "ppp-msg";
 
-    if (!(args.size() == 3))
+    if (!(2 <= args.size() <= 3))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
-                                    NumArgsComparison::EqualTo, 3, -1);
+                                    NumArgsComparison::Between, 2, 3);
         return Value::error();
     }
     if (!(args[0].is_symbol() || args[0].is_number()))
@@ -4720,12 +4720,15 @@ Value uSEQ::useq_dsp_message(std::vector<Value>& args, Environment& env) {
                                          args[1].display());
         return Value::error();
     }
-    if (!(args[2].is_number()))
+    if (args.size()==3)
     {
-        report_error_wrong_specific_pred(user_facing_name, 3, "a number",
-                                         args[2].to_lisp_src());
-        return Value::error();
-    }
+        if (!(args[2].is_number() || args[2].is_string()))
+        {
+            report_error_wrong_specific_pred(user_facing_name, 3, "an int, float or string",
+                                            args[2].to_lisp_src());
+            return Value::error();
+        }
+    }    
     uSEQDSPEngine::command_info cmd;
     cmd.command = uSEQDSPEngine::COMMANDS::MESSAGE;
     if ((args[0].is_symbol())) {
@@ -4741,10 +4744,20 @@ Value uSEQ::useq_dsp_message(std::vector<Value>& args, Environment& env) {
     }
     std::strncpy(cmd.data.message.message, args[1].display().c_str(), uSEQDSPEngine::MAX_MSG_KEY_LENGTH-2);
     cmd.data.message.message[uSEQDSPEngine::MAX_MSG_KEY_LENGTH-2] = '\0';
-    cmd.data.message.value = args[2].as_float();
-    println("msg: " + String(cmd.data.message.message));
-    println("ugen_key: " + String(cmd.data.message.ugen_key));
-    println("value: " + String(cmd.data.message.value));
+    if (args.size() == 3 ) {
+        if (args[2].is_number()) {
+            cmd.data.message.value.floatData.value = static_cast<float>(args[2].as_float());
+        }
+        else if (args[2].is_string()) {
+            std::strncpy(cmd.data.message.value.stringData.value, args[2].display().c_str(), uSeqGen_Base::MAX_MSG_VALUE_LENGTH-2);
+            cmd.data.message.value.stringData.value[uSeqGen_Base::MAX_MSG_VALUE_LENGTH-2] = '\0';
+        }
+    } else {
+        cmd.data.message.value.floatData.value = 0.f; //default value
+    }
+    // println("msg: " + String(cmd.data.message.message));
+    // println("ugen_key: " + String(cmd.data.message.ugen_key));
+    // println("value: " + String(cmd.data.message.value));
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
     return Value::string("msg sent");
 }

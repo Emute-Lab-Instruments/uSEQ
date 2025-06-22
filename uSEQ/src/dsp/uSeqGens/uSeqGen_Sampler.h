@@ -43,17 +43,49 @@ public:
     {
         SetInputCount_(2);
         SetOutputCount_(1);
-        println("uSeqGen_Sampler initialized");
+        sample_info.found = false;
 
-        if (!get_sample_info("drone1", &sample_info)) {
-            println("Error: Sample  not found in audio data.");
-        }else{
-            println("Sample found: " + String(sample_info.name) + ", count: " + String(sample_info.sample_count) + ", duration: " + String(sample_info.duration));
-        }
+        //create a queue
+        queue_init(&q_input, sizeof(float), 1);
 
-        addMessageHandler("rate", [this](float value) {
-            rate = value;
+        //share it with the interpreter
+        DSPQ::response_info resp;
+        resp.response = DSPQ::RESPONSES::ADD_INPUT_QUEUE;
+        resp.data.queueInfo.key = key;
+        resp.data.queueInfo.queueptr = &q_input;
+        resp.data.queueInfo.index = 0;
+        resp.data.queueInfo.queueSize = 1;
+        queue_try_add(q_message, &resp);
+
+
+        addMessageHandler("rate", [this](command_data_message_data &data) {
+            rate = data.floatData.value;
         });        
+
+        addMessageHandler("sample", [this](command_data_message_data &data) {
+            if (!get_sample_info(data.stringData.value, &sample_info)) {
+                println("Error: Sample  not found in audio data.");
+            }else{
+                println("Sample found: " + String(sample_info.name) + ", count: " + String(sample_info.sample_count) + ", duration: " + String(sample_info.duration));
+            }
+        });  
+        
+        addMessageHandler("list", [this](command_data_message_data &data) {
+            list_all_samples();
+        });        
+
+        addMessageHandler("loop", [this](command_data_message_data &data) {
+            looping = data.floatData.value > 0;
+            if (looping) {
+                playing = true; // Set playing state if looping
+            }
+            println("Looping set to: " + String(looping));
+        });        
+    }
+
+     ~uSeqGen_Sampler() override
+    {
+        queue_free(&q_input);
     }
 
 
@@ -64,26 +96,53 @@ protected:
             const float rateInput = GET_INPUT_SAFE(inputs, float, 0, rate);
             const float phaseInput = GET_INPUT_SAFE(inputs, float, 1, 0.0f);
 
-            if (fabs(phaseInput - lastTrigValue) > changeThreshold) {
-                // Jump to new phase if the input phase has changed significantly
-                phase = phaseInput * sample_info.sample_count;
-                lastTrigValue = phaseInput;
+            float tmp;
+            if (queue_try_remove(&q_input, &tmp)) {
+                if (lastRetrigValue <= 0 && tmp > 0) {
+                    if (rateInput >= 0.f){
+                        phase = 0.f; // Reset phase on retrigger
+                    }else{
+                        phase = sample_info.sample_count - 1.f; // Reset phase on retrigger for reverse playback
+                    }
+                    playing = true; // Set playing state
+                }
+                lastRetrigValue = tmp;
+                // println("QueueInput: " + String(tmp));
             }
 
-            //cast phase with rounding
-            outputs.SetValue(0, sample_info.samples[static_cast<size_t>(phase+0.5f)]);
+            if (playing) {
 
-
-            phase += rateInput;
-            if (rateInput >=0.f) {
-                if (phase >= sample_info.sample_count) {
-                    phase -= sample_info.sample_count;
+                if (fabs(phaseInput - lastTrigValue) > changeThreshold) {
+                    // Jump to new phase if the input phase has changed significantly
+                    phase = phaseInput * sample_info.sample_count;
+                    lastTrigValue = phaseInput;
                 }
-            } else {
-                if (phase < 0) {
-                    phase += sample_info.sample_count;
+
+                //cast phase with rounding
+                outputs.SetValue(0, sample_info.samples[static_cast<size_t>(phase+0.5f)]);
+
+                phase += rateInput;
+                if (rateInput >=0.f) {
+                    if (phase >= sample_info.sample_count) {
+                        if (looping) {
+                            phase -= sample_info.sample_count;
+                        }else{
+                            playing = false;
+                        }
+                    }
+                } else {
+                    if (phase < 0) {
+                        if (looping) {
+                            phase += sample_info.sample_count;
+                        }else{
+                        playing = false;
+                        }
+                    }
                 }
             }
+        }
+        else{
+            outputs.SetValue(0, 0.f);
         }
     }
 
@@ -131,13 +190,52 @@ protected:
         return false;
     }
 
+    void list_all_samples() {
+        // Read pointers from memory based on flash address
+        const uint8_t* binary_data = (const uint8_t*)AUDIO_FLASH_ADDRESS;
+        const audio_header_t* header = (const audio_header_t*)binary_data;
+        const audio_file_entry_t* file_table = (const audio_file_entry_t*)(binary_data + 16);
+        
+        // Verify binary is valid
+        if (header->magic != AUDIO_MAGIC) {
+            printf("Error: Invalid audio binary at 0x%08x\n", AUDIO_FLASH_ADDRESS);
+            return;
+        }
+        
+        println("Sample Library:");
+        println("====================");
+        println("Sample Rate: " + String(header->sample_rate) + " Hz");
+        println("File Count: " + String(header->file_count));
+        println("");
+        
+        if (header->file_count == 0) {
+            println("No samples found.");
+            return;
+        }
+                
+        for (uint32_t i = 0; i < header->file_count; i++) {
+            const audio_file_entry_t* file = &file_table[i];
+            
+            println("[" + String(i) + "] " +  String(file->name) +  ", " + String(file->duration) + "s");
+        
+        }
+        
+    }    
+
 private:
     float rate = 1;
     float phase=0.f;
     float lastTrigValue = 0.0f;
+    float lastRetrigValue = 0.0f; // Last retrigger value
     const float changeThreshold = 1.f/128.f;
 
     sample_info_t sample_info;  // Sample information structure
+
+    queue_t q_input;
+
+    bool looping=false;
+    bool playing = false;
+
 };
 
 #endif // USEQGEN_MUL_H

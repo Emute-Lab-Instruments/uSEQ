@@ -12,7 +12,7 @@
 //   return os << "}";
 // }
 
-BuiltinMap Environment::builtindefs;
+BuiltinMap FAST_MEM_ENV Environment::builtindefs;
 
 std::optional<Value> ValueMap::get(const String& name) const
 {

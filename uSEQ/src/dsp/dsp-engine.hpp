@@ -3,6 +3,7 @@
 
 #include "dspatch/include/DSPatch_Embedded.h"
 #include "dsp-queues.hpp"
+#include "uSeqGens/uSeqGen_Base.h"
 #include "uSeqGens/uSeqGen_SerialPrint.h"
 #include "uSeqGens/uSeqGen_Counter.h"
 #include "uSeqGens/uSeqGen_Mul.h"
@@ -14,6 +15,7 @@
 #include "uSeqGens/uSeqGen_NN.h"
 #include "uSeqGens/uSeqGen_MT_DAC.h"
 #include "uSeqGens/uSeqGen_LoopPlayer.h"
+#include "uSeqGens/uSeqGen_Mixer.h"
 #include "uSeqGens/uSeqGen_Sampler.h"
 #include <array>
 #include <unordered_map>
@@ -41,12 +43,12 @@ public:
         size_t destKey;
         size_t channelDest;
     };
-    //todo: message should be a union of string/float/int etc and ugen should choose how to interpret it
     struct command_data_message {
         size_t ugen_key;
         char message[MAX_MSG_KEY_LENGTH];
-        float value;
+        uSeqGen_Base::command_data_message_data value;
     };
+    
     union command_data {
         command_data_start start;
         command_data_create create;
@@ -81,6 +83,7 @@ public:
         registerUGen<uSeqGen_MT_DAC>("dac");
         // registerUGen<uSeqGen_LoopPlayer>("loop");
         registerUGen<uSeqGen_Sampler>("sampler");
+        registerUGen<uSeqGen_Mixer>("mixer");
     }
 
 

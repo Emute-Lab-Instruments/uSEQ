@@ -178,21 +178,24 @@ Value Value::apply(std::vector<Value>& args, Environment& env)
 Value Value::eval(Environment& env) { return Interpreter::eval_in(*this, env); }
 
 bool Value::is_number() const { return type == INT || type == FLOAT; }
+bool Value::is_int() const { return type == FLOAT; }
+bool Value::is_float() const { return type == FLOAT; }
+
 // FIXME
-bool Value::is_negative_number() const { return is_number() && *this < 0.0; }
+bool  Value::is_negative_number() const { return is_number() && *this < 0.0; }
 bool Value::is_positive_number() const { return is_number() && *this > 0.0; }
 bool Value::is_non_zero_number() const
 {
     return is_number() && (*this < 0.0 || *this > 0.0);
 }
 
-bool Value::is_error() const { return type == ERROR; }
+bool  Value::is_error() const { return type == ERROR; }
 
 bool Value::is_list() const { return type == LIST; }
 bool Value::is_vector() const { return type == VECTOR; }
 bool Value::is_sequential() const { return is_list() || is_vector(); }
 
-bool Value::is_signal() const
+bool  Value::is_signal() const
 {
     // TODO
     return false;
@@ -237,7 +240,7 @@ String Value::as_string() const
     return str;
 }
 
-String Value::as_atom() const
+String  Value::as_atom() const
 {
     if (type != ATOM)
     {
