@@ -11,17 +11,17 @@ public:
         SetInputCount_(5);
         SetOutputCount_(1);
 
-        addMessageHandler("n", [this](float value) {
-            n = static_cast<size_t>(value);
+        addMessageHandler("n", [this](command_data_message_data &data) {
+            n = static_cast<size_t>(data.floatData.value);
         });        
-        addMessageHandler("k", [this](float value) {
-            k = static_cast<size_t>(value);
+        addMessageHandler("k", [this](command_data_message_data &data) {
+            k = static_cast<size_t>(data.floatData.value);
         });
-        addMessageHandler("offset", [this](float value) {
-            offset = static_cast<size_t>(value);
+        addMessageHandler("offset", [this](command_data_message_data &data) {
+            offset = static_cast<size_t>(data.floatData.value);
         });
-        addMessageHandler("pulseWidth", [this](float value) {
-            pulseWidth = value;
+        addMessageHandler("pulseWidth", [this](command_data_message_data &data) {
+            pulseWidth = data.floatData.value;
         });
     }
 

@@ -5,6 +5,8 @@
 #include "value.h"
 #include <map>
 #include <optional>
+
+#define FAST_MEM_ENV __not_in_flash("ENVIRONMENTDATA")
 // class Value;
 
 // template <size_T MAX_SIZE>
@@ -68,7 +70,7 @@ public:
     // Output this scope in readable form to a stream.
     friend std::ostream& operator<<(std::ostream& os, Environment const& v);
 
-    static BuiltinMap builtindefs;
+    static BuiltinMap FAST_MEM_ENV builtindefs;
 
 protected:
     ValueMap m_defs;

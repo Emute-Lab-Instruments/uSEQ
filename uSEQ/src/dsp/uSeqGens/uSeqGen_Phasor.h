@@ -11,8 +11,8 @@ public:
         SetInputCount_(0);
         SetOutputCount_(1);
 
-        addMessageHandler("freq", [this](float value) {
-            setFrequency(value);
+        addMessageHandler("freq", [this](command_data_message_data &data) {
+            setFrequency(data.floatData.value);
         });        
     }
 

@@ -13,7 +13,7 @@ public:
         SetInputCount_(0);
         SetOutputCount_(1);
 
-        //create an output queue
+        //create a queue
         queue_init(&q_input, sizeof(float), 1);
 
 
