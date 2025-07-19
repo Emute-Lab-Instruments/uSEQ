@@ -30,6 +30,8 @@ using uSEQ_Method_Ptr = Value (uSEQ::*)(std::vector<Value>&, Environment&);
 
 // using LambdaScopeEnv = Environment<32>;
 
+#define VALUE_FAST_MEM __not_in_flash("VALUEDATA")
+
 class Value
 {
 public:
@@ -82,13 +84,13 @@ public:
     //     return *this;
     // }
 
-    static Value nil();
-    static Value error();
-    static Value quote(Value quoted);
-    static Value atom(String s);
-    static Value string(String s);
+    static Value VALUE_FAST_MEM nil();
+    static Value VALUE_FAST_MEM error();
+    static Value VALUE_FAST_MEM quote(Value quoted);
+    static Value VALUE_FAST_MEM atom(String s);
+    static Value VALUE_FAST_MEM string(String s);
     // static Value list(std::vector<Value> lst);
-    static Value vector(std::vector<Value> vec);
+    static Value VALUE_FAST_MEM vector(std::vector<Value> vec);
 
     Value(std::vector<Value> params, Value ret, const Environment& env);
 
@@ -100,6 +102,8 @@ public:
     bool is_builtin() const;
     bool is_nil() const;
     bool is_number() const;
+    bool is_int() const;
+    bool is_float() const;
     bool is_negative_number() const;
     bool is_positive_number() const;
     bool is_non_zero_number() const;

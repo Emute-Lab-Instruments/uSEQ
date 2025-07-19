@@ -119,13 +119,9 @@ void uSEQ::update_bpm_variables()
     // These should appear as seconds in Lisp-land
     set("beat-dur", Value(m_beat_length * 1e-6));
     set("bar-dur", Value(m_bar_length * 1e-6));
-    set("phraseDur", Value(m_phrase_length * 1e-6));
-    set("sectionDur", Value(m_section_length * 1e-6));
+    set("phrase-dur", Value(m_phrase_length * 1e-6));
+    set("section-dur", Value(m_section_length * 1e-6));
 }
-
-
-
-
 
 
 void uSEQ::set_time_sig(double numerator, double denominator)

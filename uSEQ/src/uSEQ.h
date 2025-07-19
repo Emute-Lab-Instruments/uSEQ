@@ -14,6 +14,11 @@
 #include <cstring>
 #include <memory>
 #include <sys/types.h>
+#include "uSEQ/board.h"
+
+#include "dsp/dsp-engine.hpp"
+
+
 // #include "utils/serial_message.h"
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
@@ -34,7 +39,7 @@ private:
 
 public:
     maxiFilter() {}
-    double lopass(double input, double cutoff);
+    double __force_inline lopass(double input, double cutoff);
 };
 
 class uSEQ : public Interpreter
@@ -42,11 +47,15 @@ class uSEQ : public Interpreter
 public:
     uSEQ() {}
 
+    void init_dsp_queues();
     void init();
     void run();
 
+    void initDSP();
+
     void start_loop_blocking();
     void tick();
+    void tick_dsp();
     void update_logical_time_variables(TimeValue);
 
     // NOTE: this should probably be considered
@@ -166,6 +175,11 @@ private:
     double m_bpm        = m_defaultBPM;
     void set_bpm(double newBpm, double changeThreshold);
     void update_bpm_variables();
+
+    //queue and dsp
+    std::array<String, N_OUTPUT_QUEUES> dsp_output_names;
+    void check_dsp_output_queues();
+
 
     //// UPDATE methods
     // main user interaction logic
@@ -491,6 +505,48 @@ private:
     static String current_output_being_processed;
 
     uint32_t m_random_seed = 0x9E3779B9;
+
+    // DSP ENGINE
+
+    struct ugenOutputQueue {
+        queue_t *q;
+        size_t index;
+        size_t queueSize;
+        size_t key;
+        std::vector<float> lastValue = {0.f}; //TODO: expand for list outputs
+    };
+
+    struct ugenInputQueue {
+        queue_t *q;
+        size_t index;
+        size_t queueSize;
+        size_t key;
+    };
+
+    struct dsp_engine_info
+    {
+        std::unique_ptr<uSEQDSPEngine> obj;
+        size_t nextKey=0;
+
+        std::unordered_map<size_t, String> ugenInstances;
+        std::unordered_map<size_t, ugenOutputQueue> ugenOutputQueues;
+        std::unordered_map<size_t, ugenInputQueue> ugenInputQueues;
+    } dspEngine;
+
+    LISP_FUNC_DECL(useq_dsp_start);
+    LISP_FUNC_DECL(useq_dsp_stop);
+    LISP_FUNC_DECL(useq_dsp_create);
+    LISP_FUNC_DECL(useq_dsp_kill);
+    LISP_FUNC_DECL(useq_dsp_connect);
+    LISP_FUNC_DECL(useq_dsp_getugens);
+    LISP_FUNC_DECL(useq_dsp_qget);
+    LISP_FUNC_DECL(useq_dsp_qset);
+    LISP_FUNC_DECL(useq_dsp_reset);
+    LISP_FUNC_DECL(useq_dsp_message);
+
+
+    LISP_FUNC_DECL(useq_send_sync_trigger_i2c);
+
 };
 
 #endif // USEQ_H_

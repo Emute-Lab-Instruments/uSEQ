@@ -8,9 +8,13 @@
 /* #define USEQHARDWARE_0_1 */
 
 // #define USEQHARDWARE_0_2
-#define USEQHARDWARE_1_0  
+//#define USEQHARDWARE_1_0  
 //#define USEQHARDWARE_EXPANDER_OUT_0_1
-// #define MUSICTHING
+#define MUSICTHING
+
+#ifdef MUSICTHING
+#define DIGI_OUT_INVERTED
+#endif
 
 // NOTE: this needs to be included after the above define
 #include "pinmap.h"

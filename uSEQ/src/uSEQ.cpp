@@ -9,6 +9,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <sys/types.h>
+// #include "dsp/dsp-queues.hpp"
+#include "dsp/dsp-q-data.hpp"
+
 
 #include "uSEQ/i2cClient.h"
 #include "hardware_includes.h"
@@ -22,7 +25,7 @@
 #include <cmath>
 
 // statics
-uSEQ* uSEQ::instance;
+uSEQ* __not_in_flash("useq") uSEQ::instance;
 
 double maxiFilter::lopass(double input, double cutoff)
 {
@@ -65,12 +68,94 @@ void uSEQ::eval_lisp_library()
     }
 }
 
+void uSEQ::init_dsp_queues() {
+    // for (int i = 0; i < N_INPUT_QUEUES; i++) {
+    //     queue_init(&DSPQ::q_inputs[i], sizeof(double), 1);
+    // }
+
+    // for (int i = 0; i < N_OUTPUT_QUEUES; i++) {
+    //     queue_init(&DSPQ::q_outputs[i], sizeof(double), 1);
+    //     dsp_output_names[i] = "ppp" + String(i);
+    //     set(dsp_output_names[i],0);
+    // }  
+    
+    queue_init(&DSPQ::q_engine_commands, sizeof(uSEQDSPEngine::command_info), 8);
+    queue_init(&DSPQ::q_engine_responses, sizeof(DSPQ::response_info), 16);
+
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::SETUP;
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+
+    cmd.command = uSEQDSPEngine::COMMANDS::GETUGENINFO;
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+}
 
 
+
+void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
+    // double tmp;
+    // for (size_t i = 0; i < N_OUTPUT_QUEUES; i++) {
+    //     if (queue_try_remove(&DSPQ::q_outputs[i], &tmp)) {
+    //         set(dsp_output_names[i], tmp);
+    //     }
+    // }
+
+    DSPQ::response_info response;
+    if (queue_try_remove(&DSPQ::q_engine_responses, &response)) {
+        switch (response.response) {
+            case DSPQ::RESPONSES::UGENINFO:
+                println("ugen info: " + String(response.data.ugenInfo.key) + " " + response.data.ugenInfo.name);
+                set("ugen-" + String(response.data.ugenInfo.name), Value(static_cast<int>(response.data.ugenInfo.key)));
+                break;
+            case DSPQ::RESPONSES::MESSAGE:
+                println("ugen message from " + String(response.data.ugenMessage.key) + ": " + response.data.ugenMessage.msg);
+                break;
+            case DSPQ::RESPONSES::ADD_OUTPUT_QUEUE:
+            {
+                // println("queue received from " + String(response.data.queueInfo.key));
+                ugenOutputQueue newq;
+                newq.q = response.data.queueInfo.queueptr;
+                newq.index = response.data.queueInfo.index;
+                newq.queueSize = response.data.queueInfo.queueSize;
+                newq.key = response.data.queueInfo.key;
+                size_t qIndex = dspEngine.nextKey++;
+                dspEngine.ugenOutputQueues[qIndex] = newq;
+
+                String ugenName = dspEngine.ugenInstances[response.data.queueInfo.key];
+                // println("UGEN name: " + ugenName);
+                String queueName = ugenName + "-out" + String(newq.index);
+                println("Created output queue: " + queueName);                
+                set(queueName, Value(static_cast<int>(qIndex)));
+                break;
+            }
+            case DSPQ::RESPONSES::ADD_INPUT_QUEUE:
+            {
+                // println("queue received from " + String(response.data.queueInfo.key));
+                ugenInputQueue newq;
+                newq.q = response.data.queueInfo.queueptr;
+                newq.index = response.data.queueInfo.index;
+                newq.queueSize = response.data.queueInfo.queueSize;
+                newq.key = response.data.queueInfo.key;
+                size_t qIndex = dspEngine.nextKey++;
+                dspEngine.ugenInputQueues[qIndex] = newq;
+
+                String ugenName = dspEngine.ugenInstances[response.data.queueInfo.key];
+                // println("UGEN name: " + ugenName);
+                String queueName = ugenName + "-in" + String(newq.index);
+                println("Created input queue: " + queueName);                
+                set(queueName, Value(static_cast<int>(qIndex)));
+                break;
+            }
+            default:
+            break;
+        }
+    }
+}
 
 void uSEQ::init()
 {
     DBG("uSEQ::init");
+    init_dsp_queues();
     setup_leds();
 
     // dbg("free heap (start):" + String(free_heap()));
@@ -175,7 +260,7 @@ void uSEQ::check_code_quant_phasor()
 // TODO does order matter?
 // e.g. when user code is evaluated, does it make
 // a difference if the inputs have been updated already?
-void uSEQ::tick()
+void __not_in_flash_func(uSEQ::tick())
 {
     DBG("uSEQ::tick");
 
@@ -190,15 +275,17 @@ void uSEQ::tick()
         delayMicroseconds(100);
         return;
     }
-    
 // Read & cache the hardware & software inputs
 #if HAS_INPUTS
+    check_dsp_output_queues();
+    // Read & cache the hardware & software inputs
     update_inputs();
 #endif
     // Update time
     update_time();
-    check_code_quant_phasor();
+    // check_code_quant_phasor();
     run_scheduled_items();
+    update_Q0();
     // Re-run & cache output signal forms
 
     update_signals();
@@ -362,52 +449,436 @@ void uSEQ::init_ASTs()
 }
 
 
-// NOTE: from here
-// https://forums.raspberrypi.com/viewtopic.php?t=318747
-// Testing
-// Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
-// {
-//     constexpr const char* user_facing_name = "eval-at-time";
+Value uSEQ::useq_dsp_start(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-go";
 
-//     // Checking number of args
-//     // if (!(2 <= args.size() <= 3))
-//     if (!(args.size() == 2))
-//     {
-//         // error_wrong_num_args(user_facing_name, args.size(),
-//         //                      NumArgsComparison::Between, 2, 3);
-//         error_wrong_num_args(user_facing_name, args.size(),
-//                              NumArgsComparison::EqualTo, 2, -1);
-//         return Value::error();
-//     }
+    // Checking number of args
+    if (!(args.size() == 1))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+    if (!(args[0].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
+        return Value::error();
+    }
+    uSEQDSPEngine::command_info cmd;
+    cmd.command= uSEQDSPEngine::COMMANDS::START;
+    cmd.data.start.sampleRate = args[0].as_float();
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+    return Value::string("PPP Started");
+}
 
-//     // NOTE: This needs to eval both of its args, including the list,
-//     // to cover for cases where the user passes anything other than a
-//     // list literal (e.g. a symbol that points to a list)
-//     //
-//     // Evaluating & checking args for errors
-//     Value pre_eval = args[0];
-//     args[0]        = args[0].eval(env);
-//     if (args[0].is_error())
-//     {
-//         error_arg_is_error(user_facing_name, 1, pre_eval.display());
-//         return Value::error();
-//     }
+Value uSEQ::useq_dsp_stop(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-stop";
 
-//     // Checking individual args
-//     if (!(args[0].is_number()))
-//     {
-//         error_wrong_specific_pred(user_facing_name, 1, "a number",
-//                                   args[0].display());
-//         return Value::error();
-//     }
+    // Checking number of args
+    if (!(args.size() == 0))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
 
-//     // NOTE: go from seconds to micros for internal calculations
-//     double time = args[0].as_float() * 1e+6;
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::STOP;
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+    return Value::string("PPP Stopped");
+}
 
-//     // BODY
-//     return eval_at_time(args[1], env, time);
-// }
+Value uSEQ::useq_dsp_create(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-mount";
+
+    // Checking number of args
+    if (!(args.size() == 2))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Checking individual args
+    if (!(args[0].is_symbol()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
+                                         args[0].to_lisp_src());
+        return Value::error();
+    }
+
+    args[1] = args[1].eval(env);
+
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+
+    // BODY
 
 
-//////////////////////////
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::CREATE;
+    cmd.data.create.key=dspEngine.nextKey++;
+    cmd.data.create.processor = args[1].as_int();
+    
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
 
+    String name  = args[0].display();
+    env.set(name, Value(static_cast<int>(cmd.data.create.key)));
+    dspEngine.ugenInstances[cmd.data.create.key] =  name;
+    return Value::string("Ugen mounting...");
+}
+
+Value uSEQ::useq_dsp_kill(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-unmount";
+
+    // Checking number of args
+    if (!(args.size() == 1))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+
+    // Checking individual args
+    // if (!(args[0].is_symbol()))
+    // {
+    //     report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
+    //                                      args[0].to_lisp_src());
+    //     return Value::error();
+    // }
+
+    // BODY
+
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::DESTROY;
+    if ((args[0].is_symbol())) {
+        String name  = args[0].display();
+        cmd.data.destroy.key=static_cast<size_t>(env.get(name)->as_int());
+    }else{
+        cmd.data.destroy.key=static_cast<size_t>(args[0].as_int());
+    }
+
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+
+    dspEngine.ugenInstances.erase(cmd.data.destroy.key);
+
+    return Value::string("Ugen unmounting...");
+}
+
+Value uSEQ::useq_dsp_connect(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-patch";
+
+    // Checking number of args
+    if (!(args.size() == 4))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 4, -1);
+        return Value::error();
+    }
+
+    // BODY
+
+    //todo: error checking
+
+    String srcname  = args[0].display();
+    String destname  = args[2].display();
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::CONNECT;
+    cmd.data.connect.srcKey=static_cast<size_t>(env.get(srcname)->as_int());
+    cmd.data.connect.channelSrc=static_cast<size_t>(args[1].as_int());
+    cmd.data.connect.destKey=static_cast<size_t>(env.get(destname)->as_int());
+    cmd.data.connect.channelDest=static_cast<size_t>(args[3].as_int());
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+
+    return Value::string("Ugen patching...");
+}
+
+Value uSEQ::useq_dsp_getugens(std::vector<Value>& args, Environment& env) {
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::GETUGENINFO;
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+    return Value::string("ugens requested");
+}
+
+Value uSEQ::useq_dsp_reset(std::vector<Value>& args, Environment& env) {
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::RESET;
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+    dspEngine.ugenInstances.clear();
+    dspEngine.ugenOutputQueues.clear();
+    dspEngine.ugenInputQueues.clear();
+    return Value::string("reset requested");
+}
+
+Value uSEQ::useq_dsp_message(std::vector<Value>& args, Environment& env) {
+    constexpr const char* user_facing_name = "ppp-msg";
+
+    if (!(2 <= args.size() <= 3))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::Between, 2, 3);
+        return Value::error();
+    }
+    if (!(args[0].is_symbol() || args[0].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a symbol or a number",
+                                         args[0].to_lisp_src());
+        return Value::error();
+    }
+    if (!(args[1].is_symbol()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 2, "a symbol",
+                                         args[1].display());
+        return Value::error();
+    }
+    if (args.size()==3)
+    {
+        if (!(args[2].is_number() || args[2].is_string()))
+        {
+            report_error_wrong_specific_pred(user_facing_name, 3, "an int, float or string",
+                                            args[2].to_lisp_src());
+            return Value::error();
+        }
+    }    
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::MESSAGE;
+    if ((args[0].is_symbol())) {
+        String name  = args[0].display();
+        auto val = env.get(name);
+        if (!val) {
+            println("Warning: " + name + " not found in environment");
+            return Value::error();
+        }
+        cmd.data.message.ugen_key=static_cast<size_t>(val->as_int());
+    }else{
+        cmd.data.message.ugen_key=static_cast<size_t>(args[0].as_int());
+    }
+    std::strncpy(cmd.data.message.message, args[1].display().c_str(), uSEQDSPEngine::MAX_MSG_KEY_LENGTH-2);
+    cmd.data.message.message[uSEQDSPEngine::MAX_MSG_KEY_LENGTH-2] = '\0';
+    if (args.size() == 3 ) {
+        if (args[2].is_number()) {
+            cmd.data.message.value.floatData.value = static_cast<float>(args[2].as_float());
+        }
+        else if (args[2].is_string()) {
+            std::strncpy(cmd.data.message.value.stringData.value, args[2].display().c_str(), uSeqGen_Base::MAX_MSG_VALUE_LENGTH-2);
+            cmd.data.message.value.stringData.value[uSeqGen_Base::MAX_MSG_VALUE_LENGTH-2] = '\0';
+        }
+    } else {
+        cmd.data.message.value.floatData.value = 0.f; //default value
+    }
+    // println("msg: " + String(cmd.data.message.message));
+    // println("ugen_key: " + String(cmd.data.message.ugen_key));
+    // println("value: " + String(cmd.data.message.value));
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+    return Value::string("msg sent");
+}
+
+Value uSEQ::useq_dsp_qget(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-get";
+
+    // Checking number of args
+    if (!(args.size() == 1))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 1, -1);
+        return Value::error();
+    }
+
+    // Checking individual args
+    if (!(args[0].is_symbol()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
+                                         args[0].to_lisp_src());
+        return Value::error();
+    }
+
+    // BODY
+
+    //get queue index from env
+    String name  = args[0].display();
+    float qvalue = 0.f;
+
+    auto queueIndexVal = env.get(name);
+    if(queueIndexVal)
+    {
+        size_t queueIndex = static_cast<size_t>(queueIndexVal.value().as_int());
+        // println("get: " + name + String(queueIndex));
+        
+        //use index to get queue info
+        ugenOutputQueue *qInfo =  &(dspEngine.ugenOutputQueues[queueIndex]);
+
+        //get value from queue
+        if (!queue_try_remove(qInfo->q, &qvalue) ) {
+            qvalue = qInfo->lastValue[0];  //TODO: expand for lists
+            // println("no new value available");
+        }else{
+            // println("New value: " + String(qvalue));
+            qInfo->lastValue[0] = qvalue;
+        }
+    }else{
+        // println("Warning: " + name + " not found in env");
+    }
+    return Value(qvalue);
+}
+
+Value uSEQ::useq_dsp_qset(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-set";
+
+    // Checking number of args
+    if (!(args.size() == 2))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Checking individual args
+    if (!(args[0].is_symbol()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a symbol",
+                                         args[0].to_lisp_src());
+        return Value::error();
+    }
+
+    args[1] = args[1].eval(env);
+
+    if (!(args[1].is_number()))
+    {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[1].display());
+        return Value::error();
+    }
+
+    // BODY
+
+    //get queue index from env
+    String name  = args[0].display();
+    const float qvalue = args[1].as_float();
+
+    auto queueIndexVal = env.get(name);
+    if(queueIndexVal)
+    {
+        size_t queueIndex = static_cast<size_t>(queueIndexVal.value().as_int());
+        // println("get: " + name + String(queueIndex));
+        
+        //use index to get queue info
+        if (dspEngine.ugenInputQueues.count(queueIndex) == 0) {
+            println("Warning: queue not found");
+            return Value::error();
+        }
+        ugenInputQueue *qInfo =  &(dspEngine.ugenInputQueues[queueIndex]);
+        queue_try_add(qInfo->q, &qvalue);
+    }else{
+        // println("Warning: " + name + " not found in env");
+    }
+    return Value(qvalue);
+}
+
+void uSEQ::initDSP() {
+    dspEngine.obj = std::make_unique<uSEQDSPEngine>();
+    // dspEngine.obj->setup();
+    // dspEngine->run(2);
+}
+
+
+void FAST_FUNC(uSEQ::tick_dsp)() {
+    // Serial.printf("core1 %s\n", HOST);
+
+    delay(1000);
+}
+
+Value uSEQ::useq_send_sync_trigger_i2c(std::vector<Value>& args, Environment& env)
+
+
+
+{
+
+
+    constexpr const char* user_facing_name = "useq-send-sync-trigger";
+
+
+    
+
+
+    // Check no arguments
+
+
+    if (args.size() != 0)
+
+
+    {
+
+
+        report_error_wrong_num_args(user_facing_name, args.size(),
+
+
+                                    NumArgsComparison::EqualTo, 0, -1);
+
+
+        return Value::error();
+
+
+    }
+
+
+    
+
+
+    // Send high on all digital outputs
+
+    Wire1.setSDA(38);
+    Wire1.setSCL(39);
+    Wire1.begin();
+    delay(100);
+    float tmp_outputs[8];
+
+    // digital_write_with_led(i, 1);
+    for(size_t i=0; i<8; i++) {
+        tmp_outputs[i] = 1;
+    }
+    Wire1.beginTransmission(1);
+    Wire1.write((uint8_t*) &tmp_outputs, sizeof(tmp_outputs));
+    int res = Wire1.endTransmission(true);         
+
+
+  // Reset our own transport
+
+
+
+    reset_logical_time();
+
+    // Brief delay to ensure the trigger is registered
+
+    delay(50);
+
+    // Return outputs to low
+
+
+    // digital_write_with_led(i, 1);
+    for(size_t i=0; i<8; i++) {
+        tmp_outputs[i] = 0;
+    }
+    Wire1.beginTransmission(1);
+    Wire1.write((uint8_t*) &tmp_outputs, sizeof(tmp_outputs));
+    res = Wire1.endTransmission(true);    
+    delay(10);     
+
+    Wire1.end();
+
+    println("Sync sent");
+
+
+    return Value::nil();
+}

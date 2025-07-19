@@ -14,7 +14,8 @@ void uSEQ::update_continuous_signals()
     {
         // Clear error queue
         error_msg_q.clear();
-        String expr_name                 = "a" + (i + 1);
+        static const __not_in_flash("mem") String outputnames[16] = {"a1", "a2", "a3", "a4", "a5", "a6","a7", "a8", "a9", "a10", "a11", "a12", "a13", "a14", "a15", "a16"};
+        String expr_name                 = outputnames[i]; //"a" + (i + 1);
         m_atom_currently_being_evaluated = expr_name;
 
         Value expr = m_continuous_ASTs[i];
