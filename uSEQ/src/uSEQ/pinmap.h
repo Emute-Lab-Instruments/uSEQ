@@ -38,6 +38,13 @@ ___ .-.     .--.
                                                                                                 `.__.
 
 */
+
+#ifdef MEMLNAUT
+#define USEQ_I2C_SDA_PIN 38
+#define USEQ_I2C_SCL_PIN 39
+#endif
+
+
 #ifdef MUSICTHING
 
 #define HAS_OUTPUTS 1
@@ -70,6 +77,13 @@ const int useq_output_led_pins[] = {
 
 #define NUM_CONTINUOUS_OUTS 2
 #define NUM_BINARY_OUTS 2
+
+// FIXME: Define proper hardware type ID for MUSICTHING
+const String hardwareTypeID = "MTTHING";
+
+// FIXME: Define proper I2C pins for MUSICTHING hardware
+#define _USEQ_SDA_PIN_ 0
+#define _USEQ_SCL_PIN_ 1
 
 #endif
 

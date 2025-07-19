@@ -184,23 +184,28 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("i2c-host-start", useq_i2c_host_start);
 
     INSERT_BUILTINDEF("useq-enter-bootloader-mode", useq_enter_bootloader_mode);
-    
-    
+
     // Transport offsets
     INSERT_BUILTINDEF("useq-set-time-offset", useq_set_time_offset);
     INSERT_BUILTINDEF("useq-nudge-time", useq_nudge_time);
-    
+
     // Sync functions
     INSERT_BUILTINDEF("useq-enter-sync-mode", useq_enter_sync_mode);
     INSERT_BUILTINDEF("useq-send-sync-trigger", useq_send_sync_trigger);
+    INSERT_BUILTINDEF("useq-send-sync-trigger-i2c", useq_send_sync_trigger_i2c);
 
-
-
-
-
+    // DSP engine
+    INSERT_BUILTINDEF("ppp-go", useq_dsp_start);
+    INSERT_BUILTINDEF("ppp-stop", useq_dsp_stop);
+    INSERT_BUILTINDEF("ppp-mount", useq_dsp_create);
+    INSERT_BUILTINDEF("ppp-unmount", useq_dsp_kill);
+    INSERT_BUILTINDEF("ppp-patch", useq_dsp_connect);
+    INSERT_BUILTINDEF("ppp-getugens", useq_dsp_getugens);
+    INSERT_BUILTINDEF("ppp-get", useq_dsp_qget);
+    INSERT_BUILTINDEF("ppp-set", useq_dsp_qset);
+    INSERT_BUILTINDEF("ppp-reset", useq_dsp_reset);
+    INSERT_BUILTINDEF("ppp-msg", useq_dsp_message);
 }
-
-
 
 ////////////////////
 // USEQ API
@@ -283,9 +288,6 @@ Value uSEQ::useq_nudge_time(std::vector<Value>& args, Environment& env)
 
     return args[0];
 }
-
-    
-
 
 ////////////////////
 // USEQ API
@@ -405,10 +407,11 @@ Value uSEQ::useq_fast(std::vector<Value>& args, Environment& env)
     double new_time_micros = (current_time_s * factor) * 1e+6;
 
     // Make an env with just the updated beat-dur and bar-dur
-    Environment env_with_updated_durs = make_env_with_updated_time_durs(env, 1.0/factor);
+    Environment env_with_updated_durs =
+        make_env_with_updated_time_durs(env, 1.0 / factor);
     env_with_updated_durs.set_parent_scope(&env);
 
-    result                 = eval_at_time(args[1], env_with_updated_durs, new_time_micros);
+    result = eval_at_time(args[1], env_with_updated_durs, new_time_micros);
     return result;
 }
 
@@ -451,7 +454,7 @@ Value uSEQ::useq_slow(std::vector<Value>& args, Environment& env)
     Environment env_with_updated_durs = make_env_with_updated_time_durs(env, factor);
     env_with_updated_durs.set_parent_scope(&env);
 
-    result                 = eval_at_time(args[1], env_with_updated_durs, new_time_micros);
+    result = eval_at_time(args[1], env_with_updated_durs, new_time_micros);
     return result;
 }
 
@@ -775,7 +778,6 @@ Value uSEQ::useq_ain2(std::vector<Value>& args, Environment& env)
     return Value(m_input_vals[USEQAI2]);
 }
 
-
 Value uSEQ::useq_get_a1(std::vector<Value>& args, Environment& env)
 {
     return Value(m_continuous_vals[0]);
@@ -808,7 +810,6 @@ Value uSEQ::useq_get_a8(std::vector<Value>& args, Environment& env)
 {
     return Value(m_continuous_vals[7]);
 }
-
 
 Value uSEQ::useq_get_d1(std::vector<Value>& args, Environment& env)
 {
@@ -843,7 +844,6 @@ Value uSEQ::useq_get_d8(std::vector<Value>& args, Environment& env)
     return Value(m_binary_vals[7]);
 }
 
-
 // Value uSEQ::useq_get_s1(std::vector<Value>& args, Environment& env)
 // {
 //     return Value(m_serial_vals[0]);
@@ -876,7 +876,6 @@ Value uSEQ::useq_get_d8(std::vector<Value>& args, Environment& env)
 // {
 //     return Value(m_serial_vals[7]);
 // }
-
 
 #ifdef MUSICTHING
 
@@ -1200,7 +1199,6 @@ Value fromList(std::vector<Value>& lst, double phasor, Environment& env)
     return Interpreter::eval_in(lst[idx], env);
 }
 
-
 // FIXME
 Value uSEQ::useq_toggle_pick(std::vector<Value>& args, Environment& env)
 {
@@ -1235,14 +1233,13 @@ Value uSEQ::useq_toggle_pick(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
-
     // BODY
     Value result     = Value::nil();
     std::vector list = args[0].as_sequential();
     float phasor     = args[1].as_float();
 
     // FIXME should this be evalled here?
-    result = list[m_input_vals[USEQT1]].eval(env);;
+    result = list[m_input_vals[USEQT1]].eval(env);
 
     return result;
 }
@@ -2090,12 +2087,12 @@ Value flatten_impl(const Value& val, Environment& env)
     //     result = Value::vector(flattened);
     // }
 
-    result = val.is_vector() ? Value::vector(flattened): Value(flattened);
+    result = val.is_vector() ? Value::vector(flattened) : Value(flattened);
     return result;
 }
 
-
-double uSEQ::simple_hashing_function(uint32_t input) {
+double uSEQ::simple_hashing_function(uint32_t input)
+{
     // Combine input with seed using a fast mixing technique
     input ^= m_random_seed;
     input = ((input >> 16) ^ input) * 0x45d9f3b;
@@ -2104,7 +2101,8 @@ double uSEQ::simple_hashing_function(uint32_t input) {
 
     // Convert to float in range [0, 1)
     // Uses bit manipulation to avoid floating-point division
-    union {
+    union
+    {
         uint32_t i;
         float f;
     } convert;
@@ -2112,7 +2110,6 @@ double uSEQ::simple_hashing_function(uint32_t input) {
     convert.i = (input & 0x007fffff) | 0x3f800000;
     return convert.f - 1.0f;
 }
-
 
 Value uSEQ::useq_index_rand(std::vector<Value>& args, Environment& env)
 {
@@ -2147,21 +2144,20 @@ Value uSEQ::useq_index_rand(std::vector<Value>& args, Environment& env)
         }
     }
 
-
-    bool scale = args.size() > 1;
+    bool scale                = args.size() > 1;
     bool lower_bound_provided = args.size() == 3;
 
     // BODY
     Value result = Value::nil();
 
     double index = args[args.size() - 1].as_float();
-    double lo = (scale && lower_bound_provided) ? args[0].as_float() : 0.0;
-    double hi = scale ? args[args.size() - 1].as_float() : 1.0;
+    double lo    = (scale && lower_bound_provided) ? args[0].as_float() : 0.0;
+    double hi    = scale ? args[args.size() - 1].as_float() : 1.0;
 
     double rand_val = simple_hashing_function(index);
-    rand_val = lo + (rand_val * (hi - lo));
+    rand_val        = lo + (rand_val * (hi - lo));
     // TODO
-    result        = Value(rand_val);
+    result = Value(rand_val);
 
     return result;
 }
@@ -2199,25 +2195,28 @@ Value uSEQ::useq_random(std::vector<Value>& args, Environment& env)
         }
     }
 
-    bool scale = args.size() > 0;
+    bool scale                = args.size() > 0;
     bool lower_bound_provided = args.size() == 2;
 
     // BODY
     Value result = Value::nil();
 
-    uint32_t current_beat_num = static_cast<uint32_t>(env.get("beat-num").value_or(Value(static_cast<int>(m_current_beat_num))).as_int());
+    uint32_t current_beat_num = static_cast<uint32_t>(
+        env.get("beat-num")
+            .value_or(Value(static_cast<int>(m_current_beat_num)))
+            .as_int());
 
     double rand_val = simple_hashing_function(current_beat_num);
 
     if (scale)
     {
-        double low = lower_bound_provided ? args[0].as_float() : 0.0;
+        double low  = lower_bound_provided ? args[0].as_float() : 0.0;
         double high = args[1].as_float();
-        rand_val = low + (rand_val * (high - low));
+        rand_val    = low + (rand_val * (high - low));
     }
 
     // TODO
-    result        = Value(rand_val);
+    result = Value(rand_val);
 
     return result;
 }
@@ -2233,7 +2232,6 @@ Value uSEQ::useq_loop_at_time(std::vector<Value>& args, Environment& env)
                                     NumArgsComparison::EqualTo, 2, 2);
         return Value::error();
     }
-
 
     Value pre_eval = args[0];
     args[0]        = args[0].eval(env);
@@ -2252,13 +2250,13 @@ Value uSEQ::useq_loop_at_time(std::vector<Value>& args, Environment& env)
     }
 
     // BODY
-    Value result           = Value::nil();
-    double current_time_s  = env.get("t").value().as_float();
-    double modulo_time_s          = args[0].as_float();
+    Value result            = Value::nil();
+    double current_time_s   = env.get("t").value().as_float();
+    double modulo_time_s    = args[0].as_float();
     double new_time_seconds = fmod(current_time_s, modulo_time_s);
-    double new_time_micros = new_time_seconds * 1e+6;
+    double new_time_micros  = new_time_seconds * 1e+6;
 
-    result                 = eval_at_time(args[1], env, new_time_micros);
+    result = eval_at_time(args[1], env, new_time_micros);
 
     return result;
 }
@@ -2522,14 +2520,6 @@ Value uSEQ::useq_step(std::vector<Value>& args, Environment& env)
     return result;
 }
 
-
-
-
-
-
-
-
-
 BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, //
                                               // println(USEQ_FIRMWARE_VERSION);
                           String msg = "uSEQ Firmware Version: " +
@@ -2550,8 +2540,7 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_report_firmware_info, //
                           // println(msg);
                           , 0)
 
-
-                          #ifdef MIDIOUT
+#ifdef MIDIOUT
 // midi drum out
 BUILTINFUNC_MEMBER(
     useq_mdo, int midiNote = args[0].as_int(); if (args[1] != 0) {
@@ -2569,9 +2558,9 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = args[0];, 1
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a1,
     if (NUM_CONTINUOUS_OUTS >= 1) {
-                        std::vector<Value> new_form;
-                        new_form.push_back(Value::atom("lambda"));
-                        new_form.push_back(args[0]);
+        std::vector<Value> new_form;
+        new_form.push_back(Value::atom("lambda"));
+        new_form.push_back(args[0]);
         set_expr("a1", Value(new_form));
         m_continuous_ASTs[0] = args[0];
         ret                  = Value::atom("a1");

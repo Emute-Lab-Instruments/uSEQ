@@ -13,15 +13,16 @@
 // Static Class-wide flag
 // bool Interpreter::m_builtindefs_init = false;
 
-bool user_interaction = false;
+#define INTERP_MEM __not_in_flash("interp")
+bool INTERP_MEM user_interaction = false;
 
-bool Interpreter::m_attempt_expr_eval_first          = false;
-bool Interpreter::m_eval_expr_if_def_not_found       = true;
-bool Interpreter::m_manual_evaluation                = false;
-bool Interpreter::m_update_loop_evaluation           = false;
-String Interpreter::m_atom_currently_being_evaluated = "";
+bool INTERP_MEM Interpreter::m_attempt_expr_eval_first          = false;
+bool INTERP_MEM Interpreter::m_eval_expr_if_def_not_found       = true;
+bool INTERP_MEM Interpreter::m_manual_evaluation                = false;
+bool INTERP_MEM Interpreter::m_update_loop_evaluation           = false;
+String INTERP_MEM Interpreter::m_atom_currently_being_evaluated = "";
 
-uSEQ* Interpreter::useq_instance_ptr;
+uSEQ* INTERP_MEM Interpreter::useq_instance_ptr;
 
 Interpreter::Interpreter() {}
 
@@ -62,7 +63,7 @@ namespace builtin
 // Special forms are just builtin functions that don't evaluate
 // their arguments. To make a regular builtin that evaluates its
 // arguments, we just call this function in our builtin definition.
-Value eval_args(std::vector<Value>& args, Environment& env)
+Value __not_in_flash_func(eval_args)(std::vector<Value>& args, Environment& env)
 {
     Value result = Value::nil();
 
