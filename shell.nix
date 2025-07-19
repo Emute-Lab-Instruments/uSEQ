@@ -6,6 +6,7 @@ pkgs.mkShell {
     systemd  # provides libudev
     eudev    # alternative udev implementation
     libusb1
+    udisks2  # provides udisksctl for device mounting
   ];
   
   shellHook = ''
