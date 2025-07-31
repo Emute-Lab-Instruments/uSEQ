@@ -1,12 +1,13 @@
 #include "parser.h"
 #include "interpreter.h"
+#include <cstring>
 
-const String uLispParser::unescape(const String str)
+String uLispParser::unescape(const char* str)
 {
     String result = "";
-    for (int i = 0; i < str.length(); i++)
+    for (size_t i = 0; str[i] != '\0'; i++)
     {
-        if (str[i] == '\\' && i + 1 < str.length())
+        if (str[i] == '\\' && str[i + 1] != '\0')
         {
             i++;
             switch (str[i])
@@ -36,32 +37,36 @@ const String uLispParser::unescape(const String str)
     return result;
 }
 
-void uLispParser::skip_whitespace(const String& s, int& ptr)
+void uLispParser::skip_whitespace(const char* s, int& ptr)
 {
-    while (isspace(s[ptr]) || s[ptr] == '\n' || s[ptr] == ',')
+    while (s[ptr] != '\0' && (isspace(static_cast<unsigned char>(s[ptr])) ||
+                               s[ptr] == '\n' || s[ptr] == ','))
     {
         ptr++;
     }
 }
 
 // Is this character a valid lisp symbol character
-bool uLispParser::is_symbol(const String& s, int ptr)
+bool uLispParser::is_symbol(const char* s, int ptr)
 {
     char ch = s[ptr];
-    return (isdigit(ch) || isalpha(ch) || ispunct(ch)) && ch != '(' && ch != ')' &&
-           ch != '[' && ch != ']' && ch != '"' && ch != '\'';
+    return ch != '\0' && (isdigit(static_cast<unsigned char>(ch)) ||
+                           isalpha(static_cast<unsigned char>(ch)) ||
+                           ispunct(static_cast<unsigned char>(ch))) &&
+           ch != '(' && ch != ')' && ch != '[' && ch != ']' && ch != '"' &&
+           ch != '\'';
 }
 
-bool uLispParser::is_comment(const String& s, int ptr) { return s[ptr] == ';'; }
-bool uLispParser::is_quote(const String& s, int ptr) { return s[ptr] == '\''; }
-bool uLispParser::is_list(const String& s, int ptr) { return s[ptr] == '('; }
-bool uLispParser::is_vector(const String& s, int ptr) { return s[ptr] == '['; }
-bool uLispParser::is_map(const String& s, int ptr) { return s[ptr] == '{'; }
-bool uLispParser::is_midinote(const String& s, int ptr) { return s[ptr] == 'M'; }
+bool uLispParser::is_comment(const char* s, int ptr) { return s[ptr] == ';'; }
+bool uLispParser::is_quote(const char* s, int ptr) { return s[ptr] == '\''; }
+bool uLispParser::is_list(const char* s, int ptr) { return s[ptr] == '('; }
+bool uLispParser::is_vector(const char* s, int ptr) { return s[ptr] == '['; }
+bool uLispParser::is_map(const char* s, int ptr) { return s[ptr] == '{'; }
+bool uLispParser::is_midinote(const char* s, int ptr) { return s[ptr] == 'M'; }
 
 // Parse a single value and increment the pointer
 // to the beginning of the next value to parse.
-Value uLispParser::parse(String s, int& ptr)
+Value uLispParser::parse(const char* s, int& ptr)
 {
     // if (user_interaction)
     // {
@@ -76,12 +81,13 @@ Value uLispParser::parse(String s, int& ptr)
     skip_whitespace(s, ptr);
 
     // Skip comments
-    while (is_comment(s, ptr))
+    size_t len = strlen(s);
+    while (s[ptr] != '\0' && is_comment(s, ptr))
     {
         // If this is a comment
         int work_ptr = ptr;
         // Skip to the end of the line
-        while (s[work_ptr] != '\n' && work_ptr < int(s.length()))
+        while (s[work_ptr] != '\n' && work_ptr < int(len) && s[work_ptr] != '\0')
         {
             work_ptr++;
         }
@@ -89,12 +95,12 @@ Value uLispParser::parse(String s, int& ptr)
         skip_whitespace(s, ptr);
 
         // If we're at the end of the string, return an empty value
-        if (s.substring(ptr, ptr + s.length() - ptr - 1) == "")
+        if (ptr >= int(len) || s[ptr] == '\0')
             return Value();
     }
 
     // Parse the value
-    if (s == "")
+    if (s[ptr] == '\0')
     {
         // TODO should this return some kind of error?
         // parsing an empty string shouldn't be the same
@@ -118,7 +124,7 @@ Value uLispParser::parse(String s, int& ptr)
 
         Value result = Value(std::vector<Value>());
 
-        while (s[ptr] != ')')
+        while (s[ptr] != ')' && ptr < int(len) && s[ptr] != '\0')
         {
             Value res = parse(s, ptr);
             if (res.is_error())
@@ -145,7 +151,7 @@ Value uLispParser::parse(String s, int& ptr)
         Value result;
         std::vector<Value> vec;
 
-        while (s[ptr] != ']')
+        while (s[ptr] != ']' && ptr < int(len) && s[ptr] != '\0')
         {
             // skip_whitespace(s, ++ptr);
             Value res = parse(s, ptr);
@@ -164,7 +170,8 @@ Value uLispParser::parse(String s, int& ptr)
         // skip_whitespace(s, ++ptr);
         return Value::vector(vec);
     }
-    else if (isdigit(s[ptr]) || (s[ptr] == '-' && isdigit(s[ptr + 1])) || (s[ptr] == '.' && isdigit(s[ptr + 1])))
+    else if (isdigit(s[ptr]) || (s[ptr] == '-' && isdigit(s[ptr + 1])) ||
+             (s[ptr] == '.' && isdigit(s[ptr + 1])))
     {
 
         // println("is digit");
@@ -176,29 +183,26 @@ Value uLispParser::parse(String s, int& ptr)
         int save_ptr = ptr;
         while (isdigit(s[ptr]) || s[ptr] == '.')
             ptr++;
-        String n = s.substring(save_ptr, ptr);
+        String n(s + save_ptr, ptr - save_ptr);
         skip_whitespace(s, ptr);
 
-        if (n.indexOf('.') != -1)
-            // return Value((negate? -1 : 1) * atof(n.c_str()));
+        if (strchr(n.c_str(), '.') != nullptr)
             return Value((negate ? -1 : 1) * atof(n.c_str()));
         else
             return Value((negate ? -1 : 1) * atoi(n.c_str()));
     }
-    else if (s[ptr] == '\"')
+    else if (s[ptr] == '"')
     {
 
         // println("is string");
         //  If this is a string
         int n = 1;
-        while (s[ptr + n] != '\"')
+        while (s[ptr + n] != '"')
         {
-            if (ptr + n >= int(s.length()))
+            if (ptr + n >= int(len))
             {
                 println(MALFORMED_PROGRAM);
-                // println(" 1");
                 return Value::error();
-                // throw std::runtime_error(MALFORMED_PROGRAM);
             }
 
             if (s[ptr + n] == '\\')
@@ -206,13 +210,13 @@ Value uLispParser::parse(String s, int& ptr)
             n++;
         }
 
-        String x = s.substring(ptr + 1, ptr + 1 + n - 1);
+        String x(s + ptr + 1, n - 1);
         ptr += n + 1;
         skip_whitespace(s, ptr);
 
         // Iterate over the characters in the string, and
         // replace escaped characters with their intended values.
-        x = unescape(x);
+        x = unescape(x.c_str());
         return Value::string(x);
     }
     else if (s[ptr] == '@')
@@ -232,7 +236,7 @@ Value uLispParser::parse(String s, int& ptr)
             n++;
         }
 
-        String x = s.substring(ptr, ptr + n);
+        String x(s + ptr, n);
         ptr += n;
         skip_whitespace(s, ptr);
         return Value::atom(x);
@@ -245,10 +249,10 @@ Value uLispParser::parse(String s, int& ptr)
     }
 }
 
-bool is_empty_string(const String& s) { return s == ""; }
+static bool is_empty_string(const char* s) { return s == nullptr || s[0] == '\0'; }
 
 // Parse an entire program and get its list of expressions.
-Value uLispParser::parse(String code)
+Value uLispParser::parse(const char* code)
 {
     // dbg(s);
     //
@@ -282,7 +286,8 @@ Value uLispParser::parse(String code)
 
     // While the parser is making progress (while the pointer is moving right)
     // and the pointer hasn't reached the end of the string,
-    while (last_i != i && i <= int(code.length() - 1))
+    size_t len = strlen(code);
+    while (last_i != i && i <= int(len - 1))
     {
         // Parse another expression and add it to the list.
         last_i     = i;
@@ -297,7 +302,7 @@ Value uLispParser::parse(String code)
     }
 
     // If the whole string wasn't parsed, the program must be bad.
-    if (i < int(code.length()))
+    if (i < int(len))
     {
         println("parse: ");
         println(MALFORMED_PROGRAM);
