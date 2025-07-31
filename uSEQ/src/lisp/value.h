@@ -30,7 +30,11 @@ using uSEQ_Method_Ptr = Value (uSEQ::*)(std::vector<Value>&, Environment&);
 
 // using LambdaScopeEnv = Environment<32>;
 
+#ifdef ARDUINO
 #define VALUE_FAST_MEM __not_in_flash("VALUEDATA")
+#else
+#define VALUE_FAST_MEM // Empty for desktop builds
+#endif
 
 class Value
 {

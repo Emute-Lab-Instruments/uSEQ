@@ -4,6 +4,7 @@
 #include "environment.h"
 #include "interpreter.h"
 #include "value.h"
+#include <iostream>
 
 namespace builtin
 {
@@ -787,7 +788,7 @@ Value ard_min(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = Value(min(args[0].as_float(), args[1].as_float()));
+    result       = Value(std::min(args[0].as_float(), args[1].as_float()));
     return result;
 }
 
@@ -1469,7 +1470,7 @@ Value ard_max(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = Value(max(args[0].as_float(), args[1].as_float()));
+    result       = Value(std::max(args[0].as_float(), args[1].as_float()));
     return result;
 }
 
@@ -1941,7 +1942,11 @@ Value ard_delaymicros(std::vector<Value>& args, Environment& env)
     // BODY
     Value result  = Value::nil();
     int delaytime = args[0].as_int();
+#ifdef ARDUINO
     delayMicroseconds(delaytime);
+#else
+    // No-op for desktop build
+#endif
     result = args[0];
     return result;
 }
@@ -2114,7 +2119,11 @@ Value print(std::vector<Value>& args, Environment& env)
     {
         s = args[0].display();
     }
+#ifdef ARDUINO
     Serial.print(s);
+#else
+    std::cout << s.c_str();
+#endif
     return result;
 }
 

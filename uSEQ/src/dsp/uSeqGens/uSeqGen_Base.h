@@ -1,11 +1,13 @@
 #ifndef USEQGEN_BASE_H
 #define USEQGEN_BASE_H
 
+#ifdef ARDUINO
 #include "../dspatch/include/DSPatch_Embedded.h"
 #include "pico/util/queue.h"
 #include "../dsp-q-data.hpp"
-#include <vector>
 #include "Arduino.h"
+#endif
+#include <vector>
 #include <cstring>
 #include <map>
 #include <functional>

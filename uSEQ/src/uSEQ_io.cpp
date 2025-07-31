@@ -496,6 +496,7 @@ void uSEQ::update_inputs()
 #endif // HAS_INPUTS
 
 
+#ifdef ARDUINO
 int analog_out_LED_pin(int out)
 {
     int res = -1;
@@ -529,6 +530,7 @@ int digital_out_pin(int out)
         res = useq_output_pins[pindex - 1];
     return res;
 }
+#endif
 
 static uint8_t prevNextCode = 0;
 static uint16_t store       = 0;
@@ -592,6 +594,7 @@ void start_pdm()
 
 
 
+#ifdef ARDUINO
 // Write `level` to TX FIFO. State machine will copy this into X.
 void pio_pwm_set_level(PIO pio, uint sm, uint32_t level)
 {
@@ -610,6 +613,7 @@ void pio_pwm_set_period(PIO pio, uint sm, uint32_t period)
     pio_sm_exec(pio, sm, pio_encode_out(pio_isr, 32));
     pio_sm_set_enabled(pio, sm, true);
 }
+#endif
 
 
 #ifdef USEQHARDWARE_1_0

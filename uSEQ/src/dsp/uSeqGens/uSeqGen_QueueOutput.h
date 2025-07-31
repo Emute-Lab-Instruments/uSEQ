@@ -2,7 +2,9 @@
 #define USEQGEN_QUEUEOUTPUT_H
 
 #include "uSeqGen_Base.h"
+#ifdef ARDUINO
 #include "pico/util/queue.h"
+#endif
 
 class uSeqGen_QueueOutput final : public uSeqGen_Base //uSeqGen_Base
 {

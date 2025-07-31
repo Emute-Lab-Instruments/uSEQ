@@ -1,5 +1,7 @@
 #include "i2cUtils.h"
+#ifdef ARDUINO
 #include <Wire.h>
+#endif
 
 #define _talkingToMyslefBus_ Wire1
 #define _defaultBus_ Wire

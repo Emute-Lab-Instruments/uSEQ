@@ -23,6 +23,8 @@ common_src = [
   'uSEQ/src/utils/error_messages.cpp',
   'uSEQ/src/utils/flags.h',
   'uSEQ/src/utils/flags.cpp',
+  'uSEQ/src/utils.h',
+  'uSEQ/src/utils.cpp',
   # LISP
   'uSEQ/src/lisp/parser.h',
   'uSEQ/src/lisp/parser.cpp',
@@ -38,6 +40,16 @@ common_src = [
   # uSEQ
   'uSEQ/src/uSEQ.h',
   'uSEQ/src/uSEQ.cpp',
+  'uSEQ/src/uSEQ_integration.h',
+  'uSEQ/src/uSEQ_eval.cpp',
+  'uSEQ/src/uSEQ_io.cpp',
+  'uSEQ/src/uSEQ_i2c.cpp',
+  'uSEQ/src/uSEQ_led.cpp',
+  'uSEQ/src/uSEQ_flash.cpp',
+  'uSEQ/src/uSEQ_time.cpp',
+  'uSEQ/src/uSEQ_api.cpp',
+  # 'uSEQ/src/uSEQ_update_refactored.cpp',
+  'uSEQ/src/uSEQ_update.cpp',  # Keep this version
   # TODO should these be moved separately?
   # 'uSEQ/src/uSEQ/io.h',
   # 'uSEQ/src/uSEQ/io.cpp',
@@ -64,6 +76,8 @@ standalone_args = [
   '-DUSE_STD_IO',
   '-DNO_ETL',
   # '-DPICO_NO_HARDWARE'
+  '-D__not_in_flash(section)=',
+  '-D__not_in_flash_func(x)=',
 ]
 
 arduino_args = [
@@ -87,3 +101,6 @@ standalone_interpreter = executable(
 #   include_directories : src_inc,
 #   cpp_args : arduino_args
 # )
+
+# Add test subdirectory
+subdir('test')

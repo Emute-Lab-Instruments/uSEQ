@@ -2,7 +2,9 @@
 #define USEQGEN_I2COUT_H
 
 #include "uSeqGen_Base.h"
+#ifdef ARDUINO
 #include "Wire.h"
+#endif
 
 class uSeqGen_I2COut final : public uSeqGen_Base
 {

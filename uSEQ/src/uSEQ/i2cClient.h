@@ -1,3 +1,4 @@
+#ifdef ARDUINO
 #include <Wire.h>
 #include "i2cUtils.h"
 
@@ -124,4 +125,14 @@ void setup_i2cCLIENT() {
   i2cCLIENT.onReceive(i2cRecv);
   i2cCLIENT.onRequest(i2cReq);
 }
+
+#else
+// Desktop stubs for I2C functionality
+static bool bNewI2CMessage = false;
+static int nI2CBytesRead = 0;
+static int nI2CResponseLen = 0;
+static char i2cInBuff[500];
+static char i2cOutBuff[150];
+extern String i2cPrintStr;
+#endif
 

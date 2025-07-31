@@ -178,7 +178,7 @@ Value Value::apply(std::vector<Value>& args, Environment& env)
 Value Value::eval(Environment& env) { return Interpreter::eval_in(*this, env); }
 
 bool Value::is_number() const { return type == INT || type == FLOAT; }
-bool Value::is_int() const { return type == FLOAT; }
+bool Value::is_int() const { return type == INT; }
 bool Value::is_float() const { return type == FLOAT; }
 
 // FIXME

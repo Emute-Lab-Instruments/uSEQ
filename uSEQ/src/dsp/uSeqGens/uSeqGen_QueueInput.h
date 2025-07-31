@@ -2,7 +2,9 @@
 #define USEQGEN_QUEUEINPUT_H
 
 #include "uSeqGen_Base.h"
+#ifdef ARDUINO
 #include "pico/util/queue.h"
+#endif
 
 class uSeqGen_QueueInput final : public uSeqGen_Base
 {
