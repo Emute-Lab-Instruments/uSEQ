@@ -5,6 +5,11 @@ test_src = [
   'test_generated_builtins.cpp'
 ]
 
+# Parser test source files
+parser_test_src = [
+  'test_parser.cpp'
+]
+
 # Common source files needed for tests (from parent directory)
 test_common_src = [
   # UTILS
@@ -60,5 +65,18 @@ test_builtin_exe = executable(
   ]
 )
 
-# Register the test with Meson
+# Parser test executable
+test_parser_exe = executable(
+  'test_parser',
+  sources : parser_test_src + test_common_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    # Add math library dependency
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+# Register the tests with Meson
 test('builtin_functions_test', test_builtin_exe)
+test('parser_test', test_parser_exe)

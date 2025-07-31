@@ -164,7 +164,7 @@ Value uLispParser::parse(String s, int& ptr)
         // skip_whitespace(s, ++ptr);
         return Value::vector(vec);
     }
-    else if (isdigit(s[ptr]) || (s[ptr] == '-' && isdigit(s[ptr + 1])))
+    else if (isdigit(s[ptr]) || (s[ptr] == '-' && isdigit(s[ptr + 1])) || (s[ptr] == '.' && isdigit(s[ptr + 1])))
     {
 
         // println("is digit");
@@ -176,7 +176,7 @@ Value uLispParser::parse(String s, int& ptr)
         int save_ptr = ptr;
         while (isdigit(s[ptr]) || s[ptr] == '.')
             ptr++;
-        String n = s.substring(save_ptr, save_ptr + ptr);
+        String n = s.substring(save_ptr, ptr);
         skip_whitespace(s, ptr);
 
         if (n.indexOf('.') != -1)
