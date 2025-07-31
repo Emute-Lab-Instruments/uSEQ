@@ -217,7 +217,7 @@ Value uSEQ::useq_send_sync_trigger(std::vector<Value>& args, Environment& env)
     }
     
     // Exit sync mode, if it was enabled
-    m_waiting_for_sync_trigger == false;
+    m_waiting_for_sync_trigger = false;
 
     return Value::nil();
 }

@@ -2,9 +2,12 @@
 #include "lisp/LispLibrary.h"
 #include "lisp/interpreter.h"
 #include "lisp/value.h"
+#ifdef ARDUINO
 #include "uSEQ/i2cHost.h"
+#endif
 #include "utils.h"
 #include "utils/log.h"
+#include "utils/serial_message.h"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -12,9 +15,34 @@
 // #include "dsp/dsp-queues.hpp"
 #include "dsp/dsp-q-data.hpp"
 
+#ifdef ARDUINO
+#define FAST_FUNC(x) __not_in_flash_func(x)
+#else
+#define FAST_FUNC(x) x
+#define __not_in_flash(section) 
+#define __not_in_flash_func(x) 
+#include <iostream>
+#include <cstdlib>
+#include <cstring>
+#include <chrono>
+#include <thread>
 
-#include "uSEQ/i2cClient.h"
+// Note: Arduino timing function stubs moved to hardware_includes.h
+// Note: micros() already exists in utils.h, don't redefine it
+#endif
+
+
 #include "hardware_includes.h"
+#ifdef ARDUINO
+#include "uSEQ/i2cClient.h"
+#else
+// Desktop stubs for I2C variables needed by uSEQ.cpp
+bool bNewI2CMessage = false;
+int nI2CBytesRead = 0;
+char i2cInBuff[500];
+String i2cPrintStr = "";
+
+#endif
 
 #ifdef ARDUINO
 #include "hardware/flash.h"
@@ -25,7 +53,11 @@
 #include <cmath>
 
 // statics
+#ifdef ARDUINO
 uSEQ* __not_in_flash("useq") uSEQ::instance;
+#else
+uSEQ* uSEQ::instance;
+#endif
 
 double maxiFilter::lopass(double input, double cutoff)
 {
@@ -68,6 +100,7 @@ void uSEQ::eval_lisp_library()
     }
 }
 
+#ifdef ARDUINO
 void uSEQ::init_dsp_queues() {
     // for (int i = 0; i < N_INPUT_QUEUES; i++) {
     //     queue_init(&DSPQ::q_inputs[i], sizeof(double), 1);
@@ -89,9 +122,11 @@ void uSEQ::init_dsp_queues() {
     cmd.command = uSEQDSPEngine::COMMANDS::GETUGENINFO;
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
 }
+#endif
 
 
 
+#ifdef ARDUINO
 void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
     // double tmp;
     // for (size_t i = 0; i < N_OUTPUT_QUEUES; i++) {
@@ -151,11 +186,14 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
         }
     }
 }
+#endif
 
 void uSEQ::init()
 {
     DBG("uSEQ::init");
+#ifdef ARDUINO
     init_dsp_queues();
+#endif
     setup_leds();
 
     // dbg("free heap (start):" + String(free_heap()));
@@ -185,7 +223,9 @@ void uSEQ::init()
     update_time();
     init_ASTs();
 
+#ifdef ARDUINO
     autoload_flash();
+#endif
 
     m_initialised = true;
 }
@@ -260,7 +300,7 @@ void uSEQ::check_code_quant_phasor()
 // TODO does order matter?
 // e.g. when user code is evaluated, does it make
 // a difference if the inputs have been updated already?
-void __not_in_flash_func(uSEQ::tick())
+void FAST_FUNC(uSEQ::tick())
 {
     DBG("uSEQ::tick");
 
@@ -277,7 +317,9 @@ void __not_in_flash_func(uSEQ::tick())
     }
 // Read & cache the hardware & software inputs
 #if HAS_INPUTS
+#ifdef ARDUINO
     check_dsp_output_queues();
+#endif
     // Read & cache the hardware & software inputs
     update_inputs();
 #endif
@@ -308,8 +350,13 @@ void __not_in_flash_func(uSEQ::tick())
 
 
 // return true if either serial or I2C has new code
+#ifdef ARDUINO
 bool is_new_code_waiting() { return Serial.available() || bNewI2CMessage; }
+#else
+bool is_new_code_waiting() { return false; }
+#endif
 
+#ifdef ARDUINO
 String get_code_waiting()
 {
     // we might get arway with just return i2cInBuff... :)
@@ -325,6 +372,12 @@ String get_code_waiting()
     else
         return Serial.readStringUntil('\n');
 }
+#else
+String get_code_waiting()
+{
+    return String("");
+}
+#endif
 
 void uSEQ::check_and_handle_user_input()
 {
@@ -340,12 +393,18 @@ void uSEQ::check_and_handle_user_input()
         // but sending I2C host should add the correct run now or later firstByte
         if (bNewI2CMessage)
             first_byte = i2cInBuff[0];
+#ifdef ARDUINO
         else
             first_byte = Serial.read();
+#else
+        else
+            first_byte = 0;
+#endif
 
         // SERIAL
         if (first_byte == SerialMsg::message_begin_marker /*31*/)
         {
+#ifdef ARDUINO
             // incoming serial stream
             size_t channel = Serial.read();
             char buffer[8];
@@ -356,6 +415,7 @@ void uSEQ::check_and_handle_user_input()
                 memcpy(&v, buffer, 8);
                 m_serial_input_streams[(channel - 1)] = v;
             }
+#endif
         }
         else
         {
@@ -449,6 +509,7 @@ void uSEQ::init_ASTs()
 }
 
 
+#ifdef ARDUINO
 Value uSEQ::useq_dsp_start(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "ppp-go";
@@ -798,7 +859,9 @@ void FAST_FUNC(uSEQ::tick_dsp)() {
 
     delay(1000);
 }
+#endif
 
+#ifdef ARDUINO
 Value uSEQ::useq_send_sync_trigger_i2c(std::vector<Value>& args, Environment& env)
 
 
@@ -882,3 +945,4 @@ Value uSEQ::useq_send_sync_trigger_i2c(std::vector<Value>& args, Environment& en
 
     return Value::nil();
 }
+#endif

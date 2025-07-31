@@ -6,7 +6,11 @@
 #include <map>
 #include <optional>
 
+#ifdef ARDUINO
 #define FAST_MEM_ENV __not_in_flash("ENVIRONMENTDATA")
+#else
+#define FAST_MEM_ENV // Empty for desktop builds
+#endif
 // class Value;
 
 // template <size_T MAX_SIZE>

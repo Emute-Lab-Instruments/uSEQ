@@ -4,6 +4,7 @@
 
 
 
+#ifdef ARDUINO
 void setup_leds()
 {
     DBG("uSEQ::setup_leds");
@@ -26,6 +27,7 @@ void setup_leds()
         gpio_set_slew_rate(useq_output_led_pins[i], GPIO_SLEW_RATE_SLOW);
     }
 }
+#endif
 
 void uSEQ::led_animation()
 {

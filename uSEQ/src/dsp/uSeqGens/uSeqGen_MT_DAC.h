@@ -4,7 +4,9 @@
 
 #include "uSeqGen_Base.h"
 // #include "Arduino.h"
+#ifdef ARDUINO
 #include "SPI.h"
+#endif
 
 #define DAC_config_chan_A_gain 0b0001000000000000
 #define DAC_config_chan_B_gain 0b1001000000000000

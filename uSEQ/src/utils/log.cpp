@@ -4,6 +4,7 @@
 
 void message_editor(const String& s)
 {
+#ifdef ARDUINO
     if (Serial.availableForWrite())
     {
         Serial.write(SerialMsg::message_begin_marker);
@@ -11,10 +12,14 @@ void message_editor(const String& s)
         Serial.println(s);
         // Serial.write(SerialMsg::message_end_marker);
     }
+#else
+    std::cout << "[EDITOR] " << s.c_str() << std::endl;
+#endif
 }
 
 void println(const String& s)
 {
+#ifdef ARDUINO
     if (Serial.availableForWrite())
     {
         Serial.write(SerialMsg::message_begin_marker);
@@ -22,6 +27,9 @@ void println(const String& s)
         Serial.println(s);
         // Serial.write(SerialMsg::message_end_marker);
     }
+#else
+    std::cout << s.c_str() << std::endl;
+#endif
 }
 
 
@@ -142,7 +150,13 @@ void report_custom_function_error(const String& function_name, const String& msg
     report_error("(`" + function_name + "`) " + msg);
 }
 
-int free_heap() { return rp2040.getFreeHeap() / 1024; }
+int free_heap() { 
+#ifdef ARDUINO
+    return rp2040.getFreeHeap() / 1024; 
+#else
+    return 0; // Stub for desktop build
+#endif
+}
 
 // DebugLogger
 

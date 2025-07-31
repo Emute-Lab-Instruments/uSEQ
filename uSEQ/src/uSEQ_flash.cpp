@@ -1,3 +1,5 @@
+#ifdef ARDUINO
+
 #include "uSEQ.h"
 #include "hardware_includes.h"
 #include "utils.h"
@@ -507,7 +509,9 @@ void uSEQ::autoload_flash()
 //     #include "pico/bootrom.h"
 // }
 
+#ifdef ARDUINO
 #include "pico/bootrom.h"
+#endif
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_enter_bootloader_mode,
     reset_usb_boot(0, 0); // delay_ms=0, interface=0
@@ -555,3 +559,5 @@ void uSEQ::reset_flash_env_var_info()
     m_FLASH_ENV_STRING_BUFFER_SIZE  = 0;
     write_flash_info();
 }
+
+#endif // ARDUINO

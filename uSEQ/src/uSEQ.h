@@ -15,8 +15,11 @@
 #include <memory>
 #include <sys/types.h>
 #include "uSEQ/board.h"
+#include "hardware_includes.h"
 
+#ifdef ARDUINO
 #include "dsp/dsp-engine.hpp"
+#endif
 
 
 // #include "utils/serial_message.h"
@@ -39,7 +42,11 @@ private:
 
 public:
     maxiFilter() {}
+#ifdef ARDUINO
     double __force_inline lopass(double input, double cutoff);
+#else
+    double lopass(double input, double cutoff);
+#endif
 };
 
 class uSEQ : public Interpreter
@@ -47,23 +54,26 @@ class uSEQ : public Interpreter
 public:
     uSEQ() {}
 
+#ifdef ARDUINO
     void init_dsp_queues();
+    void initDSP();
+    void tick_dsp();
+#endif
     void init();
     void run();
 
-    void initDSP();
-
     void start_loop_blocking();
     void tick();
-    void tick_dsp();
     void update_logical_time_variables(TimeValue);
 
     // NOTE: this should probably be considered
     // part of the interpreter instead
     Value eval_at_time(Value&, Environment&, double);
     
+#ifdef ARDUINO
     void write_flash_env();
     void load_flash_env();
+#endif
 
     static void gpio_irq_gate1();
     static void gpio_irq_gate2();
@@ -176,9 +186,11 @@ private:
     void set_bpm(double newBpm, double changeThreshold);
     void update_bpm_variables();
 
+#ifdef ARDUINO
     //queue and dsp
     std::array<String, N_OUTPUT_QUEUES> dsp_output_names;
     void check_dsp_output_queues();
+#endif
 
 
     //// UPDATE methods
@@ -362,6 +374,7 @@ private:
     LISP_FUNC_DECL(ard_useqaw);
     LISP_FUNC_DECL(ard_useqdw);
 
+#ifdef ARDUINO
     LISP_FUNC_DECL(useq_load_flash_info);
     LISP_FUNC_DECL(useq_write_flash_info);
     LISP_FUNC_DECL(useq_reboot);
@@ -376,6 +389,7 @@ private:
     LISP_FUNC_DECL(useq_load_flash_env);
     LISP_FUNC_DECL(useq_write_flash_env);
     LISP_FUNC_DECL(useq_autoload_flash);
+#endif
 
     LISP_FUNC_DECL(useq_stop_all);
     LISP_FUNC_DECL(useq_rewind_logical_time);
@@ -395,7 +409,9 @@ private:
 
     LISP_FUNC_DECL(useq_loop_at_time);
     
+#ifdef ARDUINO
     LISP_FUNC_DECL(useq_enter_bootloader_mode);
+#endif
     
     // SYNCING FUNCTIONS
     LISP_FUNC_DECL(useq_enter_sync_mode);
@@ -405,7 +421,9 @@ private:
 
 
     void clear_all_outputs();
+#ifdef ARDUINO
     void erase_info_flash();
+#endif
 
     void set_my_id(int num);
 
@@ -475,7 +493,7 @@ private:
 
     Environment make_env_with_updated_time_durs(const Environment&, TimeValue);
 
-
+#ifdef ARDUINO
     void load_flash_info();
     void write_flash_info();
     void reset_flash_env_var_info();
@@ -500,12 +518,14 @@ private:
 
     bool flash_has_been_written_before();
     void autoload_flash();
+#endif
 
     // void clear_non_program_flash();
     static String current_output_being_processed;
 
     uint32_t m_random_seed = 0x9E3779B9;
 
+#ifdef ARDUINO
     // DSP ENGINE
 
     struct ugenOutputQueue {
@@ -544,8 +564,11 @@ private:
     LISP_FUNC_DECL(useq_dsp_reset);
     LISP_FUNC_DECL(useq_dsp_message);
 
-
     LISP_FUNC_DECL(useq_send_sync_trigger_i2c);
+
+#endif
+
+
 
 };
 

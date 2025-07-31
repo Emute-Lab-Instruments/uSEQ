@@ -3,6 +3,10 @@
 
 #include <stddef.h>
 
+#ifdef ARDUINO
+#include "pico/util/queue.h"
+#endif
+
 // Your code goes here
 namespace DSPQ {
 
@@ -21,7 +25,11 @@ namespace DSPQ {
     struct response_data_queue {
         size_t key;
         //pointer to queue
+#ifdef ARDUINO
         queue_t *queueptr;
+#else
+        void *queueptr;  // Generic pointer for desktop builds
+#endif
         size_t index;
         size_t queueSize;
     };

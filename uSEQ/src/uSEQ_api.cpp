@@ -146,6 +146,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("mdo", useq_mdo);
 #endif
 
+#ifdef ARDUINO
     // SYSTEM API
     INSERT_BUILTINDEF("useq-reboot", useq_reboot);
 
@@ -154,6 +155,7 @@ void uSEQ::init_builtinfuncs()
     // ID
     INSERT_BUILTINDEF("useq-set-id", useq_set_my_id);
     INSERT_BUILTINDEF("useq-get-id", useq_get_my_id);
+
     // MEMORY
     INSERT_BUILTINDEF("useq-memory-save", useq_memory_save);
     INSERT_BUILTINDEF("useq-memory-restore", useq_memory_restore);
@@ -161,9 +163,11 @@ void uSEQ::init_builtinfuncs()
     // NOTE: aliases
     INSERT_BUILTINDEF("useq-memory-load", useq_memory_restore);
     INSERT_BUILTINDEF("useq-memory-clear", useq_memory_erase);
+#endif
 
     // NOTE: these are NOT meant to be user interface, just for
     // more granular dev tests
+#ifdef ARDUINO
     INSERT_BUILTINDEF("write-flash-info", useq_write_flash_info);
     INSERT_BUILTINDEF("load-flash-info", useq_load_flash_info);
 
@@ -171,6 +175,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("load-flash-env", useq_load_flash_env);
 
     INSERT_BUILTINDEF("useq-autoload-flash", useq_autoload_flash);
+#endif
     INSERT_BUILTINDEF("useq-stop-all", useq_stop_all);
 
     // FIRMWARE
@@ -183,7 +188,9 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("send-to", useq_i2c_send_to);
     INSERT_BUILTINDEF("i2c-host-start", useq_i2c_host_start);
 
+#ifdef ARDUINO
     INSERT_BUILTINDEF("useq-enter-bootloader-mode", useq_enter_bootloader_mode);
+#endif
 
     // Transport offsets
     INSERT_BUILTINDEF("useq-set-time-offset", useq_set_time_offset);
@@ -192,9 +199,10 @@ void uSEQ::init_builtinfuncs()
     // Sync functions
     INSERT_BUILTINDEF("useq-enter-sync-mode", useq_enter_sync_mode);
     INSERT_BUILTINDEF("useq-send-sync-trigger", useq_send_sync_trigger);
-    INSERT_BUILTINDEF("useq-send-sync-trigger-i2c", useq_send_sync_trigger_i2c);
+    // INSERT_BUILTINDEF("useq-send-sync-trigger-i2c", useq_send_sync_trigger_i2c);
 
     // DSP engine
+    #ifdef ARDUINO
     INSERT_BUILTINDEF("ppp-go", useq_dsp_start);
     INSERT_BUILTINDEF("ppp-stop", useq_dsp_stop);
     INSERT_BUILTINDEF("ppp-mount", useq_dsp_create);
@@ -205,6 +213,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-set", useq_dsp_qset);
     INSERT_BUILTINDEF("ppp-reset", useq_dsp_reset);
     INSERT_BUILTINDEF("ppp-msg", useq_dsp_message);
+    #endif
 }
 
 ////////////////////
@@ -2719,3 +2728,37 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_s7, set_expr("s7", args[0]);
 BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set_expr("s8", args[0]);
                           m_serial_ASTs[7] = { args[0] }; ret = Value::atom("s8");
                           , 1)
+
+// Functions that should be available in all builds (not just Arduino)
+BUILTINFUNC_NOEVAL_MEMBER(useq_rewind_logical_time,
+                          reset_logical_time();
+                          , 0)
+
+// Function that should be available in all builds (not just Arduino)
+void uSEQ::clear_all_outputs()
+{
+    for (int i = 0; i < m_continuous_ASTs.size(); i++)
+    {
+        String name          = "a" + String(i + 1);
+        m_continuous_ASTs[i] = default_continuous_expr;
+        m_def_exprs.erase(name);
+    }
+
+    for (int i = 0; i < m_binary_ASTs.size(); i++)
+    {
+        String name      = "d" + String(i + 1);
+        m_binary_ASTs[i] = default_binary_expr;
+        m_def_exprs.erase(name);
+    }
+
+    for (int i = 0; i < m_serial_ASTs.size(); i++)
+    {
+        String name      = "s" + String(i + 1);
+        m_serial_ASTs[i] = default_serial_expr;
+        m_def_exprs.erase(name);
+    }
+}
+
+BUILTINFUNC_NOEVAL_MEMBER(useq_stop_all,
+                          clear_all_outputs();
+                          println("All outputs cleared.");, 0)

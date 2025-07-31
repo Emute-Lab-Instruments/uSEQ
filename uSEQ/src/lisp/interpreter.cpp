@@ -9,11 +9,16 @@
 #include "parser.h"
 #include "value.h"
 #include <cmath>
+#include <cstdlib>
 
 // Static Class-wide flag
 // bool Interpreter::m_builtindefs_init = false;
 
+#ifdef ARDUINO
 #define INTERP_MEM __not_in_flash("interp")
+#else
+#define INTERP_MEM // Empty for desktop builds
+#endif
 bool INTERP_MEM user_interaction = false;
 
 bool INTERP_MEM Interpreter::m_attempt_expr_eval_first          = false;
@@ -63,7 +68,11 @@ namespace builtin
 // Special forms are just builtin functions that don't evaluate
 // their arguments. To make a regular builtin that evaluates its
 // arguments, we just call this function in our builtin definition.
+#ifdef ARDUINO
 Value __not_in_flash_func(eval_args)(std::vector<Value>& args, Environment& env)
+#else
+Value eval_args(std::vector<Value>& args, Environment& env)
+#endif
 {
     Value result = Value::nil();
 
@@ -133,7 +142,11 @@ Value gen_random(std::vector<Value>& args, Environment& env)
     {
 
         int low = args[0].as_int(), high = args[1].as_int();
+#ifdef ARDUINO
         return Value((int)random(low, high));
+#else
+        return Value((int)(rand() % (high - low + 1) + low));
+#endif
     }
     else
     {
@@ -223,11 +236,19 @@ Value range(std::vector<Value>& args, Environment& env)
 }
 
 BUILTINFUNC(ard_digitalWrite, int pinNumber = args[0].as_int();
-            int onOff = args[1].as_int(); digitalWrite(pinNumber, onOff);
+            int onOff = args[1].as_int(); 
+#ifdef ARDUINO
+            digitalWrite(pinNumber, onOff);
+#endif
             ret       = args[0];, 2)
 
 BUILTINFUNC(ard_digitalRead, int pinNumber = args[0].as_int();
-            int val = digitalRead(pinNumber); ret = Value(val);, 1)
+#ifdef ARDUINO
+            int val = digitalRead(pinNumber); ret = Value(val);
+#else
+            ret = Value(0); // Stub for desktop
+#endif
+            , 1)
 
 BUILTINFUNC(useq_perf, String report = "fps0: ";
             report += env.get("fps").value().as_float();
@@ -250,7 +271,12 @@ BUILTINFUNC(useq_perf, String report = "fps0: ";
             // report += ", ts1: ";
             // report += env.get("perf_ts1").as_float();
             report += ", heap free: ";
-            report += rp2040.getFreeHeap() / 1024; ::println(report); ret = Value();
+#ifdef ARDUINO
+            report += rp2040.getFreeHeap() / 1024;
+#else
+            report += 0; // Stub for desktop
+#endif
+            ::println(report); ret = Value();
             , 0)
 
 } // namespace builtin
