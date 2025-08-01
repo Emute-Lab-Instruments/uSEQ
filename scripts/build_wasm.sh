@@ -2,12 +2,15 @@
 
 # Build script for uSEQ WebAssembly module
 
+# Change to project root directory
+cd "$(dirname "$0")/.."
+
 echo "Building uSEQ WASM module..."
 
 # Source files from meson.build
 SOURCES=(
     # Wrapper
-    "wasm_wrapper.cpp"
+    "wasm/wasm_wrapper.cpp"
     
     # Utils
     "uSEQ/src/utils/string.cpp"
@@ -65,11 +68,11 @@ EM_FLAGS=(
     "--no-entry"
 )
 
-# Build command
-emcc "${SOURCES[@]}" "${FLAGS[@]}" ${EM_FLAGS[@]} -o useq.js
+# Build command - output to wasm directory
+emcc "${SOURCES[@]}" "${FLAGS[@]}" ${EM_FLAGS[@]} -o wasm/useq.js
 
 if [ $? -eq 0 ]; then
-    echo "Build successful! Generated useq.js"
+    echo "Build successful! Generated wasm/useq.js"
 else
     echo "Build failed!"
     exit 1

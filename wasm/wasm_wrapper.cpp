@@ -1,4 +1,4 @@
-#include "uSEQ/src/uSEQ.h"
+#include "../uSEQ/src/uSEQ.h"
 #include <cstring>
 #include <cstdlib>
 
