@@ -14,7 +14,11 @@ void uSEQ::update_continuous_signals()
     {
         // Clear error queue
         error_msg_q.clear();
+        #ifdef WASM_BUILD
+        static String outputnames[16] = {"a1", "a2", "a3", "a4", "a5", "a6","a7", "a8", "a9", "a10", "a11", "a12", "a13", "a14", "a15", "a16"};
+        #else
         static __not_in_flash("mem") String outputnames[16] = {"a1", "a2", "a3", "a4", "a5", "a6","a7", "a8", "a9", "a10", "a11", "a12", "a13", "a14", "a15", "a16"};
+        #endif
         String expr_name                 = outputnames[i]; //"a" + (i + 1);
         m_atom_currently_being_evaluated = expr_name;
 
@@ -64,7 +68,7 @@ void uSEQ::update_binary_signals()
     {
         // Clear error queue
         error_msg_q.clear();
-        String expr_name                 = "d" + (i + 1);
+        String expr_name                 = String("d") + String(i + 1);
         m_atom_currently_being_evaluated = expr_name;
 
         Value expr = m_binary_ASTs[i];
@@ -109,7 +113,7 @@ void uSEQ::update_serial_signals()
     {
         // Clear error queue
         error_msg_q.clear();
-        String expr_name                 = "s" + (i + 1);
+        String expr_name                 = String("s") + String(i + 1);
         m_atom_currently_being_evaluated = expr_name;
 
         Value expr = m_serial_ASTs[i];

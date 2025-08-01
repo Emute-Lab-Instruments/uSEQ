@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>uSEQ LISP REPL</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }
+        
+        h1 {
+            color: #569cd6;
+            text-align: center;
+        }
+        
+        .repl-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .input-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        #input {
+            background-color: #2d2d30;
+            color: #d4d4d4;
+            border: 1px solid #3e3e42;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        #evaluate {
+            background-color: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: monospace;
+        }
+        
+        #evaluate:hover {
+            background-color: #1177bb;
+        }
+        
+        #evaluate:active {
+            background-color: #0d5a8f;
+        }
+        
+        #evaluate:disabled {
+            background-color: #3e3e42;
+            cursor: not-allowed;
+        }
+        
+        .output-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        #output {
+            background-color: #1e1e1e;
+            border: 1px solid #3e3e42;
+            padding: 10px;
+            min-height: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .output-entry {
+            margin-bottom: 10px;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 10px;
+        }
+        
+        .output-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .expression {
+            color: #569cd6;
+        }
+        
+        .result {
+            color: #4ec9b0;
+        }
+        
+        .error {
+            color: #f44747;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #d7ba7d;
+            font-size: 16px;
+            padding: 20px;
+        }
+        
+        .examples {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #2d2d30;
+            border: 1px solid #3e3e42;
+        }
+        
+        .examples h3 {
+            color: #569cd6;
+            margin-top: 0;
+        }
+        
+        .examples code {
+            color: #ce9178;
+        }
+    </style>
+</head>
+<body>
+    <h1>uSEQ LISP REPL</h1>
+    
+    <div class="repl-container">
+        <div class="input-section">
+            <label for="input">Enter LISP Expression:</label>
+            <textarea id="input" placeholder="(+ 1 2)" autofocus></textarea>
+            <button id="evaluate" disabled>Evaluate (Enter)</button>
+        </div>
+        
+        <div class="output-section">
+            <label for="output">Output:</label>
+            <div id="output">
+                <div class="loading">Loading uSEQ interpreter...</div>
+            </div>
+        </div>
+        
+        <div class="examples">
+            <h3>Examples:</h3>
+            <p>Try these expressions:</p>
+            <ul>
+                <li><code>(+ 1 2 3)</code> - Addition</li>
+                <li><code>(* 5 6)</code> - Multiplication</li>
+                <li><code>(- 10 3)</code> - Subtraction</li>
+                <li><code>(/ 20 4)</code> - Division</li>
+                <li><code>(list 1 2 3)</code> - Create a list</li>
+                <li><code>(quote hello)</code> - Quote a symbol</li>
+                <li><code>(if (> 5 3) "yes" "no")</code> - Conditional</li>
+                <li><code>(define x 42)</code> - Define a variable</li>
+                <li><code>(lambda (x) (* x x))</code> - Create a function</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script src="useq.js"></script>
+    <script>
+        let Module;
+        let useq_init;
+        let useq_eval;
+        let isReady = false;
+        
+        const inputElement = document.getElementById('input');
+        const outputElement = document.getElementById('output');
+        const evaluateButton = document.getElementById('evaluate');
+        
+        // Initialize the module
+        createModule().then(module => {
+            Module = module;
+            
+            // Wrap the exported functions
+            useq_init = Module.cwrap('useq_init', null, []);
+            useq_eval = Module.cwrap('useq_eval', 'string', ['string']);
+            
+            // Initialize uSEQ
+            useq_init();
+            
+            // Clear loading message and enable interface
+            outputElement.innerHTML = '<div class="output-entry"><span class="result">uSEQ interpreter ready!</span></div>';
+            evaluateButton.disabled = false;
+            isReady = true;
+            
+            // Focus on input
+            inputElement.focus();
+        }).catch(error => {
+            outputElement.innerHTML = `<div class="error">Failed to load uSEQ: ${error}</div>`;
+            console.error('Failed to load uSEQ:', error);
+        });
+        
+        function evaluateExpression() {
+            if (!isReady) return;
+            
+            const expression = inputElement.value.trim();
+            if (!expression) return;
+            
+            try {
+                // Evaluate the expression
+                const result = useq_eval(expression);
+                
+                // Add to output
+                const entry = document.createElement('div');
+                entry.className = 'output-entry';
+                entry.innerHTML = `<div class="expression">&gt; ${escapeHtml(expression)}</div><div class="result">${escapeHtml(result)}</div>`;
+                outputElement.appendChild(entry);
+                
+                // Scroll to bottom
+                outputElement.scrollTop = outputElement.scrollHeight;
+                
+                // Clear input
+                inputElement.value = '';
+                inputElement.focus();
+            } catch (error) {
+                const entry = document.createElement('div');
+                entry.className = 'output-entry';
+                entry.innerHTML = `<div class="expression">&gt; ${escapeHtml(expression)}</div><div class="error">Error: ${escapeHtml(error.toString())}</div>`;
+                outputElement.appendChild(entry);
+                outputElement.scrollTop = outputElement.scrollHeight;
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Event listeners
+        evaluateButton.addEventListener('click', evaluateExpression);
+        
+        inputElement.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                evaluateExpression();
+            }
+        });
+    </script>
+</body>
+</html>
