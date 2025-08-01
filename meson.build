@@ -40,7 +40,6 @@ common_src = [
   # uSEQ
   'uSEQ/src/uSEQ.h',
   'uSEQ/src/uSEQ.cpp',
-  'uSEQ/src/uSEQ_integration.h',
   'uSEQ/src/uSEQ_eval.cpp',
   'uSEQ/src/uSEQ_io.cpp',
   'uSEQ/src/uSEQ_i2c.cpp',
