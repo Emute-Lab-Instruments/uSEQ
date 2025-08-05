@@ -10,7 +10,7 @@
 // Creates a Lisp Value of type BUILTIN_METHOD,
 // which requires
 #define INSERT_BUILTINDEF(__name__, __func_name__)                             \
-    Environment::builtindefs[__name__] =                                       \
+    Environment::builtindefs()[__name__] =                                       \
         Value((String)__name__, &ModuLispInterpreter::__func_name__);
 
 void ModuLispInterpreter::init_builtinfuncs() {

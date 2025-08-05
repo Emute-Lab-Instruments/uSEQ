@@ -12,7 +12,10 @@
 //   return os << "}";
 // }
 
-BuiltinMap FAST_MEM_ENV Environment::builtindefs;
+BuiltinMap& Environment::builtindefs() {
+    static BuiltinMap FAST_MEM_ENV instance;
+    return instance;
+}
 
 std::optional<Value> ValueMap::get(const String& name) const
 {
@@ -72,7 +75,7 @@ std::optional<Value> Environment::get(const String& name) const
     if (!result)
     {
         // debug("searching builtindefs...");
-        result = Environment::builtindefs.get(name);
+        result = Environment::builtindefs().get(name);
     }
     // 4. If still not found, return empty
     if (!result)

@@ -626,4 +626,3 @@ BUILTINFUNC_MEMBER(
 BUILTINFUNC_MEMBER(useq_swr, ret = Value(m_input_vals[USEQRS1]);, 0)
 
 BUILTINFUNC_MEMBER(useq_rot, ret = Value(m_input_vals[USEQR1]);, 0)
-

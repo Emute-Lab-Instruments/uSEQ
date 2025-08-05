@@ -68,7 +68,7 @@ class Environment {
     // Output this scope in readable form to a stream.
     friend std::ostream &operator<<(std::ostream &os, Environment const &v);
 
-    static BuiltinMap FAST_MEM_ENV builtindefs;
+    static BuiltinMap& FAST_MEM_ENV builtindefs();
 
   protected:
     ValueMap m_defs;
