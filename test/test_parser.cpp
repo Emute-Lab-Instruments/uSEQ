@@ -1,5 +1,5 @@
-#include "../uSEQ/src/lisp/parser.h"
-#include "../uSEQ/src/lisp/value.h"
+#include "../uSEQ/src/modulisp/lisp/parser.h"
+#include "../uSEQ/src/modulisp/lisp/value.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>

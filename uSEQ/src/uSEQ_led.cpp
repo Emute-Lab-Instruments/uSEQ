@@ -1,6 +1,8 @@
 #include "uSEQ.h"
 #include "utils.h"
+#ifndef ARDUINO
 #include "hardware_includes.h"
+#endif
 
 
 

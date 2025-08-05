@@ -1,10 +1,16 @@
 #include "generated_builtins.h"
-#include "../utils.h"
-#include "../utils/log.h"
+#include "../../utils.h"
+#include "../../utils/log.h"
 #include "environment.h"
 #include "interpreter.h"
 #include "value.h"
 #include <iostream>
+
+// Suppress all warnings for generated code
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wextra"
+#pragma GCC diagnostic ignored "-Wpedantic"
 
 namespace builtin
 {
@@ -16,13 +22,13 @@ Value tail(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -58,7 +64,7 @@ Value vec(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "vec";
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -84,13 +90,13 @@ Value zeros(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -126,7 +132,7 @@ Value defn(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
@@ -161,7 +167,7 @@ Value list(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "list";
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -187,13 +193,13 @@ Value ard_floor(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -227,13 +233,13 @@ Value ard_ceil(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -262,12 +268,10 @@ Value ard_ceil(std::vector<Value>& args, Environment& env)
 
 Value do_block(std::vector<Value>& args, Environment& env)
 {
-    constexpr const char* user_facing_name = "do";
-
     // BODY
     Value result = Value::nil();
     Value acc;
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
         acc = args[i].eval(env);
     result = acc;
     return result;
@@ -280,13 +284,13 @@ Value neq(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -312,13 +316,13 @@ Value ard_usin(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -352,13 +356,13 @@ Value index(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -396,7 +400,7 @@ Value index(std::vector<Value>& args, Environment& env)
     Value result            = Value::nil();
     std::vector<Value> list = args[0].as_sequential();
     int i                   = args[1].as_int();
-    if (i < list.size())
+    if (i >= 0 && static_cast<size_t>(i) < list.size())
     {
         result = list[i];
     }
@@ -416,13 +420,13 @@ Value ard_cos(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -456,7 +460,7 @@ Value let_block(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::AtLeast, 2, -1);
         return Value::error();
     }
@@ -483,7 +487,7 @@ Value let_block(std::vector<Value>& args, Environment& env)
     }
 
     // iterate bindings by twos and make sure all even elements are symbols
-    for (size_t i = 0; i < bindings_vec.size() - 1; i += 2)
+    for (size_t i = 0; static_cast<size_t>(i) < bindings_vec.size() - 1; i += 2)
     {
         Value item = bindings_vec[i];
         if (!(item.is_symbol()))
@@ -503,7 +507,7 @@ Value let_block(std::vector<Value>& args, Environment& env)
     local_env.set_parent_scope(&env);
 
     // iterate bindings by twos and insert defs in local env
-    for (size_t i = 0; i < bindings_vec.size() - 1; i += 2)
+    for (size_t i = 0; static_cast<size_t>(i) < bindings_vec.size() - 1; i += 2)
     {
         String name       = bindings_vec[i].str;
         Value body        = bindings_vec[i + 1];
@@ -521,7 +525,7 @@ Value let_block(std::vector<Value>& args, Environment& env)
 
     // Eval the remaining body exprs in that env
     // NOTE: it starts at 1
-    for (int i = 1; i < args.size(); i++)
+    for (int i = 1; static_cast<size_t>(i) < args.size(); i++)
     {
         Value expr = args[i];
         result     = expr.eval(local_env);
@@ -536,13 +540,13 @@ Value eq(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -568,13 +572,13 @@ Value ard_abs(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -608,13 +612,13 @@ Value ard_millis(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 0))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 0, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -629,7 +633,7 @@ Value ard_millis(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    int m        = millis();
+    int m        = static_cast<int>(millis());
     result       = Value(m);
     return result;
 }
@@ -641,13 +645,13 @@ Value sum(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::AtLeast, 1, -1);
         return Value::error();
     }
 
     // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -671,7 +675,7 @@ Value sum(std::vector<Value>& args, Environment& env)
     // BODY
     Value result = Value::nil();
     Value acc    = args[0];
-    for (size_t i = 1; i < args.size(); i++)
+    for (size_t i = 1; static_cast<size_t>(i) < args.size(); i++)
     {
         acc = acc + args[i];
     }
@@ -686,7 +690,7 @@ Value for_loop(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::AtLeast, 2, -1);
         return Value::error();
     }
@@ -709,10 +713,10 @@ Value for_loop(std::vector<Value>& args, Environment& env)
     Value result = Value::nil();
     Value acc;
     std::vector<Value> list = args[1].eval(env).as_list();
-    for (size_t i = 0; i < list.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < list.size(); i++)
     {
         env.set(args[0].as_atom(), list[i]);
-        for (size_t j = 1; j < args.size() - 1; j++)
+        for (size_t j = 1; static_cast<size_t>(j) < args.size() - 1; j++)
             args[j].eval(env);
         acc = args[args.size() - 1].eval(env);
     }
@@ -727,13 +731,13 @@ Value pop(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -759,13 +763,13 @@ Value ard_min(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -799,13 +803,13 @@ Value push(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -820,7 +824,7 @@ Value push(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    for (size_t i = 1; i < args.size(); i++)
+    for (size_t i = 1; static_cast<size_t>(i) < args.size(); i++)
         args[0].push(args[i]);
     result = args[0];
     return result;
@@ -833,13 +837,13 @@ Value greater(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -865,13 +869,13 @@ Value product(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::AtLeast, 1, -1);
         return Value::error();
     }
 
     // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -895,7 +899,7 @@ Value product(std::vector<Value>& args, Environment& env)
     // BODY
     Value result = Value::nil();
     Value acc    = args[0];
-    for (size_t i = 1; i < args.size(); i++)
+    for (size_t i = 1; static_cast<size_t>(i) < args.size(); i++)
     {
         Value num = args[i];
         if (num == Value(0))
@@ -918,13 +922,13 @@ Value replace(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
 
     // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -960,13 +964,13 @@ Value ard_sin(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1000,13 +1004,13 @@ Value ard_ucos(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1040,7 +1044,7 @@ Value eval(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
@@ -1058,13 +1062,13 @@ Value println(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1099,7 +1103,7 @@ Value cast_to_int(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
@@ -1125,13 +1129,13 @@ Value remainder(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1165,13 +1169,13 @@ Value subtract(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::AtLeast, 2, -1);
         return Value::error();
     }
 
     // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1197,7 +1201,7 @@ Value subtract(std::vector<Value>& args, Environment& env)
 
     Value accum = args[0];
 
-    for (size_t i = 1; i < args.size(); i++)
+    for (size_t i = 1; static_cast<size_t>(i) < args.size(); i++)
     {
         accum = accum - args[i];
     }
@@ -1212,7 +1216,7 @@ Value define(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
@@ -1243,13 +1247,13 @@ Value ard_pow(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1285,7 +1289,7 @@ Value while_loop(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::AtLeast, 1, -1);
         return Value::error();
     }
@@ -1295,7 +1299,7 @@ Value while_loop(std::vector<Value>& args, Environment& env)
     Value acc;
     while (args[0].eval(env).as_bool())
     {
-        for (size_t i = 1; i < args.size() - 1; i++)
+        for (size_t i = 1; static_cast<size_t>(i) < args.size() - 1; i++)
             args[i].eval(env);
         acc = args[args.size() - 1].eval(env);
     }
@@ -1310,13 +1314,13 @@ Value remove(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1364,7 +1368,7 @@ Value scope(std::vector<Value>& args, Environment& env)
     Value result  = Value::nil();
     Environment e = env;
     Value acc;
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
         acc = args[i].eval(e);
     result = acc;
     return result;
@@ -1377,13 +1381,13 @@ Value debug(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1409,13 +1413,13 @@ Value less_eq(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1441,13 +1445,13 @@ Value ard_max(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1481,13 +1485,13 @@ Value ard_delay(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1523,13 +1527,13 @@ Value timeit(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1558,13 +1562,13 @@ Value ard_map(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(3 <= args.size() <= 5))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::Between, 3, 5);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1609,13 +1613,13 @@ Value head(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1656,13 +1660,13 @@ Value slice(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1734,13 +1738,13 @@ Value get_type_name(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1766,13 +1770,13 @@ Value b_to_u(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1806,13 +1810,13 @@ Value less(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1838,13 +1842,13 @@ Value ard_micros(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 0))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 0, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1871,13 +1875,13 @@ Value divide(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1912,13 +1916,13 @@ Value ard_delaymicros(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -1958,13 +1962,13 @@ Value insert(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2013,7 +2017,7 @@ Value get_expr(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
@@ -2049,13 +2053,13 @@ Value ard_sqrt(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2089,13 +2093,13 @@ Value print(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2134,13 +2138,13 @@ Value display(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2166,13 +2170,13 @@ Value greater_eq(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2198,13 +2202,13 @@ Value ard_lerp(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 5))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 5, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2240,7 +2244,7 @@ Value cast_to_float(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
@@ -2266,13 +2270,13 @@ Value len(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2306,7 +2310,7 @@ Value set(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
@@ -2337,7 +2341,7 @@ Value defun(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
@@ -2374,7 +2378,7 @@ Value def(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
@@ -2405,13 +2409,13 @@ Value useq_sqr(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2445,7 +2449,7 @@ Value defs(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() >= 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::AtLeast, 2, -1);
         return Value::error();
     }
@@ -2459,7 +2463,7 @@ Value defs(std::vector<Value>& args, Environment& env)
             "Number of arguments should be even, forming pairs of <name> <value>.");
     }
     // iterate by twos and make sure all even args are symbols
-    for (size_t i = 0; i < args.size() - 1; i += 2)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size() - 1; i += 2)
     {
         if (!(args[i].is_symbol()))
         {
@@ -2469,7 +2473,7 @@ Value defs(std::vector<Value>& args, Environment& env)
         }
     }
     std::vector<Value> names;
-    for (size_t i = 0; i < args.size() - 1; i += 2)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size() - 1; i += 2)
     {
         String name = args[i].display();
         // NOTE: body is unevalled still
@@ -2489,7 +2493,7 @@ Value lambda(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
@@ -2515,13 +2519,13 @@ Value useq_pulse(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2564,13 +2568,13 @@ Value u_to_b(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2604,13 +2608,13 @@ Value ard_tan(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 1))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, -1);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         // Eval
         Value pre_eval = args[i];
@@ -2644,7 +2648,7 @@ Value if_then_else(std::vector<Value>& args, Environment& env)
     // Checking number of args
     if (!(args.size() == 3))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
@@ -2659,3 +2663,5 @@ Value if_then_else(std::vector<Value>& args, Environment& env)
 }
 
 } // namespace builtin
+
+#pragma GCC diagnostic pop

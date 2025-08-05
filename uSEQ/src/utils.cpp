@@ -64,9 +64,9 @@ void flash_builtin(int sleep, int times = 10)
 
 #else
 
-void flash_builtin(int sleep, int times = 10) {}
+void flash_builtin(int /*sleep*/, int /*times*/ = 10) {}
 double millis() { return 0.0; }
 double micros() { return 0.0; }
 
-void delay(int x) {}
+void delay(int /*x*/) {}
 #endif

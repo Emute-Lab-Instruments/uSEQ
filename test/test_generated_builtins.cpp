@@ -1,6 +1,6 @@
-#include "../uSEQ/src/lisp/generated_builtins.h"
-#include "../uSEQ/src/lisp/value.h"
-#include "../uSEQ/src/lisp/environment.h"
+#include "../uSEQ/src/modulisp/lisp/generated_builtins.h"
+#include "../uSEQ/src/modulisp/lisp/value.h"
+#include "../uSEQ/src/modulisp/lisp/environment.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>

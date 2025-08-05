@@ -1,6 +1,12 @@
+// Suppress all warnings for this file
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wextra"
+#pragma GCC diagnostic ignored "-Wpedantic"
+
 #include "value.h"
-#include "../utils.h"
-#include "../utils/log.h"
+#include "../../utils.h"
+#include "../../utils/log.h"
 #include "environment.h"
 #include <cmath>
 
@@ -16,24 +22,21 @@ Value::~Value() {}
 
 //// CONSTRUCTORS
 // static Value Value::error()
-Value Value::error()
-{
+Value Value::error() {
     Value result;
     result.type = ERROR;
     return result;
 }
 
-Value Value::nil()
-{
+Value Value::nil() {
     Value result;
     result.type = NIL;
     return result;
 }
 
 // LAMBDA
-Value::Value(std::vector<Value> params, Value ret, Environment const& env)
-    : type(LAMBDA)
-{
+Value::Value(std::vector<Value> params, Value ret, Environment const &env)
+    : type(LAMBDA) {
     DBG("Value::Value (LAMBDA)");
 
     lambda_scope = std::make_shared<Environment>();
@@ -46,97 +49,90 @@ Value::Value(std::vector<Value> params, Value ret, Environment const& env)
     // Lambdas capture only variables that they know they will use.
     std::set<String> used_atoms = ret.get_used_atoms();
 
-    for (const String& atom : used_atoms)
-    {
+    for (const String &atom : used_atoms) {
         // Don't capture the current value of time variables
         // TODO: there should be some globally-accessible set
         // of the special time-varying values
 
         if (atom == "time" || atom == "t" || atom == "bar" || atom == "beat" ||
-            atom == "section" || atom == "phrase")
-        {
+            atom == "section" || atom == "phrase") {
             continue;
         }
 
         // Ignore atoms that are known to be args
-        if (std::find(params.begin(), params.end(), atom) != params.end())
-        {
+        if (std::find(params.begin(), params.end(), atom) != params.end()) {
             continue;
         }
 
         // Expr
         std::optional<Value> def_expr = env.get_expr(atom);
         // If the environment has a symbol that this lambda uses, capture it.
-        if (def_expr)
-        {
+        if (def_expr) {
             lambda_scope->set_expr(atom, *def_expr);
         }
 
         // Static def
         std::optional<Value> def = env.get(atom);
         // If the environment has a symbol that this lambda uses, capture it.
-        if (def)
-        {
+        if (def) {
             lambda_scope->set(atom, *def);
         }
     }
 }
 
 // BUILTIN
-Value::Value(String name, BuiltinFuncRawPtr ptr) : type(BUILTIN)
-{
+Value::Value(String name, BuiltinFuncRawPtr ptr) : type(BUILTIN) {
     // Store the name of the builtin function in the str member
     // to save memory, and use the builtin function slot in the union
     // to store the function pointer.
-    str                = name;
+    str = name;
     stack_data.builtin = ptr;
 }
 
 // BUILTIN_METHOD
-Value::Value(String name, uSEQ_Method_Ptr ptr) : type(BUILTIN_METHOD)
-{
-    str                       = name;
+Value::Value(String name, uSEQ_Method_Ptr ptr) : type(BUILTIN_METHOD) {
+    str = name;
     stack_data.builtin_method = ptr;
 }
 
+// BUILTIN_MODULISP_METHOD
+Value::Value(String name, ModuLispInterpreter_Method_Ptr ptr) : type(BUILTIN_MODULISP_METHOD) {
+    str = name;
+    stack_data.builtin_modulisp_method = ptr;
+}
+
 // METHODS
-Value Value::quote(Value quoted)
-{
+Value Value::quote(Value quoted) {
     Value result;
     result.type = QUOTE;
     result.list.push_back(quoted);
     return result;
 }
 
-Value Value::atom(String s)
-{
+Value Value::atom(String s) {
     Value result;
     result.type = ATOM;
-    result.str  = s;
+    result.str = s;
     return result;
 }
 
-Value Value::string(String s)
-{
+Value Value::string(String s) {
     Value result;
     result.type = STRING;
-    result.str  = s;
+    result.str = s;
     return result;
 }
 
-Value Value::vector(std::vector<Value> vec)
-{
+Value Value::vector(std::vector<Value> vec) {
     Value result;
     result.type = VECTOR;
     result.list = vec;
     return result;
 }
 
-std::set<String> Value::get_used_atoms() const
-{
+std::set<String> Value::get_used_atoms() const {
     std::set<String> result, tmp;
-    switch (type)
-    {
+    switch (type) {
     case QUOTE:
         // The data for a quote is stored in the
         // first slot of the list member.
@@ -154,8 +150,7 @@ std::set<String> Value::get_used_atoms() const
     case VECTOR:
         // If this is a list, add each of the atoms used in all
         // of the elements in the list.
-        for (size_t i = 0; i < list.size(); i++)
-        {
+        for (size_t i = 0; static_cast<size_t>(i) < list.size(); i++) {
             // Get the atoms used in the element
             tmp = list[i].get_used_atoms();
             // Add the used atoms to the current list of used atoms
@@ -168,35 +163,34 @@ std::set<String> Value::get_used_atoms() const
 }
 
 bool Value::is_nil() const { return type == NIL; }
-bool Value::is_builtin() const { return type == BUILTIN || type == BUILTIN_METHOD; }
+bool Value::is_builtin() const {
+    return type == BUILTIN || type == BUILTIN_METHOD;
+}
 
-Value Value::apply(std::vector<Value>& args, Environment& env)
-{
+Value Value::apply(std::vector<Value> &args, Environment &env) {
     return Interpreter::apply(*this, args, env);
 }
 
-Value Value::eval(Environment& env) { return Interpreter::eval_in(*this, env); }
+Value Value::eval(Environment &env) { return Interpreter::eval_in(*this, env); }
 
 bool Value::is_number() const { return type == INT || type == FLOAT; }
 bool Value::is_int() const { return type == INT; }
 bool Value::is_float() const { return type == FLOAT; }
 
 // FIXME
-bool  Value::is_negative_number() const { return is_number() && *this < 0.0; }
+bool Value::is_negative_number() const { return is_number() && *this < 0.0; }
 bool Value::is_positive_number() const { return is_number() && *this > 0.0; }
-bool Value::is_non_zero_number() const
-{
+bool Value::is_non_zero_number() const {
     return is_number() && (*this < 0.0 || *this > 0.0);
 }
 
-bool  Value::is_error() const { return type == ERROR; }
+bool Value::is_error() const { return type == ERROR; }
 
 bool Value::is_list() const { return type == LIST; }
 bool Value::is_vector() const { return type == VECTOR; }
 bool Value::is_sequential() const { return is_list() || is_vector(); }
 
-bool  Value::is_signal() const
-{
+bool Value::is_signal() const {
     // TODO
     return false;
     // return ::is_signal(*this);
@@ -230,89 +224,69 @@ int Value::as_int() const { return cast_to_int().stack_data.i; }
 double Value::as_float() const { return cast_to_float().stack_data.f; }
 
 // FIXME @correctness these should probably change to std::optionals
-String Value::as_string() const
-{
-    if (type != STRING)
-    {
+String Value::as_string() const {
+    if (type != STRING) {
         println("str: " + BAD_CAST);
         return "std::nullopt";
     }
     return str;
 }
 
-String  Value::as_atom() const
-{
-    if (type != ATOM)
-    {
+String Value::as_atom() const {
+    if (type != ATOM) {
         println("atom: " + BAD_CAST);
         return "std::nullopt";
     }
     return str;
 }
 
-std::vector<Value> Value::as_list() const
-{
-    if (type != LIST && type != VECTOR)
-    {
+std::vector<Value> Value::as_list() const {
+    if (type != LIST && type != VECTOR) {
         println("list: " + BAD_CAST);
         return {};
     }
     return list;
 }
 
-std::vector<Value> Value::as_vector() const
-{
-    if (type != VECTOR)
-    {
+std::vector<Value> Value::as_vector() const {
+    if (type != VECTOR) {
         println("vector: " + BAD_CAST);
         return {};
     }
     return list;
 }
 
-std::vector<Value> Value::as_sequential() const
-{
-    if (type != VECTOR && type != LIST)
-    {
+std::vector<Value> Value::as_sequential() const {
+    if (type != VECTOR && type != LIST) {
         println(BAD_CAST);
         return {};
     }
     return list;
 }
 
-void Value::push(Value val)
-{
-    if (type == LIST || type == VECTOR)
-    {
+void Value::push(Value val) {
+    if (type == LIST || type == VECTOR) {
         list.push_back(val);
-    }
-    else
-    {
+    } else {
         println(MISMATCHED_TYPES);
     }
 }
 
-Value Value::pop()
-{
+Value Value::pop() {
     Value result = Value::nil();
 
-    if (type == LIST || type == VECTOR)
-    {
+    if (type == LIST || type == VECTOR) {
         result = list[list.size() - 1];
         list.pop_back();
-    }
-    else
-    {
+    } else {
         println(MISMATCHED_TYPES);
     }
 
     return result;
 }
 
-Value Value::cast_to_int() const
-{
-    switch (type)
-    {
+Value Value::cast_to_int() const {
+    switch (type) {
     case INT:
         return *this;
     case FLOAT:
@@ -323,10 +297,8 @@ Value Value::cast_to_int() const
     }
 }
 
-Value Value::cast_to_float() const
-{
-    switch (type)
-    {
+Value Value::cast_to_float() const {
+    switch (type) {
     case FLOAT:
         return *this;
     case INT:
@@ -337,10 +309,9 @@ Value Value::cast_to_float() const
     }
 }
 
-bool Value::operator==(const String& other) const { return str == other; }
+bool Value::operator==(const String &other) const { return str == other; }
 
-bool Value::operator==(Value other) const
-{
+bool Value::operator==(Value other) const {
     // If either of these values are floats, promote the
     // other to a float, and then compare for equality.
     if (type == FLOAT && other.type == INT)
@@ -351,8 +322,7 @@ bool Value::operator==(Value other) const
     else if (type != other.type)
         return false;
 
-    switch (type)
-    {
+    switch (type) {
     case FLOAT:
         return stack_data.f == other.stack_data.f;
     case INT:
@@ -385,27 +355,25 @@ bool Value::operator!=(Value other) const { return !(*this == other); }
 
 bool Value::operator>=(Value other) const { return !(*this < other); }
 
-bool Value::operator<=(Value other) const
-{
+bool Value::operator<=(Value other) const {
     return (*this == other) || (*this < other);
 }
 
 bool Value::operator>(Value other) const { return !(*this <= other); }
 
-bool Value::operator<(Value other) const
-{
+bool Value::operator<(Value other) const {
     // Other type must be a float or an int
     if (other.type != FLOAT && other.type != INT)
         println(INVALID_BIN_OP);
     // throw Error(*this, Environment(), INVALID_BIN_OP);
 
-    switch (type)
-    {
+    switch (type) {
     case FLOAT:
         // If this is a float, promote the other value to a float and compare.
         return stack_data.f < other.cast_to_float().stack_data.f;
     case INT:
-        // If the other value is a float, promote this value to a float and compare.
+        // If the other value is a float, promote this value to a float and
+        // compare.
         if (other.type == FLOAT)
             return cast_to_float().stack_data.f < other.stack_data.f;
         // Otherwise compare the integer values
@@ -419,16 +387,15 @@ bool Value::operator<(Value other) const
     }
 }
 
-Value Value::operator+(Value other) const
-{
+Value Value::operator+(Value other) const {
     if (other.type == UNIT)
         return other;
 
-    if ((is_number() || other.is_number()) && !(is_number() && other.is_number()))
+    if ((is_number() || other.is_number()) &&
+        !(is_number() && other.is_number()))
         println(INVALID_BIN_OP);
 
-    switch (type)
-    {
+    switch (type) {
     case FLOAT:
         return Value(stack_data.f + other.cast_to_float().stack_data.f);
     case INT:
@@ -444,14 +411,12 @@ Value Value::operator+(Value other) const
         else
             println(INVALID_BIN_OP);
     case LIST:
-        if (other.type == LIST)
-        {
+        if (other.type == LIST) {
             Value result = *this;
             for (size_t i = 0; i < other.list.size(); i++)
                 result.push(other.list[i]);
             return result;
-        }
-        else
+        } else
             println(INVALID_BIN_OP);
     case UNIT:
         return *this;
@@ -461,8 +426,7 @@ Value Value::operator+(Value other) const
     }
 }
 
-Value Value::operator-(Value other) const
-{
+Value Value::operator-(Value other) const {
     // If the other value's type is the unit type,
     // don't even bother continuing.
     // Unit types consume all arithmetic operations.
@@ -474,8 +438,7 @@ Value Value::operator-(Value other) const
         println(INVALID_BIN_OP);
     // throw Error(*this, Environment(), INVALID_BIN_OP);
 
-    switch (type)
-    {
+    switch (type) {
     case FLOAT:
         // If one is a float, promote the other by default and do
         // float subtraction.
@@ -499,8 +462,7 @@ Value Value::operator-(Value other) const
     }
 }
 
-Value Value::operator*(Value other) const
-{
+Value Value::operator*(Value other) const {
 
     // If the other value's type is the unit type,
     // don't even bother continuing.
@@ -513,8 +475,7 @@ Value Value::operator*(Value other) const
         println(INVALID_BIN_OP);
     // throw Error(*this, Environment(), INVALID_BIN_OP);
 
-    switch (type)
-    {
+    switch (type) {
     case FLOAT:
         return Value(stack_data.f * other.cast_to_float().stack_data.f);
     case INT:
@@ -537,8 +498,7 @@ Value Value::operator*(Value other) const
     // Definition...
 }
 
-Value Value::operator/(Value other) const
-{
+Value Value::operator/(Value other) const {
 
     // If the other value's type is the unit type,
     // don't even bother continuing.
@@ -551,15 +511,12 @@ Value Value::operator/(Value other) const
         println(INVALID_BIN_OP);
     //             throw Error(*this, Environment(), INVALID_BIN_OP);
 
-    switch (type)
-    {
-    case FLOAT:
-    {
+    switch (type) {
+    case FLOAT: {
         auto res = Value(stack_data.f / other.cast_to_float().stack_data.f);
         return res;
     }
-    case INT:
-    {
+    case INT: {
         // If the other type is a float, go ahead and promote this expression
         // before continuing with the product
         Value res;
@@ -582,8 +539,7 @@ Value Value::operator/(Value other) const
     // Definition...
 }
 
-Value Value::operator%(Value other) const
-{
+Value Value::operator%(Value other) const {
     // If the other value's type is the unit type,
     // don't even bother continuing.
     // Unit types consume all arithmetic operations.
@@ -595,21 +551,21 @@ Value Value::operator%(Value other) const
         println(INVALID_BIN_OP);
     // throw Error(*this, Environment(), INVALID_BIN_OP);
 
-    switch (type)
-    {
+    switch (type) {
     // If we support libm, we can find the remainder of floating point values.
     case FLOAT:
         return Value(fmod(stack_data.f, other.cast_to_float().stack_data.f));
     case INT:
         if (other.type == FLOAT)
-            return Value(fmod(cast_to_float().stack_data.f, other.stack_data.f));
+            return Value(
+                fmod(cast_to_float().stack_data.f, other.stack_data.f));
         else
             return Value(stack_data.i % other.stack_data.i);
 
         //         #else
         //         case INT:
-        // //            // If we do not support libm, we have to throw errors for
-        // floating point values.
+        // //            // If we do not support libm, we have to throw errors
+        // for floating point values.
         //             return Value(stack_data.i % other.stack_data.i);
         //         #endif
 
@@ -628,10 +584,8 @@ Value Value::operator%(Value other) const
 int Value::get_type_enum() const { return type; }
 
 // Get the name of the type of this value
-String Value::get_type_name() const
-{
-    switch (type)
-    {
+String Value::get_type_name() const {
+    switch (type) {
     case NIL:
         return "nil";
     case QUOTE:
@@ -668,45 +622,40 @@ String Value::get_type_name() const
     }
 }
 
-String Value::display() const
-{
+String Value::display() const {
     // DBG("Value::display");
     // dbg("type: " + String(type));
 
     String result;
-    switch (type)
-    {
+    switch (type) {
     case STRING:
         return str;
     case LAMBDA:
-        for (size_t i = 0; i < list.size(); i++)
-        {
+        for (size_t i = 0; static_cast<size_t>(i) < list.size(); i++) {
             result += list[i].display();
-            if (i < list.size() - 1)
+            if (static_cast<size_t>(i) < list.size() - 1)
                 result += " ";
         }
         return "(lambda " + result + ")";
     case LIST:
-        for (size_t i = 0; i < list.size(); i++)
-        {
+        for (size_t i = 0; static_cast<size_t>(i) < list.size(); i++) {
             result += list[i].display();
-            if (i < list.size() - 1)
+            if (static_cast<size_t>(i) < list.size() - 1)
                 result += " ";
         }
         return "(" + result + ")";
     case VECTOR:
-        for (size_t i = 0; i < list.size(); i++)
-        {
+        for (size_t i = 0; static_cast<size_t>(i) < list.size(); i++) {
             result += list[i].display();
-            if (i < list.size() - 1)
+            if (static_cast<size_t>(i) < list.size() - 1)
                 result += " ";
         }
         return "[" + result + "]";
     case BUILTIN:
         // NOTE: should this print the address of the unique
         // pointer or of the thing it's pointing to?
-        return "{builtin " + str + " at " + String(size_t(&stack_data.builtin)) +
-               "}";
+        return "{builtin " + str + " at " +
+               String(size_t(&stack_data.builtin)) + "}";
     case BUILTIN_METHOD:
         // NOTE: should this print the address of the unique
         // pointer or of the thing it's pointing to?
@@ -721,11 +670,9 @@ String Value::display() const
     }
 }
 
-String Value::to_lisp_src() const
-{
+String Value::to_lisp_src() const {
     String result;
-    switch (type)
-    {
+    switch (type) {
     case NIL:
         return "nil";
     case QUOTE:
@@ -737,8 +684,7 @@ String Value::to_lisp_src() const
     case FLOAT:
         return String(stack_data.f);
     case STRING:
-        for (size_t i = 0; i < str.length(); i++)
-        {
+        for (size_t i = 0; i < str.length(); i++) {
             if (str[i] == '"')
                 result += "\\\"";
             else
@@ -746,26 +692,23 @@ String Value::to_lisp_src() const
         }
         return "\"" + result + "\"";
     case LAMBDA:
-        for (size_t i = 0; i < list.size(); i++)
-        {
+        for (size_t i = 0; static_cast<size_t>(i) < list.size(); i++) {
             result += list[i].to_lisp_src();
-            if (i < list.size() - 1)
+            if (static_cast<size_t>(i) < list.size() - 1)
                 result += " ";
         }
         return "(lambda " + result + ")";
     case LIST:
-        for (size_t i = 0; i < list.size(); i++)
-        {
+        for (size_t i = 0; static_cast<size_t>(i) < list.size(); i++) {
             result += list[i].to_lisp_src();
-            if (i < list.size() - 1)
+            if (static_cast<size_t>(i) < list.size() - 1)
                 result += " ";
         }
         return "(" + result + ")";
     case VECTOR:
-        for (size_t i = 0; i < list.size(); i++)
-        {
+        for (size_t i = 0; static_cast<size_t>(i) < list.size(); i++) {
             result += list[i].to_lisp_src();
-            if (i < list.size() - 1)
+            if (static_cast<size_t>(i) < list.size() - 1)
                 result += " ";
         }
         return "[" + result + "]";
@@ -783,3 +726,5 @@ String Value::to_lisp_src() const
         return "";
     }
 }
+
+#pragma GCC diagnostic pop

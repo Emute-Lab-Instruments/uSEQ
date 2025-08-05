@@ -1,8 +1,10 @@
 #ifndef ARDUINO
 
 #include "uSEQ.h"
-#include "lisp/value.h"
+#include "modulisp/lisp/value.h"
+#ifndef ARDUINO
 #include "hardware_includes.h"
+#endif
 #include <iostream>
 #include <string>
 #include <sstream>

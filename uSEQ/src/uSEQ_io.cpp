@@ -1,6 +1,8 @@
 #include "uSEQ.h"
 #include "utils.h"
+#ifndef ARDUINO
 #include "hardware_includes.h"
+#endif
 
 float pdm_y   = 0;
 float pdm_err = 0;
@@ -497,6 +499,88 @@ void uSEQ::update_inputs()
 
 
 #ifdef ARDUINO
+
+Value uSEQ::useq_swm(std::vector<Value> &args,
+                                    Environment &env) {
+    constexpr const char *user_facing_name = "swm";
+
+    // Checking number of args
+    if (!(args.size() == 0)) {
+        report_error_wrong_num_args(user_facing_name,
+                                    static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 0, 0);
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+    result = Value(m_input_vals[USEQM1]);
+    return result;
+}
+
+Value uSEQ::useq_swt(std::vector<Value> &args,
+                                    Environment &env) {
+    constexpr const char *user_facing_name = "swt";
+
+    // Checking number of args
+    if (!(args.size() == 0)) {
+        report_error_wrong_num_args(user_facing_name,
+                                    static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 0, 0);
+        return Value::error();
+    }
+
+    // BODY
+    Value result = Value::nil();
+    result = Value(m_input_vals[USEQT1]);
+    return result;
+}
+
+
+Value uSEQ::useq_ssin(std::vector<Value> &args,
+                                     Environment &env) {
+    constexpr const char *user_facing_name = "ssin";
+
+    // Checking number of args
+    if (!(args.size() == 1)) {
+        report_error_wrong_num_args(user_facing_name,
+                                    static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 1, 0);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++) {
+        // Eval
+        Value pre_eval = args[i];
+        args[i] = args[i].eval(env);
+        if (args[i].is_error()) {
+            report_error_arg_is_error(user_facing_name, i + 1,
+                                      pre_eval.display());
+            return Value::error();
+        }
+    }
+
+    // Checking individual args
+    if (!(args[0].is_number())) {
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
+        return Value::error();
+    }
+
+    int index = args[0].as_int();
+    Value result = Value::nil();
+    if (index > 0 && index <= m_num_serial_ins) {
+        result = Value(m_serial_input_streams[index - 1]);
+    } else {
+        report_user_warning("(ssin) Received request for index " +
+                            String(index) +
+                            ", which is out of bounds; returning nil.");
+    }
+
+    return result;
+}
+
 int analog_out_LED_pin(int out)
 {
     int res = -1;
@@ -701,6 +785,8 @@ void uSEQ::update_midi_out()
         last_midi_t = t;
     }
 }
+
+
 #endif // end of MIDI OUT SECTION
 
 

@@ -1,7 +1,13 @@
+// Suppress all warnings for this file
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wextra"
+#pragma GCC diagnostic ignored "-Wpedantic"
+
 #include "interpreter.h"
 // #include "lisp/library.cpp"
-#include "../utils.h"
-#include "../utils/log.h"
+#include "../../utils.h"
+#include "../../utils/log.h"
 #include "configure.h"
 #include "environment.h"
 #include "generated_builtins.h"
@@ -76,7 +82,7 @@ Value eval_args(std::vector<Value>& args, Environment& env)
 {
     Value result = Value::nil();
 
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         args[i] = args[i].eval(env);
         if (args[i].is_error())
@@ -109,12 +115,12 @@ Value eval_args(std::vector<Value>& args, Environment& env)
 //     // throw Error(Value("print", print), env, TOO_FEW_ARGS);
 
 //     Value acc;
-//     for (size_t i = 0; i < args.size(); i++)
+//     for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
 //     {
 //         acc = args[i];
 //         Serial.print(acc.display().c_str());
 //         // std::cout << acc.display();
-//         if (i < args.size() - 1)
+//         if (static_cast<size_t>(i) < args.size() - 1)
 //             // std::cout << " ";
 //             Serial.print(" ");
 //     }
@@ -162,7 +168,7 @@ Value map_list(std::vector<Value>& args, Environment& env)
     eval_args(args, env);
 
     std::vector<Value> result, l = args[1].as_list(), tmp;
-    for (size_t i = 0; i < l.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
     {
         tmp.push_back(l[i]);
         result.push_back(args[0].apply(tmp, env));
@@ -177,7 +183,7 @@ Value filter_list(std::vector<Value>& args, Environment& env)
     eval_args(args, env);
 
     std::vector<Value> result, l = args[1].as_list(), tmp;
-    for (size_t i = 0; i < l.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
     {
         tmp.push_back(l[i]);
         if (args[0].apply(tmp, env).as_bool())
@@ -194,7 +200,7 @@ Value reduce_list(std::vector<Value>& args, Environment& env)
 
     std::vector<Value> l = args[2].as_list(), tmp;
     Value acc            = args[1];
-    for (size_t i = 0; i < l.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
     {
         tmp.push_back(acc);
         tmp.push_back(l[i]);
@@ -235,21 +241,28 @@ Value range(std::vector<Value>& args, Environment& env)
     return Value::vector(result);
 }
 
+#ifdef ARDUINO
 BUILTINFUNC(ard_digitalWrite, int pinNumber = args[0].as_int();
             int onOff = args[1].as_int(); 
-#ifdef ARDUINO
             digitalWrite(pinNumber, onOff);
-#endif
-            ret       = args[0];, 2)
-
-BUILTINFUNC(ard_digitalRead, int pinNumber = args[0].as_int();
-#ifdef ARDUINO
-            int val = digitalRead(pinNumber); ret = Value(val);
+            ret = args[0];, 2)
 #else
-            ret = Value(0); // Stub for desktop
+BUILTINFUNC(ard_digitalWrite, int pinNumber = args[0].as_int();
+            int onOff = args[1].as_int(); 
+            (void)pinNumber; (void)onOff;
+            ret = args[0];, 2)
 #endif
-            , 1)
 
+#ifdef ARDUINO
+BUILTINFUNC(ard_digitalRead, int pinNumber = args[0].as_int();
+            int val = digitalRead(pinNumber); ret = Value(val);, 1)
+#else
+BUILTINFUNC(ard_digitalRead, int pinNumber = args[0].as_int();
+            (void)pinNumber;
+            ret = Value(0);, 1)
+#endif
+
+#ifdef ARDUINO
 BUILTINFUNC(useq_perf, String report = "fps0: ";
             report += env.get("fps").value().as_float();
             // report += ", fps1: ";
@@ -271,13 +284,35 @@ BUILTINFUNC(useq_perf, String report = "fps0: ";
             // report += ", ts1: ";
             // report += env.get("perf_ts1").as_float();
             report += ", heap free: ";
-#ifdef ARDUINO
             report += rp2040.getFreeHeap() / 1024;
-#else
-            report += 0; // Stub for desktop
-#endif
             ::println(report); ret = Value();
             , 0)
+#else
+BUILTINFUNC(useq_perf, String report = "fps0: ";
+            report += env.get("fps").value().as_float();
+            // report += ", fps1: ";
+            // report += env.get("perf_fps1").as_int();
+            report += ", qt: ";
+            report += env.get("qt").value().as_float();
+            // report += ", in: ";
+            // report += env.get("perf_in").as_int();
+            // report += ", upd_tm: ";
+            // report += env.get("perf_time").as_int();
+            // report += ", out: ";
+            // report += env.get("perf_out").as_int();
+            // report += ", get: ";
+            // report += env.get("perf_get").as_float();
+            // report += ", parse: ";
+            // report += env.get("perf_parse").as_float();
+            // report += ", run: ";
+            // report += env.get("perf_run").as_float();
+            // report += ", ts1: ";
+            // report += env.get("perf_ts1").as_float();
+            report += ", heap free: ";
+            report += 0; // Stub for desktop
+            ::println(report); ret = Value();
+            , 0)
+#endif
 
 } // namespace builtin
 
@@ -299,7 +334,7 @@ BUILTINFUNC(
 
 void Interpreter::eval_args(std::vector<Value>& args, Environment& env)
 {
-    for (size_t i = 0; i < args.size(); i++)
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
         args[i] = Interpreter::eval_in(args[i], env);
         if (args[i].is_error())
@@ -441,7 +476,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
             if (!function.is_builtin())
             {
                 dbg("(list) NOT builtin, evalling args...");
-                for (size_t i = 0; i < args.size(); i++)
+                for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
                 {
                     Value expr       = args[i];
                     Value evaled_arg = eval_in(expr, env);
@@ -810,5 +845,7 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs["dw"] = Value("dw", builtin::ard_digitalWrite);
     Environment::builtindefs["dr"] = Value("dr", builtin::ard_digitalRead);
 }
+
+#pragma GCC diagnostic pop
 
 // #endif

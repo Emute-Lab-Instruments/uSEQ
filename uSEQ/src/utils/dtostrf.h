@@ -38,6 +38,7 @@ extern "C"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
         char fmt[20];
         sprintf(fmt, "%%%d.%df", width, prec);
         sprintf(sout, fmt, val);

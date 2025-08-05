@@ -8,16 +8,19 @@
 /* #define USEQHARDWARE_0_1 */
 
 // #define USEQHARDWARE_0_2
-//#define USEQHARDWARE_1_0  
-//#define USEQHARDWARE_EXPANDER_OUT_0_1
-#define MUSICTHING
+// #define USEQHARDWARE_1_0
+// #define USEQHARDWARE_EXPANDER_OUT_0_1
+/* #define MUSICTHING */
+#define DESKTOP
 
 #ifdef MUSICTHING
 #define DIGI_OUT_INVERTED
 #endif
 
 // NOTE: this needs to be included after the above define
+#ifdef ARDUINO
 #include "pinmap.h"
+#endif
 
 #define NUM_SERIAL_INS 32
 #define NUM_SERIAL_OUTS 8
@@ -48,8 +51,7 @@
 #define BINARY_INPUT_VALUE_TYPE int
 #define MISC_INPUT_VALUE_TYPE int
 
-enum useqInputNames
-{
+enum useqInputNames {
     // signals
     USEQI1 = 0,
     USEQI2 = 1,
@@ -61,15 +63,15 @@ enum useqInputNames
     USEQT2 = 5,
     // rotary enoder
     USEQRS1 = 6, // switch
-    USEQR1  = 7, // encoder
+    USEQR1 = 7,  // encoder
                  // analog ins
     USEQAI1 = 8,
     USEQAI2 = 9,
     //
     MTMAINKNOB = 10,
-    MTXKNOB    = 11,
-    MTYKNOB    = 12,
-    MTZSWITCH  = 13,
+    MTXKNOB = 11,
+    MTYKNOB = 12,
+    MTZSWITCH = 13,
 };
 
 #endif // CONFIGURE_H_

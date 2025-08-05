@@ -1,10 +1,10 @@
 #ifndef VALUE_H_
 #define VALUE_H_
 
-#include "../utils/error_messages.h"
-#include "../utils/flags.h"
-#include "../utils/log.h"
-#include "../utils/string.h"
+#include "../../utils/error_messages.h"
+#include "../../utils/flags.h"
+#include "../../utils/log.h"
+#include "../../utils/string.h"
 #include <functional>
 #include <memory>
 #include <optional>
@@ -16,17 +16,20 @@ class Value;
 
 // A builtin method is just a native C(++) function
 // TODO should this be a vector to (shared?) pointers?
-using ValueVec        = std::vector<Value>;
+using ValueVec = std::vector<Value>;
 using LispFuncArgsVec = ValueVec;
-using ValuePtr        = std::shared_ptr<Value>;
-using BuiltinFunc     = std::function<Value(LispFuncArgsVec&, Environment&)>;
+using ValuePtr = std::shared_ptr<Value>;
+using BuiltinFunc = std::function<Value(LispFuncArgsVec &, Environment &)>;
 // using BuiltinFuncSharedPtr = std::shared_ptr<BuiltinFunc>;
 // using BuiltinFuncSharedPtr = std::shared_ptr<BuiltinFunc>;
 // using BuiltinFunc = Value (*)(std::vector<Value>&, Environment&);
-using BuiltinFuncRawPtr = Value (*)(std::vector<Value>&, Environment&);
+using BuiltinFuncRawPtr = Value (*)(std::vector<Value> &, Environment &);
 
 class uSEQ;
-using uSEQ_Method_Ptr = Value (uSEQ::*)(std::vector<Value>&, Environment&);
+using uSEQ_Method_Ptr = Value (uSEQ::*)(std::vector<Value> &, Environment &);
+
+class ModuLispInterpreter;
+using ModuLispInterpreter_Method_Ptr = Value (ModuLispInterpreter::*)(std::vector<Value> &, Environment &);
 
 // using LambdaScopeEnv = Environment<32>;
 
@@ -36,9 +39,8 @@ using uSEQ_Method_Ptr = Value (uSEQ::*)(std::vector<Value>&, Environment&);
 #define VALUE_FAST_MEM // Empty for desktop builds
 #endif
 
-class Value
-{
-public:
+class Value {
+  public:
     ////////////////////////////////////////////////////////////////////////////////
     /// CONSTRUCTORS
     /// ///////////////////////////////////////////////////////////////
@@ -54,11 +56,12 @@ public:
     // Constructs a floating point value
     Value(double f) : type(FLOAT) { stack_data.f = f; }
     // Constructs a list
-    Value(std::vector<Value> list) : type(LIST), list(list) {}
+    Value(std::vector<Value> list_param) : type(LIST), list(list_param) {}
     // Constructs a named function that corresponds to a native C/C++ Lisp
     // function
     Value(String name, BuiltinFuncRawPtr ptr);
     Value(String name, uSEQ_Method_Ptr);
+    Value(String name, ModuLispInterpreter_Method_Ptr);
     // Value(String name, BuiltinFunc f);
     // Value(String name, RawBuiltinFuncPtr ptr);
 
@@ -96,12 +99,12 @@ public:
     // static Value list(std::vector<Value> lst);
     static Value VALUE_FAST_MEM vector(std::vector<Value> vec);
 
-    Value(std::vector<Value> params, Value ret, const Environment& env);
+    Value(std::vector<Value> params, Value ret, const Environment &env);
 
     std::set<String> get_used_atoms() const;
 
-    Value apply(std::vector<Value>& args, Environment& env);
-    Value eval(Environment& env);
+    Value apply(std::vector<Value> &args, Environment &env);
+    Value eval(Environment &env);
 
     bool is_builtin() const;
     bool is_nil() const;
@@ -158,7 +161,7 @@ public:
     Value operator/(Value other) const;
     Value operator%(Value other) const;
 
-    bool operator==(const String& str) const;
+    bool operator==(const String &str) const;
 
     // Get the name of the type of this value
     String get_type_name() const;
@@ -170,8 +173,7 @@ public:
     //   return os << v.display();
     // }
 
-    enum
-    {
+    enum {
         QUOTE,
         ATOM,
         INT,
@@ -182,6 +184,7 @@ public:
         LAMBDA,
         BUILTIN,
         BUILTIN_METHOD,
+        BUILTIN_MODULISP_METHOD,
         UNIT,
         NIL,
         SIGNAL,
@@ -189,12 +192,12 @@ public:
     } type;
 
     // private:
-    union
-    {
+    union {
         int i;
         double f;
         BuiltinFuncRawPtr builtin;
         uSEQ_Method_Ptr builtin_method;
+        ModuLispInterpreter_Method_Ptr builtin_modulisp_method;
     } stack_data;
 
     String str;

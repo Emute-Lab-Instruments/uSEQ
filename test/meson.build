@@ -29,17 +29,17 @@ test_common_src = [
   '../uSEQ/src/utils.h',
   '../uSEQ/src/utils.cpp',
   # LISP
-  '../uSEQ/src/lisp/parser.h',
-  '../uSEQ/src/lisp/parser.cpp',
-  '../uSEQ/src/lisp/value.h',
-  '../uSEQ/src/lisp/value.cpp',
-  '../uSEQ/src/lisp/environment.h',
-  '../uSEQ/src/lisp/environment.cpp',
-  '../uSEQ/src/lisp/interpreter.h',
-  '../uSEQ/src/lisp/interpreter.cpp',
-  '../uSEQ/src/lisp/configure.h',
-  '../uSEQ/src/lisp/generated_builtins.h',
-  '../uSEQ/src/lisp/generated_builtins.cpp',
+  '../uSEQ/src/modulisp/lisp/parser.h',
+  '../uSEQ/src/modulisp/lisp/parser.cpp',
+  '../uSEQ/src/modulisp/lisp/value.h',
+  '../uSEQ/src/modulisp/lisp/value.cpp',
+  '../uSEQ/src/modulisp/lisp/environment.h',
+  '../uSEQ/src/modulisp/lisp/environment.cpp',
+  '../uSEQ/src/modulisp/lisp/interpreter.h',
+  '../uSEQ/src/modulisp/lisp/interpreter.cpp',
+  '../uSEQ/src/modulisp/lisp/configure.h',
+  '../uSEQ/src/modulisp/lisp/generated_builtins.h',
+  '../uSEQ/src/modulisp/lisp/generated_builtins.cpp',
 ]
 
 # Test compiler arguments (similar to standalone)

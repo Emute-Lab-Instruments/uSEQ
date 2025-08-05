@@ -1,3 +1,7 @@
+;; DEPRECATED: This script is no longer used for code generation.
+;; The generated files should be maintained manually instead.
+;; Please do not run this script as it may overwrite current implementations.
+
 ;; RULES
 ;; TODO 1. evaluate args, unless told not to
 ;; TODO 2. Create a return value that defaults to Value::nil();

@@ -43,6 +43,7 @@ char* itoa(int value, char* str, int radix)
 {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     sprintf(str, radixToFmtString(radix).c_str(), value);
 #pragma GCC diagnostic pop
     return str;
@@ -52,6 +53,7 @@ char* ltoa(long value, char* str, int radix)
 {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     sprintf(str, radixToFmtString(radix).c_str(), value);
 #pragma GCC diagnostic pop
     return str;
@@ -61,6 +63,7 @@ char* utoa(unsigned value, char* str, int radix)
 {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     sprintf(str, radixToFmtString(radix).c_str(), value);
 #pragma GCC diagnostic pop
     return str;
@@ -70,6 +73,7 @@ char* ultoa(unsigned long value, char* str, int radix)
 {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     sprintf(str, radixToFmtString(radix).c_str(), value);
 #pragma GCC diagnostic pop
     return str;

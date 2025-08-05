@@ -1,7 +1,9 @@
 #ifdef ARDUINO
 
 #include "uSEQ.h"
+#ifndef ARDUINO
 #include "hardware_includes.h"
+#endif
 #include "utils.h"
 
 // Define flash constants if not already defined
@@ -102,10 +104,7 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_autoload_flash,
                           autoload_flash();
                           , 0)
 
-// BUILTINFUNC_NOEVAL_MEMBER(useq_rewind_logical_time,
-//                           //
-//                           reset_logical_time();
-//                           , 0)
+// NOTE: This function was moved to ModuLispInterpreter
 
 // NOTE: only these are meant for user interface
 BUILTINFUNC_MEMBER(
@@ -132,29 +131,13 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_memory_erase, //
 //                           clear_all_outputs();
 //                           println("All outputs cleared.");, 0)
 
-// void uSEQ::clear_all_outputs()
-// {
-//     for (int i = 0; i < m_continuous_ASTs.size(); i++)
-//     {
-//         String name          = "a" + String(i + 1);
-//         m_continuous_ASTs[i] = default_continuous_expr;
-//         m_def_exprs.erase(name);
-//     }
+// NOTE: clear_all_outputs() was moved to uSEQ_api.cpp
 
 //     for (int i = 0; i < m_binary_ASTs.size(); i++)
 //     {
 //         String name      = "d" + String(i + 1);
 //         m_binary_ASTs[i] = default_binary_expr;
-//         m_def_exprs.erase(name);
-//     }
-
-//     for (int i = 0; i < m_serial_ASTs.size(); i++)
-//     {
-//         String name      = "s" + String(i + 1);
-//         m_serial_ASTs[i] = default_serial_expr;
-//         m_def_exprs.erase(name);
-//     }
-// }
+// NOTE: clear_all_outputs() implementation was moved to uSEQ_api.cpp
 
 void uSEQ::set_my_id(int num)
 {
@@ -426,7 +409,7 @@ void uSEQ::load_flash_env()
         }
     }
 
-    for (int i = 0; i < m_continuous_ASTs.size(); i++)
+    for (int i = 0; static_cast<size_t>(i) < m_continuous_ASTs.size(); i++)
     {
         String name               = "a" + String(i + 1);
         std::optional<Value> expr = get_expr(name);
@@ -441,7 +424,7 @@ void uSEQ::load_flash_env()
         }
     }
 
-    for (int i = 0; i < m_binary_ASTs.size(); i++)
+    for (int i = 0; static_cast<size_t>(i) < m_binary_ASTs.size(); i++)
     {
         String name               = "d" + String(i + 1);
         std::optional<Value> expr = get_expr(name);
@@ -456,7 +439,7 @@ void uSEQ::load_flash_env()
         }
     }
 
-    for (int i = 0; i < m_serial_ASTs.size(); i++)
+    for (int i = 0; static_cast<size_t>(i) < m_serial_ASTs.size(); i++)
     {
         String name               = "s" + String(i + 1);
         std::optional<Value> expr = get_expr(name);

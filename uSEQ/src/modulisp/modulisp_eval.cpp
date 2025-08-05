@@ -1,18 +1,15 @@
-#include "uSEQ.h"
+#include "modulisp.h"
 
-
-
-Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "eval-at-time";
+Value ModuLispInterpreter::useq_eval_at_time(std::vector<Value> &args,
+                                             Environment &env) {
+    constexpr const char *user_facing_name = "eval-at-time";
 
     // Checking number of args
     // if (!(2 <= args.size() <= 3))
-    if (!(args.size() == 2))
-    {
-        // error_wrong_num_args(user_facing_name, args.size(),
+    if (!(args.size() == 2)) {
+        // error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
         //                      NumArgsComparison::Between, 2, 3);
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
@@ -23,16 +20,14 @@ Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
     //
     // Evaluating & checking args for errors
     Value pre_eval = args[0];
-    args[0]        = args[0].eval(env);
-    if (args[0].is_error())
-    {
+    args[0] = args[0].eval(env);
+    if (args[0].is_error()) {
         report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
         return Value::error();
     }
 
     // Checking individual args
-    if (!(args[0].is_number()))
-    {
+    if (!(args[0].is_number())) {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
                                          args[0].display());
         return Value::error();
@@ -45,24 +40,21 @@ Value uSEQ::useq_eval_at_time(std::vector<Value>& args, Environment& env)
     return eval_at_time(args[1], env, time);
 }
 
-
-Value uSEQ::eval_at_time(Value& expr, Environment& env, TimeValue time_micros)
-{
+Value ModuLispInterpreter::eval_at_time(Value &expr, Environment &env,
+                                        TimeValue time_micros) {
 
     // Prepare new env with appropriate time vars
     // and current env as parent
 
-    Environment new_env = make_env_for_time(time_micros);
-    
+    Environment new_env = this->make_env_for_time(time_micros);
+
     new_env.set_parent_scope(&env);
     // Eval in new env
     Value result = Interpreter::eval_in(expr, new_env);
     return result;
 }
 
-
-Environment uSEQ::make_env_for_time(TimeValue t_micros)
-{
+Environment ModuLispInterpreter::make_env_for_time(TimeValue t_micros) {
     Environment env;
 
     // TimeValue time_s = m_time_since_boot * 1e-6;
@@ -80,8 +72,8 @@ Environment uSEQ::make_env_for_time(TimeValue t_micros)
     return env;
 }
 
-Environment uSEQ::make_env_with_updated_time_durs(const Environment& parent_env, TimeValue factor)
-{
+Environment ModuLispInterpreter::make_env_with_updated_time_durs(
+    const Environment &parent_env, TimeValue factor) {
     Environment env;
 
     TimeValue current_beat_dur = parent_env.get("beat-dur").value().as_float();

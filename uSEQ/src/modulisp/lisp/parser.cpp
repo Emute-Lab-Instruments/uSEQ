@@ -4,7 +4,7 @@
 const String uLispParser::unescape(const String str)
 {
     String result = "";
-    for (int i = 0; i < str.length(); i++)
+    for (unsigned int i = 0; i < str.length(); i++)
     {
         if (str[i] == '\\' && i + 1 < str.length())
         {
@@ -255,7 +255,7 @@ Value uLispParser::parse(String code)
 
     // println("Parse: ");
     // println(code);
-    // for (int i = 0; i < code.length(); i++)
+    // for (unsigned int i = 0; i < code.length(); i++)
     // {
     //     println(String((uint)code[i]));
 

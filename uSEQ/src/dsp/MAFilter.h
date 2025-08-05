@@ -43,19 +43,19 @@ public:
         }
 
         // Calculate and return the moving average
-        return sum_ / filterSize_;
+        return sum_ / static_cast<double>(filterSize_);
     }
 
     double std() {
         double sum = std::accumulate(std::begin(circularBuffer_), std::end(circularBuffer_), 0.0);
-        double m =  sum / circularBuffer_.size();
+        double m =  sum / static_cast<double>(circularBuffer_.size());
 
         double accum = 0.0;
         std::for_each (std::begin(circularBuffer_), std::end(circularBuffer_), [&](const double d) {
             accum += (d - m) * (d - m);
         });
 
-        return sqrt(accum / (circularBuffer_.size()-1));
+        return sqrt(accum / static_cast<double>(circularBuffer_.size()-1));
     }
 
 private:

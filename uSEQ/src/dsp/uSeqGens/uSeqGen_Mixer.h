@@ -55,14 +55,14 @@ public:
     }
     
     void muteInput(size_t inputIndex, bool mute) {
-        if (inputIndex < muteStates.size()) {
+        if (static_cast<size_t>(inputIndex) < muteStates.size()) {
             muteStates[inputIndex] = mute;
         }
     }
     
     float getMasterGain() const { return masterGain; }
     bool isInputMuted(size_t inputIndex) const {
-        return (inputIndex < muteStates.size()) ? muteStates[inputIndex] : true;
+        return (static_cast<size_t>(inputIndex) < muteStates.size()) ? muteStates[inputIndex] : true;
     }
 
 protected:

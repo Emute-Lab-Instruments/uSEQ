@@ -1,5 +1,7 @@
 #include "uSEQ.h"
+#ifndef ARDUINO
 #include "hardware_includes.h"
+#endif
 #include "utils.h"
 
 Value uSEQ::useq_i2c_send_to(std::vector<Value>& args, Environment& env)
@@ -8,7 +10,7 @@ Value uSEQ::useq_i2c_send_to(std::vector<Value>& args, Environment& env)
 
     if (!(args.size() == 2))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 2, -1);
         return Value::error();
     }
@@ -64,7 +66,7 @@ Value uSEQ::useq_i2c_host_start(std::vector<Value>& args, Environment& env)
 
     if (!(args.size() == 0))
     {
-        report_error_wrong_num_args(user_facing_name, args.size(),
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 0, -1);
         return Value::error();
     }

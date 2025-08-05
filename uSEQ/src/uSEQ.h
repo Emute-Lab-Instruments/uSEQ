@@ -1,46 +1,46 @@
 #ifndef USEQ_H_
 #define USEQ_H_
 
+// Suppress all warnings for this header
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wextra"
+#pragma GCC diagnostic ignored "-Wpedantic"
+
 #define USEQ_FIRMWARE_VERSION "1.2.0"
 
 #include "dsp/tempoEstimator.h"
 // #include "dsp/MAFilter.h"
 #include "dsp/MedianFilter.h"
-#include "lisp/interpreter.h"
-#include "lisp/macros.h"
-#include "lisp/value.h"
+#ifndef ARDUINO
+#include "hardware_includes.h"
+#endif
+#include "modulisp/lisp/macros.h"
+#include "modulisp/lisp/value.h"
+#include "modulisp/modulisp.h"
+#include "uSEQ/board.h"
 #include "uSEQ/configure.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <sys/types.h>
-#include "uSEQ/board.h"
-#include "hardware_includes.h"
 
 #ifdef ARDUINO
 #include "dsp/dsp-engine.hpp"
 #endif
 
-
+#ifndef ARDUINO
+#define NUM_CONTINUOUS_OUTS 3
+#define NUM_BINARY_OUTS (6 - NUM_CONTINUOUS_OUTS)
+#endif
 // #include "utils/serial_message.h"
 
-#define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
-#define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
-#define LISP_FUNC_RETURN_TYPE Value
-#define LISP_FUNC_TYPE LISP_FUNC_RETURN_TYPE(LISP_FUNC_ARGS_TYPE)
-// For declaring builtin functions as class members
-#define LISP_FUNC_DECL(__name__)  LISP_FUNC_RETURN_TYPE __name__(LISP_FUNC_ARGS)
-
-using TimeValue  = double;
-using PhaseValue = double;
-
-class maxiFilter
-{
-private:
-    double z      = 0;
+class maxiFilter {
+  private:
+    double z = 0;
     double output = 0;
 
-public:
+  public:
     maxiFilter() {}
 #ifdef ARDUINO
     double __force_inline lopass(double input, double cutoff);
@@ -49,9 +49,8 @@ public:
 #endif
 };
 
-class uSEQ : public Interpreter
-{
-public:
+class uSEQ : public ModuLispInterpreter {
+  public:
     uSEQ() {}
 
 #ifdef ARDUINO
@@ -64,12 +63,7 @@ public:
 
     void start_loop_blocking();
     void tick();
-    void update_logical_time_variables(TimeValue);
 
-    // NOTE: this should probably be considered
-    // part of the interpreter instead
-    Value eval_at_time(Value&, Environment&, double);
-    
 #ifdef ARDUINO
     void write_flash_env();
     void load_flash_env();
@@ -82,19 +76,14 @@ public:
 
     double delme = 928.22234;
 
-    static uSEQ* instance;
+    static uSEQ *instance;
     void set_input_val(size_t index, double value);
 
-    enum CLOCK_SOURCES
-    {
-        INTERNAL = 0,
-        EXTERNAL_I1,
-        EXTERNAL_I2
-    };
+    enum CLOCK_SOURCES { INTERNAL = 0, EXTERNAL_I1, EXTERNAL_I2 };
 
     uSEQ::CLOCK_SOURCES getClockSource() { return useq_clock_source; }
 
-private:
+  private:
     // IO m_io;
 
     //     std::vector<Output> m_outputs;
@@ -104,21 +93,20 @@ private:
     // dynamically adding/removing outputs
     // when running in virtual mode
     uint m_num_continuous_outs = NUM_CONTINUOUS_OUTS;
-    uint m_num_binary_outs     = NUM_BINARY_OUTS;
-    uint m_num_serial_outs     = NUM_SERIAL_OUTS;
+    uint m_num_binary_outs = NUM_BINARY_OUTS;
+    uint m_num_serial_outs = NUM_SERIAL_OUTS;
     // uint m_num_continuous_ins  = NUM_CONTINUOUS_INS;
     // uint m_num_binary_ins      = NUM_BINARY_INS;
     uint m_num_serial_ins = NUM_SERIAL_INS;
 
     // Flags
-    bool m_initialised        = false;
-    bool m_should_quit        = false;
+    bool m_initialised = false;
+    bool m_should_quit = false;
     bool m_current_expr_sound = true;
     bool m_waiting_for_sync_trigger = false;
 
     //// OUTPUTS
     // Output forms
-    Value m_q0AST;
 
     std::vector<Value> m_continuous_ASTs;
     std::vector<SERIAL_OUTPUT_VALUE_TYPE> m_continuous_vals;
@@ -135,73 +123,18 @@ private:
 
     // Timing (NOTE: in micros)
     // actual time that module has been running for
-    u_int8_t m_overflow_counter            = 0;
-    size_t m_micros_raw                    = 0;
-    size_t m_micros_raw_last               = 0.0;
-    TimeValue m_time_since_boot            = 0.0;
-    TimeValue m_last_known_time_since_boot = -1;
-    // time /of/ last "transport" reset by user
-    TimeValue m_last_transport_reset_time = 0.0;
-    // time /since/ last "transport" reset by user
-    TimeValue m_transport_time = 0.0;
-    TimeValue m_transport_time_offset = 0.0;
-    // last known transport time
-    TimeValue m_last_transport_time = 0.0;
-
-    // Durations (NOTE: in micros)
-    TimeValue m_beat_length    = 0.0;
-    TimeValue m_bar_length     = 0.0;
-    TimeValue m_phrase_length  = 0.0;
-    TimeValue m_section_length = 0.0;
-    uint32_t m_current_beat_num = 0;
-    uint32_t m_current_bar_num = 0;
-    // Normalised phasors
-    PhaseValue m_beat_phase    = 0.0;
-    PhaseValue m_bar_phase     = 0.0;
-    PhaseValue m_phrase_phase  = 0.0;
-    PhaseValue m_section_phase = 0.0;
-
-    PhaseValue beat_at_time(TimeValue);
-    uint32_t beat_num_at_time(TimeValue);
-    PhaseValue bar_at_time(TimeValue);
-    uint32_t bar_num_at_time(TimeValue);
-    PhaseValue phrase_at_time(TimeValue);
-    PhaseValue section_at_time(TimeValue);
-
-    double simple_hashing_function(uint32_t);
-
-    // Meter
-    double meter_numerator   = 4;
-    double meter_denominator = 4;
-
-    // TODO: better to have custom specified long phasors e.g. (addPhasor phasorName
-    // (lambda () (beats * 17)))
-    // - to be stored in std::map<String, Double[2]>
-    double m_bars_per_phrase     = 16;
-    double m_phrases_per_section = 16;
-
-    // BPM
-    double m_defaultBPM = 130;
-    double m_bpm        = m_defaultBPM;
-    void set_bpm(double newBpm, double changeThreshold);
-    void update_bpm_variables();
 
 #ifdef ARDUINO
-    //queue and dsp
+    // queue and dsp
     std::array<String, N_OUTPUT_QUEUES> dsp_output_names;
     void check_dsp_output_queues();
 #endif
-
 
     //// UPDATE methods
     // main user interaction logic
     void check_and_handle_user_input();
     void update_inputs();
     // timing-related stuff
-    void update_time();
-    void reset_logical_time();
-    void update_logical_time(TimeValue);
-    void update_lisp_time_variables();
 
     // updating the (cached) outputs of stored forms
     void update_signals();
@@ -213,25 +146,21 @@ private:
     void update_continuous_outs();
     void update_binary_outs();
     void update_serial_outs();
-    void update_Q0();
 
     CLOCK_SOURCES useq_clock_source = CLOCK_SOURCES::INTERNAL;
-    struct ext_clock_tracking
-    {
+    struct ext_clock_tracking {
         size_t beat_count = 0;
-        size_t bar_count  = 0;
-        size_t count      = 0;
-        size_t div        = 1;
+        size_t bar_count = 0;
+        size_t count = 0;
+        size_t div = 1;
     } ext_clock_tracker;
 
-    void reset_ext_tracking()
-    {
+    void reset_ext_tracking() {
         ext_clock_tracker.beat_count = ext_clock_tracker.bar_count =
-            ext_clock_tracker.count  = 0;
+            ext_clock_tracker.count = 0;
     }
 
-    void set_ext_clock_div(size_t val)
-    {
+    void set_ext_clock_div(size_t val) {
         ext_clock_tracker.div = val;
         reset_ext_tracking();
     }
@@ -239,17 +168,10 @@ private:
     unsigned long serial_out_timestamp = 0;
 
     Value default_continuous_expr = Value::nil();
-    Value default_binary_expr     = Value::nil();
-    Value default_serial_expr     = Value::nil();
+    Value default_binary_expr = Value::nil();
+    Value default_serial_expr = Value::nil();
 
     String m_last_received_code = "";
-
-    LISP_FUNC_DECL(useq_eval_at_time);
-
-    // time nudging
-    LISP_FUNC_DECL(useq_nudge_time);
-    LISP_FUNC_DECL(useq_set_time_offset);
-
 
     // expr-updating methods
     // a
@@ -281,7 +203,7 @@ private:
     LISP_FUNC_DECL(useq_s7);
     LISP_FUNC_DECL(useq_s8);
 
-    //echoed output values
+    // echoed output values
     LISP_FUNC_DECL(useq_get_a1);
     LISP_FUNC_DECL(useq_get_a2);
     LISP_FUNC_DECL(useq_get_a3);
@@ -309,18 +231,7 @@ private:
     // LISP_FUNC_DECL(useq_get_s7);
     // LISP_FUNC_DECL(useq_get_s8);
 
-
-    // Manipulating time
-    LISP_FUNC_DECL(useq_slow);
-    LISP_FUNC_DECL(useq_fast);
-    LISP_FUNC_DECL(useq_offset_time);
-
-    LISP_FUNC_DECL(useq_schedule);
-    LISP_FUNC_DECL(useq_unschedule);
-
-    LISP_FUNC_DECL(useq_setbpm);
     LISP_FUNC_DECL(useq_get_input_bpm);
-    LISP_FUNC_DECL(useq_set_time_sig);
 
     LISP_FUNC_DECL(useq_in1);
     LISP_FUNC_DECL(useq_in2);
@@ -340,39 +251,12 @@ private:
     LISP_FUNC_DECL(useq_mt_swz);
 #endif
 
-    LISP_FUNC_DECL(useq_ssin);
-    LISP_FUNC_DECL(useq_swm);
-    LISP_FUNC_DECL(useq_swt);
-    LISP_FUNC_DECL(useq_toggle_pick);
-    LISP_FUNC_DECL(useq_swr);
-    LISP_FUNC_DECL(useq_rot);
-
     LISP_FUNC_DECL(useq_q0);
 
-    LISP_FUNC_DECL(useq_dm);
-    LISP_FUNC_DECL(useq_gates);
-    LISP_FUNC_DECL(useq_gatesw);
-    LISP_FUNC_DECL(useq_trigs);
-    LISP_FUNC_DECL(useq_euclidean);
-    LISP_FUNC_DECL(useq_eu);
-
-    LISP_FUNC_DECL(useq_ratiotrig);
-    LISP_FUNC_DECL(useq_ratiostep);
-    LISP_FUNC_DECL(useq_ratioindex);
-    LISP_FUNC_DECL(useq_ratiowarp);
-
-    LISP_FUNC_DECL(useq_phasor_offset);
-
-    LISP_FUNC_DECL(useq_flatten);
-    LISP_FUNC_DECL(useq_step);
-    LISP_FUNC_DECL(useq_fromList);
-    LISP_FUNC_DECL(useq_fromFlattenedList);
-    LISP_FUNC_DECL(useq_seq);
-    LISP_FUNC_DECL(useq_flatseq);
-    LISP_FUNC_DECL(useq_interpolate);
-
+#ifdef ARDUINO
     LISP_FUNC_DECL(ard_useqaw);
     LISP_FUNC_DECL(ard_useqdw);
+#endif
 
 #ifdef ARDUINO
     LISP_FUNC_DECL(useq_load_flash_info);
@@ -392,33 +276,23 @@ private:
 #endif
 
     LISP_FUNC_DECL(useq_stop_all);
-    LISP_FUNC_DECL(useq_rewind_logical_time);
 
     LISP_FUNC_DECL(useq_firmware_info);
     LISP_FUNC_DECL(useq_report_firmware_info);
-
-    LISP_FUNC_DECL(useq_tri);
 
     // i2c
     LISP_FUNC_DECL(useq_i2c_host_start);
     LISP_FUNC_DECL(useq_i2c_send_to);
 
-
-    LISP_FUNC_DECL(useq_random);
-    LISP_FUNC_DECL(useq_index_rand);
-
-    LISP_FUNC_DECL(useq_loop_at_time);
-    
 #ifdef ARDUINO
     LISP_FUNC_DECL(useq_enter_bootloader_mode);
 #endif
-    
+
     // SYNCING FUNCTIONS
+#ifdef ARDUINO
     LISP_FUNC_DECL(useq_enter_sync_mode);
     LISP_FUNC_DECL(useq_send_sync_trigger);
-
-    
-
+#endif
 
     void clear_all_outputs();
 #ifdef ARDUINO
@@ -431,32 +305,6 @@ private:
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
     void serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val);
 
-    void set_time_sig(double, double);
-
-    std::vector<Value> m_runQueue;
-    Value m_cqpAST = parse("bar");
-
-    struct scheduledItem
-    {
-        //    Value statement;
-        Value ast;
-        size_t period;
-        size_t lastRun;
-        String id;
-    };
-
-    std::vector<scheduledItem> m_scheduledItems;
-    // SCHEDULED ITEMS
-    void run_scheduled_items();
-
-    void check_code_quant_phasor();
-
-    double m_last_CQP;
-
-    // performance
-    int ts          = 0;
-    int updateSpeed = 0;
-
 #ifdef MIDIOUT
     void update_midi_out();
     std::map<int, Value> useqMDOMap;
@@ -466,7 +314,6 @@ private:
 
     // INIT
     void init_ASTs();
-    void init_builtinfuncs();
 
     // SETUP
     void setup_IO();
@@ -487,34 +334,31 @@ private:
     void setup_digital_ins();
     void led_animation();
     static constexpr u_int8_t m_serial_stream_begin_marker = 31;
-    static constexpr char m_execute_now_marker             = '@';
-
-    Environment make_env_for_time(TimeValue);
-
-    Environment make_env_with_updated_time_durs(const Environment&, TimeValue);
+    static constexpr char m_execute_now_marker = '@';
 
 #ifdef ARDUINO
     void load_flash_info();
     void write_flash_info();
     void reset_flash_env_var_info();
 
-    int m_my_id          = -1;
+    int m_my_id = -1;
     bool m_is_env_stored = false;
 
-    uintptr_t m_FLASH_ENV_SECTOR_SIZE         = 0;
-    uintptr_t m_FLASH_ENV_DEFS_SIZE           = 0;
-    uintptr_t m_FLASH_ENV_EXPRS_SIZE          = 0;
+    uintptr_t m_FLASH_ENV_SECTOR_SIZE = 0;
+    uintptr_t m_FLASH_ENV_DEFS_SIZE = 0;
+    uintptr_t m_FLASH_ENV_EXPRS_SIZE = 0;
     uintptr_t m_FLASH_ENV_SECTOR_OFFSET_START = 0;
-    uintptr_t m_FLASH_ENV_SECTOR_OFFSET_END   = 0;
-    uintptr_t m_FLASH_ENV_STRING_BUFFER_SIZE  = 0;
+    uintptr_t m_FLASH_ENV_SECTOR_OFFSET_END = 0;
+    uintptr_t m_FLASH_ENV_STRING_BUFFER_SIZE = 0;
 
     void reboot();
 
     std::pair<size_t, size_t> num_bytes_def_strs() const;
-    void copy_def_strings_to_buffer(char*);
+    void copy_def_strings_to_buffer(char *);
 
-    static constexpr const char* m_flash_stamp_str = "uSEQ";
-    static constexpr uint m_flash_stamp_size_bytes = strlen(m_flash_stamp_str) + 1;
+    static constexpr const char *m_flash_stamp_str = "uSEQ";
+    static constexpr uint m_flash_stamp_size_bytes =
+        strlen(m_flash_stamp_str) + 1;
 
     bool flash_has_been_written_before();
     void autoload_flash();
@@ -522,8 +366,6 @@ private:
 
     // void clear_non_program_flash();
     static String current_output_being_processed;
-
-    uint32_t m_random_seed = 0x9E3779B9;
 
 #ifdef ARDUINO
     // DSP ENGINE
@@ -533,7 +375,7 @@ private:
         size_t index;
         size_t queueSize;
         size_t key;
-        std::vector<float> lastValue = {0.f}; //TODO: expand for list outputs
+        std::vector<float> lastValue = {0.f}; // TODO: expand for list outputs
     };
 
     struct ugenInputQueue {
@@ -543,10 +385,9 @@ private:
         size_t key;
     };
 
-    struct dsp_engine_info
-    {
+    struct dsp_engine_info {
         std::unique_ptr<uSEQDSPEngine> obj;
-        size_t nextKey=0;
+        size_t nextKey = 0;
 
         std::unordered_map<size_t, String> ugenInstances;
         std::unordered_map<size_t, ugenOutputQueue> ugenOutputQueues;
@@ -570,8 +411,19 @@ private:
 
 #endif
 
+    LISP_FUNC_DECL(useq_swr);
+    LISP_FUNC_DECL(useq_rot);
 
+#ifdef ARDUINO
+    LISP_FUNC_DECL(useq_swm);
+    LISP_FUNC_DECL(useq_swt);
+    LISP_FUNC_DECL(useq_toggle_pick);
+    LISP_FUNC_DECL(useq_ssin);
+#endif
 
+    void init_useq_builtinfuncs();
 };
+
+#pragma GCC diagnostic pop
 
 #endif // USEQ_H_

@@ -1,5 +1,23 @@
 project('uSEQ', 'cpp')
 
+# Add global compiler arguments for maximum warnings
+add_global_arguments([
+  '-Wall',           # Enable most warnings
+  '-Wextra',         # Enable extra warnings
+  '-Wpedantic',      # Pedantic warnings for ISO C++ compliance
+  # '-Werror',         # Treat warnings as errors (exits on first error) - DISABLED
+  # '-Wfatal-errors',  # Stop after first error (for faster builds) - DISABLED
+  '-Wconversion',    # Warn about type conversions
+  '-Wno-conversion', # Disable conversion warnings
+  '-Wshadow',        # Warn about variable shadowing
+  '-Wunused',        # Warn about unused variables/functions
+  '-Wno-unused-parameter', # Disable unused parameter warnings
+  '-Wuninitialized', # Warn about uninitialized variables
+  '-Wdouble-promotion', # Warn about float to double promotions
+  '-Wformat=2',      # Strict format string checking
+  '-Wnull-dereference', # Warn about null pointer dereferences
+], language : 'cpp')
+
 # Define include directories
 src_inc = include_directories('uSEQ')
 
@@ -25,27 +43,31 @@ common_src = [
   'uSEQ/src/utils/flags.cpp',
   'uSEQ/src/utils.h',
   'uSEQ/src/utils.cpp',
-  # LISP
-  'uSEQ/src/lisp/parser.h',
-  'uSEQ/src/lisp/parser.cpp',
-  'uSEQ/src/lisp/value.h',
-  'uSEQ/src/lisp/value.cpp',
-  'uSEQ/src/lisp/environment.h',
-  'uSEQ/src/lisp/environment.cpp',
-  'uSEQ/src/lisp/interpreter.h',
-  'uSEQ/src/lisp/interpreter.cpp',
-  'uSEQ/src/lisp/configure.h',
-  'uSEQ/src/lisp/generated_builtins.h',
-  'uSEQ/src/lisp/generated_builtins.cpp',
+  # MODULISP
+  'uSEQ/src/modulisp/modulisp.h',
+  'uSEQ/src/modulisp/modulisp.cpp',
+  'uSEQ/src/modulisp/modulisp_time.cpp',
+  'uSEQ/src/modulisp/modulisp_api.cpp',
+  'uSEQ/src/modulisp/modulisp_eval.cpp',
+  ## Underlying lisp
+  'uSEQ/src/modulisp/lisp/parser.h',
+  'uSEQ/src/modulisp/lisp/parser.cpp',
+  'uSEQ/src/modulisp/lisp/value.h',
+  'uSEQ/src/modulisp/lisp/value.cpp',
+  'uSEQ/src/modulisp/lisp/environment.h',
+  'uSEQ/src/modulisp/lisp/environment.cpp',
+  'uSEQ/src/modulisp/lisp/interpreter.h',
+  'uSEQ/src/modulisp/lisp/interpreter.cpp',
+  'uSEQ/src/modulisp/lisp/configure.h',
+  'uSEQ/src/modulisp/lisp/generated_builtins.h',
+  'uSEQ/src/modulisp/lisp/generated_builtins.cpp',
   # uSEQ
   'uSEQ/src/uSEQ.h',
   'uSEQ/src/uSEQ.cpp',
-  'uSEQ/src/uSEQ_eval.cpp',
   'uSEQ/src/uSEQ_io.cpp',
   'uSEQ/src/uSEQ_i2c.cpp',
   'uSEQ/src/uSEQ_led.cpp',
   'uSEQ/src/uSEQ_flash.cpp',
-  'uSEQ/src/uSEQ_time.cpp',
   'uSEQ/src/uSEQ_api.cpp',
   # 'uSEQ/src/uSEQ_update_refactored.cpp',
   'uSEQ/src/uSEQ_update.cpp',  # Keep this version

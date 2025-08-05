@@ -1,21 +1,28 @@
 #ifndef HARDWARE_INCLUDES_H_
 #define HARDWARE_INCLUDES_H_
 
+// Suppress all warnings for hardware abstraction layer
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#pragma GCC diagnostic ignored "-Wextra"
+#pragma GCC diagnostic ignored "-Wpedantic"
+
 #ifndef ARDUINO
 #include <chrono>
 #endif
 
 #ifdef ARDUINO
 #include "hardware/flash.h"
-#include "hardware/sync.h"
 #include "hardware/pio.h"
+#include "hardware/sync.h"
 #include "pico/bootrom.h"
 #include "uSEQ/piopwm.h"
+#include "utils/string.h"
 
 // Forward declarations for hardware functions
 void setup_leds();
 void start_pdm();
-bool timer_callback(repeating_timer_t* mst);
+bool timer_callback(repeating_timer_t *mst);
 
 // I2C functions
 void setup_i2cHOST();
@@ -27,17 +34,18 @@ int analog_out_pin(int out);
 int digital_out_LED_pin(int out);
 int digital_out_pin(int out);
 
-// PIO PWM functions  
+// PIO PWM functions
 void pio_pwm_set_level(PIO pio, uint sm, uint32_t level);
 void pio_pwm_set_period(PIO pio, uint sm, uint32_t period);
 
 #else
 // Desktop builds - Arduino stubs and hardware function stubs
 
+#include <chrono>
 #include <cstdint>
 #include <iostream>
 #include <thread>
-#include <chrono>
+#include "utils/string.h"
 
 // Arduino core types and constants
 typedef uint8_t byte;
@@ -64,14 +72,14 @@ typedef bool boolean;
 #define GPIO_SLEW_RATE_FAST 1
 
 // PIO type stub
-typedef void* PIO;
+typedef void *PIO;
 
 // Flash memory constants for desktop
 #ifndef XIP_BASE
 #define XIP_BASE ((uintptr_t)0x10000000)
 #endif
 
-#ifndef PICO_FLASH_SIZE_BYTES  
+#ifndef PICO_FLASH_SIZE_BYTES
 #define PICO_FLASH_SIZE_BYTES (2 * 1024 * 1024)
 #endif
 
@@ -88,21 +96,24 @@ typedef void* PIO;
 #endif
 
 // MUX pin constants - only define if not already defined by pinmap.h
+// These are placeholder values for desktop builds
 #ifndef MUX_LOGIC_A
 #define MUX_LOGIC_A 0
 #endif
-#ifndef MUX_IN_1  
+#ifndef ARDUINO
+#ifndef MUX_IN_1
 #define MUX_IN_1 1
+#endif
 #endif
 
 // Serial class stub
 class SerialStub {
-public:
-    void begin(int baud) {}
-    void write(uint8_t data) {}
-    void write(const char* str) {}
-    void print(const char* str) { std::cout << str; }
-    void println(const char* str) { std::cout << str << std::endl; }
+  public:
+    void begin(int) {}
+    void write(uint8_t) {}
+    void write(const char *str) {}
+    void print(const char *str) { std::cout << str; }
+    void println(const char *str) { std::cout << str << std::endl; }
     void print(int val) { std::cout << val; }
     void println(int val) { std::cout << val << std::endl; }
     void print(double val) { std::cout << val; }
@@ -129,8 +140,12 @@ inline void digitalWrite(int pin, int value) {}
 inline int digitalRead(int pin) { return LOW; }
 inline int analogRead(int pin) { return 2048; }
 inline void analogWrite(int pin, int value) {}
-inline void delay(unsigned long ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
-inline void delayMicroseconds(unsigned int us) { std::this_thread::sleep_for(std::chrono::microseconds(us)); }
+inline void delay(unsigned long ms) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
+inline void delayMicroseconds(unsigned int us) {
+    std::this_thread::sleep_for(std::chrono::microseconds(us));
+}
 
 // Arduino analog and PWM function stubs
 inline void analogWriteFreq(uint32_t freq) {}
@@ -150,13 +165,14 @@ inline void gpio_put(int pin, bool value) {}
 inline bool gpio_get(int pin) { return false; }
 
 // RP2040 PIO function stubs
-inline uint pio_add_program(PIO pio, const void* program) { return 0; }
+inline uint pio_add_program(PIO pio, const void *program) { return 0; }
 inline void pwm_program_init(PIO pio, uint sm, uint offset, uint pin) {}
 inline void pio_pwm_set_level(PIO pio, uint sm, uint32_t level) {}
 inline void pio_pwm_set_period(PIO pio, uint sm, uint32_t period) {}
 
 // Bootrom function stubs
-inline void reset_usb_boot(uint32_t gpio_activity_pin_mask, uint32_t disable_interface_mask) {
+inline void reset_usb_boot(uint32_t gpio_activity_pin_mask,
+                           uint32_t disable_interface_mask) {
     std::cout << "Bootloader reset requested (desktop stub)" << std::endl;
 }
 
@@ -164,12 +180,18 @@ inline void reset_usb_boot(uint32_t gpio_activity_pin_mask, uint32_t disable_int
 inline uint32_t save_and_disable_interrupts() { return 0; }
 inline void restore_interrupts(uint32_t state) {}
 inline void flash_range_erase(uint32_t flash_offs, size_t count) {}
-inline void flash_range_program(uint32_t flash_offs, const uint8_t* data, size_t count) {}
+inline void flash_range_program(uint32_t flash_offs, const uint8_t *data,
+                                size_t count) {}
 
 // I2C function stubs
-inline int i2c_write_blocking(void* i2c, uint8_t addr, const uint8_t* src, size_t len, bool nostop) { return len; }
-inline int i2c_read_blocking(void* i2c, uint8_t addr, uint8_t* dst, size_t len, bool nostop) {
-    for (size_t i = 0; i < len; i++) dst[i] = 0;
+inline int i2c_write_blocking(void *i2c, uint8_t addr, const uint8_t *src,
+                              size_t len, bool nostop) {
+    return len;
+}
+inline int i2c_read_blocking(void *i2c, uint8_t addr, uint8_t *dst, size_t len,
+                             bool nostop) {
+    for (size_t i = 0; i < len; i++)
+        dst[i] = 0;
     return len;
 }
 
@@ -186,5 +208,7 @@ inline int digital_out_LED_pin(int out) { return 0; }
 inline int digital_out_pin(int out) { return 0; }
 
 #endif
+
+#pragma GCC diagnostic pop
 
 #endif // HARDWARE_INCLUDES_H_
