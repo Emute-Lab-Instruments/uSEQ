@@ -1,4 +1,4 @@
-# Test configuration for uSEQ builtin functions
+# Test configuration for uSEQ builtin functions and API tests
 
 # Test source files
 test_src = [
@@ -8,6 +8,27 @@ test_src = [
 # Parser test source files
 parser_test_src = [
   'test_parser.cpp'
+]
+
+# API test source files
+value_api_test_src = [
+  'test_value_api.cpp'
+]
+
+environment_api_test_src = [
+  'test_environment_api.cpp'
+]
+
+parser_api_test_src = [
+  'test_parser_api.cpp'
+]
+
+interpreter_api_test_src = [
+  'test_interpreter_api.cpp'
+]
+
+modulisp_api_test_src = [
+  'test_modulisp_api.cpp'
 ]
 
 # Common source files needed for tests (from parent directory)
@@ -40,6 +61,12 @@ test_common_src = [
   '../uSEQ/src/modulisp/lisp/configure.h',
   '../uSEQ/src/modulisp/lisp/generated_builtins.h',
   '../uSEQ/src/modulisp/lisp/generated_builtins.cpp',
+  # MODULISP
+  '../uSEQ/src/modulisp/modulisp.h',
+  '../uSEQ/src/modulisp/modulisp.cpp',
+  '../uSEQ/src/modulisp/modulisp_api.cpp',
+  '../uSEQ/src/modulisp/modulisp_eval.cpp',
+  '../uSEQ/src/modulisp/modulisp_time.cpp',
 ]
 
 # Test compiler arguments (similar to standalone)
@@ -77,6 +104,71 @@ test_parser_exe = executable(
   ]
 )
 
+# Value API test executable
+test_value_api_exe = executable(
+  'test_value_api',
+  sources : value_api_test_src + test_common_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    # Add math library dependency
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+# Environment API test executable
+test_environment_api_exe = executable(
+  'test_environment_api',
+  sources : environment_api_test_src + test_common_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    # Add math library dependency
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+# Parser API test executable
+test_parser_api_exe = executable(
+  'test_parser_api',
+  sources : parser_api_test_src + test_common_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    # Add math library dependency
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+# Interpreter API test executable
+test_interpreter_api_exe = executable(
+  'test_interpreter_api',
+  sources : interpreter_api_test_src + test_common_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    # Add math library dependency
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+# ModuLisp API test executable
+test_modulisp_api_exe = executable(
+  'test_modulisp_api',
+  sources : modulisp_api_test_src + test_common_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    # Add math library dependency
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
 # Register the tests with Meson
 test('builtin_functions_test', test_builtin_exe)
 test('parser_test', test_parser_exe)
+test('value_api_test', test_value_api_exe)
+test('environment_api_test', test_environment_api_exe)
+test('parser_api_test', test_parser_api_exe)
+test('interpreter_api_test', test_interpreter_api_exe)
+test('modulisp_api_test', test_modulisp_api_exe)
