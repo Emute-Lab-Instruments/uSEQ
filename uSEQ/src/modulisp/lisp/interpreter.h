@@ -15,6 +15,10 @@ class Interpreter : public Environment, public uLispParser {
 
     void init();
 
+    // Static helper functions for testing and initialization
+    static void init_builtin_functions();
+    static Interpreter create_fresh_interpreter();
+
     // Allows the user of an interpreter class to provide
     // its own function that takes a BuiltinMap and inserts
     // entries for functions
