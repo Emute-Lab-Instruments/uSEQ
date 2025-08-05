@@ -180,6 +180,32 @@ Value uLispParser::parse(String s, int& ptr)
         // skip_whitespace(s, ++ptr);
         return Value::vector(vec);
     }
+    else if (is_map(s, ptr))
+    {
+        // Parse map as a list: {key1 value1 key2 value2} -> (key1 value1 key2 value2)
+        std::vector<Value> list;
+        ptr++; // Skip opening brace
+        skip_whitespace(s, ptr);
+
+        while (ptr < int(s.length()) && s[ptr] != '}')
+        {
+            Value v = parse(s, ptr);
+            if (v.is_error())
+                return v;
+            list.push_back(v);
+            skip_whitespace(s, ptr);
+        }
+
+        if (ptr >= int(s.length()))
+        {
+            println(MALFORMED_PROGRAM);
+            return Value::error();
+        }
+
+        ptr++; // Skip closing brace
+        skip_whitespace(s, ptr);
+        return Value(list);
+    }
     else if (isdigit(s[ptr]) || (s[ptr] == '-' && isdigit(s[ptr + 1])) || (s[ptr] == '.' && isdigit(s[ptr + 1])))
     {
 
@@ -310,6 +336,22 @@ Value uLispParser::parse(String code)
         }
 
         list.push_back(item);
+        
+        // Skip any trailing comments after parsing an expression
+        skip_whitespace(code, i);
+        while (is_comment(code, i))
+        {
+            // Skip to the end of the line
+            while (i < int(code.length()) && code[i] != '\n')
+            {
+                i++;
+            }
+            if (i < int(code.length()) && code[i] == '\n')
+            {
+                i++; // Skip the newline
+            }
+            skip_whitespace(code, i);
+        }
     }
 
     // If the whole string wasn't parsed, the program must be bad.
