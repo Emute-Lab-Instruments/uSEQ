@@ -49,7 +49,7 @@ bool uLispParser::is_symbol(const String& s, int ptr)
 {
     char ch = s[ptr];
     return (isdigit(ch) || isalpha(ch) || ispunct(ch)) && ch != '(' && ch != ')' &&
-           ch != '[' && ch != ']' && ch != '"' && ch != '\'';
+           ch != '[' && ch != ']' && ch != '{' && ch != '}' && ch != '"' && ch != '\'' && ch != ';' && ch != ',' && ch != ' ' && ch != '\t' && ch != '\n';
 }
 
 bool uLispParser::is_comment(const String& s, int ptr) { return s[ptr] == ';'; }
@@ -57,7 +57,23 @@ bool uLispParser::is_quote(const String& s, int ptr) { return s[ptr] == '\''; }
 bool uLispParser::is_list(const String& s, int ptr) { return s[ptr] == '('; }
 bool uLispParser::is_vector(const String& s, int ptr) { return s[ptr] == '['; }
 bool uLispParser::is_map(const String& s, int ptr) { return s[ptr] == '{'; }
-bool uLispParser::is_midinote(const String& s, int ptr) { return s[ptr] == 'M'; }
+bool uLispParser::is_midinote(const String& s, int ptr) { 
+    if (s[ptr] != 'M') return false;
+    
+    // Check if there's at least one digit following 'M'
+    int pos = ptr + 1;
+    if (pos >= s.length() || !isdigit(s[pos])) return false;
+    
+    // Parse the number part to ensure it's valid
+    int number = 0;
+    while (pos < s.length() && isdigit(s[pos])) {
+        number = number * 10 + (s[pos] - '0');
+        pos++;
+    }
+    
+    // MIDI notes should be 0-127
+    return number >= 0 && number <= 127;
+}
 
 // Parse a single value and increment the pointer
 // to the beginning of the next value to parse.
@@ -89,7 +105,7 @@ Value uLispParser::parse(String s, int& ptr)
         skip_whitespace(s, ptr);
 
         // If we're at the end of the string, return an empty value
-        if (s.substring(ptr, ptr + s.length() - ptr - 1) == "")
+        if (ptr >= int(s.length()))
             return Value();
     }
 

@@ -48,6 +48,30 @@ void Interpreter::init()
     // }
 }
 
+void Interpreter::init_builtin_functions()
+{
+    DBG("Interpreter::init_builtin_functions");
+    static bool initialized = false;
+    if (!initialized) {
+        // Create a temporary interpreter to load builtins into the static map
+        Interpreter temp;
+        temp.loadBuiltinDefs();
+        initialized = true;
+    }
+}
+
+Interpreter Interpreter::create_fresh_interpreter()
+{
+    DBG("Interpreter::create_fresh_interpreter");
+    // Ensure builtins are initialized first
+    init_builtin_functions();
+    
+    // Create and initialize a new interpreter
+    Interpreter interp;
+    interp.init();
+    return interp;
+}
+
 bool Interpreter::evalled_args_contain_errors(std::vector<Value>& args)
 {
     // NOTE: false means "no errors"
@@ -448,8 +472,7 @@ Value Interpreter::eval_in(Value& v, Environment& env)
 
         if (v.list.size() < 1)
         {
-            ::println(EVAL_EMPTY_LIST);
-            return Value::error();
+            return Value::nil();
         }
         // throw Error(*this, env, EVAL_EMPTY_LIST);
         // note: this needs to be a copy?  so original remains unevaluated?  or
@@ -707,143 +730,143 @@ void Interpreter::loadBuiltinDefs()
 
     //// LISP
     // Constants
-    Environment::builtindefs["PI"] = Value(3.14159265358979323846);    
-    Environment::builtindefs["pi"] = Value(3.14159265358979323846);    
+    Environment::builtindefs()["PI"] = Value(3.14159265358979323846);    
+    Environment::builtindefs()["pi"] = Value(3.14159265358979323846);    
 
 
     // Special forms
-    Environment::builtindefs["get-expr"] = Value("get-expr", builtin::get_expr);
+    Environment::builtindefs()["get-expr"] = Value("get-expr", builtin::get_expr);
 
     // Defining
-    Environment::builtindefs["define"] = Value("define", builtin::define);
-    Environment::builtindefs["def"]    = Value("def", builtin::def);
-    Environment::builtindefs["defun"]  = Value("defun", builtin::defun);
-    Environment::builtindefs["defn"]   = Value("defn", builtin::defn);
-    Environment::builtindefs["defs"]   = Value("defs", builtin::defs);
+    Environment::builtindefs()["define"] = Value("define", builtin::define);
+    Environment::builtindefs()["def"]    = Value("def", builtin::def);
+    Environment::builtindefs()["defun"]  = Value("defun", builtin::defun);
+    Environment::builtindefs()["defn"]   = Value("defn", builtin::defn);
+    Environment::builtindefs()["defs"]   = Value("defs", builtin::defs);
 
-    Environment::builtindefs["let"] = Value("let", builtin::let_block);
+    Environment::builtindefs()["let"] = Value("let", builtin::let_block);
 
-    Environment::builtindefs["do"]    = Value("do", builtin::do_block);
-    Environment::builtindefs["if"]    = Value("if", builtin::if_then_else);
-    Environment::builtindefs["for"]   = Value("for", builtin::for_loop);
-    Environment::builtindefs["while"] = Value("while", builtin::while_loop);
-    Environment::builtindefs["scope"] = Value("scope", builtin::scope);
-    Environment::builtindefs["quote"] = Value("quote", builtin::quote);
-    Environment::builtindefs["set"]   = Value("set", builtin::set);
+    Environment::builtindefs()["do"]    = Value("do", builtin::do_block);
+    Environment::builtindefs()["if"]    = Value("if", builtin::if_then_else);
+    Environment::builtindefs()["for"]   = Value("for", builtin::for_loop);
+    Environment::builtindefs()["while"] = Value("while", builtin::while_loop);
+    Environment::builtindefs()["scope"] = Value("scope", builtin::scope);
+    Environment::builtindefs()["quote"] = Value("quote", builtin::quote);
+    Environment::builtindefs()["set"]   = Value("set", builtin::set);
     // Alias
-    Environment::builtindefs["lambda"] = Value("lambda", builtin::lambda);
-    Environment::builtindefs["fn"]     = Value("fn", builtin::lambda);
+    Environment::builtindefs()["lambda"] = Value("lambda", builtin::lambda);
+    Environment::builtindefs()["fn"]     = Value("fn", builtin::lambda);
 
     // List operations
-    Environment::builtindefs["list"]   = Value("list", builtin::list);
-    Environment::builtindefs["insert"] = Value("insert", builtin::insert);
-    Environment::builtindefs["index"]  = Value("index", builtin::index);
-    Environment::builtindefs["nth"]  = Value("nth", builtin::index);
-    Environment::builtindefs["remove"] = Value("remove", builtin::remove);
-    Environment::builtindefs["len"]    = Value("len", builtin::len);
-    Environment::builtindefs["push"]   = Value("push", builtin::push);
-    Environment::builtindefs["pop"]    = Value("pop", builtin::pop);
-    Environment::builtindefs["slice"]    = Value("slice", builtin::slice);
-    Environment::builtindefs["head"]   = Value("head", builtin::head);
-    Environment::builtindefs["tail"]   = Value("tail", builtin::tail);
-    Environment::builtindefs["first"]  = Value("first", builtin::head);
-    Environment::builtindefs["last"]   = Value("last", builtin::pop);
-    Environment::builtindefs["range"]  = Value("range", builtin::range);
-    Environment::builtindefs["vec"]  = Value("vec", builtin::vec);
+    Environment::builtindefs()["list"]   = Value("list", builtin::list);
+    Environment::builtindefs()["insert"] = Value("insert", builtin::insert);
+    Environment::builtindefs()["index"]  = Value("index", builtin::index);
+    Environment::builtindefs()["nth"]  = Value("nth", builtin::index);
+    Environment::builtindefs()["remove"] = Value("remove", builtin::remove);
+    Environment::builtindefs()["len"]    = Value("len", builtin::len);
+    Environment::builtindefs()["push"]   = Value("push", builtin::push);
+    Environment::builtindefs()["pop"]    = Value("pop", builtin::pop);
+    Environment::builtindefs()["slice"]    = Value("slice", builtin::slice);
+    Environment::builtindefs()["head"]   = Value("head", builtin::head);
+    Environment::builtindefs()["tail"]   = Value("tail", builtin::tail);
+    Environment::builtindefs()["first"]  = Value("first", builtin::head);
+    Environment::builtindefs()["last"]   = Value("last", builtin::pop);
+    Environment::builtindefs()["range"]  = Value("range", builtin::range);
+    Environment::builtindefs()["vec"]  = Value("vec", builtin::vec);
 
     // Functional operations
-    Environment::builtindefs["map"]    = Value("map", builtin::map_list);
-    Environment::builtindefs["filter"] = Value("filter", builtin::filter_list);
-    Environment::builtindefs["reduce"] = Value("reduce", builtin::reduce_list);
+    Environment::builtindefs()["map"]    = Value("map", builtin::map_list);
+    Environment::builtindefs()["filter"] = Value("filter", builtin::filter_list);
+    Environment::builtindefs()["reduce"] = Value("reduce", builtin::reduce_list);
 
     // (arithmetic) Comparison operations
-    Environment::builtindefs["="]  = Value("=", builtin::eq);
-    Environment::builtindefs["!="] = Value("!=", builtin::neq);
-    Environment::builtindefs[">"]  = Value(">", builtin::greater);
-    Environment::builtindefs["<"]  = Value("<", builtin::less);
-    Environment::builtindefs[">="] = Value(">=", builtin::greater_eq);
-    Environment::builtindefs["<="] = Value("<=", builtin::less_eq);
+    Environment::builtindefs()["="]  = Value("=", builtin::eq);
+    Environment::builtindefs()["!="] = Value("!=", builtin::neq);
+    Environment::builtindefs()[">"]  = Value(">", builtin::greater);
+    Environment::builtindefs()["<"]  = Value("<", builtin::less);
+    Environment::builtindefs()[">="] = Value(">=", builtin::greater_eq);
+    Environment::builtindefs()["<="] = Value("<=", builtin::less_eq);
 
     // Arithmetic operations
-    Environment::builtindefs["+"]     = Value("+", builtin::sum);
-    Environment::builtindefs["-"]     = Value("-", builtin::subtract);
-    Environment::builtindefs["*"]     = Value("*", builtin::product);
-    Environment::builtindefs["/"]     = Value("/", builtin::divide);
-    Environment::builtindefs["%"]     = Value("%", builtin::remainder);
-    Environment::builtindefs["floor"] = Value("floor", builtin::ard_floor);
-    Environment::builtindefs["ceil"]  = Value("ceil", builtin::ard_ceil);
+    Environment::builtindefs()["+"]     = Value("+", builtin::sum);
+    Environment::builtindefs()["-"]     = Value("-", builtin::subtract);
+    Environment::builtindefs()["*"]     = Value("*", builtin::product);
+    Environment::builtindefs()["/"]     = Value("/", builtin::divide);
+    Environment::builtindefs()["%"]     = Value("%", builtin::remainder);
+    Environment::builtindefs()["floor"] = Value("floor", builtin::ard_floor);
+    Environment::builtindefs()["ceil"]  = Value("ceil", builtin::ard_ceil);
 
     // phasors etc
     // NOTE: duplicates
-    Environment::builtindefs["square"] = Value("square", builtin::useq_sqr);
-    Environment::builtindefs["sqr"]    = Value("sqr", builtin::useq_sqr);
-    Environment::builtindefs["pulse"]  = Value("pulse", builtin::useq_pulse);
+    Environment::builtindefs()["square"] = Value("square", builtin::useq_sqr);
+    Environment::builtindefs()["sqr"]    = Value("sqr", builtin::useq_sqr);
+    Environment::builtindefs()["pulse"]  = Value("pulse", builtin::useq_pulse);
 
     // arduino math
     // NOTE: duplicates
-    Environment::builtindefs["sin"]     = Value("sin", builtin::ard_sin);
-    Environment::builtindefs["sine"]    = Value("sine", builtin::ard_sin);
-    Environment::builtindefs["usin"]    = Value("usin", builtin::ard_usin);
-    Environment::builtindefs["usine"]   = Value("usine", builtin::ard_usin);
-    Environment::builtindefs["cos"]     = Value("cos", builtin::ard_cos);
-    Environment::builtindefs["cosine"]  = Value("cosine", builtin::ard_cos);
-    Environment::builtindefs["ucos"]    = Value("ucos", builtin::ard_ucos);
-    Environment::builtindefs["ucosine"] = Value("ucos", builtin::ard_ucos);
-    Environment::builtindefs["tan"]     = Value("tan", builtin::ard_tan);
-    Environment::builtindefs["abs"]     = Value("abs", builtin::ard_abs);
+    Environment::builtindefs()["sin"]     = Value("sin", builtin::ard_sin);
+    Environment::builtindefs()["sine"]    = Value("sine", builtin::ard_sin);
+    Environment::builtindefs()["usin"]    = Value("usin", builtin::ard_usin);
+    Environment::builtindefs()["usine"]   = Value("usine", builtin::ard_usin);
+    Environment::builtindefs()["cos"]     = Value("cos", builtin::ard_cos);
+    Environment::builtindefs()["cosine"]  = Value("cosine", builtin::ard_cos);
+    Environment::builtindefs()["ucos"]    = Value("ucos", builtin::ard_ucos);
+    Environment::builtindefs()["ucosine"] = Value("ucos", builtin::ard_ucos);
+    Environment::builtindefs()["tan"]     = Value("tan", builtin::ard_tan);
+    Environment::builtindefs()["abs"]     = Value("abs", builtin::ard_abs);
 
-    Environment::builtindefs["min"]   = Value("min", builtin::ard_min);
-    Environment::builtindefs["max"]   = Value("max", builtin::ard_max);
-    Environment::builtindefs["pow"]   = Value("pow", builtin::ard_pow);
-    Environment::builtindefs["sqrt"]  = Value("sqrt", builtin::ard_sqrt);
-    Environment::builtindefs["scale"] = Value("scale", builtin::ard_map);
-    Environment::builtindefs["lerp"]  = Value("scale", builtin::ard_lerp);
+    Environment::builtindefs()["min"]   = Value("min", builtin::ard_min);
+    Environment::builtindefs()["max"]   = Value("max", builtin::ard_max);
+    Environment::builtindefs()["pow"]   = Value("pow", builtin::ard_pow);
+    Environment::builtindefs()["sqrt"]  = Value("sqrt", builtin::ard_sqrt);
+    Environment::builtindefs()["scale"] = Value("scale", builtin::ard_map);
+    Environment::builtindefs()["lerp"]  = Value("scale", builtin::ard_lerp);
 
-    Environment::builtindefs["b->u"]    = Value("b->u", builtin::b_to_u);
-    Environment::builtindefs["bi->uni"] = Value("bi->uni", builtin::b_to_u);
-    Environment::builtindefs["u->b"]    = Value("u->b", builtin::u_to_b);
-    Environment::builtindefs["uni->bi"] = Value("uni->bi", builtin::u_to_b);
+    Environment::builtindefs()["b->u"]    = Value("b->u", builtin::b_to_u);
+    Environment::builtindefs()["bi->uni"] = Value("bi->uni", builtin::b_to_u);
+    Environment::builtindefs()["u->b"]    = Value("u->b", builtin::u_to_b);
+    Environment::builtindefs()["uni->bi"] = Value("uni->bi", builtin::u_to_b);
 
     // Meta operations
-    Environment::builtindefs["eval"] = Value("eval", builtin::eval);
-    Environment::builtindefs["type"] = Value("type", builtin::get_type_name);
-    // Environment::builtindefs["parse"] = Value("parse", builtin::parse);
+    Environment::builtindefs()["eval"] = Value("eval", builtin::eval);
+    Environment::builtindefs()["type"] = Value("type", builtin::get_type_name);
+    // Environment::builtindefs()["parse"] = Value("parse", builtin::parse);
 
     // List generators
-    Environment::builtindefs["zeros"] = Value("zeros", builtin::zeros);
+    Environment::builtindefs()["zeros"] = Value("zeros", builtin::zeros);
 
     // utility
-    Environment::builtindefs["timeit"] = Value("timeit", builtin::timeit);
-    Environment::builtindefs["perf"]   = Value("perf", builtin::useq_perf);
+    Environment::builtindefs()["timeit"] = Value("timeit", builtin::timeit);
+    Environment::builtindefs()["perf"]   = Value("perf", builtin::useq_perf);
 
 // IO operations
 #ifdef USE_STD
     // if (name == "exit") return Value("exit", builtin::exit);
     // if (name == "quit") return Value("quit", builtin::exit);
-    Environment::builtindefs["print"] = Value("print", builtin::print);
+    Environment::builtindefs()["print"] = Value("print", builtin::print);
     // if (name == "input") return Value("input", builtin::input);
 #else
     //
-    Environment::builtindefs["print"]   = Value("print", builtin::print);
-    Environment::builtindefs["println"] = Value("println", builtin::println);
+    Environment::builtindefs()["print"]   = Value("print", builtin::print);
+    Environment::builtindefs()["println"] = Value("println", builtin::println);
 #endif
-    Environment::builtindefs["random'"] = Value("random", builtin::gen_random);
+    Environment::builtindefs()["random'"] = Value("random", builtin::gen_random);
 
     // String operations
-    Environment::builtindefs["debug"]   = Value("debug", builtin::debug);
-    Environment::builtindefs["replace"] = Value("replace", builtin::replace);
-    Environment::builtindefs["display"] = Value("display", builtin::display);
+    Environment::builtindefs()["debug"]   = Value("debug", builtin::debug);
+    Environment::builtindefs()["replace"] = Value("replace", builtin::replace);
+    Environment::builtindefs()["display"] = Value("display", builtin::display);
 
     // Casting operations
-    Environment::builtindefs["int"]   = Value("int", builtin::cast_to_int);
-    Environment::builtindefs["float"] = Value("float", builtin::cast_to_float);
+    Environment::builtindefs()["int"]   = Value("int", builtin::cast_to_int);
+    Environment::builtindefs()["float"] = Value("float", builtin::cast_to_float);
 
     // Constants
-    Environment::builtindefs["endl"] = Value::string("\n");
+    Environment::builtindefs()["endl"] = Value::string("\n");
 
     //// IO
-    Environment::builtindefs["dw"] = Value("dw", builtin::ard_digitalWrite);
-    Environment::builtindefs["dr"] = Value("dr", builtin::ard_digitalRead);
+    Environment::builtindefs()["dw"] = Value("dw", builtin::ard_digitalWrite);
+    Environment::builtindefs()["dr"] = Value("dr", builtin::ard_digitalRead);
 }
 
 #pragma GCC diagnostic pop
