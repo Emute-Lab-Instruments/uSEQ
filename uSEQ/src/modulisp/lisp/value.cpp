@@ -517,14 +517,8 @@ Value Value::operator/(Value other) const {
         return res;
     }
     case INT: {
-        // If the other type is a float, go ahead and promote this expression
-        // before continuing with the product
-        Value res;
-        if (other.type == FLOAT)
-            res = Value(cast_to_float().stack_data.f / other.stack_data.f);
-        // Otherwise, do integer multiplication.
-        else
-            res = Value(stack_data.i / other.stack_data.i);
+        // Division always promotes to float to preserve precision
+        Value res = Value(cast_to_float().stack_data.f / other.cast_to_float().stack_data.f);
         return res;
     }
     case UNIT:
