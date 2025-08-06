@@ -31,6 +31,18 @@ modulisp_api_test_src = [
   'test_modulisp_api.cpp'
 ]
 
+signals_test_src = [
+  'test_signals.cpp'
+]
+
+automation_analysis_test_src = [
+  'test_automation_analysis.cpp'
+]
+
+smoothness_test_src = [
+  'test_just_smoothness.cpp'
+]
+
 # Common source files needed for tests (from parent directory)
 test_common_src = [
   # UTILS
@@ -164,6 +176,42 @@ test_modulisp_api_exe = executable(
   ]
 )
 
+# Signals test executable - DISABLED - uses removed DSP methods
+# test_signals_exe = executable(
+#   'test_signals',
+#   sources : signals_test_src + test_common_src,
+#   include_directories : test_inc,
+#   cpp_args : test_args,
+#   dependencies : [
+#     # Add math library dependency
+#     declare_dependency(link_args : ['-lm'])
+#   ]
+# )
+
+# Automation analysis test executable
+test_automation_analysis_exe = executable(
+  'test_automation_analysis',
+  sources : automation_analysis_test_src + test_common_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    # Add math library dependency
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+# Smoothness test executable - DISABLED - uses removed DSP methods
+# test_smoothness_exe = executable(
+#   'test_smoothness',
+#   sources : smoothness_test_src + test_common_src,
+#   include_directories : test_inc,
+#   cpp_args : test_args,
+#   dependencies : [
+#     # Add math library dependency
+#     declare_dependency(link_args : ['-lm'])
+#   ]
+# )
+
 # Register the tests with Meson
 test('builtin_functions_test', test_builtin_exe)
 test('parser_test', test_parser_exe)
@@ -172,3 +220,6 @@ test('environment_api_test', test_environment_api_exe)
 test('parser_api_test', test_parser_api_exe)
 test('interpreter_api_test', test_interpreter_api_exe)
 test('modulisp_api_test', test_modulisp_api_exe)
+# test('signals_test', test_signals_exe)  # Temporarily disabled - uses removed DSP methods
+test('automation_analysis_test', test_automation_analysis_exe)
+# test('smoothness_test', test_smoothness_exe)  # Temporarily disabled - uses removed DSP methods
