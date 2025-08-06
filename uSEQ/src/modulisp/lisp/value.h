@@ -9,7 +9,9 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <vector>
+#include <cmath>
 
 class Environment;
 class Value;
@@ -38,6 +40,78 @@ using ModuLispInterpreter_Method_Ptr = Value (ModuLispInterpreter::*)(std::vecto
 #else
 #define VALUE_FAST_MEM // Empty for desktop builds
 #endif
+
+// Metadata for control-rate automation signals
+struct SignalMetadata {
+    // Core Properties
+    bool is_const = true;           // false if value depends on time
+    double min_val = -INFINITY;     // minimum possible value
+    double max_val = INFINITY;      // maximum possible value  
+    bool min_inclusive = true;      // whether min_val is inclusive
+    bool max_inclusive = true;      // whether max_val is inclusive
+    bool is_periodic = false;       // whether signal repeats
+    double period = 0.0;            // repetition period (if periodic)
+    bool is_monotonic = false;      // whether always increasing/decreasing
+    bool is_monotonic_increasing = false; // specifically increasing
+    bool is_monotonic_decreasing = false; // specifically decreasing
+    
+    // Continuity and Smoothness
+    bool is_continuous = true;      // no jump discontinuities
+    bool is_smooth = true;          // smooth interpolation possible
+    bool is_stepped = false;        // discrete step changes only
+    bool is_linear_segments = false; // piecewise linear
+    
+    // Time-Based Properties
+    double time_start = -INFINITY;  // earliest defined time
+    double time_end = INFINITY;     // latest defined time
+    bool is_causal = true;          // output depends only on current/past
+    bool is_memoryless = true;      // output depends only on current input
+    double memory_length = 0.0;     // length of memory (seconds)
+    
+    // Zero Crossing Analysis
+    bool has_zero_crossings = false; // signal crosses zero
+    double zero_crossing_rate = 0.0; // average zero crossings per second
+    bool zero_crossing_locations_known = false; // exact crossings computed
+    
+    // Threshold Analysis
+    bool supports_threshold_queries = false; // can find threshold crossings
+    double min_threshold_resolution = 0.0;   // smallest detectable change
+    
+    // Range Analysis
+    bool supports_range_queries = false;     // can find value ranges over time
+    double range_query_resolution = 0.0;     // time resolution for range queries
+    
+    // Extrema Analysis  
+    bool has_local_extrema = false;          // has peaks/valleys
+    bool extrema_locations_known = false;    // exact extrema computed
+    double extrema_detection_threshold = 0.0; // minimum change for extrema
+    
+    // Interpolation Properties
+    enum InterpolationType {
+        NONE = 0,       // no interpolation support
+        LINEAR = 1,     // linear interpolation
+        SMOOTH = 2,     // smooth/spline interpolation  
+        STEPPED = 3     // hold previous value
+    } interpolation_type = LINEAR;
+    
+    // Periodicity Details
+    double phase_offset = 0.0;      // phase offset for periodic signals
+    bool phase_locked = false;      // phase relationship maintained
+    
+    // Quantization (kept for discrete automation)
+    bool is_quantized = false;      // takes discrete values only
+    bool is_integer_valued = false; // all values are integers
+    double quantum_step = 0.0;      // quantization step size
+    
+    // Domain validation
+    bool has_domain_error = false;  // domain/range errors present
+    std::string error_message = ""; // error description
+    
+    // Optimization hints
+    bool can_constant_fold = false; // can be evaluated at compile time
+    bool can_cache_results = false; // results can be cached
+    bool is_expensive_to_evaluate = false; // computation cost hint
+};
 
 class Value {
   public:
@@ -99,6 +173,9 @@ class Value {
     // static Value list(std::vector<Value> lst);
     static Value VALUE_FAST_MEM vector(std::vector<Value> vec);
 
+    // Static time parameter - higher-order signal that updates automatically
+    static Value VALUE_FAST_MEM t;
+
     Value(std::vector<Value> params, Value ret, const Environment &env);
 
     std::set<String> get_used_atoms() const;
@@ -124,6 +201,57 @@ class Value {
     bool is_string() const;
     bool is_symbol() const;
     bool is_signal() const;
+    
+    // Core automation signal metadata query methods
+    double get_min() const;
+    double get_max() const;
+    bool is_periodic() const;
+    double get_period() const;
+    bool is_monotonic() const;
+    bool is_monotonic_increasing() const;
+    bool is_monotonic_decreasing() const;
+    bool is_constant() const;
+    
+    // Continuity and smoothness metadata methods
+    bool is_continuous() const;
+    bool is_smooth() const;
+    bool is_stepped() const;
+    bool is_linear_segments() const;
+    
+    // Time-based properties
+    double get_time_start() const;
+    double get_time_end() const;
+    bool is_causal() const;
+    bool is_memoryless() const;
+    double get_memory_length() const;
+    
+    // Zero crossing analysis methods
+    bool has_zero_crossings() const;
+    double get_zero_crossing_rate() const;
+    bool are_zero_crossing_locations_known() const;
+    
+    // Threshold and range analysis methods
+    bool supports_threshold_queries() const;
+    double get_min_threshold_resolution() const;
+    bool supports_range_queries() const;
+    double get_range_query_resolution() const;
+    
+    // Extrema analysis methods
+    bool has_local_extrema() const;
+    bool are_extrema_locations_known() const;
+    double get_extrema_detection_threshold() const;
+    
+    // Interpolation properties
+    int get_interpolation_type() const;
+    
+    // Periodicity details
+    double get_phase_offset() const;
+    bool is_phase_locked() const;
+    
+    // Quantization properties (for discrete automation)
+    bool is_quantized() const;
+    bool is_integer_valued() const;
+    double get_quantum_step() const;
 
     bool as_bool() const;
     int as_int() const;
@@ -160,6 +288,72 @@ class Value {
     Value operator*(Value other) const;
     Value operator/(Value other) const;
     Value operator%(Value other) const;
+    
+    // Power operation with metadata support
+    Value pow(const Value& exponent) const;
+    
+    ////////////////////////////////////////////////////////////////////////////////
+    /// TRANSCENDENTAL AND MATHEMATICAL FUNCTIONS
+    /// ////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
+    
+    // Trigonometric functions
+    Value sin() const;
+    Value cos() const;
+    
+    // Exponential and logarithmic functions
+    Value exp() const;
+    Value log() const;
+    
+    // Root functions
+    Value sqrt() const;
+    
+    // Other mathematical functions
+    Value abs() const;
+    Value floor() const;
+    Value round() const;
+    Value sign() const;
+    Value step() const;
+    
+    ////////////////////////////////////////////////////////////////////////////////
+    /// SIGNAL PROCESSING FUNCTIONS
+    /// ////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
+    
+    // Signal processing operations
+    Value integrate() const;
+    Value delay(const Value& time) const;
+    Value moving_average(const Value& window) const;
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// AUTOMATION ANALYSIS METHODS
+    /// ////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
+    
+    // Zero Crossing Analysis
+    std::vector<double> find_zero_crossings(double start_time, double end_time) const;
+    double get_next_zero_crossing(double from_time) const;
+    bool has_zero_crossings_in_range(double start_time, double end_time) const;
+    
+    // Threshold Analysis
+    std::vector<double> find_threshold_crossings(double threshold, double start_time, double end_time) const;
+    double get_next_threshold_crossing(double threshold, double from_time, bool rising_edge = true) const;
+    
+    // Range Analysis
+    std::vector<std::pair<double, double>> find_value_ranges(double min_val, double max_val, double start_time, double end_time) const;
+    bool is_in_range(double min_val, double max_val, double at_time) const;
+    double get_time_in_range(double min_val, double max_val, double start_time, double end_time) const;
+    
+    // Extrema Analysis
+    std::vector<double> find_local_maxima(double start_time, double end_time) const;
+    std::vector<double> find_local_minima(double start_time, double end_time) const;
+    double get_global_maximum_time(double start_time, double end_time) const;
+    double get_global_minimum_time(double start_time, double end_time) const;
+    
+    // Monotonicity Analysis
+    bool is_monotonic_in_range(double start_time, double end_time) const;
+    bool is_increasing_in_range(double start_time, double end_time) const;
+    bool is_decreasing_in_range(double start_time, double end_time) const;
 
     bool operator==(const String &str) const;
 
@@ -204,8 +398,14 @@ class Value {
     std::vector<Value> list;
 
     std::shared_ptr<Environment> lambda_scope;
+    
+    // Signal metadata (only present for SIGNAL type values)
+    std::optional<SignalMetadata> signal_metadata;
 };
 
 // end of class Value
+
+// Global time constant accessible outside class namespace
+extern const Value& t;
 
 #endif // VALUE_H_
