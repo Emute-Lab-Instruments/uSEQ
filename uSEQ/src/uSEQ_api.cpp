@@ -42,6 +42,8 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("s7", useq_s7);
     INSERT_BUILTINDEF("s8", useq_s8);
 
+    INSERT_BUILTINDEF("q0", useq_q0);
+
     // These are not class methods, so they can be inserted normally
     INSERT_BUILTINDEF("useqaw", ard_useqaw);
     INSERT_BUILTINDEF("useqdw", ard_useqdw);
@@ -2558,7 +2560,12 @@ BUILTINFUNC_MEMBER(
                                                2)
 #endif
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = args[0];, 1)
+BUILTINFUNC_NOEVAL_MEMBER(useq_q0, 
+        std::vector<Value> new_form;
+        set("q-expr", args[0]); 
+        m_q0AST = args[0];
+        ret                  = Value::atom("q0");
+, 1)
 
 // TODO: there is potentially a lot of duplicated/wasted memory by storing
 // the exprs in both the environment and the class member vectors

@@ -102,10 +102,10 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_autoload_flash,
                           autoload_flash();
                           , 0)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_rewind_logical_time,
-                          //
-                          reset_logical_time();
-                          , 0)
+// BUILTINFUNC_NOEVAL_MEMBER(useq_rewind_logical_time,
+//                           //
+//                           reset_logical_time();
+//                           , 0)
 
 // NOTE: only these are meant for user interface
 BUILTINFUNC_MEMBER(
@@ -128,33 +128,33 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_memory_erase, //
                           reset_flash_env_var_info();
                           , 0)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_stop_all, //
-                          clear_all_outputs();
-                          println("All outputs cleared.");, 0)
+// BUILTINFUNC_NOEVAL_MEMBER(useq_stop_all, //
+//                           clear_all_outputs();
+//                           println("All outputs cleared.");, 0)
 
-void uSEQ::clear_all_outputs()
-{
-    for (int i = 0; i < m_continuous_ASTs.size(); i++)
-    {
-        String name          = "a" + String(i + 1);
-        m_continuous_ASTs[i] = default_continuous_expr;
-        m_def_exprs.erase(name);
-    }
+// void uSEQ::clear_all_outputs()
+// {
+//     for (int i = 0; i < m_continuous_ASTs.size(); i++)
+//     {
+//         String name          = "a" + String(i + 1);
+//         m_continuous_ASTs[i] = default_continuous_expr;
+//         m_def_exprs.erase(name);
+//     }
 
-    for (int i = 0; i < m_binary_ASTs.size(); i++)
-    {
-        String name      = "d" + String(i + 1);
-        m_binary_ASTs[i] = default_binary_expr;
-        m_def_exprs.erase(name);
-    }
+//     for (int i = 0; i < m_binary_ASTs.size(); i++)
+//     {
+//         String name      = "d" + String(i + 1);
+//         m_binary_ASTs[i] = default_binary_expr;
+//         m_def_exprs.erase(name);
+//     }
 
-    for (int i = 0; i < m_serial_ASTs.size(); i++)
-    {
-        String name      = "s" + String(i + 1);
-        m_serial_ASTs[i] = default_serial_expr;
-        m_def_exprs.erase(name);
-    }
-}
+//     for (int i = 0; i < m_serial_ASTs.size(); i++)
+//     {
+//         String name      = "s" + String(i + 1);
+//         m_serial_ASTs[i] = default_serial_expr;
+//         m_def_exprs.erase(name);
+//     }
+// }
 
 void uSEQ::set_my_id(int num)
 {
