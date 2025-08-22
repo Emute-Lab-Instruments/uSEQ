@@ -21,7 +21,7 @@ bool core1_separate_stack = true;
 // (e.g. for debugging purposes)
 void init_serial()
 {
-    Serial.begin(115200);
+    Serial.begin();
     Serial.setTimeout(2);
 }
 
@@ -35,7 +35,7 @@ void init_random()
 #endif
 }
 
-std::unique_ptr<uSEQ> u;
+std::unique_ptr<uSEQ> __not_in_flash("useq") u;
 
 void setup()
 {
@@ -45,7 +45,7 @@ void setup()
     u->init();
 }
 
-void loop() { u->tick(); }
+void __not_in_flash_func(loop)() { u->tick(); }
 
 
 //core 1
@@ -53,6 +53,6 @@ void setup1() {
     u->initDSP();
 }
 
-void loop1() {
+void __not_in_flash_func(loop1)() {
     u->tick_dsp();
 }
