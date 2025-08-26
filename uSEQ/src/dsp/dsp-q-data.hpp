@@ -10,11 +10,15 @@
 // Your code goes here
 namespace DSPQ {
 
-    enum RESPONSES {UGENINFO, MESSAGE, ADD_OUTPUT_QUEUE, ADD_INPUT_QUEUE};
+    enum RESPONSES {UGENINFO, MESSAGE, ADD_OUTPUT_QUEUE, ADD_INPUT_QUEUE, LISTQUEUES};
 
     struct response_data_ugeninfo {
         size_t key;
         char name[64];
+    };
+
+    struct response_data_listqueues {
+        size_t key;
     };
 
     struct response_data_message {
@@ -38,6 +42,7 @@ namespace DSPQ {
         response_data_ugeninfo ugenInfo;
         response_data_queue queueInfo;
         response_data_message ugenMessage;
+        response_data_listqueues listqueues;
     };
 
     struct response_info {

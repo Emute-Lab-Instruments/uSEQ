@@ -16,17 +16,18 @@ public:
         SetOutputCount_(1);
 
         //create an output queue
-        queue_init(&q_output, sizeof(float), 1);
+        // queue_init(&q_output, sizeof(float), 1);
 
 
-        //share it with the interpreter
-        DSPQ::response_info resp;
-        resp.response = DSPQ::RESPONSES::ADD_OUTPUT_QUEUE;
-        resp.data.queueInfo.key = key;
-        resp.data.queueInfo.queueptr = &q_output;
-        resp.data.queueInfo.index = 0;
-        resp.data.queueInfo.queueSize = 1;
-        queue_try_add(q_message, &resp);
+        // //share it with the interpreter
+        // DSPQ::response_info resp;
+        // resp.response = DSPQ::RESPONSES::ADD_OUTPUT_QUEUE;
+        // resp.data.queueInfo.key = key;
+        // resp.data.queueInfo.queueptr = &q_output;
+        // resp.data.queueInfo.index = 0;
+        // resp.data.queueInfo.queueSize = 1;
+        // queue_try_add(q_message, &resp);
+        createOutputQueue(0, q_output);
     }
     
     ~uSeqGen_QueueOutput() {
