@@ -43,6 +43,10 @@ public:
         size_t destKey;
         size_t channelDest;
     };
+    struct command_data_disconnect {
+        size_t srcKey;
+        size_t channelSrc;
+    };
     struct command_data_message {
         size_t ugen_key;
         char message[MAX_MSG_KEY_LENGTH];
@@ -54,6 +58,7 @@ public:
         command_data_create create;
         command_data_destroy destroy;
         command_data_connect connect;
+        command_data_disconnect disconnect;
         command_data_message message;
     };
 
@@ -114,6 +119,9 @@ public:
                 case CONNECT:   
                     connect(cmd.data.connect.srcKey, cmd.data.connect.channelSrc, cmd.data.connect.destKey, cmd.data.connect.channelDest);
                     break;
+                case DISCONNECT:   
+                    disconnect(cmd.data.connect.srcKey, cmd.data.connect.channelSrc);
+                    break;
                 case GETUGENINFO:
                     request_ugen_info();
                     break;
@@ -144,6 +152,15 @@ public:
             circuit->ConnectOutToIn(src, channelSrc, dest, channelDest);
         }else{
             println("Processor(s) not found: " + String(srcKey) + " or " + String(destKey));
+        }
+    }
+
+    void FAST_FUNC(disconnect)(size_t srcKey, size_t channelSrc) {
+        auto src = components[srcKey];
+        if (src) {
+            src->DisconnectInput(channelSrc);
+        }else{
+            println("Processor not found: " + String(srcKey));
         }
     }
 

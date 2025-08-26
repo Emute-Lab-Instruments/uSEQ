@@ -664,6 +664,32 @@ Value uSEQ::useq_dsp_connect(std::vector<Value>& args, Environment& env)
     return Value::string("Ugen patching...");
 }
 
+Value uSEQ::useq_dsp_disconnect(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ppp-unpatch";
+
+    // Checking number of args
+    if (!(args.size() == 2))
+    {
+        report_error_wrong_num_args(user_facing_name, args.size(),
+                                    NumArgsComparison::EqualTo, 4, -1);
+        return Value::error();
+    }
+
+    // BODY
+
+    //todo: error checking
+
+    String srcname  = args[0].display();
+    uSEQDSPEngine::command_info cmd;
+    cmd.command = uSEQDSPEngine::COMMANDS::DISCONNECT;
+    cmd.data.disconnect.srcKey=static_cast<size_t>(env.get(srcname)->as_int());
+    cmd.data.disconnect.channelSrc=static_cast<size_t>(args[1].as_int());
+    queue_try_add(&DSPQ::q_engine_commands, &cmd);
+
+    return Value::string("Ugen unpatching...");
+}
+
 Value uSEQ::useq_dsp_getugens(std::vector<Value>& args, Environment& env) {
     uSEQDSPEngine::command_info cmd;
     cmd.command = uSEQDSPEngine::COMMANDS::GETUGENINFO;
