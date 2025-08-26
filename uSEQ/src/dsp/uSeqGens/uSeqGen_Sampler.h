@@ -46,16 +46,17 @@ public:
         sample_info.found = false;
 
         //create a queue
-        queue_init(&q_input, sizeof(float), 1);
+        // queue_init(&q_input, sizeof(float), 1);
 
-        //share it with the interpreter
-        DSPQ::response_info resp;
-        resp.response = DSPQ::RESPONSES::ADD_INPUT_QUEUE;
-        resp.data.queueInfo.key = key;
-        resp.data.queueInfo.queueptr = &q_input;
-        resp.data.queueInfo.index = 0;
-        resp.data.queueInfo.queueSize = 1;
-        queue_try_add(q_message, &resp);
+        // //share it with the interpreter
+        // DSPQ::response_info resp;
+        // resp.response = DSPQ::RESPONSES::ADD_INPUT_QUEUE;
+        // resp.data.queueInfo.key = key;
+        // resp.data.queueInfo.queueptr = &q_input;
+        // resp.data.queueInfo.index = 0;
+        // resp.data.queueInfo.queueSize = 1;
+        // queue_try_add(q_message, &resp);
+        createInputQueue(0, q_input);
 
 
         addMessageHandler("rate", [this](command_data_message_data &data) {

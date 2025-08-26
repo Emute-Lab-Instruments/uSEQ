@@ -53,10 +53,43 @@ public:
     struct queue_spec {
         size_t nFloats;
         size_t key;
+        size_t index=0;
     };
 
     std::vector<uSeqGen_Base::queue_spec> outputQueues;
     std::vector<uSeqGen_Base::queue_spec> inputQueues;
+
+    void createInputQueue(size_t index, queue_t &q_input) {
+        queue_init(&q_input, sizeof(float), 1);
+        queue_spec q;
+        q.nFloats = 1;
+        // q.key = key;
+        q.index = index;
+        DSPQ::response_info resp;
+        resp.response = DSPQ::RESPONSES::ADD_INPUT_QUEUE;
+        resp.data.queueInfo.key = key;
+        resp.data.queueInfo.queueptr = &q_input;
+        resp.data.queueInfo.index = 0;
+        resp.data.queueInfo.queueSize = 1;
+        queue_try_add(q_message, &resp);
+        inputQueues.push_back(q);
+    }
+
+    void createOutputQueue(size_t index, queue_t &q_output) {
+        queue_init(&q_output, sizeof(float), 1);
+        queue_spec q;
+        q.nFloats = 1;
+        // q.key = key;
+        q.index = index;
+        DSPQ::response_info resp;
+        resp.response = DSPQ::RESPONSES::ADD_OUTPUT_QUEUE;
+        resp.data.queueInfo.key = key;
+        resp.data.queueInfo.queueptr = &q_output;
+        resp.data.queueInfo.index = 0;
+        resp.data.queueInfo.queueSize = 1;
+        queue_try_add(q_message, &resp);
+        outputQueues.push_back(q);
+    }
 
     static void __not_in_flash_func(setSampleRate)(size_t sr) {
         uSeqGen_Base::sampleRate= sr;
@@ -75,6 +108,25 @@ public:
         } else {
            println("Message handler not found for: " + s);
         }
+    }
+
+    void listQueues() {
+        String msg="Queues:\n";
+        msg += "Inputs:\n";
+        if (inputQueues.size()==0 ) {
+            msg += "  (none)\n";
+        }
+        for (auto &q : inputQueues) {
+            msg += "  In  " + String(q.key) + " " + String(q.nFloats) + "\n";
+        }
+        msg += "Outputs:\n";
+        if (outputQueues.size()==0 ) {
+            msg += "  (none)\n";
+        }
+        for (auto &q : outputQueues) {
+            msg += "  Out " + String(q.key) + " " + String(q.nFloats) + "\n";
+        }
+        println(msg);
     }
     
     static float sampleRate;

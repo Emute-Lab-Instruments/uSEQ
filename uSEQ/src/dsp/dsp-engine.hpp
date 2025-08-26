@@ -17,6 +17,8 @@
 #include "uSeqGens/uSeqGen_LoopPlayer.h"
 #include "uSeqGens/uSeqGen_Mixer.h"
 #include "uSeqGens/uSeqGen_Sampler.h"
+#include "uSeqGens/uSeqGen_LFSaw.h"
+#include "uSeqGens/uSeqGen_TrigRand.h"
 #include <array>
 #include <unordered_map>
 #include "dsp-q-data.hpp"
@@ -25,7 +27,7 @@ using componentPtr = std::shared_ptr<uSeqGen_Base>;
 
 class uSEQDSPEngine {
 public:
-    enum COMMANDS {SETUP, START, STOP, CREATE, DESTROY, RESET, CONNECT, DISCONNECT, GETUGENINFO, MESSAGE};
+    enum COMMANDS {SETUP, START, STOP, CREATE, DESTROY, RESET, CONNECT, DISCONNECT, GETUGENINFO, MESSAGE, LISTQUEUES};
     static constexpr size_t MAX_MSG_KEY_LENGTH = 16;
     struct command_data_start {
         double sampleRate;
@@ -47,6 +49,9 @@ public:
         size_t srcKey;
         size_t channelSrc;
     };
+    struct command_data_listqueues {
+        size_t srcKey;
+    };
     struct command_data_message {
         size_t ugen_key;
         char message[MAX_MSG_KEY_LENGTH];
@@ -60,6 +65,7 @@ public:
         command_data_connect connect;
         command_data_disconnect disconnect;
         command_data_message message;
+        command_data_listqueues listqueues;
     };
 
     struct command_info {
@@ -86,9 +92,11 @@ public:
         registerUGen<uSeqGen_Euclidean>("euclid"); 
         registerUGen<uSeqGen_NN>("nn"); 
         registerUGen<uSeqGen_MT_DAC>("dac");
-        // registerUGen<uSeqGen_LoopPlayer>("loop");
         registerUGen<uSeqGen_Sampler>("sampler");
         registerUGen<uSeqGen_Mixer>("mixer");
+        registerUGen<uSeqGen_LFSaw>("lfsaw");
+        registerUGen<uSeqGen_TrigRand>("rand");
+        
     }
 
 
@@ -128,6 +136,9 @@ public:
                 case RESET:
                     reset();
                     break;
+                case LISTQUEUES:
+                    listqueues(cmd.data.listqueues.srcKey);
+                    break;
                 case MESSAGE:
                     {
                         auto it = components.find(cmd.data.message.ugen_key);
@@ -159,6 +170,15 @@ public:
         auto src = components[srcKey];
         if (src) {
             src->DisconnectInput(channelSrc);
+        }else{
+            println("Processor not found: " + String(srcKey));
+        }
+    }
+
+    void FAST_FUNC(listqueues)(size_t srcKey) {
+        auto src = components[srcKey];
+        if (src) {
+            src->listQueues();
         }else{
             println("Processor not found: " + String(srcKey));
         }

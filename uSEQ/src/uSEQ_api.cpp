@@ -216,6 +216,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-set", useq_dsp_qset);
     INSERT_BUILTINDEF("ppp-reset", useq_dsp_reset);
     INSERT_BUILTINDEF("ppp-msg", useq_dsp_message);
+    INSERT_BUILTINDEF("ppp-qlist", useq_dsp_listqueues);
     #endif
 }
 
