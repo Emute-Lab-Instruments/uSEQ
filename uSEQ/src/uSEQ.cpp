@@ -834,7 +834,7 @@ Value uSEQ::useq_dsp_qget(std::vector<Value>& args, Environment& env)
     float qvalue = 0.f;
 
     auto queueIndexVal = env.get(name);
-    if(queueIndexVal)
+    if(queueIndexVal != std::nullopt)
     {
         size_t queueIndex = static_cast<size_t>(queueIndexVal.value().as_int());
         // println("get: " + name + String(queueIndex));
@@ -851,7 +851,7 @@ Value uSEQ::useq_dsp_qget(std::vector<Value>& args, Environment& env)
             qInfo->lastValue[0] = qvalue;
         }
     }else{
-        // println("Warning: " + name + " not found in env");
+        println("Warning: " + name + " not found");
     }
     return Value(qvalue);
 }
