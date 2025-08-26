@@ -15,11 +15,11 @@ public:
             setFrequency(data.floatData.value);
         });    
         
-        setFrequency(1.f);
+        setFrequency(100.f);
     }
 
     void setFrequency(float freq) {
-         inc = freq * uSeqGen_Base::sampleRateRcpr * 0.5f;
+         inc = freq * uSeqGen_Base::sampleRateRcpr * 2.f;
          frequency = freq;
     }
 
