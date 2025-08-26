@@ -210,6 +210,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-mount", useq_dsp_create);
     INSERT_BUILTINDEF("ppp-unmount", useq_dsp_kill);
     INSERT_BUILTINDEF("ppp-patch", useq_dsp_connect);
+    INSERT_BUILTINDEF("ppp-unpatch", useq_dsp_disconnect);
     INSERT_BUILTINDEF("ppp-getugens", useq_dsp_getugens);
     INSERT_BUILTINDEF("ppp-get", useq_dsp_qget);
     INSERT_BUILTINDEF("ppp-set", useq_dsp_qset);
