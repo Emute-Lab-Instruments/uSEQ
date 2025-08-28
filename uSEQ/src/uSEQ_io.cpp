@@ -1,6 +1,7 @@
 #include "uSEQ.h"
 #include "utils.h"
 #include "hardware_includes.h"
+#include "hal/hal.h"
 
 float pdm_y   = 0;
 float pdm_err = 0;
@@ -293,7 +294,7 @@ void uSEQ::analog_write_with_led(int output, double val)
 
 
     // write led -- output surely? ***
-    analogWrite(pwm_pin, scaled_val);
+    hal::analog_write(pwm_pin, scaled_val);
 }
 
 void uSEQ::serial_write(int out, double val)
@@ -702,5 +703,4 @@ void uSEQ::update_midi_out()
     }
 }
 #endif // end of MIDI OUT SECTION
-
 
