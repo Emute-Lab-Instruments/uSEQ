@@ -33,6 +33,7 @@
 
 
 #include "hardware_includes.h"
+#include "io/io_map.h"
 #ifdef ARDUINO
 #include "uSEQ/i2cClient.h"
 #else
@@ -215,6 +216,8 @@ void uSEQ::init()
 #endif
 
     setup_IO();
+    // Prepare IO mapping (pins and counts) for portable access
+    useq::io::init_from_hardware();
 
     // dbg("Lisp library loaded.");
 

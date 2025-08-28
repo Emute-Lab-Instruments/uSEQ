@@ -2,6 +2,7 @@
 #include "utils.h"
 #include "hardware_includes.h"
 #include "hal/hal.h"
+#include "io/io_map.h"
 
 float pdm_y   = 0;
 float pdm_err = 0;
@@ -267,8 +268,7 @@ void uSEQ::analog_write_with_led(int output, double val)
     }
 
     // led
-    int led_pin   = analog_out_LED_pin(output + 1);
-    int pwm_pin   = analog_out_pin(output + 1);
+    int led_pin   = useq::io::continuous_out_led_pin(output + 1);
     int ledsigval = scaled_val; // >> 2; // shift to 11 bit range for the LED
 
     ledsigval =
@@ -293,8 +293,8 @@ void uSEQ::analog_write_with_led(int output, double val)
 
 
 
-    // write led -- output surely? ***
-    hal::analog_write(pwm_pin, scaled_val);
+    // write analog out
+    useq::io::write_continuous_pwm(output + 1, scaled_val);
 }
 
 void uSEQ::serial_write(int out, double val)
@@ -316,8 +316,8 @@ void uSEQ::digital_write_with_led(int output, int val)
 {
     DBG("uSEQ::digital_write_with_led");
 
-    int pin     = digital_out_pin(output + 1);
-    int led_pin = digital_out_LED_pin(output + 1);
+    int pin     = useq::io::binary_out_pin(output + 1);
+    int led_pin = useq::io::binary_out_led_pin(output + 1);
 
     dbg("output = " + String(output));
     dbg("pin = " + String(pin));
@@ -703,4 +703,3 @@ void uSEQ::update_midi_out()
     }
 }
 #endif // end of MIDI OUT SECTION
-

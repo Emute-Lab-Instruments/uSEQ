@@ -14,7 +14,10 @@ inline void analog_write(int pin, int value) { analogWrite(pin, value); }
 // Optional helpers (not yet used here, provided for future swaps)
 inline void pin_mode(int pin, int mode) { pinMode(pin, mode); }
 
+// Digital IO
+inline void digital_write(int pin, int value) { digitalWrite(pin, value); }
+inline int digital_read(int pin) { return digitalRead(pin); }
+
 } // namespace hal
 
 #endif // USEQ_HAL_H_
-

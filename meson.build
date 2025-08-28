@@ -48,6 +48,7 @@ common_src = [
   'uSEQ/src/uSEQ_flash.cpp',
   'uSEQ/src/uSEQ_time.cpp',
   'uSEQ/src/uSEQ_api.cpp',
+  'uSEQ/src/io/io_map.cpp',
   # 'uSEQ/src/uSEQ_update_refactored.cpp',
   'uSEQ/src/uSEQ_update.cpp',  # Keep this version
   # TODO should these be moved separately?

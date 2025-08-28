@@ -124,6 +124,7 @@ useq_test_src = [
   '../uSEQ/src/uSEQ_time.cpp',
   '../uSEQ/src/uSEQ_api.cpp',
   '../uSEQ/src/uSEQ_update.cpp',
+  '../uSEQ/src/io/io_map.cpp',
   # DSP utils used by uSEQ
   '../uSEQ/src/dsp/MAFilter.h',
   '../uSEQ/src/dsp/tempoEstimator.h',
