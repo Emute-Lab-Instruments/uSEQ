@@ -321,6 +321,12 @@ private:
     LISP_FUNC_DECL(useq_setbpm);
     LISP_FUNC_DECL(useq_get_input_bpm);
     LISP_FUNC_DECL(useq_set_time_sig);
+    // English convenience setters
+    LISP_FUNC_DECL(useq_cv);
+    LISP_FUNC_DECL(useq_gate);
+    // English convenience getters
+    LISP_FUNC_DECL(useq_get_cv);
+    LISP_FUNC_DECL(useq_get_gate);
 
     LISP_FUNC_DECL(useq_in1);
     LISP_FUNC_DECL(useq_in2);

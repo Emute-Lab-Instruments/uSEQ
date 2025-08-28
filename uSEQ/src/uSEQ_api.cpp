@@ -12,26 +12,43 @@ void uSEQ::init_builtinfuncs()
     DBG("uSEQ::init_builtinfuncs");
 
     INSERT_BUILTINDEF("eval-at-time", useq_eval_at_time);
+    INSERT_BUILTINDEF("at", useq_eval_at_time);
     INSERT_BUILTINDEF("useq-rewind", useq_rewind_logical_time);
 
     // a
     INSERT_BUILTINDEF("a1", useq_a1);
+    INSERT_BUILTINDEF("cv-1", useq_a1);
     INSERT_BUILTINDEF("a2", useq_a2);
+    INSERT_BUILTINDEF("cv-2", useq_a2);
     INSERT_BUILTINDEF("a3", useq_a3);
+    INSERT_BUILTINDEF("cv-3", useq_a3);
     INSERT_BUILTINDEF("a4", useq_a4);
+    INSERT_BUILTINDEF("cv-4", useq_a4);
     INSERT_BUILTINDEF("a5", useq_a5);
+    INSERT_BUILTINDEF("cv-5", useq_a5);
     INSERT_BUILTINDEF("a6", useq_a6);
+    INSERT_BUILTINDEF("cv-6", useq_a6);
     INSERT_BUILTINDEF("a7", useq_a7);
+    INSERT_BUILTINDEF("cv-7", useq_a7);
     INSERT_BUILTINDEF("a8", useq_a8);
+    INSERT_BUILTINDEF("cv-8", useq_a8);
     // d
     INSERT_BUILTINDEF("d1", useq_d1);
+    INSERT_BUILTINDEF("gate-1", useq_d1);
     INSERT_BUILTINDEF("d2", useq_d2);
+    INSERT_BUILTINDEF("gate-2", useq_d2);
     INSERT_BUILTINDEF("d3", useq_d3);
+    INSERT_BUILTINDEF("gate-3", useq_d3);
     INSERT_BUILTINDEF("d4", useq_d4);
+    INSERT_BUILTINDEF("gate-4", useq_d4);
     INSERT_BUILTINDEF("d5", useq_d5);
+    INSERT_BUILTINDEF("gate-5", useq_d5);
     INSERT_BUILTINDEF("d6", useq_d6);
+    INSERT_BUILTINDEF("gate-6", useq_d6);
     INSERT_BUILTINDEF("d7", useq_d7);
+    INSERT_BUILTINDEF("gate-7", useq_d7);
     INSERT_BUILTINDEF("d8", useq_d8);
+    INSERT_BUILTINDEF("gate-8", useq_d8);
     // s
     INSERT_BUILTINDEF("s1", useq_s1);
     INSERT_BUILTINDEF("s2", useq_s2);
@@ -64,22 +81,40 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ain2", useq_ain2);
 
     INSERT_BUILTINDEF("get-a1", useq_get_a1);
+    INSERT_BUILTINDEF("get-cv-1", useq_get_a1);
     INSERT_BUILTINDEF("get-a2", useq_get_a2);
+    INSERT_BUILTINDEF("get-cv-2", useq_get_a2);
     INSERT_BUILTINDEF("get-a3", useq_get_a3);
+    INSERT_BUILTINDEF("get-cv-3", useq_get_a3);
     INSERT_BUILTINDEF("get-a4", useq_get_a4);
+    INSERT_BUILTINDEF("get-cv-4", useq_get_a4);
     INSERT_BUILTINDEF("get-a5", useq_get_a5);
+    INSERT_BUILTINDEF("get-cv-5", useq_get_a5);
     INSERT_BUILTINDEF("get-a6", useq_get_a6);
+    INSERT_BUILTINDEF("get-cv-6", useq_get_a6);
     INSERT_BUILTINDEF("get-a7", useq_get_a7);
+    INSERT_BUILTINDEF("get-cv-7", useq_get_a7);
     INSERT_BUILTINDEF("get-a8", useq_get_a8);
+    INSERT_BUILTINDEF("get-cv-8", useq_get_a8);
 
     INSERT_BUILTINDEF("get-d1", useq_get_d1);
+    INSERT_BUILTINDEF("get-gate-1", useq_get_d1);
     INSERT_BUILTINDEF("get-d2", useq_get_d2);
+    INSERT_BUILTINDEF("get-gate-2", useq_get_d2);
     INSERT_BUILTINDEF("get-d3", useq_get_d3);
+    INSERT_BUILTINDEF("get-gate-3", useq_get_d3);
     INSERT_BUILTINDEF("get-d4", useq_get_d4);
+    INSERT_BUILTINDEF("get-gate-4", useq_get_d4);
     INSERT_BUILTINDEF("get-d5", useq_get_d5);
+    INSERT_BUILTINDEF("get-gate-5", useq_get_d5);
     INSERT_BUILTINDEF("get-d6", useq_get_d6);
+    INSERT_BUILTINDEF("get-gate-6", useq_get_d6);
     INSERT_BUILTINDEF("get-d7", useq_get_d7);
+    INSERT_BUILTINDEF("get-gate-7", useq_get_d7);
     INSERT_BUILTINDEF("get-d8", useq_get_d8);
+    INSERT_BUILTINDEF("get-gate-8", useq_get_d8);
+    INSERT_BUILTINDEF("get-cv", useq_get_cv);
+    INSERT_BUILTINDEF("get-gate", useq_get_gate);
 
     // INSERT_BUILTINDEF("get-s1", useq_get_s1);
     // INSERT_BUILTINDEF("get-s2", useq_get_s2);
@@ -95,8 +130,14 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("offset", useq_offset_time);
 
     INSERT_BUILTINDEF("set-bpm", useq_setbpm);
+    INSERT_BUILTINDEF("bpm", useq_setbpm);
     INSERT_BUILTINDEF("get-input-bpm", useq_get_input_bpm);
     INSERT_BUILTINDEF("set-time-sig", useq_set_time_sig);
+    INSERT_BUILTINDEF("time-signature", useq_set_time_sig);
+    INSERT_BUILTINDEF("set-time-signature", useq_set_time_sig);
+    // Convenience setters
+    INSERT_BUILTINDEF("cv", useq_cv);
+    INSERT_BUILTINDEF("gate", useq_gate);
     INSERT_BUILTINDEF("schedule", useq_schedule);
     INSERT_BUILTINDEF("unschedule", useq_unschedule);
 
@@ -219,6 +260,142 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-qlist", useq_dsp_listqueues);
     #endif
 }
+
+// Convenience English setters: (cv idx expr)
+BUILTINFUNC_NOEVAL_MEMBER(
+    useq_cv,
+    {
+        constexpr const char* user_facing_name = "cv";
+
+        // Evaluate first arg (index), leave expr unevaluated
+        Value pre_eval = args[0];
+        args[0]        = args[0].eval(env);
+        if (args[0].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
+            ret = Value::error();
+        }
+        else if (!args[0].is_number())
+        {
+            report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                             args[0].display());
+            ret = Value::error();
+        }
+        else
+        {
+            int idx = args[0].as_int();
+            if (idx < 1 || idx > NUM_CONTINUOUS_OUTS)
+            {
+                report_custom_function_error(user_facing_name,
+                                             "output index out of range");
+                ret = Value::error();
+            }
+            else
+            {
+                String name = String("a") + String(idx);
+                set_expr(name, args[1]);
+                m_continuous_ASTs[idx - 1] = { args[1] };
+                ret                        = Value::atom(name);
+            }
+        }
+    },
+    2)
+
+// Convenience English setters: (gate idx expr)
+BUILTINFUNC_NOEVAL_MEMBER(
+    useq_gate,
+    {
+        constexpr const char* user_facing_name = "gate";
+
+        // Evaluate first arg (index), leave expr unevaluated
+        Value pre_eval = args[0];
+        args[0]        = args[0].eval(env);
+        if (args[0].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
+            ret = Value::error();
+        }
+        else if (!args[0].is_number())
+        {
+            report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                             args[0].display());
+            ret = Value::error();
+        }
+        else
+        {
+            int idx = args[0].as_int();
+            if (idx < 1 || idx > NUM_BINARY_OUTS)
+            {
+                report_custom_function_error(user_facing_name,
+                                             "output index out of range");
+                ret = Value::error();
+            }
+            else
+            {
+                String name = String("d") + String(idx);
+                set_expr(name, args[1]);
+                m_binary_ASTs[idx - 1] = { args[1] };
+                ret                     = Value::atom(name);
+            }
+        }
+    },
+    2)
+
+// Convenience English getters: (get-cv idx)
+BUILTINFUNC_MEMBER(
+    useq_get_cv,
+    {
+        constexpr const char* user_facing_name = "get-cv";
+        if (!args[0].is_number())
+        {
+            report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                             args[0].display());
+            ret = Value::error();
+        }
+        else
+        {
+            int idx = args[0].as_int();
+            if (idx < 1 || idx > NUM_CONTINUOUS_OUTS)
+            {
+                report_custom_function_error(user_facing_name,
+                                             "output index out of range");
+                ret = Value::error();
+            }
+            else
+            {
+                ret = Value(m_continuous_vals[idx - 1]);
+            }
+        }
+    },
+    1)
+
+// Convenience English getters: (get-gate idx)
+BUILTINFUNC_MEMBER(
+    useq_get_gate,
+    {
+        constexpr const char* user_facing_name = "get-gate";
+        if (!args[0].is_number())
+        {
+            report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                             args[0].display());
+            ret = Value::error();
+        }
+        else
+        {
+            int idx = args[0].as_int();
+            if (idx < 1 || idx > NUM_BINARY_OUTS)
+            {
+                report_custom_function_error(user_facing_name,
+                                             "output index out of range");
+                ret = Value::error();
+            }
+            else
+            {
+                ret = Value(m_binary_vals[idx - 1]);
+            }
+        }
+    },
+    1)
 
 ////////////////////
 // USEQ API
@@ -2638,7 +2815,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
 BUILTINFUNC_NOEVAL_MEMBER(
     useq_a8,
     if (NUM_CONTINUOUS_OUTS >= 8) {
-        set_expr("a6", args[0]);
+        set_expr("a8", args[0]);
         m_continuous_ASTs[7] = { args[0] };
         ret                  = Value::atom("a8");
     },
@@ -2697,7 +2874,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     useq_d7,
     if (NUM_BINARY_OUTS >= 7) {
         set_expr("d7", args[0]);
-        m_binary_ASTs[5] = { args[0] };
+        m_binary_ASTs[6] = { args[0] };
         ret              = Value::atom("d7");
     },
     1)
@@ -2705,7 +2882,7 @@ BUILTINFUNC_NOEVAL_MEMBER(
     useq_d8,
     if (NUM_BINARY_OUTS >= 8) {
         set_expr("d8", args[0]);
-        m_binary_ASTs[5] = { args[0] };
+        m_binary_ASTs[7] = { args[0] };
         ret              = Value::atom("d8");
     },
     1)
@@ -2723,7 +2900,7 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_s3, set_expr("s3", args[0]);
                           m_serial_ASTs[2] = { args[0] }; ret = Value::atom("s3");
                           , 1)
 BUILTINFUNC_NOEVAL_MEMBER(useq_s4, set_expr("s4", args[0]);
-                          m_serial_ASTs[3] = { args[0] }; ret = Value::atom("s5");
+                          m_serial_ASTs[3] = { args[0] }; ret = Value::atom("s4");
                           , 1)
 BUILTINFUNC_NOEVAL_MEMBER(useq_s5, set_expr("s5", args[0]);
                           m_serial_ASTs[4] = { args[0] }; ret = Value::atom("s5");

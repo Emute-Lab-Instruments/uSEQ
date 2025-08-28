@@ -44,3 +44,16 @@ Build the firmware in Arduino IDE, using the [Earle Philhower Pico core](https:/
 Overclock the Pico at 250Mhz and set the optimisation level to -O3.
 
 We welcome pull requests.
+
+## English-Friendly DSL Aliases
+
+Alongside the original short forms, uSEQ provides more “English-like” aliases you can use in patches:
+
+- Tempo & meter: `(bpm 120)`, `(time-signature 5 8)`.
+- Schedule: `(at 1.5 (println "hello"))` is an alias of `eval-at-time`.
+- Outputs:
+  - Set by name: `(cv 1 expr)`, `(gate 3 expr)`.
+  - Direct aliases: `cv-1..cv-8` mirror `a1..a8`; `gate-1..gate-8` mirror `d1..d8`.
+  - Getters: `get-cv-1..8`, `get-gate-1..8` mirror `get-a*` / `get-d*`.
+
+All original forms remain supported to avoid breaking existing patches.

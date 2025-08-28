@@ -124,8 +124,8 @@ void report_error_wrong_all_pred(const String& function_name, int num,
                                  const String& expected_str,
                                  const String& received_val_str)
 {
-    String msg = "(`" + function_name + "`) All arguments should evaluate to " +
-                 expected_str + ", but argument #" + String(num) + " does not:";
+    String msg = "(`" + function_name + "`) All arguments should be " +
+                 expected_str + ", but argument #" + String(num) + " is:";
     msg += "\n    " + received_val_str;
     report_error(msg);
 }
@@ -135,14 +135,14 @@ void report_error_wrong_specific_pred(const String& function_name, int num,
                                       const String& received_val_str)
 {
     String msg = "(`" + function_name + "`) Argument #" + String(num) +
-                 " should evaluate to " + expected_str + ", but instead it is:";
+                 " should be " + expected_str + ", but it is:";
     msg += "\n    " + received_val_str;
     report_error(msg);
 }
 
 void report_error_atom_not_defined(const String& atom)
 {
-    report_error("Atom **" + atom + "** not defined.");
+    report_error("Name '" + atom + "' is not defined.");
 }
 
 void report_custom_function_error(const String& function_name, const String& msg)
