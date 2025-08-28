@@ -328,6 +328,11 @@ private:
     LISP_FUNC_DECL(useq_get_cv);
     LISP_FUNC_DECL(useq_get_gate);
 
+private:
+    // Centralised helper to set output expressions for analog (aN) and digital (dN)
+    // index is 1-based; when wrap_lambda is true, stores a (lambda expr) form in env
+    Value set_output_expr_common(int index, Value& expr, bool is_continuous, bool wrap_lambda);
+
     LISP_FUNC_DECL(useq_in1);
     LISP_FUNC_DECL(useq_in2);
     LISP_FUNC_DECL(useq_ain1);
