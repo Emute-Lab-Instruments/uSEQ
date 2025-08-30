@@ -163,12 +163,14 @@ When you successfully complete a task, before you commit, check the task off her
 **Status**: Successfully created template instantiations file and integrated into Meson build. Tests pass.
 
 ### TEMPLATE-002: Optimize Value class template usage
-- [ ] Optimize Value class template usage  
-**Files**: `uSEQ/src/modulisp/lisp/value.h`, `value.cpp`
+- [x] Optimize Value class template usage  
+**Files**: `uSEQ/src/template_instantiations.cpp`
 **Description**: Review and optimize template usage in Value class. Consider explicit specializations for common types.
+**Implementation**: Added explicit instantiations for std::set<String>, std::vector<double>, std::pair<double, double>, and std::vector<std::pair<double, double>>
 **Target**: Reduce template instantiation overhead
-**Acceptance**: Same functionality, faster compilation of Value-heavy code.
+**Acceptance**: Same functionality, faster compilation of Value-heavy code. ✓
 **Estimated Impact**: Reduction in template-heavy compilation units.
+**Status**: Successfully added 4 additional template instantiations for commonly used types in Value class and signal processing.
 
 ## Phase 5: Advanced Build Optimizations (Priority: Low)
 
