@@ -11,8 +11,12 @@ void ModuLispInterpreter::update_time() {
     m_micros_raw_last = m_micros_raw;
     m_last_known_time_since_boot = m_time_since_boot;
 
-    // 1. Get time-since-boot reading from the board
-    m_micros_raw = static_cast<size_t>(micros());
+    // 1. Get time-since-boot reading from the board (prefer injected clock)
+    if (clock != nullptr) {
+        m_micros_raw = static_cast<size_t>(clock->micros());
+    } else {
+        m_micros_raw = static_cast<size_t>(micros());
+    }
 
     // 2. Check if it has overflowed
     if (m_micros_raw < m_micros_raw_last) {
