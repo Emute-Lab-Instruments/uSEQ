@@ -31,6 +31,11 @@ modulisp_api_test_src = [
   'test_modulisp_api.cpp'
 ]
 
+# Time/DI tests
+time_injection_test_src = [
+  'test_time_injection.cpp'
+]
+
 signals_test_src = [
   'test_signals.cpp'
 ]
@@ -41,6 +46,11 @@ automation_analysis_test_src = [
 
 smoothness_test_src = [
   'test_just_smoothness.cpp'
+]
+
+# IO bridge tests
+io_bridge_test_src = [
+  'test_io_bridge.cpp'
 ]
 
 # Common source files needed for tests (from parent directory)
@@ -59,6 +69,7 @@ test_common_src = [
   '../uSEQ/src/utils/error_messages.cpp',
   '../uSEQ/src/utils/flags.h',
   '../uSEQ/src/utils/flags.cpp',
+  '../uSEQ/src/utils/logger_bridge.cpp',
   '../uSEQ/src/utils.h',
   '../uSEQ/src/utils.cpp',
   # LISP
@@ -86,6 +97,8 @@ test_args = [
   '-DUSE_OWN_ARDUINO_STR',
   '-DUSE_STD_IO',
   '-DNO_ETL',
+  '-D__not_in_flash(section)=',
+  '-D__not_in_flash_func(x)=',
   '-std=c++17'
 ]
 
@@ -223,3 +236,36 @@ test('modulisp_api_test', test_modulisp_api_exe)
 # test('signals_test', test_signals_exe)  # Temporarily disabled - uses removed DSP methods
 test('automation_analysis_test', test_automation_analysis_exe)
 # test('smoothness_test', test_smoothness_exe)  # Temporarily disabled - uses removed DSP methods
+
+# Time injection test executable
+time_injection_exe = executable(
+  'test_time_injection',
+  sources : time_injection_test_src + test_common_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+test('time_injection_test', time_injection_exe)
+
+# IO bridge test executable
+io_bridge_exe = executable(
+  'test_io_bridge',
+  sources : io_bridge_test_src + test_common_src + [
+    '../uSEQ/src/uSEQ.cpp',
+    '../uSEQ/src/uSEQ_io.cpp',
+    '../uSEQ/src/uSEQ_api.cpp',
+    '../uSEQ/src/uSEQ/output_manager.cpp',
+    '../uSEQ/src/uSEQ_update.cpp',
+    '../uSEQ/src/uSEQ_led.cpp'
+  ],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+test('io_bridge_test', io_bridge_exe)
