@@ -281,35 +281,53 @@ void uSEQ::analog_write_with_led(int output, double val)
     dbg("val = " + String(val));
     dbg("scaled_val = " + String(scaled_val));
 
+    // If an I/O adapter is provided, use it and return (desktop tests)
+    if (io) {
+        io->analogWrite(static_cast<uint8_t>(led_pin), ledsigval);
+        io->analogWrite(static_cast<uint8_t>(pwm_pin), scaled_val);
+        return;
+    }
+
     // // write pwm
     // pio_pwm_set_level(output < 4 ? pio0 : pio1, output % 4, scaled_val);
 
-    #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
-     // write led
-     analogWrite(led_pin, ledsigval);
+    #ifdef ARDUINO
+      #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
+       // write led
+       analogWrite(led_pin, ledsigval);
+      #else
+         // write pwm
+      pio_pwm_set_level(pio0, output, ledsigval);
+      #endif
+
+      // write led -- output surely? ***
+      analogWrite(pwm_pin, scaled_val);
     #else
-       // write pwm
-    pio_pwm_set_level(pio0, output, ledsigval);
+      (void)led_pin; (void)pwm_pin; (void)ledsigval; (void)scaled_val;
     #endif
-
-
-
-    // write led -- output surely? ***
-    analogWrite(pwm_pin, scaled_val);
 }
 
 void uSEQ::serial_write(int out, double val)
 {
     DBG("uSEQ::serial_write");
 
-    Serial.write(SerialMsg::message_begin_marker);
-    Serial.write((u_int8_t)SerialMsg::serial_message_types::STREAM);
-    Serial.write((u_int8_t)(out + 1));
-    u_int8_t* byteArray = reinterpret_cast<u_int8_t*>(&val);
-    for (size_t b = 0; b < 8; b++)
-    {
-        Serial.write(byteArray[b]);
+    if (io) {
+        io->serialWrite(static_cast<uint8_t>(out), val);
+        return;
     }
+
+    #ifdef ARDUINO
+      Serial.write(SerialMsg::message_begin_marker);
+      Serial.write((u_int8_t)SerialMsg::serial_message_types::STREAM);
+      Serial.write((u_int8_t)(out + 1));
+      u_int8_t* byteArray = reinterpret_cast<u_int8_t*>(&val);
+      for (size_t b = 0; b < 8; b++)
+      {
+          Serial.write(byteArray[b]);
+      }
+    #else
+      (void)out; (void)val;
+    #endif
 }
 
 // NOTE: outputs are 0-indexed,
@@ -324,6 +342,14 @@ void uSEQ::digital_write_with_led(int output, int val)
     dbg("pin = " + String(pin));
     dbg("led pin = " + String(led_pin));
     dbg("val = " + String(val));
+
+    // If an I/O adapter is provided, use it and return
+    if (io) {
+        uint8_t v = static_cast<uint8_t>(val > 0);
+        io->digitalWrite(static_cast<uint8_t>(pin), v);
+        io->digitalWrite(static_cast<uint8_t>(led_pin), v);
+        return;
+    }
 
     // write digi
 #ifdef DIGI_OUT_INVERT
@@ -788,5 +814,3 @@ void uSEQ::update_midi_out()
 
 
 #endif // end of MIDI OUT SECTION
-
-
