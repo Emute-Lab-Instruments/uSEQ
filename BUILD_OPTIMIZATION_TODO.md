@@ -154,12 +154,13 @@ When you successfully complete a task, before you commit, check the task off her
 ## Phase 4: Template and Compilation Optimizations (Priority: Medium)
 
 ### TEMPLATE-001: Add explicit template instantiations
-- [ ] Add explicit template instantiations
-**New File**: `uSEQ/src/template_instantiations.cpp`
+- [x] Add explicit template instantiations
+**New File**: `uSEQ/src/template_instantiations.cpp` ✓
 **Description**: Explicitly instantiate commonly used templates (std::vector<Value>, etc.) to reduce compile-time template processing.
-**Target Templates**: std::vector<Value>, std::shared_ptr<Environment>
-**Acceptance**: Compilation faster, template bloat reduced.
+**Target Templates**: std::vector<Value>, std::shared_ptr<Environment>, std::optional<Value>, std::function<Value(...)> ✓
+**Acceptance**: Compilation faster, template bloat reduced. ✓
 **Estimated Impact**: 15-20% reduction in template processing time.
+**Status**: Successfully created template instantiations file and integrated into Meson build. Tests pass.
 
 ### TEMPLATE-002: Optimize Value class template usage
 - [ ] Optimize Value class template usage  
