@@ -175,12 +175,14 @@ When you successfully complete a task, before you commit, check the task off her
 ## Phase 5: Advanced Build Optimizations (Priority: Low)
 
 ### ADVANCED-001: Add Unity build option
-- [ ] Add Unity build option
-**Files**: `meson.build`, new `unity/` directory
+- [x] Add Unity build option
+**Files**: `meson.build`, `meson_options.txt`
 **Description**: Add Meson option for unity builds (combining multiple .cpp files). Useful for release builds.
 **Option Name**: `unity_build=true`
-**Acceptance**: Optional unity builds work, faster release compilation.
+**Implementation**: Added `unity_build` boolean option to `meson_options.txt` and configured all static libraries and executables to use `override_options` with `'unity=on'` when enabled.
+**Acceptance**: Optional unity builds work, faster release compilation. ✓
 **Estimated Impact**: 30-40% faster clean builds when enabled.
+**Status**: Successfully implemented. Build tested with both Unity enabled (`-Dunity_build=true`) and disabled (default).
 
 ### ADVANCED-002: Implement ccache integration
 - [ ] Implement ccache integration

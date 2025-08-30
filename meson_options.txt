@@ -1,2 +1,3 @@
 option('sanitizers', type: 'boolean', value: false, description: 'Enable ASan/UBSan for desktop development')
 option('coverage', type: 'boolean', value: false, description: 'Enable coverage instrumentation for tests')
+option('unity_build', type: 'boolean', value: false, description: 'Enable Unity build mode for faster clean builds (30-40% speedup)')

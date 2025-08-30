@@ -58,6 +58,10 @@ arduino_args = [
 
 # === STATIC LIBRARIES FOR PROPER DEPENDENCY TRACKING ===
 
+# Get unity build option and configure override options
+unity_build_enabled = get_option('unity_build')
+unity_override_options = unity_build_enabled ? ['unity=on'] : ['unity=off']
+
 # Utils library - lowest level, no dependencies
 utils_lib = static_library('useq_utils',
   'uSEQ/src/utils/string.cpp',
@@ -71,7 +75,8 @@ utils_lib = static_library('useq_utils',
   'uSEQ/src/utils.cpp',
   include_directories : src_inc,
   cpp_args : standalone_args,
-  cpp_pch : pch_file
+  cpp_pch : pch_file,
+  override_options : unity_override_options
 )
 
 # Create a dependency object for utils
@@ -93,7 +98,8 @@ lisp_core_lib = static_library('useq_lisp_core',
   include_directories : src_inc,
   cpp_args : standalone_args,
   cpp_pch : pch_file,
-  dependencies : utils_dep
+  dependencies : utils_dep,
+  override_options : unity_override_options
 )
 
 # Create a dependency object for lisp core
@@ -112,7 +118,8 @@ modulisp_lib = static_library('useq_modulisp',
   include_directories : src_inc,
   cpp_args : standalone_args,
   cpp_pch : pch_file,
-  dependencies : lisp_core_dep
+  dependencies : lisp_core_dep,
+  override_options : unity_override_options
 )
 
 # Test helpers library - minimal interfaces for faster test compilation
@@ -121,7 +128,8 @@ test_helpers_lib = static_library('useq_test_helpers',
   include_directories : src_inc,
   cpp_args : standalone_args,
   cpp_pch : pch_file,
-  dependencies : lisp_core_dep
+  dependencies : lisp_core_dep,
+  override_options : unity_override_options
 )
 
 # Create a dependency object for test helpers
@@ -144,7 +152,8 @@ dsp_lib = static_library('useq_dsp',
   include_directories : src_inc,
   cpp_args : standalone_args,
   cpp_pch : pch_file,
-  dependencies : utils_dep
+  dependencies : utils_dep,
+  override_options : unity_override_options
 )
 
 # Create a dependency object for dsp
@@ -167,7 +176,8 @@ useq_hw_lib = static_library('useq_hw',
   include_directories : src_inc,
   cpp_args : standalone_args,
   cpp_pch : pch_file,
-  dependencies : [modulisp_dep, dsp_dep]
+  dependencies : [modulisp_dep, dsp_dep],
+  override_options : unity_override_options
 )
 
 # Create a dependency object for useq hardware
@@ -186,7 +196,8 @@ standalone_interpreter = executable(
   include_directories : src_inc,
   cpp_args : standalone_args,
   cpp_pch : pch_file,
-  dependencies : useq_hw_dep
+  dependencies : useq_hw_dep,
+  override_options : unity_override_options
 )
 
 # arduino_interpreter = executable(
