@@ -22,7 +22,7 @@ NC='\033[0m' # No Color
 VERBOSE=false
 SKIP_BUILD=false
 SINGLE_TEST=""
-BUILD_DIR="test_build"
+BUILD_DIR="build"
 
 # Script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,7 +61,7 @@ OPTIONS:
                         environment - Environment API tests only  
                         parser      - Parser API tests only
                         interpreter - Interpreter API tests only
-                        builtins    - Generated builtin functions tests only
+                        builtins    - Builtin functions tests only
                         parser_unit - Parser unit tests only
     -h, --help        Show this help message
 
@@ -160,8 +160,8 @@ run_test() {
             test_description="${test_name} API tests"
             ;;
         builtins)
-            test_executable="$BUILD_DIR/test/test_generated_builtins"
-            test_description="Generated builtin functions tests"
+            test_executable="$BUILD_DIR/test/test_builtins"
+            test_description="Builtin functions tests"
             ;;
         parser_unit)
             test_executable="$BUILD_DIR/test/test_parser"
@@ -282,7 +282,7 @@ if [[ ${#failed_tests[@]} -eq 0 ]]; then
     echo "  ✓ Environment API  - Variable storage, scoping, inheritance"  
     echo "  ✓ Parser API       - String parsing, structure recognition, utilities"
     echo "  ✓ Interpreter API  - Expression evaluation, function application"
-    echo "  ✓ Builtins         - Generated builtin function implementations"
+    echo "  ✓ Builtins         - Builtin function implementations"
     echo "  ✓ Parser Unit      - Core parser functionality and edge cases"
     exit 0
 else

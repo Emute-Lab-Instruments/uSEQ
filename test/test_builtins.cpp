@@ -1,7 +1,7 @@
 #define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
 #include "catch.hpp"
 
-#include "../uSEQ/src/modulisp/lisp/generated_builtins.h"
+#include "../uSEQ/src/modulisp/lisp/builtins.h"
 #include "../uSEQ/src/modulisp/lisp/value.h"
 #include "../uSEQ/src/modulisp/lisp/environment.h"
 #include <cmath>

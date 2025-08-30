@@ -26,7 +26,7 @@ SOURCES=(
     "uSEQ/src/lisp/value.cpp"
     "uSEQ/src/lisp/environment.cpp"
     "uSEQ/src/lisp/interpreter.cpp"
-    "uSEQ/src/lisp/generated_builtins.cpp"
+    "uSEQ/src/modulisp/lisp/builtins.cpp"
     
     # uSEQ core
     "uSEQ/src/uSEQ.cpp"

@@ -7,7 +7,7 @@
 #include "../../utils/log.h"
 #include "configure.h"
 #include "environment.h"
-#include "generated_builtins.h"
+#include "builtins.h"
 #include "macros.h"
 #include "parser.h"
 #include "value.h"

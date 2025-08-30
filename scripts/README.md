@@ -26,7 +26,6 @@ Serves files from the `wasm/` directory on http://localhost:8000/
 
 - `arduino_build.sh` - Build firmware for Arduino/Pico
 - `build.sh` - Build desktop version using Meson
-- `generate_builtins.clj` - Generate C++ builtin functions from specifications
 - `lisplibrary.py` - Convert LISP library to C++ header
 
 ## Requirements

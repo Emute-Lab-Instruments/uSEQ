@@ -77,8 +77,8 @@ common_src = [
   'uSEQ/src/modulisp/lisp/interpreter.h',
   'uSEQ/src/modulisp/lisp/interpreter.cpp',
   'uSEQ/src/modulisp/lisp/configure.h',
-  'uSEQ/src/modulisp/lisp/generated_builtins.h',
-  'uSEQ/src/modulisp/lisp/generated_builtins.cpp',
+  'uSEQ/src/modulisp/lisp/builtins.h',
+  'uSEQ/src/modulisp/lisp/builtins.cpp',
   # uSEQ
   'uSEQ/src/uSEQ.h',
   'uSEQ/src/uSEQ.cpp',

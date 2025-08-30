@@ -2,7 +2,7 @@
 
 # Test source files
 test_src = [
-  'test_generated_builtins.cpp'
+  'test_builtins.cpp'
 ]
 
 # Parser test source files
@@ -68,6 +68,11 @@ storage_env_test_src = [
   'test_storage_env.cpp'
 ]
 
+# OutputManager tests
+output_manager_test_src = [
+  'test_output_manager.cpp'
+]
+
 # Common source files needed for tests (from parent directory)
 test_common_src = [
   # UTILS
@@ -99,8 +104,8 @@ test_common_src = [
   '../uSEQ/src/modulisp/lisp/interpreter.h',
   '../uSEQ/src/modulisp/lisp/interpreter.cpp',
   '../uSEQ/src/modulisp/lisp/configure.h',
-  '../uSEQ/src/modulisp/lisp/generated_builtins.h',
-  '../uSEQ/src/modulisp/lisp/generated_builtins.cpp',
+  '../uSEQ/src/modulisp/lisp/builtins.h',
+  '../uSEQ/src/modulisp/lisp/builtins.cpp',
   # MODULISP
   '../uSEQ/src/modulisp/modulisp.h',
   '../uSEQ/src/modulisp/modulisp.cpp',
@@ -124,7 +129,7 @@ test_inc = include_directories('../uSEQ', '../uSEQ/src')
 
 # Test executable
 test_builtin_exe = executable(
-  'test_generated_builtins',
+  'test_builtins',
   sources : test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
@@ -343,3 +348,24 @@ storage_env_exe = executable(
 )
 
 test('storage_env_test', storage_env_exe)
+
+# OutputManager test executable
+output_manager_exe = executable(
+  'test_output_manager',
+  sources : output_manager_test_src + test_common_src + [
+    '../uSEQ/src/uSEQ.cpp',
+    '../uSEQ/src/uSEQ_io.cpp',
+    '../uSEQ/src/uSEQ_api.cpp',
+    '../uSEQ/src/uSEQ/output_manager.cpp',
+    '../uSEQ/src/uSEQ_update.cpp',
+    '../uSEQ/src/uSEQ_led.cpp',
+    '../uSEQ/src/uSEQ_i2c.cpp'
+  ],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+test('output_manager_test', output_manager_exe)
