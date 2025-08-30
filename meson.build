@@ -57,6 +57,8 @@ common_src = [
   'uSEQ/src/utils/flags.h',
   'uSEQ/src/utils/flags.cpp',
   'uSEQ/src/utils/logger_bridge.cpp',
+  'uSEQ/src/utils/default_logger.h',
+  'uSEQ/src/utils/default_logger.cpp',
   'uSEQ/src/utils.h',
   'uSEQ/src/utils.cpp',
   # MODULISP

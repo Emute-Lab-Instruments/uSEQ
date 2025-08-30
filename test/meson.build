@@ -53,6 +53,11 @@ io_bridge_test_src = [
   'test_io_bridge.cpp'
 ]
 
+# Logging bridge tests
+logging_bridge_test_src = [
+  'test_logging_bridge.cpp'
+]
+
 # Common source files needed for tests (from parent directory)
 test_common_src = [
   # UTILS
@@ -70,6 +75,8 @@ test_common_src = [
   '../uSEQ/src/utils/flags.h',
   '../uSEQ/src/utils/flags.cpp',
   '../uSEQ/src/utils/logger_bridge.cpp',
+  '../uSEQ/src/utils/default_logger.h',
+  '../uSEQ/src/utils/default_logger.cpp',
   '../uSEQ/src/utils.h',
   '../uSEQ/src/utils.cpp',
   # LISP
@@ -269,3 +276,16 @@ io_bridge_exe = executable(
 )
 
 test('io_bridge_test', io_bridge_exe)
+
+# Logging bridge test executable
+logging_bridge_exe = executable(
+  'test_logging_bridge',
+  sources : logging_bridge_test_src + test_common_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+test('logging_bridge_test', logging_bridge_exe)

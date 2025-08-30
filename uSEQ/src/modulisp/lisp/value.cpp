@@ -7,6 +7,7 @@
 #include "value.h"
 #include "../../utils.h"
 #include "../../utils/log.h"
+#include "../../utils/logger_bridge.h"
 #include "environment.h"
 #include <cmath>
 #include <limits>
@@ -981,8 +982,10 @@ bool Value::operator>(Value other) const { return !(*this <= other); }
 
 bool Value::operator<(Value other) const {
     // Other type must be a float or an int
-    if (other.type != FLOAT && other.type != INT)
+    if (other.type != FLOAT && other.type != INT) {
+        if (auto L = get_global_logger()) L->error(INVALID_BIN_OP);
         println(INVALID_BIN_OP);
+    }
     // throw Error(*this, Environment(), INVALID_BIN_OP);
 
     switch (type) {
@@ -1010,8 +1013,10 @@ Value Value::operator+(Value other) const {
         return other;
 
     if ((is_number() || other.is_number()) &&
-        !(is_number() && other.is_number()))
+        !(is_number() && other.is_number())) {
+        if (auto L = get_global_logger()) L->error(INVALID_BIN_OP);
         println(INVALID_BIN_OP);
+    }
 
     // Check if we need signal metadata (either operand has metadata)
     bool has_signal_metadata = signal_metadata.has_value() || other.signal_metadata.has_value();

@@ -7,6 +7,8 @@
 #endif
 #include "utils.h"
 #include "utils/log.h"
+#include "utils/logger_bridge.h"
+#include "utils/default_logger.h"
 #include "utils/serial_message.h"
 #include <algorithm>
 #include <cstddef>
@@ -222,6 +224,12 @@ void uSEQ::init() {
     uSEQ::instance = this;
 
     init_builtinfuncs();
+    
+    // Initialize default logger if none is set
+    if (get_global_logger() == nullptr) {
+        static DefaultLogger static_logger;
+        set_global_logger(&static_logger);
+    }
     
     // Initialize output management system
     m_output_manager = new OutputManager(this);
