@@ -1,4 +1,5 @@
 #include "log.h"
+#include "logger_bridge.h"
 
 #include <iostream>
 
@@ -19,6 +20,9 @@ void message_editor(const String& s)
 
 void println(const String& s)
 {
+    if (auto L = get_global_logger()) {
+        L->info(s);
+    }
 #ifdef ARDUINO
     if (Serial.availableForWrite())
     {
@@ -36,7 +40,12 @@ void println(const String& s)
 
 // ERRORS
 std::vector<String> error_msg_q = {};
-void report_error(const String& s) { error_msg_q.push_back(s); }
+void report_error(const String& s) {
+    error_msg_q.push_back(s);
+    if (auto L = get_global_logger()) {
+        L->error(s);
+    }
+}
 
 void report_generic_error(const String& s)
 {
@@ -45,10 +54,17 @@ void report_generic_error(const String& s)
 
 void report_runtime_error(const String& s)
 {
-    report_error((String) "**Runtime Error**: " + s);
+    String msg = (String) "**Runtime Error**: " + s;
+    report_error(msg);
 }
 
-void report_user_warning(const String& s) { report_error("**Warning**: " + s); }
+void report_user_warning(const String& s) {
+    String msg = "**Warning**: " + s;
+    if (auto L = get_global_logger()) {
+        L->warn(msg);
+    }
+    report_error(msg);
+}
 
 void report_evaluation_error(const String& error_msg, String atom)
 {
