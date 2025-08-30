@@ -25,7 +25,7 @@ This document contains a priority-ordered list of atomic refactoring tasks to im
 ## Phase 1: Header Dependency Analysis & Forward Declarations (Priority: High)
 
 ### HEADERS-001: Create forward declaration header for core types
-- [ ] Create forward declaration header for core types
+- [x] Create forward declaration header for core types
 **New File**: `uSEQ/src/core_fwd.h`
 **Description**: Create a lightweight forward declaration header containing forward declarations for Value, Environment, Interpreter, ModuLispInterpreter, and uSEQ classes.
 **Content**: Forward declarations only, no implementations, minimal includes
@@ -33,7 +33,7 @@ This document contains a priority-ordered list of atomic refactoring tasks to im
 **Estimated Impact**: Reduces header weight in files that only need pointers/references.
 
 ### HEADERS-002: Extract SignalMetadata from value.h
-- [ ] Extract SignalMetadata from value.h
+- [x] Extract SignalMetadata from value.h
 **New Files**: 
 - `uSEQ/src/modulisp/lisp/signal_metadata.h`
 - `uSEQ/src/modulisp/lisp/signal_metadata.cpp`
