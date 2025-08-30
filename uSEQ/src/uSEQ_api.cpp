@@ -1,4 +1,5 @@
 #include "uSEQ.h"
+#include "uSEQ/output_manager.h"
 #include "utils.h"
 
 // Creates a Lisp Value of type BUILTIN_METHOD,
@@ -16,7 +17,8 @@ void uSEQ::init_builtinfuncs()
     
     // Add uSEQ-specific hardware functions
     
-    // a - analog outputs
+    // Unified output system - individual functions forward to OutputManager
+    // Analog outputs (a1-a8)
     INSERT_BUILTINDEF("a1", useq_a1);
     INSERT_BUILTINDEF("a2", useq_a2);
     INSERT_BUILTINDEF("a3", useq_a3);
@@ -26,7 +28,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("a7", useq_a7);
     INSERT_BUILTINDEF("a8", useq_a8);
     
-    // d - digital outputs
+    // Digital outputs (d1-d8)
     INSERT_BUILTINDEF("d1", useq_d1);
     INSERT_BUILTINDEF("d2", useq_d2);
     INSERT_BUILTINDEF("d3", useq_d3);
@@ -36,7 +38,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("d7", useq_d7);
     INSERT_BUILTINDEF("d8", useq_d8);
     
-    // s - serial outputs
+    // Serial outputs (s1-s8)
     INSERT_BUILTINDEF("s1", useq_s1);
     INSERT_BUILTINDEF("s2", useq_s2);
     INSERT_BUILTINDEF("s3", useq_s3);
@@ -174,170 +176,84 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = args[0]; re
 // the exprs in both the environment and the class member vectors
 // especially once the exprs get more and more complex
 
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_a1,
-    if (NUM_CONTINUOUS_OUTS >= 1) {
-        std::vector<Value> new_form;
-        new_form.push_back(Value::atom("lambda"));
-        new_form.push_back(args[0]);
-        set_expr("a1", Value(new_form));
-        m_continuous_ASTs[0] = args[0];
-        ret = Value::atom("a1");
-    },
-    1)
+// Unified analog output functions - forward to OutputManager
+Value uSEQ::useq_a1(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(1, OutputManager::OutputType::CONTINUOUS, args, env);
+}
 
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_a2,
-    if (NUM_CONTINUOUS_OUTS >= 2) {
-        set_expr("a2", args[0]);
-        m_continuous_ASTs[1] = {args[0]};
-        ret = Value::atom("a2");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_a3,
-    if (NUM_CONTINUOUS_OUTS >= 3) {
-        set_expr("a3", args[0]);
-        m_continuous_ASTs[2] = {args[0]};
-        ret = Value::atom("a3");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_a4,
-    if (NUM_CONTINUOUS_OUTS >= 4) {
-        set_expr("a4", args[0]);
-        m_continuous_ASTs[3] = {args[0]};
-        ret = Value::atom("a4");
-    },
-    1)
+Value uSEQ::useq_a2(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(2, OutputManager::OutputType::CONTINUOUS, args, env);
+}
+Value uSEQ::useq_a3(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(3, OutputManager::OutputType::CONTINUOUS, args, env);
+}
+Value uSEQ::useq_a4(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(4, OutputManager::OutputType::CONTINUOUS, args, env);
+}
+Value uSEQ::useq_a5(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(5, OutputManager::OutputType::CONTINUOUS, args, env);
+}
+Value uSEQ::useq_a6(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(6, OutputManager::OutputType::CONTINUOUS, args, env);
+}
+Value uSEQ::useq_a7(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(7, OutputManager::OutputType::CONTINUOUS, args, env);
+}
+Value uSEQ::useq_a8(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(8, OutputManager::OutputType::CONTINUOUS, args, env);
+}
 
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_a5,
-    if (NUM_CONTINUOUS_OUTS >= 5) {
-        set_expr("a5", args[0]);
-        m_continuous_ASTs[4] = {args[0]};
-        ret = Value::atom("a5");
-    },
-    1)
+// Unified digital output functions - forward to OutputManager
+Value uSEQ::useq_d1(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(1, OutputManager::OutputType::BINARY, args, env);
+}
+Value uSEQ::useq_d2(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(2, OutputManager::OutputType::BINARY, args, env);
+}
+Value uSEQ::useq_d3(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(3, OutputManager::OutputType::BINARY, args, env);
+}
+Value uSEQ::useq_d4(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(4, OutputManager::OutputType::BINARY, args, env);
+}
+Value uSEQ::useq_d5(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(5, OutputManager::OutputType::BINARY, args, env);
+}
+Value uSEQ::useq_d6(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(6, OutputManager::OutputType::BINARY, args, env);
+}
+Value uSEQ::useq_d7(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(7, OutputManager::OutputType::BINARY, args, env);
+}
+Value uSEQ::useq_d8(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(8, OutputManager::OutputType::BINARY, args, env);
+}
 
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_a6,
-    if (NUM_CONTINUOUS_OUTS >= 6) {
-        set_expr("a6", args[0]);
-        m_continuous_ASTs[5] = {args[0]};
-        ret = Value::atom("a6");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_a7,
-    if (NUM_CONTINUOUS_OUTS >= 7) {
-        set_expr("a7", args[0]);
-        m_continuous_ASTs[6] = {args[0]};
-        ret = Value::atom("a7");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_a8,
-    if (NUM_CONTINUOUS_OUTS >= 8) {
-        set_expr("a6", args[0]);
-        m_continuous_ASTs[7] = {args[0]};
-        ret = Value::atom("a8");
-    },
-    1)
-
-// DIGITAL OUTS
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_d1,
-    if (NUM_BINARY_OUTS >= 1) {
-        set_expr("d1", args[0]);
-        m_binary_ASTs[0] = {args[0]};
-        ret = Value::atom("d1");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_d2,
-    if (NUM_BINARY_OUTS >= 2) {
-        set_expr("d2", args[0]);
-        m_binary_ASTs[1] = {args[0]};
-        ret = Value::atom("d2");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_d3,
-    if (NUM_BINARY_OUTS >= 3) {
-        set_expr("d3", args[0]);
-        m_binary_ASTs[2] = {args[0]};
-        ret = Value::atom("d3");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_d4,
-    if (NUM_BINARY_OUTS >= 4) {
-        set_expr("d4", args[0]);
-        m_binary_ASTs[3] = {args[0]};
-        ret = Value::atom("d4");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_d5,
-    if (NUM_BINARY_OUTS >= 5) {
-        set_expr("d5", args[0]);
-        m_binary_ASTs[4] = {args[0]};
-        ret = Value::atom("d5");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_d6,
-    if (NUM_BINARY_OUTS >= 6) {
-        set_expr("d6", args[0]);
-        m_binary_ASTs[5] = {args[0]};
-        ret = Value::atom("d6");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_d7,
-    if (NUM_BINARY_OUTS >= 7) {
-        set_expr("d7", args[0]);
-        m_binary_ASTs[5] = {args[0]};
-        ret = Value::atom("d7");
-    },
-    1)
-BUILTINFUNC_NOEVAL_MEMBER(
-    useq_d8,
-    if (NUM_BINARY_OUTS >= 8) {
-        set_expr("d8", args[0]);
-        m_binary_ASTs[5] = {args[0]};
-        ret = Value::atom("d8");
-    },
-    1)
-
-BUILTINFUNC_NOEVAL_MEMBER(useq_s1, set_expr("s1", args[0]);
-                          m_serial_ASTs[0] = {args[0]}; ret = Value::atom("s1");
-                          ,
-                          // println(m_serial_ASTs.size());,
-                          1)
-
-BUILTINFUNC_NOEVAL_MEMBER(useq_s2, set_expr("s2", args[0]);
-                          m_serial_ASTs[1] = {args[0]}; ret = Value::atom("s2");
-                          , 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s3, set_expr("s3", args[0]);
-                          m_serial_ASTs[2] = {args[0]}; ret = Value::atom("s3");
-                          , 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s4, set_expr("s4", args[0]);
-                          m_serial_ASTs[3] = {args[0]}; ret = Value::atom("s5");
-                          , 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s5, set_expr("s5", args[0]);
-                          m_serial_ASTs[4] = {args[0]}; ret = Value::atom("s5");
-                          , 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s6, set_expr("s6", args[0]);
-                          m_serial_ASTs[5] = {args[0]}; ret = Value::atom("s6");
-                          , 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s7, set_expr("s7", args[0]);
-                          m_serial_ASTs[6] = {args[0]}; ret = Value::atom("s7");
-                          , 1)
-BUILTINFUNC_NOEVAL_MEMBER(useq_s8, set_expr("s8", args[0]);
-                          m_serial_ASTs[7] = {args[0]}; ret = Value::atom("s8");
-                          , 1)
+// Unified serial output functions - forward to OutputManager
+Value uSEQ::useq_s1(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(1, OutputManager::OutputType::SERIAL, args, env);
+}
+Value uSEQ::useq_s2(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(2, OutputManager::OutputType::SERIAL, args, env);
+}
+Value uSEQ::useq_s3(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(3, OutputManager::OutputType::SERIAL, args, env);
+}
+Value uSEQ::useq_s4(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(4, OutputManager::OutputType::SERIAL, args, env);
+}
+Value uSEQ::useq_s5(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(5, OutputManager::OutputType::SERIAL, args, env);
+}
+Value uSEQ::useq_s6(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(6, OutputManager::OutputType::SERIAL, args, env);
+}
+Value uSEQ::useq_s7(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(7, OutputManager::OutputType::SERIAL, args, env);
+}
+Value uSEQ::useq_s8(std::vector<Value>& args, Environment& env) {
+    return m_output_manager->handle_output_setter(8, OutputManager::OutputType::SERIAL, args, env);
+}
 
 // Function that should be available in all builds (not just Arduino)
 void uSEQ::clear_all_outputs() {
@@ -379,54 +295,56 @@ Value uSEQ::useq_ain2(std::vector<Value> &args, Environment &env) {
     return Value(m_input_vals[USEQAI2]);
 }
 
+// Unified analog output getter functions - forward to OutputManager
 Value uSEQ::useq_get_a1(std::vector<Value> &args, Environment &env) {
-    return Value(m_continuous_vals[0]);
+    return m_output_manager->handle_output_getter(1, OutputManager::OutputType::CONTINUOUS, args, env);
 }
 Value uSEQ::useq_get_a2(std::vector<Value> &args, Environment &env) {
-    return Value(m_continuous_vals[1]);
+    return m_output_manager->handle_output_getter(2, OutputManager::OutputType::CONTINUOUS, args, env);
 }
 Value uSEQ::useq_get_a3(std::vector<Value> &args, Environment &env) {
-    return Value(m_continuous_vals[2]);
+    return m_output_manager->handle_output_getter(3, OutputManager::OutputType::CONTINUOUS, args, env);
 }
 Value uSEQ::useq_get_a4(std::vector<Value> &args, Environment &env) {
-    return Value(m_continuous_vals[3]);
+    return m_output_manager->handle_output_getter(4, OutputManager::OutputType::CONTINUOUS, args, env);
 }
 Value uSEQ::useq_get_a5(std::vector<Value> &args, Environment &env) {
-    return Value(m_continuous_vals[4]);
+    return m_output_manager->handle_output_getter(5, OutputManager::OutputType::CONTINUOUS, args, env);
 }
 Value uSEQ::useq_get_a6(std::vector<Value> &args, Environment &env) {
-    return Value(m_continuous_vals[5]);
+    return m_output_manager->handle_output_getter(6, OutputManager::OutputType::CONTINUOUS, args, env);
 }
 Value uSEQ::useq_get_a7(std::vector<Value> &args, Environment &env) {
-    return Value(m_continuous_vals[6]);
+    return m_output_manager->handle_output_getter(7, OutputManager::OutputType::CONTINUOUS, args, env);
 }
 Value uSEQ::useq_get_a8(std::vector<Value> &args, Environment &env) {
-    return Value(m_continuous_vals[7]);
+    return m_output_manager->handle_output_getter(8, OutputManager::OutputType::CONTINUOUS, args, env);
 }
 
+// Unified digital output getter functions - forward to OutputManager
 Value uSEQ::useq_get_d1(std::vector<Value> &args, Environment &env) {
-    return Value(m_binary_vals[0]);
+    return m_output_manager->handle_output_getter(1, OutputManager::OutputType::BINARY, args, env);
 }
 Value uSEQ::useq_get_d2(std::vector<Value> &args, Environment &env) {
-    return Value(m_binary_vals[1]);
+    return m_output_manager->handle_output_getter(2, OutputManager::OutputType::BINARY, args, env);
 }
 Value uSEQ::useq_get_d3(std::vector<Value> &args, Environment &env) {
-    return Value(m_binary_vals[2]);
+    return m_output_manager->handle_output_getter(3, OutputManager::OutputType::BINARY, args, env);
 }
 Value uSEQ::useq_get_d4(std::vector<Value> &args, Environment &env) {
-    return Value(m_binary_vals[3]);
+    return m_output_manager->handle_output_getter(4, OutputManager::OutputType::BINARY, args, env);
 }
 Value uSEQ::useq_get_d5(std::vector<Value> &args, Environment &env) {
-    return Value(m_binary_vals[4]);
+    return m_output_manager->handle_output_getter(5, OutputManager::OutputType::BINARY, args, env);
 }
 Value uSEQ::useq_get_d6(std::vector<Value> &args, Environment &env) {
-    return Value(m_binary_vals[5]);
+    return m_output_manager->handle_output_getter(6, OutputManager::OutputType::BINARY, args, env);
 }
 Value uSEQ::useq_get_d7(std::vector<Value> &args, Environment &env) {
-    return Value(m_binary_vals[6]);
+    return m_output_manager->handle_output_getter(7, OutputManager::OutputType::BINARY, args, env);
 }
 Value uSEQ::useq_get_d8(std::vector<Value> &args, Environment &env) {
-    return Value(m_binary_vals[7]);
+    return m_output_manager->handle_output_getter(8, OutputManager::OutputType::BINARY, args, env);
 }
 
 // Value uSEQ::useq_get_s1(std::vector<Value>& args, Environment&

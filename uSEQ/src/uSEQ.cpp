@@ -1,4 +1,5 @@
 #include "uSEQ.h"
+#include "uSEQ/output_manager.h"
 #include "modulisp/lisp/LispLibrary.h"
 #include "modulisp/modulisp.h"
 #ifdef ARDUINO
@@ -68,6 +69,12 @@ double maxiFilter::lopass(double input, double cutoff) {
 maxiFilter cvInFilter[2];
 
 // uSEQ MEMBER FUNCTIONS
+
+// Custom destructor to handle OutputManager lifecycle
+uSEQ::~uSEQ() {
+    delete m_output_manager;
+    m_output_manager = nullptr;
+}
 
 // void dbg(String s) { std::cout << s.c_str() << std::endl; }
 
@@ -206,6 +213,9 @@ void uSEQ::init() {
     uSEQ::instance = this;
 
     init_builtinfuncs();
+    
+    // Initialize output management system
+    m_output_manager = new OutputManager(this);
     // eval_lisp_library();
 
     led_animation();

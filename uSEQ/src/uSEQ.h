@@ -35,7 +35,9 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #define NUM_CONTINUOUS_OUTS 3
 #define NUM_BINARY_OUTS (6 - NUM_CONTINUOUS_OUTS)
 #endif
-// #include "utils/serial_message.h"
+
+// Forward declaration
+class OutputManager;
 
 class maxiFilter {
   private:
@@ -53,7 +55,8 @@ class maxiFilter {
 
 class uSEQ : public ModuLispInterpreter {
   public:
-    uSEQ() {}
+    uSEQ() : m_output_manager(nullptr) {}
+    ~uSEQ(); // Custom destructor to manage OutputManager lifecycle
 
 #ifdef ARDUINO
     void init_dsp_queues();
@@ -85,6 +88,19 @@ class uSEQ : public ModuLispInterpreter {
     enum CLOCK_SOURCES { INTERNAL = 0, EXTERNAL_I1, EXTERNAL_I2 };
 
     uSEQ::CLOCK_SOURCES getClockSource() { return useq_clock_source; }
+    
+    // Output management system
+    OutputManager& get_output_manager() { return *m_output_manager; }
+    
+    // Output AST arrays - made public for OutputManager access
+    std::vector<Value> m_continuous_ASTs;
+    std::vector<SERIAL_OUTPUT_VALUE_TYPE> m_continuous_vals;
+
+    std::vector<Value> m_binary_ASTs;
+    std::vector<BINARY_INPUT_VALUE_TYPE> m_binary_vals;
+
+    std::vector<Value> m_serial_ASTs;
+    std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
 
   private:
     // IO m_io;
@@ -108,17 +124,8 @@ class uSEQ : public ModuLispInterpreter {
     bool m_current_expr_sound = true;
     bool m_waiting_for_sync_trigger = false;
 
-    //// OUTPUTS
-    // Output forms
-
-    std::vector<Value> m_continuous_ASTs;
-    std::vector<SERIAL_OUTPUT_VALUE_TYPE> m_continuous_vals;
-
-    std::vector<Value> m_binary_ASTs;
-    std::vector<BINARY_INPUT_VALUE_TYPE> m_binary_vals;
-
-    std::vector<Value> m_serial_ASTs;
-    std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
+    // Output management (moved to public section)
+    OutputManager* m_output_manager;
 
     double m_input_vals[14];
     // NOTE this was a std vector before, init with 0

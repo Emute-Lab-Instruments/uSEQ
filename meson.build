@@ -70,6 +70,9 @@ common_src = [
   'uSEQ/src/uSEQ_led.cpp',
   'uSEQ/src/uSEQ_flash.cpp',
   'uSEQ/src/uSEQ_api.cpp',
+  # Unified output management system
+  'uSEQ/src/uSEQ/output_manager.h',
+  'uSEQ/src/uSEQ/output_manager.cpp',
   # 'uSEQ/src/uSEQ_update_refactored.cpp',
   'uSEQ/src/uSEQ_update.cpp',  # Keep this version
   # TODO should these be moved separately?
