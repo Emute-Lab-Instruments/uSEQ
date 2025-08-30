@@ -11,6 +11,8 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 
 #define USEQ_FIRMWARE_VERSION "1.2.0"
 
+// Functional module headers are included within the class definition
+
 #include "dsp/tempoEstimator.h"
 // #include "dsp/MAFilter.h"
 #include "dsp/MedianFilter.h"
@@ -197,131 +199,16 @@ class uSEQ : public ModuLispInterpreter {
 
     String m_last_received_code = "";
 
-    // expr-updating methods
-    // a
-    LISP_FUNC_DECL(useq_a1);
-    LISP_FUNC_DECL(useq_a2);
-    LISP_FUNC_DECL(useq_a3);
-    LISP_FUNC_DECL(useq_a4);
-    LISP_FUNC_DECL(useq_a5);
-    LISP_FUNC_DECL(useq_a6);
-    LISP_FUNC_DECL(useq_a7);
-    LISP_FUNC_DECL(useq_a8);
+    // Function declarations are now organized in module-specific headers:
+    // - I/O functions: uSEQ_io.h
+    // - DSP functions: uSEQ_dsp.h  
+    // - LISP integration: uSEQ_lisp.h
+    // - Hardware-specific: uSEQ_hardware.h
 
-    // d
-    LISP_FUNC_DECL(useq_d1);
-    LISP_FUNC_DECL(useq_d2);
-    LISP_FUNC_DECL(useq_d3);
-    LISP_FUNC_DECL(useq_d4);
-    LISP_FUNC_DECL(useq_d5);
-    LISP_FUNC_DECL(useq_d6);
-    LISP_FUNC_DECL(useq_d7);
-    LISP_FUNC_DECL(useq_d8);
-    // s
-    LISP_FUNC_DECL(useq_s1);
-    LISP_FUNC_DECL(useq_s2);
-    LISP_FUNC_DECL(useq_s3);
-    LISP_FUNC_DECL(useq_s4);
-    LISP_FUNC_DECL(useq_s5);
-    LISP_FUNC_DECL(useq_s6);
-    LISP_FUNC_DECL(useq_s7);
-    LISP_FUNC_DECL(useq_s8);
+#include "uSEQ_io.h"
+#include "uSEQ_lisp.h" 
+#include "uSEQ_hardware.h"
 
-    // echoed output values
-    LISP_FUNC_DECL(useq_get_a1);
-    LISP_FUNC_DECL(useq_get_a2);
-    LISP_FUNC_DECL(useq_get_a3);
-    LISP_FUNC_DECL(useq_get_a4);
-    LISP_FUNC_DECL(useq_get_a5);
-    LISP_FUNC_DECL(useq_get_a6);
-    LISP_FUNC_DECL(useq_get_a7);
-    LISP_FUNC_DECL(useq_get_a8);
-
-    LISP_FUNC_DECL(useq_get_d1);
-    LISP_FUNC_DECL(useq_get_d2);
-    LISP_FUNC_DECL(useq_get_d3);
-    LISP_FUNC_DECL(useq_get_d4);
-    LISP_FUNC_DECL(useq_get_d5);
-    LISP_FUNC_DECL(useq_get_d6);
-    LISP_FUNC_DECL(useq_get_d7);
-    LISP_FUNC_DECL(useq_get_d8);
-
-    // LISP_FUNC_DECL(useq_get_s1);
-    // LISP_FUNC_DECL(useq_get_s2);
-    // LISP_FUNC_DECL(useq_get_s3);
-    // LISP_FUNC_DECL(useq_get_s4);
-    // LISP_FUNC_DECL(useq_get_s5);
-    // LISP_FUNC_DECL(useq_get_s6);
-    // LISP_FUNC_DECL(useq_get_s7);
-    // LISP_FUNC_DECL(useq_get_s8);
-
-    LISP_FUNC_DECL(useq_get_input_bpm);
-
-    LISP_FUNC_DECL(useq_in1);
-    LISP_FUNC_DECL(useq_in2);
-    LISP_FUNC_DECL(useq_ain1);
-    LISP_FUNC_DECL(useq_ain2);
-
-    LISP_FUNC_DECL(useq_set_clock_internal);
-    LISP_FUNC_DECL(useq_set_clock_external);
-    LISP_FUNC_DECL(useq_get_clock_source);
-    LISP_FUNC_DECL(useq_reset_internal_clock);
-    LISP_FUNC_DECL(useq_reset_external_clock_tracking);
-
-#ifdef MUSICTHING
-    LISP_FUNC_DECL(useq_mt_knob);
-    LISP_FUNC_DECL(useq_mt_knobx);
-    LISP_FUNC_DECL(useq_mt_knoby);
-    LISP_FUNC_DECL(useq_mt_swz);
-#endif
-
-    LISP_FUNC_DECL(useq_q0);
-
-#ifdef ARDUINO
-    LISP_FUNC_DECL(ard_useqaw);
-    LISP_FUNC_DECL(ard_useqdw);
-#else
-    // Desktop build versions
-    LISP_FUNC_DECL(ard_useqaw);
-    LISP_FUNC_DECL(ard_useqdw);
-#endif
-
-#ifdef ARDUINO
-    LISP_FUNC_DECL(useq_load_flash_info);
-    LISP_FUNC_DECL(useq_write_flash_info);
-    LISP_FUNC_DECL(useq_reboot);
-    LISP_FUNC_DECL(useq_set_my_id);
-    LISP_FUNC_DECL(useq_get_my_id);
-    // LISP_FUNC_DECL(useq_test_flash);
-
-    LISP_FUNC_DECL(useq_memory_save);
-    LISP_FUNC_DECL(useq_memory_restore);
-    LISP_FUNC_DECL(useq_memory_erase);
-
-    LISP_FUNC_DECL(useq_load_flash_env);
-    LISP_FUNC_DECL(useq_write_flash_env);
-    LISP_FUNC_DECL(useq_autoload_flash);
-#endif
-
-    LISP_FUNC_DECL(useq_stop_all);
-
-    LISP_FUNC_DECL(useq_firmware_info);
-    LISP_FUNC_DECL(useq_report_firmware_info);
-
-    // i2c
-    LISP_FUNC_DECL(useq_i2c_host_start);
-    LISP_FUNC_DECL(useq_i2c_send_to);
-
-#ifdef ARDUINO
-    LISP_FUNC_DECL(useq_enter_bootloader_mode);
-#endif
-
-    // SYNCING FUNCTIONS
-#ifdef ARDUINO
-    LISP_FUNC_DECL(useq_enter_sync_mode);
-    LISP_FUNC_DECL(useq_send_sync_trigger);
-#endif
-    LISP_FUNC_DECL(useq_send_sync_trigger_i2c);
 
     void clear_all_outputs();
 #ifdef ARDUINO
@@ -357,8 +244,6 @@ class uSEQ : public ModuLispInterpreter {
 #ifdef MIDIOUT
     void update_midi_out();
     std::map<int, Value> useqMDOMap;
-
-    LISP_FUNC_DECL(useq_mdo);
 #endif
 
     // INIT
@@ -422,57 +307,9 @@ class uSEQ : public ModuLispInterpreter {
     static String current_output_being_processed;
 
 #ifdef ARDUINO
-    // DSP ENGINE
-
-    struct ugenOutputQueue {
-        queue_t *q;
-        size_t index;
-        size_t queueSize;
-        size_t key;
-        std::vector<float> lastValue = {0.f}; // TODO: expand for list outputs
-    };
-
-    struct ugenInputQueue {
-        queue_t *q;
-        size_t index;
-        size_t queueSize;
-        size_t key;
-    };
-
-    struct dsp_engine_info {
-        std::unique_ptr<uSEQDSPEngine> obj;
-        size_t nextKey = 0;
-
-        std::unordered_map<size_t, String> ugenInstances;
-        std::unordered_map<size_t, ugenOutputQueue> ugenOutputQueues;
-        std::unordered_map<size_t, ugenInputQueue> ugenInputQueues;
-    } dspEngine;
-
-    LISP_FUNC_DECL(useq_dsp_start);
-    LISP_FUNC_DECL(useq_dsp_stop);
-    LISP_FUNC_DECL(useq_dsp_create);
-    LISP_FUNC_DECL(useq_dsp_kill);
-    LISP_FUNC_DECL(useq_dsp_connect);
-    LISP_FUNC_DECL(useq_dsp_disconnect);
-    LISP_FUNC_DECL(useq_dsp_getugens);
-    LISP_FUNC_DECL(useq_dsp_qget);
-    LISP_FUNC_DECL(useq_dsp_qset);
-    LISP_FUNC_DECL(useq_dsp_reset);
-    LISP_FUNC_DECL(useq_dsp_message);
-    LISP_FUNC_DECL(useq_dsp_listqueues);
-
-    LISP_FUNC_DECL(useq_send_sync_trigger_i2c);
-
-#endif
-
-    LISP_FUNC_DECL(useq_swr);
-    LISP_FUNC_DECL(useq_rot);
-
-#ifdef ARDUINO
-    LISP_FUNC_DECL(useq_swm);
-    LISP_FUNC_DECL(useq_swt);
-    LISP_FUNC_DECL(useq_toggle_pick);
-    LISP_FUNC_DECL(useq_ssin);
+    // DSP ENGINE - use types from uSEQ_dsp.h
+#include "uSEQ_dsp.h"
+    dsp_engine_info dspEngine;
 #endif
 
     void init_useq_builtinfuncs();
