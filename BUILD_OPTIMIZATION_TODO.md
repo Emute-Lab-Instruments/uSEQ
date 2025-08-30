@@ -2,6 +2,9 @@
 
 This document contains a priority-ordered list of atomic refactoring tasks to improve compilation times and build system efficiency. Each task is designed to leave the codebase in a working state while gradually implementing the optimization strategy.
 
+**IMPORTANT**
+When you successfully complete a task, before you commit, check the task off here in the list.
+
 ## Prerequisites & Cleanup (Priority: Critical)
 
 ### CLEANUP-001: Remove obsolete builtin generation script
@@ -43,7 +46,7 @@ This document contains a priority-ordered list of atomic refactoring tasks to im
 **Estimated Impact**: ~70 lines removed from frequently-included value.h.
 
 ### HEADERS-003: Extract signal processing methods from Value class
-- [ ] Extract signal processing methods from Value class
+- [x] Extract signal processing methods from Value class
 **New Files**:
 - `uSEQ/src/modulisp/lisp/value_signal_processing.h`
 - `uSEQ/src/modulisp/lisp/value_signal_processing.cpp`
@@ -53,7 +56,7 @@ This document contains a priority-ordered list of atomic refactoring tasks to im
 **Estimated Impact**: ~35 lines removed from value.h, cleaner separation of concerns.
 
 ### HEADERS-004: Split uSEQ.h into functional modules
-- [ ] Split uSEQ.h into functional modules
+- [x] Split uSEQ.h into functional modules
 **New Files**:
 - `uSEQ/src/uSEQ_io.h` (I/O related declarations)
 - `uSEQ/src/uSEQ_dsp.h` (DSP and audio processing)
@@ -67,7 +70,7 @@ This document contains a priority-ordered list of atomic refactoring tasks to im
 ## Phase 2: Build System Improvements (Priority: High)
 
 ### BUILD-001: Add precompiled header support to Meson
-- [ ] Add precompiled header support to Meson
+- [x] Add precompiled header support to Meson
 **Files**: `meson.build`, new `uSEQ/src/pch.h`
 **Description**: Create precompiled header containing stable system includes (STL, optional Arduino headers). Configure Meson to use PCH.
 **PCH Content**: `<vector>`, `<memory>`, `<string>`, `<functional>`, `<optional>`, `<cmath>`, Arduino core headers

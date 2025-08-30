@@ -35,6 +35,9 @@ add_global_arguments(common_warning_args + san_flags + cov_flags, language : 'cp
 # Define include directories
 src_inc = include_directories('uSEQ')
 
+# Define precompiled header for faster compilation
+pch_file = 'uSEQ/src/pch.h'
+
 # hardware_src = [
 #   'src/hardware/pinmap.h'
 # ]
@@ -138,7 +141,8 @@ standalone_interpreter = executable(
   'standalone',
   sources : standalone_src,
   include_directories : src_inc,
-  cpp_args : standalone_args
+  cpp_args : standalone_args,
+  cpp_pch : pch_file
 )
 
 # arduino_interpreter = executable(

@@ -1,5 +1,8 @@
 # Test configuration for uSEQ builtin functions and API tests
 
+# Define precompiled header path (relative to test directory)
+test_pch_file = '../uSEQ/src/pch.h'
+
 # Test source files
 test_src = [
   'test_builtins.cpp'
@@ -137,6 +140,7 @@ test_builtin_exe = executable(
   sources : test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     # Add math library dependency
     declare_dependency(link_args : ['-lm'])
@@ -149,6 +153,7 @@ test_parser_exe = executable(
   sources : parser_test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     # Add math library dependency
     declare_dependency(link_args : ['-lm'])
@@ -161,6 +166,7 @@ test_value_api_exe = executable(
   sources : value_api_test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     # Add math library dependency
     declare_dependency(link_args : ['-lm'])
@@ -173,6 +179,7 @@ test_environment_api_exe = executable(
   sources : environment_api_test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     # Add math library dependency
     declare_dependency(link_args : ['-lm'])
@@ -185,6 +192,7 @@ test_parser_api_exe = executable(
   sources : parser_api_test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     # Add math library dependency
     declare_dependency(link_args : ['-lm'])
@@ -197,6 +205,7 @@ test_interpreter_api_exe = executable(
   sources : interpreter_api_test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     # Add math library dependency
     declare_dependency(link_args : ['-lm'])
@@ -209,6 +218,7 @@ test_modulisp_api_exe = executable(
   sources : modulisp_api_test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     # Add math library dependency
     declare_dependency(link_args : ['-lm'])
@@ -233,6 +243,7 @@ test_automation_analysis_exe = executable(
   sources : automation_analysis_test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     # Add math library dependency
     declare_dependency(link_args : ['-lm'])
@@ -269,6 +280,7 @@ time_injection_exe = executable(
   sources : time_injection_test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     declare_dependency(link_args : ['-lm'])
   ]
@@ -290,6 +302,7 @@ io_bridge_exe = executable(
   ],
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     declare_dependency(link_args : ['-lm'])
   ]
@@ -303,6 +316,7 @@ logging_bridge_exe = executable(
   sources : logging_bridge_test_src + test_common_src,
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     declare_dependency(link_args : ['-lm'])
   ]
@@ -324,6 +338,7 @@ i2c_bus_exe = executable(
   ],
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     declare_dependency(link_args : ['-lm'])
   ]
@@ -346,6 +361,7 @@ storage_env_exe = executable(
   ],
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     declare_dependency(link_args : ['-lm'])
   ]
@@ -367,6 +383,7 @@ output_manager_exe = executable(
   ],
   include_directories : test_inc,
   cpp_args : test_args,
+  cpp_pch : test_pch_file,
   dependencies : [
     declare_dependency(link_args : ['-lm'])
   ]
