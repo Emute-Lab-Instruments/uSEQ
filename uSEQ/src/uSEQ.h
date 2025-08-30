@@ -59,6 +59,7 @@ class uSEQ : public ModuLispInterpreter {
     void tick_dsp();
 #endif
     void init();
+    void init_builtinfuncs();  // Override to add hardware-specific functions
     void run();
 
     void start_loop_blocking();
@@ -254,6 +255,10 @@ class uSEQ : public ModuLispInterpreter {
     LISP_FUNC_DECL(useq_q0);
 
 #ifdef ARDUINO
+    LISP_FUNC_DECL(ard_useqaw);
+    LISP_FUNC_DECL(ard_useqdw);
+#else
+    // Desktop build versions
     LISP_FUNC_DECL(ard_useqaw);
     LISP_FUNC_DECL(ard_useqdw);
 #endif

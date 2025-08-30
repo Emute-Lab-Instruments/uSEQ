@@ -4,7 +4,7 @@
 // Creates a Lisp Value of type BUILTIN_METHOD,
 // which requires
 #define INSERT_BUILTINDEF(__name__, __func_name__)                                  \
-    Environment::builtindefs[__name__] =                                            \
+    Environment::builtindefs()[__name__] =                                            \
         Value((String)__name__, &uSEQ::__func_name__);
 
 void uSEQ::init_builtinfuncs()
@@ -48,51 +48,94 @@ void uSEQ::init_builtinfuncs()
 
     INSERT_BUILTINDEF("q0", useq_q0);
 
-    // Hardware IO functions
+    // Hardware control functions  
+    INSERT_BUILTINDEF("swr", useq_swr);
+    INSERT_BUILTINDEF("rot", useq_rot);
+    
+#ifdef ARDUINO
+    INSERT_BUILTINDEF("toggle-pick", useq_toggle_pick);
+    INSERT_BUILTINDEF("swm", useq_swm);
+    INSERT_BUILTINDEF("swt", useq_swt);
+    INSERT_BUILTINDEF("ssin", useq_ssin);
+#endif
+
+    // Input functions
+    INSERT_BUILTINDEF("in1", useq_in1);
+    INSERT_BUILTINDEF("in2", useq_in2);
+    INSERT_BUILTINDEF("gin1", useq_in1);  // Alias for in1
+    INSERT_BUILTINDEF("gin2", useq_in2);  // Alias for in2
+    INSERT_BUILTINDEF("ain1", useq_ain1);
+    INSERT_BUILTINDEF("ain2", useq_ain2);
+
+    // Output getter functions
+    INSERT_BUILTINDEF("get-a1", useq_get_a1);
+    INSERT_BUILTINDEF("get-a2", useq_get_a2);
+    INSERT_BUILTINDEF("get-a3", useq_get_a3);
+    INSERT_BUILTINDEF("get-a4", useq_get_a4);
+    INSERT_BUILTINDEF("get-a5", useq_get_a5);
+    INSERT_BUILTINDEF("get-a6", useq_get_a6);
+    INSERT_BUILTINDEF("get-a7", useq_get_a7);
+    INSERT_BUILTINDEF("get-a8", useq_get_a8);
+
+    INSERT_BUILTINDEF("get-d1", useq_get_d1);
+    INSERT_BUILTINDEF("get-d2", useq_get_d2);
+    INSERT_BUILTINDEF("get-d3", useq_get_d3);
+    INSERT_BUILTINDEF("get-d4", useq_get_d4);
+    INSERT_BUILTINDEF("get-d5", useq_get_d5);
+    INSERT_BUILTINDEF("get-d6", useq_get_d6);
+    INSERT_BUILTINDEF("get-d7", useq_get_d7);
+    INSERT_BUILTINDEF("get-d8", useq_get_d8);
+
+    // Hardware IO functions - TODO: Implement
+#ifdef ARDUINO
     INSERT_BUILTINDEF("useqaw", ard_useqaw);
     INSERT_BUILTINDEF("useqdw", ard_useqdw);
-    INSERT_BUILTINDEF("useqdr", ard_useqdr);
-    INSERT_BUILTINDEF("useqar", ard_useqar);
+#endif
+    // INSERT_BUILTINDEF("useqdr", ard_useqdr);  // Function doesn't exist
+    // INSERT_BUILTINDEF("useqar", ard_useqar);  // Function doesn't exist
     
     // Flash/persistence
-    INSERT_BUILTINDEF("flash-save", useq_flash_save);
-    INSERT_BUILTINDEF("flash-save-named", useq_flash_save_named);
-    INSERT_BUILTINDEF("flash-load", useq_flash_load);
-    INSERT_BUILTINDEF("flash-list", useq_flash_list);
-    INSERT_BUILTINDEF("flash-erase", useq_flash_erase_all);
-    INSERT_BUILTINDEF("flash-print", useq_flash_print);
+    // Flash/persistence functions - Not yet implemented
+    // INSERT_BUILTINDEF("flash-save", useq_flash_save);
+    // INSERT_BUILTINDEF("flash-save-named", useq_flash_save_named);
+    // INSERT_BUILTINDEF("flash-load", useq_flash_load);
+    // INSERT_BUILTINDEF("flash-list", useq_flash_list);
+    // INSERT_BUILTINDEF("flash-erase", useq_flash_erase_all);
+    // INSERT_BUILTINDEF("flash-print", useq_flash_print);
     
     // System functions
-    INSERT_BUILTINDEF("useq-bpm", useq_bpm);
+    // INSERT_BUILTINDEF("useq-bpm", useq_bpm);  // Function doesn't exist
     INSERT_BUILTINDEF("fw-info", useq_firmware_info);
     INSERT_BUILTINDEF("fw-version", useq_firmware_info);
-    INSERT_BUILTINDEF("useq-set-sync-led", useq_set_sync_led);
-    INSERT_BUILTINDEF("useq-sync-led", useq_set_sync_led);
-    INSERT_BUILTINDEF("trigger-out", useq_sync_led_off);
-    INSERT_BUILTINDEF("useq-stop", useq_stop);
-    INSERT_BUILTINDEF("quit", useq_stop);
-    INSERT_BUILTINDEF("useq-save", useq_save);
-    INSERT_BUILTINDEF("spit", useq_save);
-    INSERT_BUILTINDEF("save", useq_save);
-    INSERT_BUILTINDEF("useq-save-form", useq_save_form);
-    INSERT_BUILTINDEF("useq-load", useq_load);
-    INSERT_BUILTINDEF("slurp", useq_load);
-    INSERT_BUILTINDEF("load", useq_load);
-    INSERT_BUILTINDEF("print-schedule", useq_print_schedule);
+    // Control and state functions - Not yet implemented
+    // INSERT_BUILTINDEF("useq-set-sync-led", useq_set_sync_led);
+    // INSERT_BUILTINDEF("useq-sync-led", useq_set_sync_led);
+    // INSERT_BUILTINDEF("trigger-out", useq_sync_led_off);
+    // INSERT_BUILTINDEF("useq-stop", useq_stop);
+    // INSERT_BUILTINDEF("quit", useq_stop);
+    // INSERT_BUILTINDEF("useq-save", useq_save);
+    // INSERT_BUILTINDEF("spit", useq_save);
+    // INSERT_BUILTINDEF("save", useq_save);
+    // INSERT_BUILTINDEF("useq-save-form", useq_save_form);
+    // INSERT_BUILTINDEF("useq-load", useq_load);
+    // INSERT_BUILTINDEF("slurp", useq_load);
+    // INSERT_BUILTINDEF("load", useq_load);
+    // INSERT_BUILTINDEF("print-schedule", useq_print_schedule);
     
-    // I2C/sync functions
-    INSERT_BUILTINDEF("useq-send-trigger-i2c", useq_send_trigger_i2c);
-    INSERT_BUILTINDEF("useq-send-clock-i2c", useq_send_clock_i2c);
-    INSERT_BUILTINDEF("useq-send-note-i2c", useq_send_note_i2c);
-    INSERT_BUILTINDEF("wait-trigger", useq_wait_trigger);
-    INSERT_BUILTINDEF("useq-wait-trigger-from-i2c", useq_wait_trigger_from_i2c);
-    INSERT_BUILTINDEF("sync", useq_wait_for_sync_trigger);
-    INSERT_BUILTINDEF("wait-clock", useq_wait_for_clock_trigger);
-    INSERT_BUILTINDEF("useq-get-i2c-device-count", useq_i2c_device_count);
-    INSERT_BUILTINDEF("print-i2c-devices", useq_print_i2c_device_addresses);
-    INSERT_BUILTINDEF("i2c-leader", useq_i2c_set_as_leader);
-    INSERT_BUILTINDEF("i2c-follower", useq_i2c_set_as_follower);
-    INSERT_BUILTINDEF("i2c-receive", useq_i2c_recieve_notenum);
+    // I2C/sync functions - TODO: Implement these
+    // I2C functions - Not yet implemented
+    // INSERT_BUILTINDEF("useq-send-trigger-i2c", useq_send_trigger_i2c);
+    // INSERT_BUILTINDEF("useq-send-clock-i2c", useq_send_clock_i2c);
+    // INSERT_BUILTINDEF("useq-send-note-i2c", useq_send_note_i2c);
+    // INSERT_BUILTINDEF("wait-trigger", useq_wait_trigger);
+    // INSERT_BUILTINDEF("useq-wait-trigger-from-i2c", useq_wait_trigger_from_i2c);
+    // INSERT_BUILTINDEF("sync", useq_wait_for_sync_trigger);
+    // INSERT_BUILTINDEF("wait-clock", useq_wait_for_clock_trigger);
+    // INSERT_BUILTINDEF("useq-get-i2c-device-count", useq_i2c_device_count);
+    // INSERT_BUILTINDEF("print-i2c-devices", useq_print_i2c_device_addresses);
+    // INSERT_BUILTINDEF("i2c-leader", useq_i2c_set_as_leader);
+    // INSERT_BUILTINDEF("i2c-follower", useq_i2c_set_as_follower);
+    // INSERT_BUILTINDEF("i2c-receive", useq_i2c_recieve_notenum);
     
     // DSP engine functions (including the new ones)
     #ifdef ARDUINO
