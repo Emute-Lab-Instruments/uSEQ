@@ -114,6 +114,22 @@ modulisp_lib = static_library('useq_modulisp',
   dependencies : lisp_core_dep
 )
 
+# Test helpers library - minimal interfaces for faster test compilation
+test_helpers_lib = static_library('useq_test_helpers',
+  'uSEQ/src/interfaces/test_helpers.cpp',
+  include_directories : src_inc,
+  cpp_args : standalone_args,
+  cpp_pch : pch_file,
+  dependencies : lisp_core_dep
+)
+
+# Create a dependency object for test helpers
+test_helpers_dep = declare_dependency(
+  link_with : test_helpers_lib,
+  include_directories : src_inc,
+  dependencies : lisp_core_dep
+)
+
 # Create a dependency object for modulisp
 modulisp_dep = declare_dependency(
   link_with : modulisp_lib,

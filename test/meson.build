@@ -282,3 +282,19 @@ output_manager_exe = executable(
 )
 
 test('output_manager_test', output_manager_exe)
+
+# Test with minimal interfaces/helpers - demonstrates faster compilation
+test_with_helpers_src = [
+  'test_with_helpers.cpp'
+]
+
+test_with_helpers_exe = executable(
+  'test_with_helpers',
+  sources : test_with_helpers_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [test_helpers_dep, math_dep]
+)
+
+test('test_with_helpers', test_with_helpers_exe)

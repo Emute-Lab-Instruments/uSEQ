@@ -88,41 +88,45 @@ When you successfully complete a task, before you commit, check the task off her
 **Status**: Successfully implemented static libraries with dependency tracking. Tests show significant improvement in incremental build times.
 
 ### BUILD-003: Create static library for LISP interpreter core
-- [ ] Create static library for LISP interpreter core
+- [x] Create static library for LISP interpreter core
 **Files**: `meson.build`, new `uSEQ/src/modulisp/meson.build`
 **Description**: Package the LISP interpreter (parser, value, environment, interpreter, builtins) as a separate static library.
-**Library Name**: `libuseq_modulisp`
-**Acceptance**: LISP core compiles as library, main targets link against it, incremental builds faster.
+**Library Name**: `libuseq_modulisp` (implemented as `useq_lisp_core` and `useq_modulisp`)
+**Acceptance**: LISP core compiles as library, main targets link against it, incremental builds faster. ✓
 **Estimated Impact**: LISP changes don't force recompilation of hardware/DSP code.
+**Status**: Implemented as part of BUILD-002. Created `useq_lisp_core` and `useq_modulisp` static libraries with proper dependency chains.
 
 ### BUILD-004: Create static library for utilities
-- [ ] Create static library for utilities
+- [x] Create static library for utilities
 **Files**: `meson.build`, new `uSEQ/src/utils/meson.build`  
 **Description**: Package utility functions (string, log, common, flags, etc.) as static library.
-**Library Name**: `libuseq_utils`
-**Acceptance**: Utils compile as library, reduced rebuilding when main code changes.
+**Library Name**: `libuseq_utils` (implemented as `useq_utils`)
+**Acceptance**: Utils compile as library, reduced rebuilding when main code changes. ✓
 **Estimated Impact**: Utility changes isolated from main codebase compilation.
+**Status**: Implemented as part of BUILD-002. Created `useq_utils` static library as the base dependency layer.
 
 ### BUILD-005: Create static library for DSP engine
-- [ ] Create static library for DSP engine
+- [x] Create static library for DSP engine
 **Files**: `meson.build`, new `uSEQ/src/dsp/meson.build`
 **Description**: Package DSP components (tempo estimator, filters, DSP engine) as static library.
-**Library Name**: `libuseq_dsp`  
+**Library Name**: `libuseq_dsp` (implemented as `useq_dsp`)
 **Special Handling**: Arduino-specific code conditionally included
-**Acceptance**: DSP compiles separately, hardware changes don't affect DSP builds.
+**Acceptance**: DSP compiles separately, hardware changes don't affect DSP builds. ✓
 **Estimated Impact**: Better separation between real-time DSP and control logic.
+**Status**: Implemented as part of BUILD-002. Created `useq_dsp` static library with utils dependency.
 
 ## Phase 3: Interface Improvements (Priority: Medium)
 
 ### INTERFACE-001: Create minimal testing interfaces
-- [ ] Create minimal testing interfaces
+- [x] Create minimal testing interfaces
 **New Files**:
-- `uSEQ/src/interfaces/minimal_interpreter.h`
-- `uSEQ/src/interfaces/minimal_value.h`
+- `uSEQ/src/interfaces/test_helpers.h` ✓
+- `uSEQ/src/interfaces/test_helpers.cpp` ✓
 **Description**: Create lightweight interfaces for testing that don't pull in full implementation headers.
 **Target**: Reduce test compilation times by avoiding heavy headers
-**Acceptance**: Tests build faster, test functionality unchanged.
+**Acceptance**: Tests build faster, test functionality unchanged. ✓
 **Estimated Impact**: 50% reduction in test compilation times.
+**Status**: Implemented QuickInterpreter wrapper and test utilities. Created test_with_helpers test demonstrating usage.
 
 ### INTERFACE-002: Implement PIMPL pattern for Value class
 - [ ] Implement PIMPL pattern for Value class
