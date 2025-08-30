@@ -32,6 +32,15 @@
 #endif
 
 #ifndef ARDUINO
+void uSEQ::__test_call_writes(double a0, int d0, double s0)
+{
+    analog_write_with_led(0, a0);
+    digital_write_with_led(0, d0);
+    serial_write(0, s0);
+}
+#endif
+
+#ifndef ARDUINO
 #include "hardware_includes.h"
 #endif
 #ifdef ARDUINO

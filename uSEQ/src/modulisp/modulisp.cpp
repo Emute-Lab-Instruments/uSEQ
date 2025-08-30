@@ -1,6 +1,8 @@
 #include "modulisp.h"
 #include "../utils.h"
 
+// Defaulted constructor defined in header now; no additional implementation
+
 void ModuLispInterpreter::run_scheduled_items() {
     DBG("uSEQ::runScheduledItems");
 

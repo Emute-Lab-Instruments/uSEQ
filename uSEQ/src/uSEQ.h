@@ -22,6 +22,7 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #include "modulisp/modulisp.h"
 #include "uSEQ/board.h"
 #include "uSEQ/configure.h"
+#include "ports/IIo.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -55,7 +56,9 @@ class maxiFilter {
 
 class uSEQ : public ModuLispInterpreter {
   public:
-    uSEQ() : m_output_manager(nullptr) {}
+    uSEQ() : ModuLispInterpreter(nullptr, nullptr), m_output_manager(nullptr) {}
+    explicit uSEQ(IClock* clk, ILogger* log, IIo* io_port = nullptr)
+        : ModuLispInterpreter(clk, log), m_output_manager(nullptr), io(io_port) {}
     ~uSEQ(); // Custom destructor to manage OutputManager lifecycle
 
 #ifdef ARDUINO
@@ -126,6 +129,9 @@ class uSEQ : public ModuLispInterpreter {
 
     // Output management (moved to public section)
     OutputManager* m_output_manager;
+
+    // Optional I/O adapter for desktop tests/hardware abstraction
+    IIo* io = nullptr;
 
     double m_input_vals[14];
     // NOTE this was a std vector before, init with 0
@@ -318,6 +324,12 @@ class uSEQ : public ModuLispInterpreter {
     void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val);
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
     void serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val);
+
+#ifndef ARDUINO
+  public:
+    // Test hook to exercise write paths without exposing internals
+    void __test_call_writes(double a0, int d0, double s0);
+#endif
 
 #ifdef MIDIOUT
     void update_midi_out();

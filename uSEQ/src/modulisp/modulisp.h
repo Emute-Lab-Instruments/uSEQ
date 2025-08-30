@@ -2,6 +2,8 @@
 #define MODULISP_H_
 
 #include "lisp/interpreter.h"
+#include "../ports/IClock.h"
+#include "../ports/ILogger.h"
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value> &, Environment &
 #define LISP_FUNC_ARGS std::vector<Value> &args, Environment &env
@@ -15,6 +17,10 @@ using PhaseValue = double;
 
 class ModuLispInterpreter : public Interpreter {
   public:
+    // Allow DI of time and logging for deterministic testing
+    explicit ModuLispInterpreter(IClock* clk = nullptr, ILogger* log = nullptr)
+        : clock(clk), logger(log) {}
+
     // FIXME decide what should be public
     void update_logical_time_variables(TimeValue);
 
@@ -168,6 +174,11 @@ class ModuLispInterpreter : public Interpreter {
     LISP_FUNC_DECL(useq_q0);
 
     Value m_q0AST;
+
+  protected:
+    // Optional injected adapters (nullptr means use legacy global functions)
+    IClock* clock = nullptr;
+    ILogger* logger = nullptr;
 };
 
 #endif // MODULISP_H_
