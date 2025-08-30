@@ -1,7 +1,19 @@
 project('uSEQ', 'cpp')
 
+# Optional build options are defined in meson_options.txt
+
+# Configure sanitizer and coverage flags for desktop builds
+san_flags = []
+cov_flags = []
+if get_option('sanitizers')
+  san_flags = ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
+endif
+if get_option('coverage')
+  cov_flags = ['--coverage', '-O0', '-g']
+endif
+
 # Add global compiler arguments with sensible warning configuration
-add_global_arguments([
+common_warning_args = [
   '-Wall',           # Enable most warnings
   '-Wextra',         # Enable extra warnings
   '-Wpedantic',      # Pedantic warnings for ISO C++ compliance
@@ -16,7 +28,9 @@ add_global_arguments([
   '-Wdouble-promotion', # Warn about float to double promotions
   '-Wformat=2',      # Strict format string checking
   '-Wnull-dereference', # Warn about null pointer dereferences
-], language : 'cpp')
+]
+
+add_global_arguments(common_warning_args + san_flags + cov_flags, language : 'cpp')
 
 # Define include directories
 src_inc = include_directories('uSEQ')
@@ -42,6 +56,7 @@ common_src = [
   'uSEQ/src/utils/error_messages.cpp',
   'uSEQ/src/utils/flags.h',
   'uSEQ/src/utils/flags.cpp',
+  'uSEQ/src/utils/logger_bridge.cpp',
   'uSEQ/src/utils.h',
   'uSEQ/src/utils.cpp',
   # MODULISP
