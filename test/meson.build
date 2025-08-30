@@ -104,6 +104,10 @@ test_common_src = [
   '../uSEQ/src/modulisp/lisp/interpreter.h',
   '../uSEQ/src/modulisp/lisp/interpreter.cpp',
   '../uSEQ/src/modulisp/lisp/configure.h',
+  '../uSEQ/src/modulisp/lisp/signal_metadata.h',
+  '../uSEQ/src/modulisp/lisp/signal_metadata.cpp',
+  '../uSEQ/src/modulisp/lisp/value_signal_processing.h',
+  '../uSEQ/src/modulisp/lisp/value_signal_processing.cpp',
   '../uSEQ/src/modulisp/lisp/builtins.h',
   '../uSEQ/src/modulisp/lisp/builtins.cpp',
   # MODULISP
