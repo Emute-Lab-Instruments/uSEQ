@@ -23,6 +23,8 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #include "uSEQ/board.h"
 #include "uSEQ/configure.h"
 #include "ports/IIo.h"
+#include "ports/II2CBus.h"
+#include "ports/IStorage.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -57,8 +59,10 @@ class maxiFilter {
 class uSEQ : public ModuLispInterpreter {
   public:
     uSEQ() : ModuLispInterpreter(nullptr, nullptr), m_output_manager(nullptr) {}
-    explicit uSEQ(IClock* clk, ILogger* log, IIo* io_port = nullptr)
-        : ModuLispInterpreter(clk, log), m_output_manager(nullptr), io(io_port) {}
+    explicit uSEQ(IClock* clk, ILogger* log, IIo* io_port = nullptr, 
+                  II2CBus* i2c_port = nullptr, IStorage* storage_port = nullptr)
+        : ModuLispInterpreter(clk, log), m_output_manager(nullptr), io(io_port),
+          i2c(i2c_port), storage(storage_port) {}
     ~uSEQ(); // Custom destructor to manage OutputManager lifecycle
 
 #ifdef ARDUINO
@@ -132,6 +136,10 @@ class uSEQ : public ModuLispInterpreter {
 
     // Optional I/O adapter for desktop tests/hardware abstraction
     IIo* io = nullptr;
+    
+    // Optional I2C and Storage adapters for desktop tests/hardware abstraction
+    II2CBus* i2c = nullptr;
+    IStorage* storage = nullptr;
 
     double m_input_vals[14];
     // NOTE this was a std vector before, init with 0
@@ -313,6 +321,7 @@ class uSEQ : public ModuLispInterpreter {
     LISP_FUNC_DECL(useq_enter_sync_mode);
     LISP_FUNC_DECL(useq_send_sync_trigger);
 #endif
+    LISP_FUNC_DECL(useq_send_sync_trigger_i2c);
 
     void clear_all_outputs();
 #ifdef ARDUINO
@@ -329,6 +338,20 @@ class uSEQ : public ModuLispInterpreter {
   public:
     // Test hook to exercise write paths without exposing internals
     void __test_call_writes(double a0, int d0, double s0);
+    
+    // Test hooks for I2C and storage functions
+    Value __test_send_sync_trigger_i2c();
+    Value __test_i2c_send_to(int addr, const String& expr_str);
+    
+    // Test accessors for environment
+    ValueMap& __test_get_defs() { return m_defs; }
+    ValueMap& __test_get_def_exprs() { return m_def_exprs; }
+    
+    // Public wrappers for storage functions (for testing)
+#ifndef ARDUINO
+    bool __test_save_env_to_storage(IStorage& s);
+    bool __test_load_env_from_storage(IStorage& s);
+#endif
 #endif
 
 #ifdef MIDIOUT
@@ -379,9 +402,6 @@ class uSEQ : public ModuLispInterpreter {
 
     void reboot();
 
-    std::pair<size_t, size_t> num_bytes_def_strs() const;
-    void copy_def_strings_to_buffer(char *);
-
     static constexpr const char *m_flash_stamp_str = "uSEQ";
     static constexpr uint m_flash_stamp_size_bytes =
         strlen(m_flash_stamp_str) + 1;
@@ -389,6 +409,14 @@ class uSEQ : public ModuLispInterpreter {
     bool flash_has_been_written_before();
     void autoload_flash();
 #endif
+
+    // Functions needed for desktop storage (declared for all builds)
+    std::pair<size_t, size_t> num_bytes_def_strs() const;
+    void copy_def_strings_to_buffer(char *);
+
+    // Desktop storage wrappers (declared for all builds, implemented only for desktop)
+    bool save_env_to_storage(IStorage& s);
+    bool load_env_from_storage(IStorage& s);
 
     // void clear_non_program_flash();
     static String current_output_being_processed;

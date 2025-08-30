@@ -40,6 +40,21 @@ void uSEQ::__test_call_writes(double a0, int d0, double s0)
     digital_write_with_led(0, d0);
     serial_write(0, s0);
 }
+
+Value uSEQ::__test_send_sync_trigger_i2c() {
+    std::vector<Value> empty_args;
+    Environment env;
+    return useq_send_sync_trigger_i2c(empty_args, env);
+}
+
+Value uSEQ::__test_i2c_send_to(int addr, const String& expr_str) {
+    std::vector<Value> args;
+    args.push_back(Value(addr));
+    // Create a string value from the input string
+    args.push_back(Value::string(expr_str));
+    Environment env;
+    return useq_i2c_send_to(args, env);
+}
 #endif
 
 #ifndef ARDUINO
@@ -848,70 +863,88 @@ void FAST_FUNC(uSEQ::tick_dsp)() {
 }
 #endif
 
-#ifdef ARDUINO
 Value uSEQ::useq_send_sync_trigger_i2c(std::vector<Value> &args,
                                        Environment &env)
-
 {
-
     constexpr const char *user_facing_name = "useq-send-sync-trigger";
 
     // Check no arguments
-
-    if (args.size() != 0)
-
-    {
-
+    if (args.size() != 0) {
         report_error_wrong_num_args(user_facing_name,
                                     static_cast<int>(args.size()),
-
                                     NumArgsComparison::EqualTo, 0, -1);
-
         return Value::error();
     }
 
-    // Send high on all digital outputs
-
-    Wire1.setSDA(38);
-    Wire1.setSCL(39);
-    Wire1.begin();
-    delay(100);
-    float tmp_outputs[8];
-
-    // digital_write_with_led(i, 1);
-    for (size_t i = 0; i < 8; i++) {
-        tmp_outputs[i] = 1;
-    }
-    Wire1.beginTransmission(1);
-    Wire1.write((uint8_t *)&tmp_outputs, sizeof(tmp_outputs));
-    int res = Wire1.endTransmission(true);
-
-    // Reset our own transport
-
+    // Reset our own transport first
     reset_logical_time();
 
-    // Brief delay to ensure the trigger is registered
+    // Use injected I2C port if available
+    if (i2c != nullptr) {
+        // Create sync trigger message with 8 float outputs
+        I2CMessage msg;
+        msg.src = 0; // Our own address
+        msg.dst = 1; // Target address (broadcast or specific module)
+        
+        // Prepare 8 float outputs (high, then low for trigger)
+        float tmp_outputs[8];
+        for (size_t i = 0; i < 8; i++) {
+            tmp_outputs[i] = 1.0f; // High trigger
+        }
+        
+        // Send high trigger
+        msg.payload.assign(reinterpret_cast<uint8_t*>(tmp_outputs), 
+                          reinterpret_cast<uint8_t*>(tmp_outputs) + sizeof(tmp_outputs));
+        i2c->send(msg);
+        
+        // Send low trigger (reset)
+        for (size_t i = 0; i < 8; i++) {
+            tmp_outputs[i] = 0.0f; // Low
+        }
+        msg.payload.assign(reinterpret_cast<uint8_t*>(tmp_outputs), 
+                          reinterpret_cast<uint8_t*>(tmp_outputs) + sizeof(tmp_outputs));
+        i2c->send(msg);
+        
+        println("Sync sent via injected I2C port");
+    } else {
+#ifdef ARDUINO
+        // Hardware I2C implementation
+        Wire1.setSDA(38);
+        Wire1.setSCL(39);
+        Wire1.begin();
+        delay(100);
+        float tmp_outputs[8];
 
-    delay(50);
+        // Send high on all digital outputs
+        for (size_t i = 0; i < 8; i++) {
+            tmp_outputs[i] = 1;
+        }
+        Wire1.beginTransmission(1);
+        Wire1.write((uint8_t *)&tmp_outputs, sizeof(tmp_outputs));
+        int res = Wire1.endTransmission(true);
 
-    // Return outputs to low
+        // Brief delay to ensure the trigger is registered
+        delay(50);
 
-    // digital_write_with_led(i, 1);
-    for (size_t i = 0; i < 8; i++) {
-        tmp_outputs[i] = 0;
+        // Return outputs to low
+        for (size_t i = 0; i < 8; i++) {
+            tmp_outputs[i] = 0;
+        }
+        Wire1.beginTransmission(1);
+        Wire1.write((uint8_t *)&tmp_outputs, sizeof(tmp_outputs));
+        res = Wire1.endTransmission(true);
+        delay(10);
+
+        Wire1.end();
+
+        println("Sync sent via hardware I2C");
+#endif
     }
-    Wire1.beginTransmission(1);
-    Wire1.write((uint8_t *)&tmp_outputs, sizeof(tmp_outputs));
-    res = Wire1.endTransmission(true);
-    delay(10);
-
-    Wire1.end();
-
-    println("Sync sent");
 
     return Value::nil();
 }
 
+#ifdef ARDUINO
 Value uSEQ::useq_send_sync_trigger(std::vector<Value> &args, Environment &env) {
     constexpr const char *user_facing_name = "useq-send-sync-trigger";
 

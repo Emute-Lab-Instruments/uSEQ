@@ -52,10 +52,26 @@ Value uSEQ::useq_i2c_send_to(std::vector<Value>& args, Environment& env)
 
     String body_str = "@" + body.to_lisp_src();
 
-    i2cWriteString(i2c_idx, body_str);
-
-    println("String being sent to i2c: ");
-    println(body_str);
+    // Use injected I2C port if available
+    if (i2c != nullptr) {
+        I2CMessage msg;
+        msg.src = 0; // Our own address (could be configurable)
+        msg.dst = static_cast<uint8_t>(i2c_idx);
+        
+        // Convert string to byte payload
+        const char* str_data = body_str.c_str();
+        msg.payload.assign(str_data, str_data + strlen(str_data) + 1); // Include null terminator
+        
+        i2c->send(msg);
+        println("String sent via injected I2C port: ");
+        println(body_str);
+    } else {
+#ifdef ARDUINO
+        i2cWriteString(i2c_idx, body_str);
+        println("String being sent to i2c: ");
+        println(body_str);
+#endif
+    }
 
     return result;
 }

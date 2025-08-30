@@ -58,6 +58,16 @@ logging_bridge_test_src = [
   'test_logging_bridge.cpp'
 ]
 
+# I2C bus integration tests
+i2c_bus_test_src = [
+  'test_i2c_bus.cpp'
+]
+
+# Storage environment tests
+storage_env_test_src = [
+  'test_storage_env.cpp'
+]
+
 # Common source files needed for tests (from parent directory)
 test_common_src = [
   # UTILS
@@ -266,7 +276,8 @@ io_bridge_exe = executable(
     '../uSEQ/src/uSEQ_api.cpp',
     '../uSEQ/src/uSEQ/output_manager.cpp',
     '../uSEQ/src/uSEQ_update.cpp',
-    '../uSEQ/src/uSEQ_led.cpp'
+    '../uSEQ/src/uSEQ_led.cpp',
+    '../uSEQ/src/uSEQ_i2c.cpp'
   ],
   include_directories : test_inc,
   cpp_args : test_args,
@@ -289,3 +300,46 @@ logging_bridge_exe = executable(
 )
 
 test('logging_bridge_test', logging_bridge_exe)
+
+# I2C bus integration test executable
+i2c_bus_exe = executable(
+  'test_i2c_bus',
+  sources : i2c_bus_test_src + test_common_src + [
+    '../uSEQ/src/uSEQ.cpp',
+    '../uSEQ/src/uSEQ_io.cpp',
+    '../uSEQ/src/uSEQ_api.cpp',
+    '../uSEQ/src/uSEQ_i2c.cpp',
+    '../uSEQ/src/uSEQ/output_manager.cpp',
+    '../uSEQ/src/uSEQ_update.cpp',
+    '../uSEQ/src/uSEQ_led.cpp'
+  ],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+test('i2c_bus_test', i2c_bus_exe)
+
+# Storage environment test executable  
+storage_env_exe = executable(
+  'test_storage_env',
+  sources : storage_env_test_src + test_common_src + [
+    '../uSEQ/src/uSEQ.cpp',
+    '../uSEQ/src/uSEQ_flash.cpp',
+    '../uSEQ/src/uSEQ_io.cpp',
+    '../uSEQ/src/uSEQ_api.cpp',
+    '../uSEQ/src/uSEQ/output_manager.cpp',
+    '../uSEQ/src/uSEQ_update.cpp',
+    '../uSEQ/src/uSEQ_i2c.cpp',
+    '../uSEQ/src/uSEQ_led.cpp'
+  ],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  dependencies : [
+    declare_dependency(link_args : ['-lm'])
+  ]
+)
+
+test('storage_env_test', storage_env_exe)

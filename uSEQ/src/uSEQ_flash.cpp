@@ -6,6 +6,15 @@
 #endif
 #include "utils.h"
 
+#else
+
+#include "uSEQ.h"
+#include "ports/IStorage.h"
+#include "hardware_includes.h"
+#include "utils.h"
+
+#endif
+
 // Define flash constants if not already defined
 #ifndef FLASH_SECTOR_SIZE
 #define FLASH_SECTOR_SIZE (4 * 1024)
@@ -65,6 +74,7 @@ void print_flash_vars()
             String(FLASH_INFO_SECTOR_OFFSET_START));
 }
 
+#ifdef ARDUINO
 // Lisp interfaces
 BUILTINFUNC_NOEVAL_MEMBER(useq_reboot,
                           //
@@ -144,8 +154,9 @@ void uSEQ::set_my_id(int num)
     m_my_id = num;
     write_flash_info();
 }
+#endif
 
-// Utils
+// Utils (needed for both Arduino and desktop builds)
 void uSEQ::copy_def_strings_to_buffer(char* buffer)
 {
     char* write_pos = buffer;
@@ -183,6 +194,7 @@ size_t pad_to_nearest_multiple_of(size_t in, size_t quant)
     return in + padding_to_nearest_multiple_of(in, quant);
 }
 
+#ifdef ARDUINO
 void uSEQ::erase_info_flash()
 {
     flash_range_erase(FLASH_INFO_SECTOR_OFFSET_START, FLASH_INFO_SECTOR_SIZE);
@@ -273,6 +285,7 @@ void uSEQ::load_flash_info()
                 "once.");
     }
 }
+#endif
 
 std::pair<size_t, size_t> uSEQ::num_bytes_def_strs() const
 {
@@ -304,6 +317,7 @@ std::pair<size_t, size_t> uSEQ::num_bytes_def_strs() const
     return { defs_size, exprs_size };
 }
 
+#ifdef ARDUINO
 void uSEQ::write_flash_env()
 {
     // 1. Collect all env strings and figure out their total size
@@ -541,6 +555,118 @@ void uSEQ::reset_flash_env_var_info()
     m_FLASH_ENV_SECTOR_OFFSET_END   = 0;
     m_FLASH_ENV_STRING_BUFFER_SIZE  = 0;
     write_flash_info();
+}
+#endif
+
+// Now desktop-specific storage functions
+
+#ifndef ARDUINO
+// Desktop storage wrappers using IStorage interface
+bool uSEQ::save_env_to_storage(IStorage& s)
+{
+    // Parameter s is a reference, so it's always valid
+
+    // 1. Collect all env strings and figure out their total size
+    std::pair<size_t, size_t> pair = num_bytes_def_strs();
+    size_t defs_size = pair.first;
+    size_t exprs_size = pair.second;
+    size_t total_size = defs_size + exprs_size;
+
+    // 2. Write size information first (8 bytes for two size_t values)
+    uint8_t size_header[16];
+    memcpy(size_header, &defs_size, sizeof(size_t));
+    memcpy(size_header + sizeof(size_t), &exprs_size, sizeof(size_t));
+    
+    if (!s.write(0, size_header, 16)) {
+        return false;
+    }
+
+    if (total_size == 0) {
+        return true; // Nothing more to save
+    }
+
+    // 3. Allocate buffer and serialize environment
+    char* buffer = new char[total_size];
+    copy_def_strings_to_buffer(buffer);
+
+    // 4. Write environment data after the size header
+    bool success = s.write(16, reinterpret_cast<uint8_t*>(buffer), total_size);
+
+    delete[] buffer;
+    return success;
+}
+
+bool uSEQ::load_env_from_storage(IStorage& s)
+{
+    // Parameter s is a reference, so it's always valid
+    
+    // 1. Read size information first
+    uint8_t size_header[16];
+    if (!s.read(0, size_header, 16)) {
+        return false;
+    }
+    
+    size_t defs_size, exprs_size;
+    memcpy(&defs_size, size_header, sizeof(size_t));
+    memcpy(&exprs_size, size_header + sizeof(size_t), sizeof(size_t));
+    
+    size_t total_size = defs_size + exprs_size;
+    if (total_size == 0) {
+        // Clear existing definitions
+        m_defs.clear();
+        m_def_exprs.clear();
+        return true; // Nothing to load
+    }
+    
+    // 2. Read environment data
+    uint8_t* buffer = new uint8_t[total_size];
+    if (!s.read(16, buffer, total_size)) {
+        delete[] buffer;
+        return false;
+    }
+    
+    // 3. Parse the data similar to Arduino load_flash_env
+    char* read_ptr = reinterpret_cast<char*>(buffer);
+    char* start_ptr = read_ptr;
+    
+    // Clear existing definitions
+    m_defs.clear();
+    m_def_exprs.clear();
+    
+    // We read defs first, then swap to def_exprs
+    ValueMap* map_ptr = &m_defs;
+    
+    while ((size_t)(read_ptr - start_ptr) < total_size) {
+        String name_str = String(read_ptr);
+        read_ptr += name_str.length() + 1;
+        
+        String def_str = String(read_ptr);
+        read_ptr += def_str.length() + 1;
+        
+        // Check if we need to switch to def_exprs map
+        size_t bytes_read = (size_t)(read_ptr - start_ptr);
+        if (bytes_read > defs_size) {
+            map_ptr = &m_def_exprs;
+        }
+        
+        // Parse and store the definition
+        Value parsed_value = uLispParser::parse(def_str);
+        if (!parsed_value.is_error()) {
+            (*map_ptr)[name_str] = parsed_value;
+        }
+    }
+    
+    delete[] buffer;
+    return true;
+}
+
+// Test helper method implementations
+bool uSEQ::__test_save_env_to_storage(IStorage& s) {
+    return save_env_to_storage(s);
+}
+
+bool uSEQ::__test_load_env_from_storage(IStorage& s) {
+    return load_env_from_storage(s);
 }
 
 #endif // ARDUINO
