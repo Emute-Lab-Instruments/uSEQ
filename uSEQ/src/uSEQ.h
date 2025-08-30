@@ -1,11 +1,13 @@
 #ifndef USEQ_H_
 #define USEQ_H_
 
-// Suppress all warnings for this header
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wall"
-#pragma GCC diagnostic ignored "-Wextra"
-#pragma GCC diagnostic ignored "-Wpedantic"
+// Include compiler configuration for warning management
+#include "utils/compiler_config.h"
+
+// Only suppress external library warnings for hardware includes
+#ifdef ARDUINO
+USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
+#endif
 
 #define USEQ_FIRMWARE_VERSION "1.2.0"
 
@@ -429,6 +431,8 @@ class uSEQ : public ModuLispInterpreter {
     void init_useq_builtinfuncs();
 };
 
-#pragma GCC diagnostic pop
+#ifdef ARDUINO
+USEQ_SUPPRESS_EXTERNAL_WARNINGS_POP
+#endif
 
 #endif // USEQ_H_

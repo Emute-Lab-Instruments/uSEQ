@@ -1,17 +1,17 @@
 project('uSEQ', 'cpp')
 
-# Add global compiler arguments for maximum warnings
+# Add global compiler arguments with sensible warning configuration
 add_global_arguments([
   '-Wall',           # Enable most warnings
   '-Wextra',         # Enable extra warnings
   '-Wpedantic',      # Pedantic warnings for ISO C++ compliance
   # '-Werror',         # Treat warnings as errors (exits on first error) - DISABLED
   # '-Wfatal-errors',  # Stop after first error (for faster builds) - DISABLED
-  '-Wconversion',    # Warn about type conversions
-  '-Wno-conversion', # Disable conversion warnings
+  # Note: Removed contradictory -Wconversion/-Wno-conversion pair
+  '-Wno-conversion', # Disable type conversion warnings (embedded code needs flexibility)
   '-Wshadow',        # Warn about variable shadowing
   '-Wunused',        # Warn about unused variables/functions
-  '-Wno-unused-parameter', # Disable unused parameter warnings
+  '-Wno-unused-parameter', # Disable unused parameter warnings (common in embedded callbacks)
   '-Wuninitialized', # Warn about uninitialized variables
   '-Wdouble-promotion', # Warn about float to double promotions
   '-Wformat=2',      # Strict format string checking
@@ -35,6 +35,7 @@ common_src = [
   'uSEQ/src/utils/itoa.h',
   'uSEQ/src/utils/itoa.cpp',
   'uSEQ/src/utils/dtostrf.h',
+  'uSEQ/src/utils/compiler_config.h',  # New centralized compiler configuration
   'uSEQ/src/utils/log.h',
   'uSEQ/src/utils/log.cpp',
   'uSEQ/src/utils/error_messages.h',

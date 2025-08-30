@@ -1,16 +1,14 @@
 #include "generated_builtins.h"
 #include "../../utils.h"
 #include "../../utils/log.h"
+#include "../../utils/compiler_config.h"
 #include "environment.h"
 #include "interpreter.h"
 #include "value.h"
 #include <iostream>
 
-// Suppress all warnings for generated code
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wall"
-#pragma GCC diagnostic ignored "-Wextra"
-#pragma GCC diagnostic ignored "-Wpedantic"
+// Suppress warnings for generated code (cannot be modified by hand)
+USEQ_SUPPRESS_WARNINGS_PUSH
 
 namespace builtin
 {
@@ -2664,4 +2662,4 @@ Value if_then_else(std::vector<Value>& args, Environment& env)
 
 } // namespace builtin
 
-#pragma GCC diagnostic pop
+USEQ_SUPPRESS_WARNINGS_POP

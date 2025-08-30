@@ -36,14 +36,13 @@ extern "C"
     {
         asm(".global _printf_float");
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#include "compiler_config.h"
+USEQ_SUPPRESS_FORMAT_WARNINGS_PUSH
         char fmt[20];
         sprintf(fmt, "%%%d.%df", width, prec);
         sprintf(sout, fmt, val);
         return sout;
-#pragma GCC diagnostic pop
+USEQ_SUPPRESS_FORMAT_WARNINGS_POP
     }
 
 #ifdef __cplusplus

@@ -1,8 +1,5 @@
-// Suppress all warnings for this file
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wall"
-#pragma GCC diagnostic ignored "-Wextra"
-#pragma GCC diagnostic ignored "-Wpedantic"
+// Note: Warnings enabled for core interpreter code
+// Fix warnings instead of suppressing them
 
 #include "interpreter.h"
 // #include "lisp/library.cpp"
@@ -869,6 +866,6 @@ void Interpreter::loadBuiltinDefs()
     Environment::builtindefs()["dr"] = Value("dr", builtin::ard_digitalRead);
 }
 
-#pragma GCC diagnostic pop
+// Warnings re-enabled - fix issues rather than suppress them
 
 // #endif
