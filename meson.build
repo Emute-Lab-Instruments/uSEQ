@@ -38,86 +38,7 @@ src_inc = include_directories('uSEQ')
 # Define precompiled header for faster compilation
 pch_file = 'uSEQ/src/pch.h'
 
-# hardware_src = [
-#   'src/hardware/pinmap.h'
-# ]
-
-# Common source files
-common_src = [
-  # UTILS
-  'uSEQ/src/utils/string.h',
-  'uSEQ/src/utils/string.cpp',
-  'uSEQ/src/utils/common.h',
-  'uSEQ/src/utils/common.cpp',
-  'uSEQ/src/utils/itoa.h',
-  'uSEQ/src/utils/itoa.cpp',
-  'uSEQ/src/utils/dtostrf.h',
-  'uSEQ/src/utils/compiler_config.h',  # New centralized compiler configuration
-  'uSEQ/src/utils/log.h',
-  'uSEQ/src/utils/log.cpp',
-  'uSEQ/src/utils/error_messages.h',
-  'uSEQ/src/utils/error_messages.cpp',
-  'uSEQ/src/utils/flags.h',
-  'uSEQ/src/utils/flags.cpp',
-  'uSEQ/src/utils/logger_bridge.cpp',
-  'uSEQ/src/utils/default_logger.h',
-  'uSEQ/src/utils/default_logger.cpp',
-  'uSEQ/src/utils.h',
-  'uSEQ/src/utils.cpp',
-  # MODULISP
-  'uSEQ/src/modulisp/modulisp.h',
-  'uSEQ/src/modulisp/modulisp.cpp',
-  'uSEQ/src/modulisp/modulisp_time.cpp',
-  'uSEQ/src/modulisp/modulisp_api.cpp',
-  'uSEQ/src/modulisp/modulisp_eval.cpp',
-  ## Underlying lisp
-  'uSEQ/src/modulisp/lisp/parser.h',
-  'uSEQ/src/modulisp/lisp/parser.cpp',
-  'uSEQ/src/modulisp/lisp/value.h',
-  'uSEQ/src/modulisp/lisp/value.cpp',
-  'uSEQ/src/modulisp/lisp/environment.h',
-  'uSEQ/src/modulisp/lisp/environment.cpp',
-  'uSEQ/src/modulisp/lisp/interpreter.h',
-  'uSEQ/src/modulisp/lisp/interpreter.cpp',
-  'uSEQ/src/modulisp/lisp/configure.h',
-  'uSEQ/src/modulisp/lisp/signal_metadata.h',
-  'uSEQ/src/modulisp/lisp/signal_metadata.cpp',
-  'uSEQ/src/modulisp/lisp/value_signal_processing.h',
-  'uSEQ/src/modulisp/lisp/value_signal_processing.cpp',
-  'uSEQ/src/modulisp/lisp/builtins.h',
-  'uSEQ/src/modulisp/lisp/builtins.cpp',
-  # uSEQ
-  'uSEQ/src/uSEQ.h',
-  'uSEQ/src/uSEQ.cpp',
-  'uSEQ/src/uSEQ_io.cpp',
-  'uSEQ/src/uSEQ_i2c.cpp',
-  'uSEQ/src/uSEQ_led.cpp',
-  'uSEQ/src/uSEQ_flash.cpp',
-  'uSEQ/src/uSEQ_api.cpp',
-  # Unified output management system
-  'uSEQ/src/uSEQ/output_manager.h',
-  'uSEQ/src/uSEQ/output_manager.cpp',
-  # 'uSEQ/src/uSEQ_update_refactored.cpp',
-  'uSEQ/src/uSEQ_update.cpp',  # Keep this version
-  # TODO should these be moved separately?
-  # 'uSEQ/src/uSEQ/io.h',
-  # 'uSEQ/src/uSEQ/io.cpp',
-  # EXTERN
-  'uSEQ/src/dsp/MAFilter.h',
-  'uSEQ/src/dsp/tempoEstimator.h',
-  'uSEQ/src/dsp/tempoEstimator.cpp',
-  # 'uSEQ/src/io/pinmap.h',
-  # 'uSEQ/src/io/hardware.h',
-  # 'uSEQ/src/io/hardware.cpp',
-]
-
-standalone_src = common_src + [
-  'uSEQ/src/standalone_interpreter.cpp'
-]
-
-arduino_src = common_src
-
-# Define compiler arguments for different targets
+# Define compiler arguments for different targets (early for libraries)
 standalone_args = [
   # '-DDESKTOP',
   # '-DUSE_STD_STR',
@@ -135,14 +56,120 @@ arduino_args = [
   # '-DUSE_SERIAL_IO'
 ]
 
-# Specify executables with source files, include directories, and compiler arguments
+# === STATIC LIBRARIES FOR PROPER DEPENDENCY TRACKING ===
 
-standalone_interpreter = executable(
-  'standalone',
-  sources : standalone_src,
+# Utils library - lowest level, no dependencies
+utils_lib = static_library('useq_utils',
+  'uSEQ/src/utils/string.cpp',
+  'uSEQ/src/utils/common.cpp',
+  'uSEQ/src/utils/itoa.cpp',
+  'uSEQ/src/utils/log.cpp',
+  'uSEQ/src/utils/error_messages.cpp',
+  'uSEQ/src/utils/flags.cpp',
+  'uSEQ/src/utils/logger_bridge.cpp',
+  'uSEQ/src/utils/default_logger.cpp',
+  'uSEQ/src/utils.cpp',
   include_directories : src_inc,
   cpp_args : standalone_args,
   cpp_pch : pch_file
+)
+
+# Create a dependency object for utils
+utils_dep = declare_dependency(
+  link_with : utils_lib,
+  include_directories : src_inc
+)
+
+# LISP core library - depends on utils
+lisp_core_lib = static_library('useq_lisp_core',
+  'uSEQ/src/modulisp/lisp/parser.cpp',
+  'uSEQ/src/modulisp/lisp/value.cpp',
+  'uSEQ/src/modulisp/lisp/environment.cpp',
+  'uSEQ/src/modulisp/lisp/interpreter.cpp',
+  'uSEQ/src/modulisp/lisp/signal_metadata.cpp',
+  'uSEQ/src/modulisp/lisp/value_signal_processing.cpp',
+  'uSEQ/src/modulisp/lisp/builtins.cpp',
+  include_directories : src_inc,
+  cpp_args : standalone_args,
+  cpp_pch : pch_file,
+  dependencies : utils_dep
+)
+
+# Create a dependency object for lisp core
+lisp_core_dep = declare_dependency(
+  link_with : lisp_core_lib,
+  include_directories : src_inc,
+  dependencies : utils_dep
+)
+
+# ModuLisp library - depends on lisp_core
+modulisp_lib = static_library('useq_modulisp',
+  'uSEQ/src/modulisp/modulisp.cpp',
+  'uSEQ/src/modulisp/modulisp_time.cpp',
+  'uSEQ/src/modulisp/modulisp_api.cpp',
+  'uSEQ/src/modulisp/modulisp_eval.cpp',
+  include_directories : src_inc,
+  cpp_args : standalone_args,
+  cpp_pch : pch_file,
+  dependencies : lisp_core_dep
+)
+
+# Create a dependency object for modulisp
+modulisp_dep = declare_dependency(
+  link_with : modulisp_lib,
+  include_directories : src_inc,
+  dependencies : lisp_core_dep
+)
+
+# DSP library - depends on utils
+dsp_lib = static_library('useq_dsp',
+  'uSEQ/src/dsp/tempoEstimator.cpp',
+  include_directories : src_inc,
+  cpp_args : standalone_args,
+  cpp_pch : pch_file,
+  dependencies : utils_dep
+)
+
+# Create a dependency object for dsp
+dsp_dep = declare_dependency(
+  link_with : dsp_lib,
+  include_directories : src_inc,
+  dependencies : utils_dep
+)
+
+# uSEQ hardware library - depends on modulisp and dsp
+useq_hw_lib = static_library('useq_hw',
+  'uSEQ/src/uSEQ.cpp',
+  'uSEQ/src/uSEQ_io.cpp',
+  'uSEQ/src/uSEQ_i2c.cpp',
+  'uSEQ/src/uSEQ_led.cpp',
+  'uSEQ/src/uSEQ_flash.cpp',
+  'uSEQ/src/uSEQ_api.cpp',
+  'uSEQ/src/uSEQ/output_manager.cpp',
+  'uSEQ/src/uSEQ_update.cpp',
+  include_directories : src_inc,
+  cpp_args : standalone_args,
+  cpp_pch : pch_file,
+  dependencies : [modulisp_dep, dsp_dep]
+)
+
+# Create a dependency object for useq hardware
+useq_hw_dep = declare_dependency(
+  link_with : useq_hw_lib,
+  include_directories : src_inc,
+  dependencies : [modulisp_dep, dsp_dep]
+)
+
+# === EXECUTABLES USE STATIC LIBRARIES ===
+
+# Standalone interpreter executable - links against all needed libraries
+standalone_interpreter = executable(
+  'standalone',
+  'uSEQ/src/standalone_interpreter.cpp',
+  include_directories : src_inc,
+  cpp_args : standalone_args,
+  cpp_pch : pch_file,
+  dependencies : useq_hw_dep
 )
 
 # arduino_interpreter = executable(

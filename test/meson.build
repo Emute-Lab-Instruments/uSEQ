@@ -3,6 +3,22 @@
 # Define precompiled header path (relative to test directory)
 test_pch_file = '../uSEQ/src/pch.h'
 
+# Test compiler arguments (similar to standalone)
+test_args = [
+  '-DUSE_OWN_ARDUINO_STR',
+  '-DUSE_STD_IO',
+  '-DNO_ETL',
+  '-D__not_in_flash(section)=',
+  '-D__not_in_flash_func(x)=',
+  '-std=c++17'
+]
+
+# Include directories
+test_inc = include_directories('../uSEQ', '../uSEQ/src')
+
+# Math library dependency
+math_dep = declare_dependency(link_args : ['-lm'])
+
 # Test source files
 test_src = [
   'test_builtins.cpp'
@@ -76,153 +92,77 @@ output_manager_test_src = [
   'test_output_manager.cpp'
 ]
 
-# Common source files needed for tests (from parent directory)
-test_common_src = [
-  # UTILS
-  '../uSEQ/src/utils/string.h',
-  '../uSEQ/src/utils/string.cpp',
-  '../uSEQ/src/utils/common.h',
-  '../uSEQ/src/utils/common.cpp',
-  '../uSEQ/src/utils/itoa.h',
-  '../uSEQ/src/utils/itoa.cpp',
-  '../uSEQ/src/utils/dtostrf.h',
-  '../uSEQ/src/utils/log.h',
-  '../uSEQ/src/utils/log.cpp',
-  '../uSEQ/src/utils/error_messages.h',
-  '../uSEQ/src/utils/error_messages.cpp',
-  '../uSEQ/src/utils/flags.h',
-  '../uSEQ/src/utils/flags.cpp',
-  '../uSEQ/src/utils/logger_bridge.cpp',
-  '../uSEQ/src/utils/default_logger.h',
-  '../uSEQ/src/utils/default_logger.cpp',
-  '../uSEQ/src/utils.h',
-  '../uSEQ/src/utils.cpp',
-  # LISP
-  '../uSEQ/src/modulisp/lisp/parser.h',
-  '../uSEQ/src/modulisp/lisp/parser.cpp',
-  '../uSEQ/src/modulisp/lisp/value.h',
-  '../uSEQ/src/modulisp/lisp/value.cpp',
-  '../uSEQ/src/modulisp/lisp/environment.h',
-  '../uSEQ/src/modulisp/lisp/environment.cpp',
-  '../uSEQ/src/modulisp/lisp/interpreter.h',
-  '../uSEQ/src/modulisp/lisp/interpreter.cpp',
-  '../uSEQ/src/modulisp/lisp/configure.h',
-  '../uSEQ/src/modulisp/lisp/signal_metadata.h',
-  '../uSEQ/src/modulisp/lisp/signal_metadata.cpp',
-  '../uSEQ/src/modulisp/lisp/value_signal_processing.h',
-  '../uSEQ/src/modulisp/lisp/value_signal_processing.cpp',
-  '../uSEQ/src/modulisp/lisp/builtins.h',
-  '../uSEQ/src/modulisp/lisp/builtins.cpp',
-  # MODULISP
-  '../uSEQ/src/modulisp/modulisp.h',
-  '../uSEQ/src/modulisp/modulisp.cpp',
-  '../uSEQ/src/modulisp/modulisp_api.cpp',
-  '../uSEQ/src/modulisp/modulisp_eval.cpp',
-  '../uSEQ/src/modulisp/modulisp_time.cpp',
-]
+# Dependencies from parent build are available here
+# No need to duplicate source files - use the static libraries instead!
 
-# Test compiler arguments (similar to standalone)
-test_args = [
-  '-DUSE_OWN_ARDUINO_STR',
-  '-DUSE_STD_IO',
-  '-DNO_ETL',
-  '-D__not_in_flash(section)=',
-  '-D__not_in_flash_func(x)=',
-  '-std=c++17'
-]
-
-# Include directories
-test_inc = include_directories('../uSEQ', '../uSEQ/src')
-
-# Test executable
+# Test executable - uses modulisp_dep from parent project
 test_builtin_exe = executable(
   'test_builtins',
-  sources : test_src + test_common_src,
+  sources : test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    # Add math library dependency
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [modulisp_dep, math_dep]
 )
 
 # Parser test executable
 test_parser_exe = executable(
   'test_parser',
-  sources : parser_test_src + test_common_src,
+  sources : parser_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    # Add math library dependency
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [modulisp_dep, math_dep]
 )
 
 # Value API test executable
 test_value_api_exe = executable(
   'test_value_api',
-  sources : value_api_test_src + test_common_src,
+  sources : value_api_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    # Add math library dependency
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [modulisp_dep, math_dep]
 )
 
 # Environment API test executable
 test_environment_api_exe = executable(
   'test_environment_api',
-  sources : environment_api_test_src + test_common_src,
+  sources : environment_api_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    # Add math library dependency
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [modulisp_dep, math_dep]
 )
 
 # Parser API test executable
 test_parser_api_exe = executable(
   'test_parser_api',
-  sources : parser_api_test_src + test_common_src,
+  sources : parser_api_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    # Add math library dependency
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [modulisp_dep, math_dep]
 )
 
 # Interpreter API test executable
 test_interpreter_api_exe = executable(
   'test_interpreter_api',
-  sources : interpreter_api_test_src + test_common_src,
+  sources : interpreter_api_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    # Add math library dependency
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [modulisp_dep, math_dep]
 )
 
 # ModuLisp API test executable
 test_modulisp_api_exe = executable(
   'test_modulisp_api',
-  sources : modulisp_api_test_src + test_common_src,
+  sources : modulisp_api_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    # Add math library dependency
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [modulisp_dep, math_dep]
 )
 
 # Signals test executable - DISABLED - uses removed DSP methods
@@ -240,14 +180,11 @@ test_modulisp_api_exe = executable(
 # Automation analysis test executable
 test_automation_analysis_exe = executable(
   'test_automation_analysis',
-  sources : automation_analysis_test_src + test_common_src,
+  sources : automation_analysis_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    # Add math library dependency
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [modulisp_dep, math_dep]
 )
 
 # Smoothness test executable - DISABLED - uses removed DSP methods
@@ -277,35 +214,23 @@ test('automation_analysis_test', test_automation_analysis_exe)
 # Time injection test executable
 time_injection_exe = executable(
   'test_time_injection',
-  sources : time_injection_test_src + test_common_src,
+  sources : time_injection_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [modulisp_dep, math_dep]
 )
 
 test('time_injection_test', time_injection_exe)
 
-# IO bridge test executable
+# IO bridge test executable - needs full hardware dependency
 io_bridge_exe = executable(
   'test_io_bridge',
-  sources : io_bridge_test_src + test_common_src + [
-    '../uSEQ/src/uSEQ.cpp',
-    '../uSEQ/src/uSEQ_io.cpp',
-    '../uSEQ/src/uSEQ_api.cpp',
-    '../uSEQ/src/uSEQ/output_manager.cpp',
-    '../uSEQ/src/uSEQ_update.cpp',
-    '../uSEQ/src/uSEQ_led.cpp',
-    '../uSEQ/src/uSEQ_i2c.cpp'
-  ],
+  sources : io_bridge_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [useq_hw_dep, math_dep]
 )
 
 test('io_bridge_test', io_bridge_exe)
@@ -313,80 +238,47 @@ test('io_bridge_test', io_bridge_exe)
 # Logging bridge test executable
 logging_bridge_exe = executable(
   'test_logging_bridge',
-  sources : logging_bridge_test_src + test_common_src,
+  sources : logging_bridge_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [modulisp_dep, math_dep]
 )
 
 test('logging_bridge_test', logging_bridge_exe)
 
-# I2C bus integration test executable
+# I2C bus integration test executable - needs full hardware dependency
 i2c_bus_exe = executable(
   'test_i2c_bus',
-  sources : i2c_bus_test_src + test_common_src + [
-    '../uSEQ/src/uSEQ.cpp',
-    '../uSEQ/src/uSEQ_io.cpp',
-    '../uSEQ/src/uSEQ_api.cpp',
-    '../uSEQ/src/uSEQ_i2c.cpp',
-    '../uSEQ/src/uSEQ/output_manager.cpp',
-    '../uSEQ/src/uSEQ_update.cpp',
-    '../uSEQ/src/uSEQ_led.cpp'
-  ],
+  sources : i2c_bus_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [useq_hw_dep, math_dep]
 )
 
 test('i2c_bus_test', i2c_bus_exe)
 
-# Storage environment test executable  
+# Storage environment test executable - needs full hardware dependency
 storage_env_exe = executable(
   'test_storage_env',
-  sources : storage_env_test_src + test_common_src + [
-    '../uSEQ/src/uSEQ.cpp',
-    '../uSEQ/src/uSEQ_flash.cpp',
-    '../uSEQ/src/uSEQ_io.cpp',
-    '../uSEQ/src/uSEQ_api.cpp',
-    '../uSEQ/src/uSEQ/output_manager.cpp',
-    '../uSEQ/src/uSEQ_update.cpp',
-    '../uSEQ/src/uSEQ_i2c.cpp',
-    '../uSEQ/src/uSEQ_led.cpp'
-  ],
+  sources : storage_env_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [useq_hw_dep, math_dep]
 )
 
 test('storage_env_test', storage_env_exe)
 
-# OutputManager test executable
+# OutputManager test executable - needs full hardware dependency
 output_manager_exe = executable(
   'test_output_manager',
-  sources : output_manager_test_src + test_common_src + [
-    '../uSEQ/src/uSEQ.cpp',
-    '../uSEQ/src/uSEQ_io.cpp',
-    '../uSEQ/src/uSEQ_api.cpp',
-    '../uSEQ/src/uSEQ/output_manager.cpp',
-    '../uSEQ/src/uSEQ_update.cpp',
-    '../uSEQ/src/uSEQ_led.cpp',
-    '../uSEQ/src/uSEQ_i2c.cpp'
-  ],
+  sources : output_manager_test_src,
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [
-    declare_dependency(link_args : ['-lm'])
-  ]
+  dependencies : [useq_hw_dep, math_dep]
 )
 
 test('output_manager_test', output_manager_exe)
