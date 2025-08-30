@@ -2,6 +2,24 @@ project('uSEQ', 'cpp')
 
 # Optional build options are defined in meson_options.txt
 
+# Configure ccache if requested and available
+if get_option('use_ccache')
+  ccache = find_program('ccache', required: false)
+  if ccache.found()
+    message('ccache found and enabled for compilation caching')
+    # Meson automatically uses ccache if it's in PATH and CXX/CC are not set
+    # We can also explicitly set it via environment variables or wrapper scripts
+    # Export these before running meson setup:
+    #   export CXX="ccache g++"
+    #   export CC="ccache gcc"
+    # Or use: meson setup build --wrap-mode=default
+    message('Note: Ensure ccache is in PATH or set CXX="ccache g++" before meson setup')
+  else
+    message('ccache not found, continuing without compilation caching')
+    message('Install ccache for 80-90% speedup on repeated builds')
+  endif
+endif
+
 # Configure sanitizer and coverage flags for desktop builds
 san_flags = []
 cov_flags = []
