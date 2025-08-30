@@ -143,11 +143,12 @@ When you successfully complete a task, before you commit, check the task off her
 **Estimated Impact**: Implementation cost exceeds benefit for this codebase.
 
 ### INTERFACE-003: Extract port interfaces to separate module
-- [ ] Extract port interfaces to separate module
+- [x] Extract port interfaces to separate module
 **New Directory**: `uSEQ/src/ports/`
 **Files**: Move `IClock.h`, `ILogger.h`, `IIo.h`, etc. to ports directory
 **Description**: Group all interface definitions in dedicated directory for cleaner organization.
-**Acceptance**: Interfaces accessible, dependency injection still works.
+**Status**: Already implemented. All interface files (`IClock.h`, `ILogger.h`, `IIo.h`, `II2CBus.h`, `IStorage.h`) are properly located in `uSEQ/src/ports/` with mocks in `ports/mocks/`. ✓
+**Acceptance**: Interfaces accessible, dependency injection still works. ✓
 **Estimated Impact**: Better code organization, cleaner include paths.
 
 ## Phase 4: Template and Compilation Optimizations (Priority: Medium)
