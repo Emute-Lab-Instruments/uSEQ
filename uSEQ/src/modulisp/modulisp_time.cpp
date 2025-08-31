@@ -1,5 +1,5 @@
 #include "../utils.h"
-#include "modulisp.h"
+#include "modulisp_interpreter.h"
 
 void ModuLispInterpreter::update_time() {
     DBG("ModuLispInterpreter::update_time");

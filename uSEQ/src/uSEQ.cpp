@@ -2,7 +2,7 @@
 #include "uSEQ/output_manager.h"
 #include "uSEQ/io_manager.h"
 #include "modulisp/lisp/LispLibrary.h"
-#include "modulisp/modulisp.h"
+#include "modulisp/modulisp_interpreter.h"
 #ifdef ARDUINO
 #include "uSEQ/i2cHost.h"
 #endif

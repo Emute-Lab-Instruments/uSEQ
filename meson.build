@@ -160,6 +160,7 @@ lisp_core_dep = declare_dependency(
 # ModuLisp library - depends on lisp_core
 modulisp_lib = static_library('useq_modulisp',
   'uSEQ/src/modulisp/modulisp.cpp',
+  'uSEQ/src/modulisp/modulisp_interpreter.cpp',
   'uSEQ/src/modulisp/modulisp_time.cpp',
   'uSEQ/src/modulisp/modulisp_api.cpp',
   'uSEQ/src/modulisp/modulisp_eval.cpp',

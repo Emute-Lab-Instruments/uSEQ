@@ -319,3 +319,19 @@ test_with_helpers_exe = executable(
 )
 
 test('test_with_helpers', test_with_helpers_exe)
+
+# ModuLisp end-to-end test
+modulisp_end_to_end_src = [
+  'ModuLisp/end_to_end.cpp'
+]
+
+modulisp_end_to_end_exe = executable(
+  'test_modulisp_end_to_end',
+  sources : modulisp_end_to_end_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
+test('modulisp_end_to_end_test', modulisp_end_to_end_exe)

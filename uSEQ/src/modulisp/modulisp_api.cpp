@@ -5,7 +5,7 @@
 #pragma GCC diagnostic ignored "-Wpedantic"
 
 #include "../utils.h"
-#include "modulisp.h"
+#include "modulisp_interpreter.h"
 
 // Creates a Lisp Value of type BUILTIN_METHOD,
 // which requires

@@ -23,7 +23,7 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #endif
 #include "modulisp/lisp/macros.h"
 #include "modulisp/lisp/value.h"
-#include "modulisp/modulisp.h"
+#include "modulisp/modulisp_interpreter.h"
 #include "uSEQ/board.h"
 #include "uSEQ/configure.h"
 #include "ports/IIo.h"
