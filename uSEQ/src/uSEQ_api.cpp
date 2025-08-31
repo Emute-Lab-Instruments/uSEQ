@@ -160,15 +160,14 @@ void uSEQ::init_builtinfuncs()
 ////////////////////
 // USEQ API
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, //
-                                              // println(USEQ_FIRMWARE_VERSION);
+BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, {
                           String msg = "uSEQ Firmware Version: " +
                                        String(USEQ_FIRMWARE_VERSION);
 #ifdef MUSICTHING
                           msg += " (Music Thing Workshop Computer Edition)";
 #endif
                           println(msg); ret = Value();
-                          , 0)
+                          }, 0)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); get_scheduler()->set_q0_ast(args[0]); ret = Value::atom("q0");
                           , 1)

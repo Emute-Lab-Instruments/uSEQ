@@ -173,3 +173,45 @@ Value OutputManager::get_serial_output(int output_id, std::vector<Value>& args, 
     }
     return Value(0.0);
 }
+
+// Template method implementations (moved from header to avoid incomplete type warnings)
+template<int OutputId, OutputManager::OutputType Type>
+Value OutputFunctionGenerator<OutputId, Type>::setter_function(uSEQ* useq, std::vector<Value>& args, Environment& env) {
+    return useq->get_output_manager().handle_output_setter(OutputId, Type, args, env);
+}
+
+template<int OutputId, OutputManager::OutputType Type>
+Value OutputFunctionGenerator<OutputId, Type>::getter_function(uSEQ* useq, std::vector<Value>& args, Environment& env) {
+    return useq->get_output_manager().handle_output_getter(OutputId, Type, args, env);
+}
+
+// Explicit template instantiations for all combinations used
+// Analog outputs (a1-a8)
+template class OutputFunctionGenerator<1, OutputManager::OutputType::CONTINUOUS>;
+template class OutputFunctionGenerator<2, OutputManager::OutputType::CONTINUOUS>;
+template class OutputFunctionGenerator<3, OutputManager::OutputType::CONTINUOUS>;
+template class OutputFunctionGenerator<4, OutputManager::OutputType::CONTINUOUS>;
+template class OutputFunctionGenerator<5, OutputManager::OutputType::CONTINUOUS>;
+template class OutputFunctionGenerator<6, OutputManager::OutputType::CONTINUOUS>;
+template class OutputFunctionGenerator<7, OutputManager::OutputType::CONTINUOUS>;
+template class OutputFunctionGenerator<8, OutputManager::OutputType::CONTINUOUS>;
+
+// Digital outputs (d1-d8)
+template class OutputFunctionGenerator<1, OutputManager::OutputType::BINARY>;
+template class OutputFunctionGenerator<2, OutputManager::OutputType::BINARY>;
+template class OutputFunctionGenerator<3, OutputManager::OutputType::BINARY>;
+template class OutputFunctionGenerator<4, OutputManager::OutputType::BINARY>;
+template class OutputFunctionGenerator<5, OutputManager::OutputType::BINARY>;
+template class OutputFunctionGenerator<6, OutputManager::OutputType::BINARY>;
+template class OutputFunctionGenerator<7, OutputManager::OutputType::BINARY>;
+template class OutputFunctionGenerator<8, OutputManager::OutputType::BINARY>;
+
+// Serial outputs (s1-s8) - setters only
+template class OutputFunctionGenerator<1, OutputManager::OutputType::SERIAL>;
+template class OutputFunctionGenerator<2, OutputManager::OutputType::SERIAL>;
+template class OutputFunctionGenerator<3, OutputManager::OutputType::SERIAL>;
+template class OutputFunctionGenerator<4, OutputManager::OutputType::SERIAL>;
+template class OutputFunctionGenerator<5, OutputManager::OutputType::SERIAL>;
+template class OutputFunctionGenerator<6, OutputManager::OutputType::SERIAL>;
+template class OutputFunctionGenerator<7, OutputManager::OutputType::SERIAL>;
+template class OutputFunctionGenerator<8, OutputManager::OutputType::SERIAL>;

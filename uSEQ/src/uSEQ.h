@@ -249,9 +249,11 @@ class uSEQ : public ModuLispInterpreter {
     // Test hook to exercise write paths without exposing internals
     void __test_call_writes(double a0, int d0, double s0);
     
-    // Test hooks for I2C and storage functions
+    // Test hooks for I2C functions
+#ifdef ENABLE_I2C_NETWORKING
     Value __test_send_sync_trigger_i2c();
     Value __test_i2c_send_to(int addr, const String& expr_str);
+#endif
     
     // Test accessors for environment
     ValueMap& __test_get_defs() { return m_defs; }

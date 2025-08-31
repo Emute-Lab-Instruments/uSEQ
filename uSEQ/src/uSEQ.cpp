@@ -44,6 +44,7 @@ void uSEQ::__test_call_writes(double a0, int d0, double s0)
     }
 }
 
+#ifdef ENABLE_I2C_NETWORKING
 Value uSEQ::__test_send_sync_trigger_i2c() {
     std::vector<Value> empty_args;
     Environment env;
@@ -56,8 +57,9 @@ Value uSEQ::__test_i2c_send_to(int addr, const String& expr_str) {
     // Create a string value from the input string
     args.push_back(Value::string(expr_str));
     Environment env;
-    return useq_i2c_send_to(args, env);
+    return this->useq_i2c_send_to(args, env);
 }
+#endif // ENABLE_I2C_NETWORKING
 #endif
 
 #ifndef ARDUINO

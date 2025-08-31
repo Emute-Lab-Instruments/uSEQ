@@ -1,5 +1,8 @@
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
+
+#ifdef ENABLE_FLASH_STORAGE
+
 #include "../uSEQ/src/uSEQ.h"
 #include "../uSEQ/src/ports/mocks/MockStorage.h"
 #include "../uSEQ/src/ports/mocks/MockClock.h"
@@ -321,3 +324,5 @@ TEST_CASE("Mock Storage - Basic functionality", "[storage][mock]") {
         }
     }
 }
+
+#endif // ENABLE_FLASH_STORAGE

@@ -1,5 +1,8 @@
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
+
+#ifdef ENABLE_I2C_NETWORKING
+
 #include "../uSEQ/src/uSEQ.h"
 #include "../uSEQ/src/ports/mocks/MockI2CBus.h"
 #include "../uSEQ/src/ports/mocks/MockClock.h"
@@ -159,3 +162,5 @@ TEST_CASE("I2C Bus - Error handling", "[i2c][error]") {
         REQUIRE(mock_bus.pending_messages(99) == 0);
     }
 }
+
+#endif // ENABLE_I2C_NETWORKING

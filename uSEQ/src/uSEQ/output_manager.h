@@ -68,13 +68,8 @@ private:
 template<int OutputId, OutputManager::OutputType Type>
 class OutputFunctionGenerator {
 public:
-    static Value setter_function(uSEQ* useq, std::vector<Value>& args, Environment& env) {
-        return useq->get_output_manager().handle_output_setter(OutputId, Type, args, env);
-    }
-    
-    static Value getter_function(uSEQ* useq, std::vector<Value>& args, Environment& env) {
-        return useq->get_output_manager().handle_output_getter(OutputId, Type, args, env);
-    }
+    static Value setter_function(uSEQ* useq, std::vector<Value>& args, Environment& env);
+    static Value getter_function(uSEQ* useq, std::vector<Value>& args, Environment& env);
 };
 
 // Convenience macros for generating the LISP function wrappers
