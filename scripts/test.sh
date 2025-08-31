@@ -216,8 +216,8 @@ run_all_tests_meson() {
         meson_cmd="$meson_cmd -v"
     fi
     
-    # All available tests
-    local all_tests="value_api_test environment_api_test parser_api_test interpreter_api_test builtin_functions_test parser_test"
+    # All available tests (comprehensive test suite)
+    local all_tests="value_api_test environment_api_test parser_api_test interpreter_api_test builtin_functions_test parser_test modulisp_api_test automation_analysis_test time_injection_test io_bridge_test logging_bridge_test i2c_bus_test storage_env_test output_manager_test test_with_helpers"
     
     if $meson_cmd $all_tests; then
         print_success "All tests passed"
@@ -253,7 +253,7 @@ else
         done
     else
         # Use Meson for efficient batch execution
-        total_tests=6
+        total_tests=15
         if ! run_all_tests_meson; then
             # If Meson fails, try individual tests to identify which ones failed
             print_status "Identifying failed tests..."
@@ -284,6 +284,15 @@ if [[ ${#failed_tests[@]} -eq 0 ]]; then
     echo "  ✓ Interpreter API  - Expression evaluation, function application"
     echo "  ✓ Builtins         - Builtin function implementations"
     echo "  ✓ Parser Unit      - Core parser functionality and edge cases"
+    echo "  ✓ ModuLisp API     - Module-specific LISP functionality"
+    echo "  ✓ I/O Bridge       - Hardware I/O abstraction layer"
+    echo "  ✓ I2C Bus          - Inter-module communication"
+    echo "  ✓ Storage Env      - Persistent environment storage"
+    echo "  ✓ Output Manager   - Output signal management"
+    echo "  ✓ Logging Bridge   - Logging system integration"
+    echo "  ✓ Time Injection   - Time-dependent functionality"
+    echo "  ✓ Automation Anal. - Pattern analysis algorithms"
+    echo "  ✓ Test Helpers     - Minimal interface testing"
     exit 0
 else
     print_error "Failed test suites: ${failed_tests[*]}"

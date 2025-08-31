@@ -222,13 +222,17 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
 
 void uSEQ::init() {
     DBG("uSEQ::init");
+    
+    // Make init() idempotent - return early if already initialized
+    if (m_initialised) {
+        return;
+    }
+    
 #ifdef ARDUINO
     init_dsp_queues();
 #endif
 
     // dbg("free heap (start):" + String(free_heap()));
-    // if (!m_initialised)
-    // {
     dbg("Setting instance pointer");
 
     Interpreter::useq_instance_ptr = this;

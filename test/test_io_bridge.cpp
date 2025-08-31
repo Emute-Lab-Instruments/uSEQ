@@ -11,6 +11,8 @@ TEST_CASE("uSEQ I/O adapters are used via tick/update_outs", "[io][bridge][tick]
     MockIo io;
 
     uSEQ device(&clk, nullptr, &io);
+    // IOManager now initialized automatically in constructor
+    
     // Manually size AST/value arrays to expected output counts
     device.m_continuous_ASTs.resize(3);
     device.m_continuous_vals.resize(3);

@@ -55,7 +55,9 @@ class IOManager;
 
 class uSEQ : public ModuLispInterpreter {
   public:
-    uSEQ() : ModuLispInterpreter(nullptr, nullptr), m_output_manager(nullptr), m_io_manager(nullptr) {}
+    uSEQ() : ModuLispInterpreter(nullptr, nullptr), m_output_manager(nullptr), m_io_manager(nullptr) {
+        init();
+    }
     explicit uSEQ(IClock* clk, ILogger* log, IIo* io_port = nullptr
 #ifdef ENABLE_I2C_NETWORKING
                   , II2CBus* i2c_port = nullptr
@@ -71,7 +73,9 @@ class uSEQ : public ModuLispInterpreter {
 #ifdef ENABLE_FLASH_STORAGE
           , storage(storage_port)
 #endif
-          {}
+          {
+              init();
+          }
     ~uSEQ(); // Custom destructor to manage OutputManager and IOManager lifecycle
 
 #ifdef ARDUINO
