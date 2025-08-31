@@ -7,43 +7,54 @@ cd "$(dirname "$0")/.."
 
 echo "Building uSEQ WASM module..."
 
-# Source files from meson.build
+# Source files for WASM - minimal set for basic LISP interpreter
 SOURCES=(
     # Wrapper
     "wasm/wasm_wrapper.cpp"
     
-    # Utils
+    # Utils library (essential)
     "uSEQ/src/utils/string.cpp"
     "uSEQ/src/utils/common.cpp"
     "uSEQ/src/utils/itoa.cpp"
     "uSEQ/src/utils/log.cpp"
     "uSEQ/src/utils/error_messages.cpp"
     "uSEQ/src/utils/flags.cpp"
+    "uSEQ/src/utils/logger_bridge.cpp"
+    "uSEQ/src/utils/default_logger.cpp"
     "uSEQ/src/utils.cpp"
     
-    # LISP core
-    "uSEQ/src/lisp/parser.cpp"
-    "uSEQ/src/lisp/value.cpp"
-    "uSEQ/src/lisp/environment.cpp"
-    "uSEQ/src/lisp/interpreter.cpp"
+    # LISP core library (essential)
+    "uSEQ/src/modulisp/lisp/parser.cpp"
+    "uSEQ/src/modulisp/lisp/value.cpp"
+    "uSEQ/src/modulisp/lisp/environment.cpp"
+    "uSEQ/src/modulisp/lisp/interpreter.cpp"
+    "uSEQ/src/modulisp/lisp/signal_metadata.cpp"
+    "uSEQ/src/modulisp/lisp/value_signal_processing.cpp"
     "uSEQ/src/modulisp/lisp/builtins.cpp"
+    "uSEQ/src/template_instantiations.cpp"
     
-    # uSEQ core
-    "uSEQ/src/uSEQ.cpp"
-    "uSEQ/src/uSEQ_eval.cpp"
-    "uSEQ/src/uSEQ_io.cpp"
-    "uSEQ/src/uSEQ_i2c.cpp"
-    "uSEQ/src/uSEQ_led.cpp"
-    "uSEQ/src/uSEQ_flash.cpp"
-    "uSEQ/src/uSEQ_time.cpp"
-    "uSEQ/src/uSEQ_api.cpp"
-    "uSEQ/src/uSEQ_update.cpp"
+    # ModuLisp library (essential for timing)
+    "uSEQ/src/modulisp/modulisp.cpp"
+    "uSEQ/src/modulisp/modulisp_time.cpp"
+    "uSEQ/src/modulisp/modulisp_api.cpp"
+    "uSEQ/src/modulisp/modulisp_eval.cpp"
     
-    # External dependencies
-    "uSEQ/src/dsp/tempoEstimator.cpp"
+    # Skip uSEQ.cpp entirely - use ModuLisp directly for WASM
+    # "uSEQ/src/uSEQ.cpp"
+    
+    # Skip hardware-specific files for WASM:
+    # - uSEQ/src/uSEQ_io.cpp (hardware I/O)
+    # - uSEQ/src/uSEQ_i2c.cpp (I2C networking) 
+    # - uSEQ/src/uSEQ_led.cpp (LED control)
+    # - uSEQ/src/uSEQ_flash.cpp (flash storage)
+    # - uSEQ/src/uSEQ/output_manager.cpp (hardware outputs)
+    # - uSEQ/src/uSEQ/io_manager.cpp (hardware I/O management)
+    # - uSEQ/src/uSEQ_update.cpp (firmware updates)
+    # - uSEQ/src/dsp/tempoEstimator.cpp (DSP processing)
+    # - uSEQ/src/uSEQ_api.cpp (hardware-specific APIs)
 )
 
-# Compiler flags
+# Compiler flags (matching meson.build standalone_args)
 FLAGS=(
     "-I./uSEQ"
     "-DUSE_OWN_ARDUINO_STR"

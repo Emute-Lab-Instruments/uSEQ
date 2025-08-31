@@ -32,7 +32,7 @@ class ModuLispInterpreter : public Interpreter {
 
     // TIMING
 
-    u_int8_t m_overflow_counter = 0;
+    uint8_t m_overflow_counter = 0;
     size_t m_micros_raw = 0;
     size_t m_micros_raw_last = 0.0;
     TimeValue m_time_since_boot = 0.0;

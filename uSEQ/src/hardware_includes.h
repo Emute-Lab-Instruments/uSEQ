@@ -50,7 +50,10 @@ void pio_pwm_set_period(PIO pio, uint sm, uint32_t period);
 // Arduino core types and constants
 typedef uint8_t byte;
 typedef bool boolean;
-// Note: uint is already defined by glibc, don't redefine it
+// Define uint for WASM builds (not available in emscripten by default)
+#ifdef WASM_BUILD
+typedef unsigned int uint;
+#endif
 
 // Pin modes
 #define INPUT 0

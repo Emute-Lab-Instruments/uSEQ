@@ -1,15 +1,15 @@
-#include "../uSEQ/src/uSEQ.h"
+#include "../uSEQ/src/modulisp/modulisp.h"
 #include <cstring>
 #include <cstdlib>
 
-// Static instance of uSEQ interpreter
-static uSEQ* useq_instance = nullptr;
+// Static instance of ModuLisp interpreter (simpler than full uSEQ)
+static ModuLispInterpreter* useq_instance = nullptr;
 
 extern "C" {
-    // Initialize the uSEQ interpreter
+    // Initialize the ModuLisp interpreter
     void useq_init() {
         if (!useq_instance) {
-            useq_instance = new uSEQ();
+            useq_instance = new ModuLispInterpreter();
             useq_instance->init();
         }
     }
