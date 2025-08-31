@@ -71,6 +71,11 @@ modulisp_api_test_src = [
   'test_modulisp_api.cpp'
 ]
 
+# Error handling tests
+error_handling_test_src = [
+  'test_error_handling.cpp'
+]
+
 # Time/DI tests
 time_injection_test_src = [
   'test_time_injection.cpp'
@@ -186,6 +191,16 @@ test_modulisp_api_exe = executable(
   dependencies : [modulisp_dep, math_dep]
 )
 
+# Error handling test executable
+test_error_handling_exe = executable(
+  'test_error_handling',
+  sources : error_handling_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
 # Signals test executable - DISABLED - uses removed DSP methods
 # test_signals_exe = executable(
 #   'test_signals',
@@ -228,6 +243,7 @@ test('environment_api_test', test_environment_api_exe)
 test('parser_api_test', test_parser_api_exe)
 test('interpreter_api_test', test_interpreter_api_exe)
 test('modulisp_api_test', test_modulisp_api_exe)
+test('error_handling_test', test_error_handling_exe)
 # test('signals_test', test_signals_exe)  # Temporarily disabled - uses removed DSP methods
 test('automation_analysis_test', test_automation_analysis_exe)
 # test('smoothness_test', test_smoothness_exe)  # Temporarily disabled - uses removed DSP methods
