@@ -6,35 +6,26 @@ constexpr TimeValue max_size_t = static_cast<TimeValue>((size_t)-1);
 
 void ModuLispInterpreter::update_time() {
     DBG("ModuLispInterpreter::update_time");
-
-    // Cache previous values
-    m_micros_raw_last = m_micros_raw;
-    m_last_known_time_since_boot = m_time_since_boot;
-
-    // 1. Get time-since-boot reading from the board (prefer injected clock)
-    if (clock != nullptr) {
-        m_micros_raw = static_cast<size_t>(clock->micros());
-    } else {
-        m_micros_raw = static_cast<size_t>(micros());
-    }
-
-    // 2. Check if it has overflowed
-    if (m_micros_raw < m_micros_raw_last) {
-        dbg("INFO: overflow occurred, incrementing counter.");
-        m_overflow_counter++;
-    }
-
-    // 3. Add an offset according to how many overflows we've had so far
-    m_time_since_boot =
-        static_cast<TimeValue>(m_micros_raw) +
-        (max_size_t * static_cast<TimeValue>(m_overflow_counter));
-
-    update_logical_time(m_time_since_boot);
+    
+    // Delegate to TimeManager
+    m_time_manager->update();
+    
+    // Update logical time with the new value
+    update_logical_time(m_time_manager->get_time_since_boot());
+    
+    // Sync compatibility layer
+    sync_compatibility_layer();
 }
 
 void ModuLispInterpreter::reset_logical_time() {
-    m_last_transport_reset_time = m_time_since_boot;
-    update_logical_time(m_time_since_boot);
+    // Delegate to TimeManager
+    m_time_manager->reset_transport();
+    
+    // Update logical time
+    update_logical_time(m_time_manager->get_time_since_boot());
+    
+    // Sync compatibility layer
+    sync_compatibility_layer();
 }
 
 void ModuLispInterpreter::update_logical_time(TimeValue actual_time) {
@@ -59,8 +50,8 @@ void ModuLispInterpreter::update_lisp_time_variables() {
     DBG("ModuLispInterpreter::update_lisp_time_variables");
 
     // These should appear as seconds in Lisp-land
-    TimeValue time_s = m_time_since_boot * 1e-6;
-    TimeValue t_s = m_transport_time * 1e-6;
+    TimeValue time_s = m_time_manager->get_time_seconds();
+    TimeValue t_s = m_time_manager->get_transport_seconds();
     set("time", Value(time_s));
     set("t", Value(t_s));
 
@@ -90,16 +81,12 @@ void ModuLispInterpreter::set_bpm(double newBpm, double changeThreshold = 0.0) {
 
     if (newBpm <= 0.0) {
         report_generic_error("Invalid BPM requested: " + String(newBpm));
-    } else if (fabs(newBpm - m_bpm) >= changeThreshold) {
-        m_bpm = newBpm;
-        // Derive phasor lengths (in micros)
-        m_beat_length = bpm_to_micros_per_beat(newBpm);
-        m_bar_length =
-            m_beat_length * (4.0 / meter_denominator) * meter_numerator;
-        m_bar_length =
-            m_beat_length * (4.0 / meter_denominator) * meter_numerator;
-        m_phrase_length = m_bar_length * m_bars_per_phrase;
-        m_section_length = m_phrase_length * m_phrases_per_section;
+    } else {
+        // Delegate to PhasorManager
+        m_phasor_manager->set_bpm(newBpm, changeThreshold);
+        
+        // Sync compatibility layer  
+        sync_compatibility_layer();
 
         update_bpm_variables();
     }
@@ -118,37 +105,16 @@ void ModuLispInterpreter::update_bpm_variables() {
 }
 
 void ModuLispInterpreter::set_time_sig(double numerator, double denominator) {
-    meter_denominator = denominator;
-    meter_numerator = numerator;
-    // This will refresh the phasor durations
-    // with the new meter
-    set_bpm(m_bpm, 0.0);
+    // Delegate to PhasorManager
+    m_phasor_manager->set_time_signature(numerator, denominator);
+    
+    // Sync compatibility layer
+    sync_compatibility_layer();
+    
+    // Update LISP variables
+    update_lisp_time_variables();
 }
 
-PhaseValue ModuLispInterpreter::beat_at_time(TimeValue time) {
-    return fmod(time, m_beat_length) / m_beat_length;
-}
-
-uint32_t ModuLispInterpreter::beat_num_at_time(TimeValue time) {
-    return static_cast<uint32_t>(time / m_beat_length);
-}
-
-PhaseValue ModuLispInterpreter::bar_at_time(TimeValue time) {
-    // println("time: " + String(time));
-    // println("m_bar_length: " + String(time));
-    return fmod(time, m_bar_length) / m_bar_length;
-}
-
-uint32_t ModuLispInterpreter::bar_num_at_time(TimeValue time) {
-    return static_cast<uint32_t>(time / m_bar_length);
-}
-
-PhaseValue ModuLispInterpreter::phrase_at_time(TimeValue time) {
-    return fmod(time, m_phrase_length) / m_phrase_length;
-}
-
-PhaseValue ModuLispInterpreter::section_at_time(TimeValue time) {
-    return fmod(time, m_section_length) / m_section_length;
-}
+// Phasor calculations are now delegated to PhasorManager via inline functions in the header
 
 // SYNC FUNCTIONS

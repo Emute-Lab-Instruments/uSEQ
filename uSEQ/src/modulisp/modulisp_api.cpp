@@ -1200,23 +1200,7 @@ Value flatten_impl(const Value &val, Environment &env) {
     return result;
 }
 
-double ModuLispInterpreter::simple_hashing_function(uint32_t input) {
-    // Combine input with seed using a fast mixing technique
-    input ^= m_random_seed;
-    input = ((input >> 16) ^ input) * 0x45d9f3b;
-    input = ((input >> 16) ^ input) * 0x45d9f3b;
-    input = (input >> 16) ^ input;
-
-    // Convert to float in range [0, 1)
-    // Uses bit manipulation to avoid floating-point division
-    union {
-        uint32_t i;
-        float f;
-    } convert;
-
-    convert.i = (input & 0x007fffff) | 0x3f800000;
-    return convert.f - 1.0f;
-}
+// simple_hashing_function is now delegated to RandomGenerator via inline function in header
 
 Value ModuLispInterpreter::useq_index_rand(std::vector<Value> &args,
                                            Environment &env) {
