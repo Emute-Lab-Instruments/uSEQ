@@ -54,33 +54,4 @@ Value ModuLispInterpreter::eval_at_time(Value &expr, Environment &env,
     return result;
 }
 
-Environment ModuLispInterpreter::make_env_for_time(TimeValue t_micros) {
-    Environment env;
-
-    // TimeValue time_s = m_time_since_boot * 1e-6;
-    TimeValue t_s = t_micros * 1e-6;
-
-    // env.set("time", Value(time_s));
-    env.set("t", Value(t_s));
-    env.set("beat", Value(beat_at_time(t_micros)));
-    env.set("beat-num", Value(static_cast<int>(beat_num_at_time(t_micros))));
-    env.set("bar", Value(bar_at_time(t_micros)));
-    env.set("bar-num", Value(static_cast<int>(bar_num_at_time(t_micros))));
-    env.set("phrase", Value(phrase_at_time(t_micros)));
-    env.set("section", Value(section_at_time(t_micros)));
-
-    return env;
-}
-
-Environment ModuLispInterpreter::make_env_with_updated_time_durs(
-    const Environment &parent_env, TimeValue factor) {
-    Environment env;
-
-    TimeValue current_beat_dur = parent_env.get("beat-dur").value().as_float();
-    env.set("beat-dur", Value(current_beat_dur * factor));
-
-    TimeValue current_bar_dur = parent_env.get("bar-dur").value().as_float();
-    env.set("bar-dur", Value(current_bar_dur * factor));
-
-    return env;
-}
+// make_env_for_time and make_env_with_updated_time_durs are now defined in modulisp_time.cpp

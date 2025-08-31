@@ -41,7 +41,7 @@ class ModuLispInterpreter : public Interpreter {
     void update_logical_time_variables(TimeValue);
     void update_lisp_time_variables();
     
-    // Time management (delegated to TimeManager)
+    // Time management accessors
     TimeValue get_time_since_boot() const { 
         return m_time_manager->get_time_since_boot(); 
     }
@@ -49,7 +49,7 @@ class ModuLispInterpreter : public Interpreter {
         return m_time_manager->get_transport_time(); 
     }
     
-    // Phasor calculations (delegated to PhasorManager)
+    // Phasor calculations
     PhaseValue beat_at_time(TimeValue time) { 
         return m_phasor_manager->beat_at_time(time); 
     }
@@ -74,6 +74,17 @@ class ModuLispInterpreter : public Interpreter {
     void update_bpm_variables();
     void set_time_sig(double num, double denom);
     
+    // Get current settings
+    double get_bpm() const { 
+        return m_phasor_manager->get_tempo().bpm; 
+    }
+    double get_meter_numerator() const { 
+        return m_phasor_manager->get_meter().numerator; 
+    }
+    double get_meter_denominator() const { 
+        return m_phasor_manager->get_meter().denominator; 
+    }
+    
     // Scheduling
     void run_scheduled_items();
     void check_code_quant_phasor();
@@ -90,6 +101,12 @@ class ModuLispInterpreter : public Interpreter {
     double simple_hashing_function(uint32_t index) {
         return m_random_generator->generate_with_index(index);
     }
+    
+    // Access to managers (for testing and advanced use)
+    TimeManager* get_time_manager() { return m_time_manager.get(); }
+    PhasorManager* get_phasor_manager() { return m_phasor_manager.get(); }
+    Scheduler* get_scheduler() { return m_scheduler.get(); }
+    IRandomGenerator* get_random_generator() { return m_random_generator.get(); }
     
     // LISP function declarations
     LISP_FUNC_DECL(useq_eval_at_time);
@@ -127,57 +144,6 @@ class ModuLispInterpreter : public Interpreter {
     LISP_FUNC_DECL(useq_rewind_logical_time);
     LISP_FUNC_DECL(useq_q0);
     
-    // ===== COMPATIBILITY LAYER =====
-    // These members provide backward compatibility during migration
-    // They will be removed once all code is updated
-    
-    // Time state (now managed by TimeManager)
-    uint8_t m_overflow_counter = 0;
-    size_t m_micros_raw = 0;
-    size_t m_micros_raw_last = 0;
-    TimeValue m_time_since_boot = 0.0;
-    TimeValue m_last_known_time_since_boot = -1;
-    TimeValue m_last_transport_reset_time = 0.0;
-    TimeValue m_transport_time = 0.0;
-    TimeValue m_transport_time_offset = 0.0;
-    TimeValue m_last_transport_time = 0.0;
-    
-    // Phasor state (now managed by PhasorManager)
-    TimeValue m_beat_length = 0.0;
-    TimeValue m_bar_length = 0.0;
-    TimeValue m_phrase_length = 0.0;
-    TimeValue m_section_length = 0.0;
-    uint32_t m_current_beat_num = 0;
-    uint32_t m_current_bar_num = 0;
-    PhaseValue m_beat_phase = 0.0;
-    PhaseValue m_bar_phase = 0.0;
-    PhaseValue m_phrase_phase = 0.0;
-    PhaseValue m_section_phase = 0.0;
-    
-    // Meter and tempo (now in PhasorManager)
-    double meter_numerator = 4;
-    double meter_denominator = 4;
-    double m_bars_per_phrase = 16;
-    double m_phrases_per_section = 16;
-    double m_defaultBPM = 130;
-    double m_bpm = 130;
-    
-    // Scheduling (now managed by Scheduler)
-    struct scheduledItem {
-        Value ast;
-        size_t period;
-        size_t lastRun;
-        String id;
-    };
-    std::vector<scheduledItem> m_scheduledItems;
-    std::vector<Value> m_runQueue;
-    Value m_cqpAST = parse("bar");
-    Value m_q0AST;
-    double m_last_CQP = 0.0;
-    
-    // Random (now managed by RandomGenerator)
-    uint32_t m_random_seed = 0x9E3779B9;
-    
     // Performance monitoring
     int ts = 0;
     int updateSpeed = 0;
@@ -194,9 +160,11 @@ class ModuLispInterpreter : public Interpreter {
     ILogger* logger = nullptr;
     
   private:
-    // Helper to sync compatibility layer with managers
-    void sync_compatibility_layer();
-    void sync_from_compatibility_layer();
+    // Current phasor state cache
+    PhasorState m_current_phasor_state;
+    
+    // Helper to update phasor state
+    void update_phasor_state();
 };
 
 #endif // MODULISP_H_

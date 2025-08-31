@@ -170,7 +170,7 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, //
                           println(msg); ret = Value();
                           , 0)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); m_q0AST = args[0]; ret = Value::atom("q0");
+BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); get_scheduler()->set_q0_ast(args[0]); ret = Value::atom("q0");
                           , 1)
 
 // TODO: there is potentially a lot of duplicated/wasted memory by storing

@@ -265,7 +265,7 @@ void uSEQ::init() {
     // dbg("Lisp library loaded.");
 
     // uSEQ software setup
-    set_bpm(m_defaultBPM, 0.0);
+    set_bpm(130.0, 0.0);  // Default BPM
     update_time();
     init_ASTs();
 
@@ -437,7 +437,7 @@ void uSEQ::check_and_handle_user_input() {
                 else
                     println(m_last_received_code);
                 Value expr = parse(m_last_received_code);
-                m_runQueue.push_back(expr);
+                get_scheduler()->add_to_run_queue(expr);
             }
         }
 

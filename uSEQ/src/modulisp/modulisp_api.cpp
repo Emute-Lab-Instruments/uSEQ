@@ -104,8 +104,8 @@ Value ModuLispInterpreter::useq_set_time_offset(std::vector<Value> &args,
     }
 
     // BODY
-    m_transport_time_offset = args[0].as_float();
-    set("useq-time-offset", m_transport_time_offset);
+    m_time_manager->set_transport_offset(args[0].as_float());
+    set("useq-time-offset", args[0].as_float());
 
     return args[0];
 }
@@ -142,8 +142,9 @@ Value ModuLispInterpreter::useq_nudge_time(std::vector<Value> &args,
     }
 
     // BODY
-    m_transport_time_offset += args[0].as_float();
-    set("useq-time-offset", m_transport_time_offset);
+    double new_offset = m_time_manager->get_transport_offset() + args[0].as_float();
+    m_time_manager->set_transport_offset(new_offset);
+    set("useq-time-offset", new_offset);
 
     return args[0];
 }
@@ -1290,7 +1291,7 @@ Value ModuLispInterpreter::useq_random(std::vector<Value> &args,
 
     uint32_t current_beat_num = static_cast<uint32_t>(
         env.get("beat-num")
-            .value_or(Value(static_cast<int>(m_current_beat_num)))
+            .value_or(Value(static_cast<int>(m_current_phasor_state.current_beat_num)))
             .as_int());
 
     double rand_val = simple_hashing_function(current_beat_num);
@@ -1636,27 +1637,11 @@ Value ModuLispInterpreter::useq_schedule(std::vector<Value> &args, Environment &
     }
     // BODY
     const auto itemName = args[0].as_string();
-    const auto period = args[1].as_float();
+    const auto period = static_cast<size_t>(args[1].as_float());
     const auto ast = args[2];
-    scheduledItem v;
-    v.id = itemName;
-    v.period = period;
-    v.lastRun = 0;
-    v.ast = ast;
-    // remove if exists
-    const String searchId = args[0].as_string();
-
-    auto is_item = [searchId](scheduledItem &candidate) {
-        return candidate.id == searchId;
-    };
-
-    if (auto it = std::find_if(std::begin(m_scheduledItems),
-                               std::end(m_scheduledItems), is_item);
-        it != std::end(m_scheduledItems)) {
-        m_scheduledItems.erase(it);
-    }
-    // add to scheduler list
-    m_scheduledItems.push_back(v);
+    
+    // Use Scheduler to manage scheduled items
+    m_scheduler->schedule(itemName, ast, period);
     return Value::nil();
 }
 
@@ -1689,12 +1674,9 @@ Value ModuLispInterpreter::useq_unschedule(std::vector<Value> &args, Environment
     }
 
     const String id = args[0].as_string();
-    auto is_item = [id](scheduledItem &v) { return v.id == id; };
-
-    if (auto it = std::find_if(std::begin(m_scheduledItems),
-                               std::end(m_scheduledItems), is_item);
-        it != std::end(m_scheduledItems)) {
-        m_scheduledItems.erase(it);
+    
+    // Use Scheduler to unschedule items
+    if (m_scheduler->unschedule(id)) {
         println("- (unschedule) Item " + args[0].str +
                 " removed successfully.");
     } else {

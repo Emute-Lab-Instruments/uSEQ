@@ -98,7 +98,7 @@ TEST_CASE("Set BPM function", "[modulisp][api][useq_setbpm]") {
     std::vector<Value> args1 = {Value(120.0)};
     Value result1 = interp.useq_setbpm(args1, env);
     REQUIRE(result1.as_float() == Approx(120.0).epsilon(0.001));
-    REQUIRE(interp.m_bpm == Approx(120.0).epsilon(0.001));
+    REQUIRE(interp.get_bpm() == Approx(120.0).epsilon(0.001));
     
     // Test setting BPM with threshold
     std::vector<Value> args2 = {Value(140.0), Value(5.0)};
@@ -114,8 +114,8 @@ TEST_CASE("Set time signature function", "[modulisp][api][useq_set_time_sig]") {
     std::vector<Value> args1 = {Value(3.0), Value(4.0)};
     Value result1 = interp.useq_set_time_sig(args1, env);
     REQUIRE(result1.is_nil());
-    REQUIRE(interp.meter_numerator == Approx(3.0).epsilon(0.001));
-    REQUIRE(interp.meter_denominator == Approx(4.0).epsilon(0.001));
+    REQUIRE(interp.get_meter_numerator() == Approx(3.0).epsilon(0.001));
+    REQUIRE(interp.get_meter_denominator() == Approx(4.0).epsilon(0.001));
 }
 
 TEST_CASE("Set time offset function", "[modulisp][api][useq_set_time_offset]") {
@@ -126,7 +126,7 @@ TEST_CASE("Set time offset function", "[modulisp][api][useq_set_time_offset]") {
     std::vector<Value> args1 = {Value(0.5)};
     Value result1 = interp.useq_set_time_offset(args1, env);
     REQUIRE(result1.as_float() == Approx(0.5).epsilon(0.001));
-    REQUIRE(interp.m_transport_time_offset == Approx(0.5).epsilon(0.001));
+    REQUIRE(interp.get_time_manager()->get_transport_offset() == Approx(0.5).epsilon(0.001));
 }
 
 TEST_CASE("Nudge time function", "[modulisp][api][useq_nudge_time]") {
@@ -134,13 +134,13 @@ TEST_CASE("Nudge time function", "[modulisp][api][useq_nudge_time]") {
     Environment env;
     
     // Set initial offset
-    interp.m_transport_time_offset = 0.2;
+    interp.get_time_manager()->set_transport_offset(0.2);
     
     // Test nudging time (adding to existing offset)
     std::vector<Value> args1 = {Value(0.1)};
     Value result1 = interp.useq_nudge_time(args1, env);
     REQUIRE(result1.as_float() == Approx(0.1).epsilon(0.001));
-    REQUIRE(interp.m_transport_time_offset == Approx(0.3).epsilon(0.001));
+    REQUIRE(interp.get_time_manager()->get_transport_offset() == Approx(0.3).epsilon(0.001));
 }
 
 // NOTE: Test for useq_flatten is commented out as it requires more complex setup
@@ -180,8 +180,8 @@ TEST_CASE("Random function", "[modulisp][api][useq_random]") {
     ModuLispInterpreter interp;
     Environment env;
     
-    // Set up the interpreter's beat num for hashing
-    interp.m_current_beat_num = 42;
+    // Note: Beat number is now managed internally by PhasorManager
+    // The random function will use the current beat from the phasor state
     
     // Test random with no scaling (should be 0-1)
     std::vector<Value> args1 = {};
@@ -275,13 +275,13 @@ TEST_CASE("Scheduling functions", "[modulisp][api][scheduling]") {
     std::vector<Value> schedule_args = {Value::string("test_item"), Value(1.0), Value(42)};
     Value schedule_result = interp.useq_schedule(schedule_args, env);
     REQUIRE(schedule_result.is_nil());
-    REQUIRE(interp.m_scheduledItems.size() == 1);
-    REQUIRE(interp.m_scheduledItems[0].id == "test_item");
+    REQUIRE(interp.get_scheduler()->get_scheduled_items().size() == 1);
+    REQUIRE(interp.get_scheduler()->get_scheduled_items()[0].id == "test_item");
     
     // Test unscheduling the item
     std::vector<Value> unschedule_args = {Value::string("test_item")};
     Value unschedule_result = interp.useq_unschedule(unschedule_args, env);
     REQUIRE(unschedule_result.is_nil());
-    REQUIRE(interp.m_scheduledItems.size() == 0);
+    REQUIRE(interp.get_scheduler()->get_scheduled_items().size() == 0);
 }
 
