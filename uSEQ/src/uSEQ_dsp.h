@@ -1,7 +1,10 @@
 #ifndef USEQ_DSP_H_
 #define USEQ_DSP_H_
 
+#include "uSEQ/configure.h"
+
 #ifdef ARDUINO
+#ifdef ENABLE_DSP_ENGINE
 
 ////////////////////////////////////////////////////////////////////////////////
 /// DSP AND AUDIO PROCESSING LISP FUNCTION DECLARATIONS
@@ -53,6 +56,7 @@ struct dsp_engine_info {
     std::unordered_map<size_t, ugenInputQueue> ugenInputQueues;
 };
 
+#endif // ENABLE_DSP_ENGINE
 #endif // ARDUINO
 
 #endif // USEQ_DSP_H_

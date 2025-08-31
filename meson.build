@@ -68,6 +68,36 @@ standalone_args = [
   '-D__not_in_flash_func(x)=',
 ]
 
+# Add conditional compilation flags based on options
+if get_option('minimal_build')
+  standalone_args += '-DMINIMAL_BUILD'
+  message('Building minimal configuration without optional features')
+endif
+
+if get_option('enable_dsp')
+  standalone_args += '-DENABLE_DSP_ENGINE'
+  standalone_args += '-DENABLE_TEMPO_ESTIMATOR'
+  message('DSP engine support enabled')
+endif
+
+if get_option('enable_i2c')
+  standalone_args += '-DENABLE_I2C_NETWORKING'
+  standalone_args += '-DENABLE_I2C_HOST'
+  standalone_args += '-DENABLE_I2C_CLIENT'
+  message('I2C networking support enabled')
+endif
+
+if get_option('enable_flash')
+  standalone_args += '-DENABLE_FLASH_STORAGE'
+  message('Flash storage support enabled')
+endif
+
+if get_option('enable_leds')
+  standalone_args += '-DENABLE_LED_CONTROL'
+  standalone_args += '-DENABLE_RGB_LED'
+  message('LED control support enabled')
+endif
+
 arduino_args = [
   # '-DARDUINO',
   # '-DUSE_ARDUINO_STR',

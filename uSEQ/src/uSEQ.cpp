@@ -880,6 +880,7 @@ Value uSEQ::useq_send_sync_trigger_i2c(std::vector<Value> &args,
     reset_logical_time();
 
     // Use injected I2C port if available
+#ifdef ENABLE_I2C_NETWORKING
     if (i2c != nullptr) {
         // Create sync trigger message with 8 float outputs
         I2CMessage msg;
@@ -906,7 +907,9 @@ Value uSEQ::useq_send_sync_trigger_i2c(std::vector<Value> &args,
         i2c->send(msg);
         
         println("Sync sent via injected I2C port");
-    } else {
+    } else
+#endif // ENABLE_I2C_NETWORKING
+    {
 #ifdef ARDUINO
         // Hardware I2C implementation
         Wire1.setSDA(38);
@@ -1033,9 +1036,17 @@ Value uSEQ::useq_get_input_bpm(std::vector<Value> &args,
 
     int index = args[0].as_int();
     if (index == 1) {
+#ifdef ENABLE_TEMPO_ESTIMATOR
         result = tempoI1.avgBPM;
-    } else if (index == 1) {
+#else
+        result = 120.0; // Default BPM when tempo estimator disabled
+#endif
+    } else if (index == 2) {
+#ifdef ENABLE_TEMPO_ESTIMATOR
         result = tempoI2.avgBPM;
+#else
+        result = 120.0; // Default BPM when tempo estimator disabled
+#endif
     } else {
         result = 0;
     }

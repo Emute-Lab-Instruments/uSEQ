@@ -13,7 +13,9 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 
 // Functional module headers are included within the class definition
 
+#ifdef ENABLE_TEMPO_ESTIMATOR
 #include "dsp/tempoEstimator.h"
+#endif
 // #include "dsp/MAFilter.h"
 #include "dsp/MedianFilter.h"
 #ifndef ARDUINO
@@ -25,15 +27,21 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #include "uSEQ/board.h"
 #include "uSEQ/configure.h"
 #include "ports/IIo.h"
+#ifdef ENABLE_I2C_NETWORKING
 #include "ports/II2CBus.h"
+#endif
+#ifdef ENABLE_FLASH_STORAGE
 #include "ports/IStorage.h"
+#endif
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <sys/types.h>
 
 #ifdef ARDUINO
+#ifdef ENABLE_DSP_ENGINE
 #include "dsp/dsp-engine.hpp"
+#endif
 #endif
 
 #ifndef ARDUINO
@@ -61,10 +69,22 @@ class maxiFilter {
 class uSEQ : public ModuLispInterpreter {
   public:
     uSEQ() : ModuLispInterpreter(nullptr, nullptr), m_output_manager(nullptr) {}
-    explicit uSEQ(IClock* clk, ILogger* log, IIo* io_port = nullptr, 
-                  II2CBus* i2c_port = nullptr, IStorage* storage_port = nullptr)
-        : ModuLispInterpreter(clk, log), m_output_manager(nullptr), io(io_port),
-          i2c(i2c_port), storage(storage_port) {}
+    explicit uSEQ(IClock* clk, ILogger* log, IIo* io_port = nullptr
+#ifdef ENABLE_I2C_NETWORKING
+                  , II2CBus* i2c_port = nullptr
+#endif
+#ifdef ENABLE_FLASH_STORAGE
+                  , IStorage* storage_port = nullptr
+#endif
+                  )
+        : ModuLispInterpreter(clk, log), m_output_manager(nullptr), io(io_port)
+#ifdef ENABLE_I2C_NETWORKING
+          , i2c(i2c_port)
+#endif
+#ifdef ENABLE_FLASH_STORAGE
+          , storage(storage_port)
+#endif
+          {}
     ~uSEQ(); // Custom destructor to manage OutputManager lifecycle
 
 #ifdef ARDUINO
@@ -86,7 +106,9 @@ class uSEQ : public ModuLispInterpreter {
 
     static void gpio_irq_gate1();
     static void gpio_irq_gate2();
+#ifdef ENABLE_TEMPO_ESTIMATOR
     tempoEstimator tempoI1, tempoI2;
+#endif
     void update_clock_from_external(double ts);
 
     double delme = 928.22234;
@@ -140,8 +162,12 @@ class uSEQ : public ModuLispInterpreter {
     IIo* io = nullptr;
     
     // Optional I2C and Storage adapters for desktop tests/hardware abstraction
+#ifdef ENABLE_I2C_NETWORKING
     II2CBus* i2c = nullptr;
+#endif
+#ifdef ENABLE_FLASH_STORAGE
     IStorage* storage = nullptr;
+#endif
 
     double m_input_vals[14];
     // NOTE this was a std vector before, init with 0
@@ -236,8 +262,10 @@ class uSEQ : public ModuLispInterpreter {
     
     // Public wrappers for storage functions (for testing)
 #ifndef ARDUINO
+#ifdef ENABLE_FLASH_STORAGE
     bool __test_save_env_to_storage(IStorage& s);
     bool __test_load_env_from_storage(IStorage& s);
+#endif
 #endif
 #endif
 
@@ -300,8 +328,10 @@ class uSEQ : public ModuLispInterpreter {
     void copy_def_strings_to_buffer(char *);
 
     // Desktop storage wrappers (declared for all builds, implemented only for desktop)
+#ifdef ENABLE_FLASH_STORAGE
     bool save_env_to_storage(IStorage& s);
     bool load_env_from_storage(IStorage& s);
+#endif
 
     // void clear_non_program_flash();
     static String current_output_being_processed;

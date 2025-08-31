@@ -2,3 +2,8 @@ option('sanitizers', type: 'boolean', value: false, description: 'Enable ASan/UB
 option('coverage', type: 'boolean', value: false, description: 'Enable coverage instrumentation for tests')
 option('unity_build', type: 'boolean', value: false, description: 'Enable Unity build mode for faster clean builds (30-40% speedup)')
 option('use_ccache', type: 'boolean', value: true, description: 'Use ccache for compilation caching if available (80-90% speedup on repeated builds)')
+option('minimal_build', type: 'boolean', value: false, description: 'Build minimal configuration without optional features (10-15% compilation time reduction)')
+option('enable_dsp', type: 'boolean', value: false, description: 'Enable DSP engine support (for Arduino builds)')
+option('enable_i2c', type: 'boolean', value: false, description: 'Enable I2C networking support (for Arduino builds)')
+option('enable_flash', type: 'boolean', value: false, description: 'Enable flash storage support (for Arduino builds)')
+option('enable_leds', type: 'boolean', value: false, description: 'Enable LED control support (for Arduino builds)')

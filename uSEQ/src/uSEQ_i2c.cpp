@@ -1,8 +1,11 @@
 #include "uSEQ.h"
+#include "uSEQ/configure.h"
 #ifndef ARDUINO
 #include "hardware_includes.h"
 #endif
 #include "utils.h"
+
+#ifdef ENABLE_I2C_NETWORKING
 
 Value uSEQ::useq_i2c_send_to(std::vector<Value>& args, Environment& env)
 {
@@ -94,3 +97,5 @@ Value uSEQ::useq_i2c_host_start(std::vector<Value>& args, Environment& env)
 
     return result;
 }
+
+#endif // ENABLE_I2C_NETWORKING

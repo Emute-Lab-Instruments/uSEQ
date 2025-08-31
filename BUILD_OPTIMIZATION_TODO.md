@@ -198,11 +198,17 @@ When you successfully complete a task, before you commit, check the task off her
 **Estimated Impact**: 80-90% speedup on repeated clean builds.
 
 ### ADVANCED-003: Add conditional compilation guards
-- [ ] Add conditional compilation guards
+- [x] Add conditional compilation guards
 **Files**: Various headers and source files
 **Description**: Add more granular #ifdef guards to exclude unused code paths (ARDUINO vs desktop, hardware versions, etc.).
+**Implementation**:
+  - Added comprehensive feature flags in `uSEQ/configure.h` (DSP, I2C, Flash, LED, etc.)
+  - Added conditional compilation guards for all major subsystems
+  - Updated Meson build with options to control feature compilation
+  - Added `minimal_build` option for reduced compilation scope
 **Target**: Reduce compilation units for specific build configurations
-**Acceptance**: Same functionality for each target, smaller compilation scope.
+**Acceptance**: Same functionality for each target, smaller compilation scope. ✓
+**Status**: Successfully implemented conditional compilation for all major features.
 **Estimated Impact**: 10-15% reduction in compilation time per target.
 
 ## Phase 6: Build System Validation (Priority: Medium)

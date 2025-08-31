@@ -1,3 +1,7 @@
+#include "uSEQ/configure.h"
+
+#ifdef ENABLE_FLASH_STORAGE
+
 #ifdef ARDUINO
 
 #include "uSEQ.h"
@@ -670,3 +674,5 @@ bool uSEQ::__test_load_env_from_storage(IStorage& s) {
 }
 
 #endif // ARDUINO
+
+#endif // ENABLE_FLASH_STORAGE

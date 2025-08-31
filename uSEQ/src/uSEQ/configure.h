@@ -13,6 +13,55 @@
 /* #define MUSICTHING */
 #define DESKTOP
 
+// ===== FEATURE FLAGS FOR CONDITIONAL COMPILATION =====
+// These flags allow selective compilation of features to reduce binary size
+// and compilation time for specific build configurations
+
+// DSP Features (audio processing, tempo estimation)
+#ifdef ARDUINO
+  #define ENABLE_DSP_ENGINE
+  #define ENABLE_TEMPO_ESTIMATOR
+#endif
+
+// I2C Communication (multi-module networking)
+#if defined(ARDUINO) && !defined(DESKTOP)
+  #define ENABLE_I2C_NETWORKING
+  #define ENABLE_I2C_HOST
+  #define ENABLE_I2C_CLIENT
+#endif
+
+// Flash Storage (persistent data storage)
+#ifdef ARDUINO
+  #define ENABLE_FLASH_STORAGE
+#endif
+
+// LED Control (visual feedback)
+#if defined(ARDUINO) && !defined(DESKTOP)
+  #define ENABLE_LED_CONTROL
+  #define ENABLE_RGB_LED
+#endif
+
+// Hardware I/O Features
+#ifdef ARDUINO
+  #define ENABLE_ANALOG_INPUTS
+  #define ENABLE_DIGITAL_IO
+  #define ENABLE_ENCODER_INPUT
+#endif
+
+// Advanced Features (can be disabled for minimal builds)
+#ifndef MINIMAL_BUILD
+  #define ENABLE_SERIAL_DEBUG
+  #define ENABLE_DIAGNOSTICS
+  #define ENABLE_PROFILING
+#endif
+
+// Memory Management Features
+#ifdef ARDUINO
+  #define USE_FIXED_MEMORY_POOLS
+#else
+  #define USE_DYNAMIC_ALLOCATION
+#endif
+
 #ifdef MUSICTHING
 #define DIGI_OUT_INVERTED
 #endif

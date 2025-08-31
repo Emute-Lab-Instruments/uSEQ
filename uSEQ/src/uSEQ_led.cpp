@@ -1,8 +1,11 @@
 #include "uSEQ.h"
+#include "uSEQ/configure.h"
 #include "utils.h"
 #ifndef ARDUINO
 #include "hardware_includes.h"
 #endif
+
+#ifdef ENABLE_LED_CONTROL
 
 
 
@@ -163,3 +166,5 @@ void uSEQ::led_animation()
     }
 #endif
 }
+
+#endif // ENABLE_LED_CONTROL
