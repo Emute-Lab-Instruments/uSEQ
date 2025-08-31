@@ -49,26 +49,13 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #define NUM_BINARY_OUTS (6 - NUM_CONTINUOUS_OUTS)
 #endif
 
-// Forward declaration
+// Forward declarations
 class OutputManager;
-
-class maxiFilter {
-  private:
-    double z = 0;
-    double output = 0;
-
-  public:
-    maxiFilter() {}
-#ifdef ARDUINO
-    double __force_inline lopass(double input, double cutoff);
-#else
-    double lopass(double input, double cutoff);
-#endif
-};
+class IOManager;
 
 class uSEQ : public ModuLispInterpreter {
   public:
-    uSEQ() : ModuLispInterpreter(nullptr, nullptr), m_output_manager(nullptr) {}
+    uSEQ() : ModuLispInterpreter(nullptr, nullptr), m_output_manager(nullptr), m_io_manager(nullptr) {}
     explicit uSEQ(IClock* clk, ILogger* log, IIo* io_port = nullptr
 #ifdef ENABLE_I2C_NETWORKING
                   , II2CBus* i2c_port = nullptr
@@ -77,7 +64,7 @@ class uSEQ : public ModuLispInterpreter {
                   , IStorage* storage_port = nullptr
 #endif
                   )
-        : ModuLispInterpreter(clk, log), m_output_manager(nullptr), io(io_port)
+        : ModuLispInterpreter(clk, log), m_output_manager(nullptr), m_io_manager(nullptr), io(io_port)
 #ifdef ENABLE_I2C_NETWORKING
           , i2c(i2c_port)
 #endif
@@ -85,7 +72,7 @@ class uSEQ : public ModuLispInterpreter {
           , storage(storage_port)
 #endif
           {}
-    ~uSEQ(); // Custom destructor to manage OutputManager lifecycle
+    ~uSEQ(); // Custom destructor to manage OutputManager and IOManager lifecycle
 
 #ifdef ARDUINO
     void init_dsp_queues();
@@ -104,8 +91,9 @@ class uSEQ : public ModuLispInterpreter {
     void load_flash_env();
 #endif
 
-    static void gpio_irq_gate1();
-    static void gpio_irq_gate2();
+    // Interrupt handlers moved to IOManager, but we need callbacks
+    void handle_input1_interrupt(double ts, int value);
+    void handle_input2_interrupt(double ts, int value);
 #ifdef ENABLE_TEMPO_ESTIMATOR
     tempoEstimator tempoI1, tempoI2;
 #endif
@@ -114,7 +102,9 @@ class uSEQ : public ModuLispInterpreter {
     double delme = 928.22234;
 
     static uSEQ *instance;
-    void set_input_val(size_t index, double value);
+    
+    // IOManager integration
+    IOManager* get_io_manager() { return m_io_manager; }
 
     enum CLOCK_SOURCES { INTERNAL = 0, EXTERNAL_I1, EXTERNAL_I2 };
 
@@ -157,8 +147,11 @@ class uSEQ : public ModuLispInterpreter {
 
     // Output management (moved to public section)
     OutputManager* m_output_manager;
+    
+    // IO management system
+    IOManager* m_io_manager;
 
-    // Optional I/O adapter for desktop tests/hardware abstraction
+    // Optional I/O adapter for desktop tests/hardware abstraction (now managed by IOManager)
     IIo* io = nullptr;
     
     // Optional I2C and Storage adapters for desktop tests/hardware abstraction
@@ -169,7 +162,6 @@ class uSEQ : public ModuLispInterpreter {
     IStorage* storage = nullptr;
 #endif
 
-    double m_input_vals[14];
     // NOTE this was a std vector before, init with 0
     double m_serial_input_streams[NUM_SERIAL_INS];
 
@@ -242,7 +234,8 @@ class uSEQ : public ModuLispInterpreter {
 #endif
 
     void set_my_id(int num);
-
+    
+    // IO operations now delegated to IOManager
     void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val);
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
     void serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val);
@@ -277,24 +270,9 @@ class uSEQ : public ModuLispInterpreter {
     // INIT
     void init_ASTs();
 
-    // SETUP
-    void setup_IO();
-    void setup_outs();
-    void setup_continuous_outs();
-    void setup_discrete_outs();
-    void setup_switches();
-
-#ifdef USEQHARDWARE_0_2
-    void setup_rotary_encoder();
-    void read_rotary_encoders();
-#endif
-
-#ifdef ANALOG_INPUTS
-    void setup_analog_ins();
-#endif
+    // SETUP - most setup functions moved to IOManager
     void eval_lisp_library();
-    void setup_digital_ins();
-    void led_animation();
+    void led_animation(); // Delegates to IOManager
     static constexpr u_int8_t m_serial_stream_begin_marker = 31;
     static constexpr char m_execute_now_marker = '@';
 

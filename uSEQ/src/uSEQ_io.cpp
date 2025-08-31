@@ -1,60 +1,44 @@
 #include "uSEQ.h"
+#include "uSEQ/io_manager.h"
 #include "utils.h"
 #ifndef ARDUINO
 #include "hardware_includes.h"
 #endif
 
-float pdm_y   = 0;
-float pdm_err = 0;
-float pdm_w   = 0;
+// PDM globals moved to IOManager implementation
 
-void uSEQ::set_input_val(size_t index, double value) { m_input_vals[index] = value; }
-
-
-
-#if HAS_OUTPUTS
-void uSEQ::setup_outs()
-{
-    DBG("uSEQ::setup_outs");
-    for (int i = 0; i < NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS; i++)
-    {
-        pinMode(useq_output_pins[i], OUTPUT_2MA);
+// Input handling now delegated to IOManager
+void uSEQ::handle_input1_interrupt(double ts, int value) {
+    // Check for sync trigger
+    if (m_waiting_for_sync_trigger && value == 1) {
+        m_waiting_for_sync_trigger = false;
+        reset_logical_time();
+        // TODO propagate the trigger to connected I2C devices
+        return;
     }
-
-#ifdef MUSICTHING
-    pinMode(MUX_LOGIC_A, OUTPUT);
-    pinMode(MUX_LOGIC_B, OUTPUT);
-#endif
+    
+    if (value == 1 && getClockSource() == CLOCK_SOURCES::EXTERNAL_I1) {
+        update_clock_from_external(ts);
+    }
 }
 
-void setup_analog_outs()
-{
-    DBG("uSEQ::setup_analog_outs");
-    dbg(String(NUM_CONTINUOUS_OUTS));
-    // PWM outputs
-    analogWriteFreq(100000);   // out of hearing range
-    analogWriteResolution(11); // about the best we can get
-
-    #ifndef USEQHARDWARE_EXPANDER_OUT_0_1  //NOT EXPANDER WHICH IS NON PIO
-    // set PIO PWM state machines to run PWM outputs
-    uint offset  = pio_add_program(pio0, &pwm_program);
-    uint offset2 = pio_add_program(pio1, &pwm_program);
-    // printf("Loaded program at %d\n", offset);
-
-    for (int i = 0; i < NUM_CONTINUOUS_OUTS; i++)
-    {
-        auto pioInstance = i < 4 ? pio0 : pio1;
-        uint pioOffset   = i < 4 ? offset : offset2;
-        auto smIdx       = i % 4;
-        dbg(String(reinterpret_cast<size_t>(pioInstance)));
-        dbg(String(reinterpret_cast<size_t>(pioOffset)));
-        // pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_pins[i]);
-        pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_led_pins[i]);
-        pio_pwm_set_period(pioInstance, smIdx, (1u << 11) - 1);
+void uSEQ::handle_input2_interrupt(double ts, int value) {
+    // Check for sync trigger
+    if (m_waiting_for_sync_trigger && value == 1) {
+        m_waiting_for_sync_trigger = false;
+        reset_logical_time();
+        // TODO propagate the trigger to connected I2C devices
+        return;
     }
-    #endif // NOT EXPANDER
+    
+    if (value == 1 && getClockSource() == CLOCK_SOURCES::EXTERNAL_I2) {
+        update_clock_from_external(ts);
+    }
 }
-#endif // HAS_OUTPUTS
+
+
+
+// Setup functions moved to IOManager
 
 
 
@@ -101,272 +85,46 @@ void uSEQ::update_clock_from_external(double ts)
     }
 }
 
-void uSEQ::gpio_irq_gate1()
-{
-    double ts         = static_cast<double>(micros());
-    const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
-    uSEQ::instance->set_input_val(USEQI1, input1);
-    digitalWrite(USEQ_PIN_LED_I1, input1);
-    
-    // Check for sync trigger
-    if (uSEQ::instance->m_waiting_for_sync_trigger && input1 == 1)
-    {
-        uSEQ::instance->m_waiting_for_sync_trigger = false;
-        uSEQ::instance->reset_logical_time();
-        // TODO propagate the trigger to connected I2C devices
-        return;
-    }
-    
-    if (input1 == 1 &&
-        uSEQ::instance->getClockSource() == uSEQ::CLOCK_SOURCES::EXTERNAL_I1)
-    {
-        uSEQ::instance->update_clock_from_external(ts);
+// Interrupt handlers and setup functions moved to IOManager
+#endif // HAS_INPUTS
+
+// Setup functions moved to IOManager
+
+
+// Output write functions now delegate to IOManager
+void uSEQ::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val) {
+    if (m_io_manager) {
+        m_io_manager->analog_write_with_led(output, val);
     }
 }
 
-void uSEQ::gpio_irq_gate2()
-{
-    double ts         = static_cast<double>(micros());
-    const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
-    uSEQ::instance->set_input_val(USEQI2, input2);
-    digitalWrite(USEQ_PIN_LED_I2, input2);
-    
-    // Check for sync trigger
-    if (uSEQ::instance->m_waiting_for_sync_trigger && input2 == 1)
-    {
-        uSEQ::instance->m_waiting_for_sync_trigger = false;
-        uSEQ::instance->reset_logical_time();
-        // TODO propagate the trigger to connected I2C devices
-        return;
-    }
-    
-    if (input2 == 1 &&
-        uSEQ::instance->getClockSource() == uSEQ::CLOCK_SOURCES::EXTERNAL_I2)
-    {
-        uSEQ::instance->update_clock_from_external(ts);
+void uSEQ::serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val) {
+    if (m_io_manager) {
+        m_io_manager->serial_write(out, val);
     }
 }
 
-void uSEQ::setup_digital_ins()
-{
-    pinMode(USEQ_PIN_I1, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I1), uSEQ::gpio_irq_gate1,
-                    CHANGE);
-    pinMode(USEQ_PIN_I2, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I2), uSEQ::gpio_irq_gate2,
-                    CHANGE);
+void uSEQ::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val) {
+    if (m_io_manager) {
+        m_io_manager->digital_write_with_led(output, val);
+    }
+}
+
+
+
+// Filters moved to IOManager
+
+#if HAS_INPUTS
+void uSEQ::update_inputs() {
+    if (m_io_manager) {
+        m_io_manager->update_inputs();
+    }
 }
 #endif // HAS_INPUTS
 
-#if HAS_CONTROLS
-void uSEQ::setup_switches()
-{
-#ifdef USEQHARDWARE_1_0
-    pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);
-
-    pinMode(USEQ_PIN_SWITCH_T1, INPUT_PULLUP);
-    pinMode(USEQ_PIN_SWITCH_T2, INPUT_PULLUP);
-#endif
-#ifdef USEQHARDWARE_0_2
-    pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);
-    pinMode(USEQ_PIN_SWITCH_M2, INPUT_PULLUP);
-
-    pinMode(USEQ_PIN_SWITCH_T1, INPUT_PULLUP);
-    pinMode(USEQ_PIN_SWITCH_T2, INPUT_PULLUP);
-#endif
-}
-#endif // HAS_CONTROLS
-
-#ifdef ANALOG_INPUTS
-void uSEQ::setup_analog_ins()
-{
-#ifdef USEQHARDWARE_1_0
-    analogReadResolution(11);
-    pinMode(USEQ_PIN_AI1, INPUT);
-    pinMode(USEQ_PIN_AI2, INPUT);
-#endif
-#ifdef MUSICTHING
-    analogReadResolution(12);
-    pinMode(MUX_IN_1, INPUT);
-    pinMode(MUX_IN_2, INPUT);
-    pinMode(AUDIO_IN_L, INPUT);
-    pinMode(AUDIO_IN_R, INPUT);
-#endif
-}
-#endif
-
-
-
-void uSEQ::setup_IO()
-{
-    DBG("uSEQ::setup_IO");
-
-#if HAS_OUTPUTS
-    setup_outs();
-    setup_analog_outs();
-#endif
-#if HAS_INPUTS
-    setup_digital_ins();
-#ifdef ANALOG_INPUTS
-    setup_analog_ins();
-#endif // ANALOG_INPUTS
-#endif // HAS_INPUTS
-#if HAS_CONTROLS
-    setup_switches();
-#endif
-#ifdef USEQHARDWARE_0_2
-    setup_rotary_encoder();
-#endif
-
-#ifdef MIDIOUT
-    Serial1.setRX(1);
-    Serial1.setTX(0);
-    Serial1.begin(31250);
-#endif
-
-#ifdef USEQHARDWARE_1_0
-    //i2c now setup below
-    //Wire.setSDA(0);
-    //Wire.setSCL(1);
-    // peripheral
-    //  Wire.begin(4);
-    //  Wire.onReceive(receiveEvent);
-
-    // controller
-    //  Wire.begin();
-#endif
-
-// all default to CLIENT - will change
-#ifdef ENABLEI2CCLIENT
-    bI2CclientMode = true;
-    bI2ChostMode   = false;
-    setup_i2cCLIENT();
-#endif
-}
-
-
-// NOTE: outputs are 0-indexed,
-void uSEQ::analog_write_with_led(int output, double val)
-{
-    DBG("uSEQ::analog_write_with_led");
-
-    constexpr double maxpwm = 2047.0;
-
-    int scaled_val = val * maxpwm;
-    dbg("scaled_val (before clamping) = " + String(scaled_val));
-
-    // clamping
-    if (scaled_val > maxpwm)
-    {
-        dbg("over maxpwm, clamping");
-        scaled_val = maxpwm;
-    }
-    if (scaled_val < 0)
-    {
-        dbg("less than 0, clamping");
-        scaled_val = 0;
-    }
-
-    // led
-    int led_pin   = analog_out_LED_pin(output + 1);
-    int pwm_pin   = analog_out_pin(output + 1);
-    int ledsigval = scaled_val; // >> 2; // shift to 11 bit range for the LED
-
-    ledsigval =
-        (ledsigval * ledsigval) >> 11; // cheap way to square and get a exp curve
-
-    dbg("output = " + String(output));
-    dbg("pin = " + String(pin));
-    dbg("led pin = " + String(led_pin));
-    dbg("val = " + String(val));
-    dbg("scaled_val = " + String(scaled_val));
-
-    // If an I/O adapter is provided, use it and return (desktop tests)
-    if (io) {
-        io->analogWrite(static_cast<uint8_t>(led_pin), ledsigval);
-        io->analogWrite(static_cast<uint8_t>(pwm_pin), scaled_val);
-        return;
-    }
-
-    // // write pwm
-    // pio_pwm_set_level(output < 4 ? pio0 : pio1, output % 4, scaled_val);
-
-    #ifdef ARDUINO
-      #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
-       // write led
-       analogWrite(led_pin, ledsigval);
-      #else
-         // write pwm
-      pio_pwm_set_level(pio0, output, ledsigval);
-      #endif
-
-      // write led -- output surely? ***
-      analogWrite(pwm_pin, scaled_val);
-    #else
-      (void)led_pin; (void)pwm_pin; (void)ledsigval; (void)scaled_val;
-    #endif
-}
-
-void uSEQ::serial_write(int out, double val)
-{
-    DBG("uSEQ::serial_write");
-
-    if (io) {
-        io->serialWrite(static_cast<uint8_t>(out), val);
-        return;
-    }
-
-    #ifdef ARDUINO
-      Serial.write(SerialMsg::message_begin_marker);
-      Serial.write((u_int8_t)SerialMsg::serial_message_types::STREAM);
-      Serial.write((u_int8_t)(out + 1));
-      u_int8_t* byteArray = reinterpret_cast<u_int8_t*>(&val);
-      for (size_t b = 0; b < 8; b++)
-      {
-          Serial.write(byteArray[b]);
-      }
-    #else
-      (void)out; (void)val;
-    #endif
-}
-
-// NOTE: outputs are 0-indexed,
-void uSEQ::digital_write_with_led(int output, int val)
-{
-    DBG("uSEQ::digital_write_with_led");
-
-    int pin     = digital_out_pin(output + 1);
-    int led_pin = digital_out_LED_pin(output + 1);
-
-    dbg("output = " + String(output));
-    dbg("pin = " + String(pin));
-    dbg("led pin = " + String(led_pin));
-    dbg("val = " + String(val));
-
-    // If an I/O adapter is provided, use it and return
-    if (io) {
-        uint8_t v = static_cast<uint8_t>(val > 0);
-        io->digitalWrite(static_cast<uint8_t>(pin), v);
-        io->digitalWrite(static_cast<uint8_t>(led_pin), v);
-        return;
-    }
-
-    // write digi
-#ifdef DIGI_OUT_INVERT
-    digitalWrite(pin, 1 - (val > 0));
-#else
-    digitalWrite(pin, val > 0);
-#endif
-    // write led
-    digitalWrite(led_pin, val > 0);
-}
-
-
-
-MedianFilter mf1(51), mf2(51);
-
-#if HAS_INPUTS
-void uSEQ::update_inputs()
+// Old update_inputs implementation
+#if 0
+void uSEQ::update_inputs_OLD()
 {
     DBG("uSEQ::update_inputs");
 
@@ -540,7 +298,9 @@ Value uSEQ::useq_swm(std::vector<Value> &args,
 
     // BODY
     Value result = Value::nil();
-    result = Value(m_input_vals[USEQM1]);
+    if (m_io_manager) {
+        result = Value(m_io_manager->get_input_value(USEQM1));
+    }
     return result;
 }
 
@@ -558,7 +318,9 @@ Value uSEQ::useq_swt(std::vector<Value> &args,
 
     // BODY
     Value result = Value::nil();
-    result = Value(m_input_vals[USEQT1]);
+    if (m_io_manager) {
+        result = Value(m_io_manager->get_input_value(USEQT1));
+    }
     return result;
 }
 
@@ -607,148 +369,19 @@ Value uSEQ::useq_ssin(std::vector<Value> &args,
     return result;
 }
 
-int analog_out_LED_pin(int out)
-{
-    int res = -1;
-    if (out <= NUM_CONTINUOUS_OUTS)
-        res = useq_output_led_pins[out - 1];
-    return res;
-}
-
-int digital_out_LED_pin(int out)
-{
-    int res    = -1;
-    int pindex = NUM_CONTINUOUS_OUTS + out;
-    if (pindex <= 6)
-        res = useq_output_led_pins[pindex - 1];
-    return res;
-}
-
-int analog_out_pin(int out)
-{
-    int res = -1;
-    if (out <= NUM_CONTINUOUS_OUTS)
-        res = useq_output_pins[out - 1];
-    return res;
-}
-
-int digital_out_pin(int out)
-{
-    int res    = -1;
-    int pindex = NUM_CONTINUOUS_OUTS + out;
-    if (pindex <= (NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS))
-        res = useq_output_pins[pindex - 1];
-    return res;
-}
+// Pin mapping functions moved to IOManager
 #endif
 
-static uint8_t prevNextCode = 0;
-static uint16_t store       = 0;
+// Rotary encoder functions moved to IOManager
 
-#ifdef USEQHARDWARE_0_2
-int8_t read_rotary()
-{
-    static int8_t rot_enc_table[] = {
-        0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0
-    };
-
-    prevNextCode <<= 2;
-    if (digitalRead(USEQ_PIN_ROTARYENC_B))
-        prevNextCode |= 0x02;
-    if (digitalRead(USEQ_PIN_ROTARYENC_A))
-        prevNextCode |= 0x01;
-    prevNextCode &= 0x0f;
-
-    // If valid then store as 16 bit data.
-    if (rot_enc_table[prevNextCode])
-    {
-        store <<= 4;
-        store |= prevNextCode;
-        // if (store==0xd42b) return 1;
-        // if (store==0xe817) return -1;
-        if ((store & 0xff) == 0x2b)
-            return -1;
-        if ((store & 0xff) == 0x17)
-            return 1;
-    }
-    return 0;
-}
-
-void uSEQ::read_rotary_encoders()
-{
-    static int32_t c, val;
-
-    if (val = read_rotary())
-    {
-        m_input_vals[USEQR1] += val;
-    }
-}
-
-void uSEQ::setup_rotary_encoder()
-{
-    pinMode(USEQ_PIN_SWITCH_R1, INPUT_PULLUP);
-    pinMode(USEQ_PIN_ROTARYENC_A, INPUT_PULLUP);
-    pinMode(USEQ_PIN_ROTARYENC_B, INPUT_PULLUP);
-    m_input_vals[USEQR1] = 0;
-}
-#endif // useq 0.2 rotary
-
-#ifdef USEQHARDWARE_1_0
-void start_pdm()
-{
-    static repeating_timer_t mst;
-
-    add_repeating_timer_us(150, timer_callback, NULL, &mst);
-}
-#endif
+// PDM functions moved to IOManager
 
 
 
-#ifdef ARDUINO
-// Write `level` to TX FIFO. State machine will copy this into X.
-void pio_pwm_set_level(PIO pio, uint sm, uint32_t level)
-{
-    DBG("uSEQ::pio_pwm_set_level");
-    dbg(String(reinterpret_cast<size_t>(pio)));
-    dbg(String(sm));
-    dbg(String(level));
-    pio_sm_put_blocking(pio, sm, level);
-}
-
-void pio_pwm_set_period(PIO pio, uint sm, uint32_t period)
-{
-    pio_sm_set_enabled(pio, sm, false);
-    pio_sm_put_blocking(pio, sm, period);
-    pio_sm_exec(pio, sm, pio_encode_pull(false, false));
-    pio_sm_exec(pio, sm, pio_encode_out(pio_isr, 32));
-    pio_sm_set_enabled(pio, sm, true);
-}
-#endif
+// PIO PWM functions moved to IOManager
 
 
-#ifdef USEQHARDWARE_1_0
-
-bool timer_callback(repeating_timer_t* mst)
-{
-    pdm_y   = pdm_w > pdm_err ? 1 : 0;
-    pdm_err = pdm_y - pdm_w + pdm_err;
-    if (pdm_y == 1)
-    {
-        // on
-        digitalWrite(USEQ_PIN_LED_AI1, HIGH);
-    }
-    else
-    {
-        // off
-        digitalWrite(USEQ_PIN_LED_AI1, LOW);
-    }
-
-    //   w = w + 0.00000001;
-    //   if (w>=1) w=0;
-
-    return true;
-}
-#endif
+// Timer callback moved to IOManager
 
 
 

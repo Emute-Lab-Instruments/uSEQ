@@ -1,5 +1,6 @@
 #include "uSEQ.h"
 #include "uSEQ/output_manager.h"
+#include "uSEQ/io_manager.h"
 #include "utils.h"
 
 // Creates a Lisp Value of type BUILTIN_METHOD,
@@ -280,19 +281,19 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_stop_all, clear_all_outputs();
                           println("All outputs cleared.");, 0)
 
 Value uSEQ::useq_in1(std::vector<Value> &args, Environment &env) {
-    return Value(m_input_vals[USEQI1]);
+    return m_io_manager ? Value(m_io_manager->get_input_value(USEQI1)) : Value::nil();
 }
 
 Value uSEQ::useq_in2(std::vector<Value> &args, Environment &env) {
-    return Value(m_input_vals[USEQI2]);
+    return m_io_manager ? Value(m_io_manager->get_input_value(USEQI2)) : Value::nil();
 }
 
 Value uSEQ::useq_ain1(std::vector<Value> &args, Environment &env) {
-    return Value(m_input_vals[USEQAI1]);
+    return m_io_manager ? Value(m_io_manager->get_input_value(USEQAI1)) : Value::nil();
 }
 
 Value uSEQ::useq_ain2(std::vector<Value> &args, Environment &env) {
-    return Value(m_input_vals[USEQAI2]);
+    return m_io_manager ? Value(m_io_manager->get_input_value(USEQAI2)) : Value::nil();
 }
 
 // Unified analog output getter functions - forward to OutputManager
@@ -391,19 +392,19 @@ Value uSEQ::useq_get_d8(std::vector<Value> &args, Environment &env) {
 #ifdef MUSICTHING
 
 Value uSEQ::useq_mt_knob(std::vector<Value> &args, Environment &env) {
-    return Value(m_input_vals[MTMAINKNOB]);
+    return m_io_manager ? Value(m_io_manager->get_input_value(MTMAINKNOB)) : Value::nil();
 }
 
 Value uSEQ::useq_mt_knobx(std::vector<Value> &args, Environment &env) {
-    return Value(m_input_vals[MTXKNOB]);
+    return m_io_manager ? Value(m_io_manager->get_input_value(MTXKNOB)) : Value::nil();
 }
 
 Value uSEQ::useq_mt_knoby(std::vector<Value> &args, Environment &env) {
-    return Value(m_input_vals[MTYKNOB]);
+    return m_io_manager ? Value(m_io_manager->get_input_value(MTYKNOB)) : Value::nil();
 }
 
 Value uSEQ::useq_mt_swz(std::vector<Value> &args, Environment &env) {
-    return Value(m_input_vals[MTZSWITCH]);
+    return m_io_manager ? Value(m_io_manager->get_input_value(MTZSWITCH)) : Value::nil();
 }
 #endif
 // clock sources
@@ -584,6 +585,6 @@ BUILTINFUNC_MEMBER(
 
     return Value::nil();, 2)
 
-BUILTINFUNC_MEMBER(useq_swr, ret = Value(m_input_vals[USEQRS1]);, 0)
+BUILTINFUNC_MEMBER(useq_swr, ret = m_io_manager ? Value(m_io_manager->get_input_value(USEQRS1)) : Value::nil();, 0)
 
-BUILTINFUNC_MEMBER(useq_rot, ret = Value(m_input_vals[USEQR1]);, 0)
+BUILTINFUNC_MEMBER(useq_rot, ret = m_io_manager ? Value(m_io_manager->get_input_value(USEQR1)) : Value::nil();, 0)

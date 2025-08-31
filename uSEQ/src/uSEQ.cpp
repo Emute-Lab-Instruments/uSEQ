@@ -1,5 +1,6 @@
 #include "uSEQ.h"
 #include "uSEQ/output_manager.h"
+#include "uSEQ/io_manager.h"
 #include "modulisp/lisp/LispLibrary.h"
 #include "modulisp/modulisp.h"
 #ifdef ARDUINO
@@ -36,9 +37,11 @@
 #ifndef ARDUINO
 void uSEQ::__test_call_writes(double a0, int d0, double s0)
 {
-    analog_write_with_led(0, a0);
-    digital_write_with_led(0, d0);
-    serial_write(0, s0);
+    if (m_io_manager) {
+        m_io_manager->analog_write_with_led(0, a0);
+        m_io_manager->digital_write_with_led(0, d0);
+        m_io_manager->serial_write(0, s0);
+    }
 }
 
 Value uSEQ::__test_send_sync_trigger_i2c() {
@@ -86,20 +89,16 @@ uSEQ *__not_in_flash("useq") uSEQ::instance;
 uSEQ *uSEQ::instance;
 #endif
 
-double maxiFilter::lopass(double input, double cutoff) {
-    output = z + cutoff * (input - z);
-    z = output;
-    return (output);
-}
-
-maxiFilter cvInFilter[2];
+// Note: maxiFilter implementation moved to IOManager
 
 // uSEQ MEMBER FUNCTIONS
 
-// Custom destructor to handle OutputManager lifecycle
+// Custom destructor to handle OutputManager and IOManager lifecycle
 uSEQ::~uSEQ() {
     delete m_output_manager;
     m_output_manager = nullptr;
+    delete m_io_manager;
+    m_io_manager = nullptr;
 }
 
 // void dbg(String s) { std::cout << s.c_str() << std::endl; }
@@ -226,7 +225,6 @@ void uSEQ::init() {
 #ifdef ARDUINO
     init_dsp_queues();
 #endif
-    setup_leds();
 
     // dbg("free heap (start):" + String(free_heap()));
     // if (!m_initialised)
@@ -248,14 +246,17 @@ void uSEQ::init() {
     
     // Initialize output management system
     m_output_manager = new OutputManager(this);
+    
+    // Initialize IO management system
+    m_io_manager = new IOManager(this, io);
+    m_io_manager->init();
+    
     // eval_lisp_library();
 
-    led_animation();
+    m_io_manager->led_animation();
 #ifdef USEQHARDWARE_1_0
     start_pdm();
 #endif
-
-    setup_IO();
 
     // dbg("Lisp library loaded.");
 

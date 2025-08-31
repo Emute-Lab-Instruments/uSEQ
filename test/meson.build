@@ -13,6 +13,27 @@ test_args = [
   '-std=c++17'
 ]
 
+# Add conditional compilation flags based on options
+if get_option('enable_dsp')
+  test_args += '-DENABLE_DSP_ENGINE'
+  test_args += '-DENABLE_TEMPO_ESTIMATOR'
+endif
+
+if get_option('enable_i2c')
+  test_args += '-DENABLE_I2C_NETWORKING'
+  test_args += '-DENABLE_I2C_HOST'
+  test_args += '-DENABLE_I2C_CLIENT'
+endif
+
+if get_option('enable_flash')
+  test_args += '-DENABLE_FLASH_STORAGE'
+endif
+
+if get_option('enable_leds')
+  test_args += '-DENABLE_LED_CONTROL'
+  test_args += '-DENABLE_RGB_LED'
+endif
+
 # Include directories
 test_inc = include_directories('../uSEQ', '../uSEQ/src')
 
