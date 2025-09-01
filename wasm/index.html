@@ -172,6 +172,10 @@
         let useq_eval;
         let isReady = false;
         
+        // Command history
+        let commandHistory = [];
+        let historyIndex = -1;
+        
         const inputElement = document.getElementById('input');
         const outputElement = document.getElementById('output');
         const evaluateButton = document.getElementById('evaluate');
@@ -218,8 +222,12 @@
                 // Scroll to bottom
                 outputElement.scrollTop = outputElement.scrollHeight;
                 
-                // Clear input
-                inputElement.value = '';
+                // Add to command history
+                commandHistory.push(expression);
+                historyIndex = commandHistory.length;
+                
+                // Select all text for easy replacement
+                inputElement.select();
                 inputElement.focus();
             } catch (error) {
                 const entry = document.createElement('div');
@@ -243,6 +251,21 @@
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 evaluateExpression();
+            } else if (e.key === 'ArrowUp' && inputElement.value.trim() === '') {
+                e.preventDefault();
+                if (commandHistory.length > 0 && historyIndex > 0) {
+                    historyIndex--;
+                    inputElement.value = commandHistory[historyIndex];
+                }
+            } else if (e.key === 'ArrowDown' && inputElement.value.trim() === '') {
+                e.preventDefault();
+                if (historyIndex < commandHistory.length - 1) {
+                    historyIndex++;
+                    inputElement.value = commandHistory[historyIndex];
+                } else {
+                    historyIndex = commandHistory.length;
+                    inputElement.value = '';
+                }
             }
         });
     </script>

@@ -629,7 +629,7 @@ Value uSEQ::useq_setbpm(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "set-bpm";
 
     // Checking number of args
-    if (!(1 <= args.size() <= 2))
+    if (!(args.size() >= 1 && args.size() <= 2))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
                                     NumArgsComparison::Between, 1, 2);
@@ -1309,7 +1309,7 @@ Value uSEQ::useq_gates(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "gates";
 
     // Checking number of args
-    if (!(2 <= args.size() <= 3))
+    if (!(args.size() >= 2 && args.size() <= 3))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
                                     NumArgsComparison::Between, 2, 3);
@@ -1436,7 +1436,7 @@ Value uSEQ::useq_trigs(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "trigs";
 
     // Checking number of args
-    if (!(2 <= args.size() <= 3))
+    if (!(args.size() >= 2 && args.size() <= 3))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
                                     NumArgsComparison::Between, 2, 3);
@@ -1491,7 +1491,7 @@ Value uSEQ::useq_euclidean(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "euclid";
 
     // Checking number of args
-    if (!(3 <= args.size() <= 5))
+    if (!(args.size() >= 3 && args.size() <= 5))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
                                     NumArgsComparison::Between, 3, 5);
@@ -1546,7 +1546,7 @@ Value uSEQ::useq_eu(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "eu";
 
     // Checking number of args
-    if (!(3 <= args.size() <= 5))
+    if (!(args.size() >= 3 && args.size() <= 5))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
                                     NumArgsComparison::Between, 3, 4);
@@ -1953,7 +1953,7 @@ Value uSEQ::useq_fromList(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "from-list";
 
     // Checking number of args
-    // if (!(2 <= args.size() <= 3))
+    // if (!(args.size() >= 2 && args.size() <= 3))
     if (!(args.size() == 2))
     {
         // error_wrong_num_args(user_facing_name, args.size(),
@@ -2008,7 +2008,7 @@ Value uSEQ::useq_seq(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "seq";
 
     // Checking number of args
-    // if (!(2 <= args.size() <= 3))
+    // if (!(args.size() >= 2 && args.size() <= 3))
     if (!(args.size() == 2))
     {
         // error_wrong_num_args(user_facing_name, args.size(),
@@ -2129,7 +2129,7 @@ Value uSEQ::useq_index_rand(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "index-rand";
 
     // Checking number of args
-    if (!(1 <= args.size() <= 3))
+    if (!(args.size() >= 1 && args.size() <= 3))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
                                     NumArgsComparison::Between, 0, 2);
@@ -2180,7 +2180,7 @@ Value uSEQ::useq_random(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "random";
 
     // Checking number of args
-    if (!(0 <= args.size() <= 2))
+    if (!(args.size() >= 0 && args.size() <= 2))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
                                     NumArgsComparison::Between, 0, 2);
@@ -2480,7 +2480,7 @@ Value uSEQ::useq_step(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "step";
 
     // Check num arguments
-    if (!(2 <= args.size() <= 3))
+    if (!(args.size() >= 2 && args.size() <= 3))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
                                     NumArgsComparison::Between, 2, 3);

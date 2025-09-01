@@ -1556,7 +1556,7 @@ Value ard_map(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "scale";
 
     // Checking number of args
-    if (!(3 <= args.size() <= 5))
+    if (!(args.size() >= 3 && args.size() <= 5))
     {
         report_error_wrong_num_args(user_facing_name, args.size(),
                                     NumArgsComparison::Between, 3, 5);
