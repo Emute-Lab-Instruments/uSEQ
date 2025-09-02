@@ -12,6 +12,10 @@ build/
 out/
 .vscode
 
+# Debug/test executables and temporary files
+debug_*
+test_simple_*
+*.disabled
 
 interfaces/useqedit/__pycache__/Buffer.cpython-310.pyc
 
