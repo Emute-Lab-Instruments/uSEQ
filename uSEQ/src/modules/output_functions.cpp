@@ -26,14 +26,14 @@ const OutputFunctionsModule::OutputFunctionConfig OutputFunctionsModule::output_
     {"d8", "get-d8", 8, OutputManager::OutputType::BINARY},
     
     // Serial outputs (s1-s8)
-    {"s1", nullptr, 1, OutputManager::OutputType::SERIAL},
-    {"s2", nullptr, 2, OutputManager::OutputType::SERIAL},
-    {"s3", nullptr, 3, OutputManager::OutputType::SERIAL},
-    {"s4", nullptr, 4, OutputManager::OutputType::SERIAL},
-    {"s5", nullptr, 5, OutputManager::OutputType::SERIAL},
-    {"s6", nullptr, 6, OutputManager::OutputType::SERIAL},
-    {"s7", nullptr, 7, OutputManager::OutputType::SERIAL},
-    {"s8", nullptr, 8, OutputManager::OutputType::SERIAL},
+    {"s1", nullptr, 1, OutputManager::OutputType::SERIAL_OUT},
+    {"s2", nullptr, 2, OutputManager::OutputType::SERIAL_OUT},
+    {"s3", nullptr, 3, OutputManager::OutputType::SERIAL_OUT},
+    {"s4", nullptr, 4, OutputManager::OutputType::SERIAL_OUT},
+    {"s5", nullptr, 5, OutputManager::OutputType::SERIAL_OUT},
+    {"s6", nullptr, 6, OutputManager::OutputType::SERIAL_OUT},
+    {"s7", nullptr, 7, OutputManager::OutputType::SERIAL_OUT},
+    {"s8", nullptr, 8, OutputManager::OutputType::SERIAL_OUT},
 };
 
 const size_t OutputFunctionsModule::num_output_configs = 
@@ -71,7 +71,7 @@ void OutputFunctionsModule::registerFunctions(FunctionRegistry& registry) {
         }
     }
     
-    DBG("OutputFunctionsModule: Registered " + String(std::to_string(num_output_configs)) + 
+    debug("OutputFunctionsModule: Registered " + String(num_output_configs) + 
         " output functions with their getters");
 }
 

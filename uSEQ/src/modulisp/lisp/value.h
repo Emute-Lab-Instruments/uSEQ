@@ -42,7 +42,7 @@ using ModuLispInterpreter_Method_Ptr = Value (ModuLispInterpreter::*)(std::vecto
 #endif
 
 #include "signal_metadata.h"
-#include "value_signal_processing.h"
+// #include "value_signal_processing.h"
 
 class Value {
   public:
@@ -96,16 +96,16 @@ class Value {
     //     return *this;
     // }
 
-    static Value VALUE_FAST_MEM nil();
-    static Value VALUE_FAST_MEM error();
-    static Value VALUE_FAST_MEM quote(Value quoted);
-    static Value VALUE_FAST_MEM atom(String s);
-    static Value VALUE_FAST_MEM string(String s);
+    static Value nil();
+    static Value error();
+    static Value quote(Value quoted);
+    static Value atom(String s);
+    static Value string(String s);
     // static Value list(std::vector<Value> lst);
-    static Value VALUE_FAST_MEM vector(std::vector<Value> vec);
+    static Value vector(std::vector<Value> vec);
 
     // Static time parameter - higher-order signal that updates automatically
-    static Value VALUE_FAST_MEM t;
+    // static Value t;
 
     Value(std::vector<Value> params, Value ret, const Environment &env);
 
@@ -221,7 +221,7 @@ class Value {
     Value operator%(Value other) const;
     
     // Power operation with metadata support
-    Value pow(const Value& exponent) const { return ValueSignalProcessing::pow(*this, exponent); }
+    // Value pow(const Value& exponent) const { return ValueSignalProcessing::pow(*this, exponent); }
     
     ////////////////////////////////////////////////////////////////////////////////
     /// TRANSCENDENTAL AND MATHEMATICAL FUNCTIONS
@@ -229,22 +229,22 @@ class Value {
     ////////////////////////////////////////////////////////////////////////////////
     
     // Trigonometric functions
-    Value sin() const { return ValueSignalProcessing::sin(*this); }
-    Value cos() const { return ValueSignalProcessing::cos(*this); }
+    // Value sin() const { return ValueSignalProcessing::sin(*this); }
+    // Value cos() const { return ValueSignalProcessing::cos(*this); }
     
     // Exponential and logarithmic functions
-    Value exp() const { return ValueSignalProcessing::exp(*this); }
-    Value log() const { return ValueSignalProcessing::log(*this); }
+    // Value exp() const { return ValueSignalProcessing::exp(*this); }
+    // Value log() const { return ValueSignalProcessing::log(*this); }
     
     // Root functions
-    Value sqrt() const { return ValueSignalProcessing::sqrt(*this); }
+    // Value sqrt() const { return ValueSignalProcessing::sqrt(*this); }
     
     // Other mathematical functions
-    Value abs() const { return ValueSignalProcessing::abs(*this); }
-    Value floor() const { return ValueSignalProcessing::floor(*this); }
-    Value round() const { return ValueSignalProcessing::round(*this); }
-    Value sign() const { return ValueSignalProcessing::sign(*this); }
-    Value step() const { return ValueSignalProcessing::step(*this); }
+    // Value abs() const { return ValueSignalProcessing::abs(*this); }
+    // Value floor() const { return ValueSignalProcessing::floor(*this); }
+    // Value round() const { return ValueSignalProcessing::round(*this); }
+    // Value sign() const { return ValueSignalProcessing::sign(*this); }
+    // Value step() const { return ValueSignalProcessing::step(*this); }
     
     ////////////////////////////////////////////////////////////////////////////////
     /// SIGNAL PROCESSING FUNCTIONS
@@ -252,9 +252,9 @@ class Value {
     ////////////////////////////////////////////////////////////////////////////////
     
     // Signal processing operations
-    Value integrate() const { return ValueSignalProcessing::integrate(*this); }
-    Value delay(const Value& time) const { return ValueSignalProcessing::delay(*this, time); }
-    Value moving_average(const Value& window) const { return ValueSignalProcessing::moving_average(*this, window); }
+    // Value integrate() const { return ValueSignalProcessing::integrate(*this); }
+    // Value delay(const Value& time) const { return ValueSignalProcessing::delay(*this, time); }
+    // Value moving_average(const Value& window) const { return ValueSignalProcessing::moving_average(*this, window); }
 
     ////////////////////////////////////////////////////////////////////////////////
     /// AUTOMATION ANALYSIS METHODS
@@ -262,29 +262,29 @@ class Value {
     ////////////////////////////////////////////////////////////////////////////////
     
     // Zero Crossing Analysis
-    std::vector<double> find_zero_crossings(double start_time, double end_time) const { return ValueSignalProcessing::find_zero_crossings(*this, start_time, end_time); }
-    double get_next_zero_crossing(double from_time) const { return ValueSignalProcessing::get_next_zero_crossing(*this, from_time); }
-    bool has_zero_crossings_in_range(double start_time, double end_time) const { return ValueSignalProcessing::has_zero_crossings_in_range(*this, start_time, end_time); }
+    // std::vector<double> find_zero_crossings(double start_time, double end_time) const { return ValueSignalProcessing::find_zero_crossings(*this, start_time, end_time); }
+    // double get_next_zero_crossing(double from_time) const { return ValueSignalProcessing::get_next_zero_crossing(*this, from_time); }
+    // bool has_zero_crossings_in_range(double start_time, double end_time) const { return ValueSignalProcessing::has_zero_crossings_in_range(*this, start_time, end_time); }
     
     // Threshold Analysis
-    std::vector<double> find_threshold_crossings(double threshold, double start_time, double end_time) const { return ValueSignalProcessing::find_threshold_crossings(*this, threshold, start_time, end_time); }
-    double get_next_threshold_crossing(double threshold, double from_time, bool rising_edge = true) const { return ValueSignalProcessing::get_next_threshold_crossing(*this, threshold, from_time, rising_edge); }
+    // std::vector<double> find_threshold_crossings(double threshold, double start_time, double end_time) const { return ValueSignalProcessing::find_threshold_crossings(*this, threshold, start_time, end_time); }
+    // double get_next_threshold_crossing(double threshold, double from_time, bool rising_edge = true) const { return ValueSignalProcessing::get_next_threshold_crossing(*this, threshold, from_time, rising_edge); }
     
     // Range Analysis
-    std::vector<std::pair<double, double>> find_value_ranges(double min_val, double max_val, double start_time, double end_time) const { return ValueSignalProcessing::find_value_ranges(*this, min_val, max_val, start_time, end_time); }
-    bool is_in_range(double min_val, double max_val, double at_time) const { return ValueSignalProcessing::is_in_range(*this, min_val, max_val, at_time); }
-    double get_time_in_range(double min_val, double max_val, double start_time, double end_time) const { return ValueSignalProcessing::get_time_in_range(*this, min_val, max_val, start_time, end_time); }
+    // std::vector<std::pair<double, double>> find_value_ranges(double min_val, double max_val, double start_time, double end_time) const { return ValueSignalProcessing::find_value_ranges(*this, min_val, max_val, start_time, end_time); }
+    // bool is_in_range(double min_val, double max_val, double at_time) const { return ValueSignalProcessing::is_in_range(*this, min_val, max_val, at_time); }
+    // double get_time_in_range(double min_val, double max_val, double start_time, double end_time) const { return ValueSignalProcessing::get_time_in_range(*this, min_val, max_val, start_time, end_time); }
     
     // Extrema Analysis
-    std::vector<double> find_local_maxima(double start_time, double end_time) const { return ValueSignalProcessing::find_local_maxima(*this, start_time, end_time); }
-    std::vector<double> find_local_minima(double start_time, double end_time) const { return ValueSignalProcessing::find_local_minima(*this, start_time, end_time); }
-    double get_global_maximum_time(double start_time, double end_time) const { return ValueSignalProcessing::get_global_maximum_time(*this, start_time, end_time); }
-    double get_global_minimum_time(double start_time, double end_time) const { return ValueSignalProcessing::get_global_minimum_time(*this, start_time, end_time); }
+    // std::vector<double> find_local_maxima(double start_time, double end_time) const { return ValueSignalProcessing::find_local_maxima(*this, start_time, end_time); }
+    // std::vector<double> find_local_minima(double start_time, double end_time) const { return ValueSignalProcessing::find_local_minima(*this, start_time, end_time); }
+    // double get_global_maximum_time(double start_time, double end_time) const { return ValueSignalProcessing::get_global_maximum_time(*this, start_time, end_time); }
+    // double get_global_minimum_time(double start_time, double end_time) const { return ValueSignalProcessing::get_global_minimum_time(*this, start_time, end_time); }
     
     // Monotonicity Analysis
-    bool is_monotonic_in_range(double start_time, double end_time) const { return ValueSignalProcessing::is_monotonic_in_range(*this, start_time, end_time); }
-    bool is_increasing_in_range(double start_time, double end_time) const { return ValueSignalProcessing::is_increasing_in_range(*this, start_time, end_time); }
-    bool is_decreasing_in_range(double start_time, double end_time) const { return ValueSignalProcessing::is_decreasing_in_range(*this, start_time, end_time); }
+    // bool is_monotonic_in_range(double start_time, double end_time) const { return ValueSignalProcessing::is_monotonic_in_range(*this, start_time, end_time); }
+    // bool is_increasing_in_range(double start_time, double end_time) const { return ValueSignalProcessing::is_increasing_in_range(*this, start_time, end_time); }
+    // bool is_decreasing_in_range(double start_time, double end_time) const { return ValueSignalProcessing::is_decreasing_in_range(*this, start_time, end_time); }
 
     bool operator==(const String &str) const;
 

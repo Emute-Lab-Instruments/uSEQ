@@ -25,51 +25,51 @@ Value::~Value() {}
 //// STATIC INITIALIZATIONS
 
 // Initialize static time parameter 't'
-Value Value::t = []() {
-    Value time_param;
-    time_param.type = SIGNAL;
-    time_param.stack_data.f = 0.0;       // Initialize time to 0.0
-    SignalMetadata metadata;
-    metadata.is_const = false;           // 't' varies with time
-    metadata.min_val = -INFINITY;        // unbounded
-    metadata.max_val = INFINITY;         // unbounded
-    metadata.min_inclusive = true;       // inclusive bounds
-    metadata.max_inclusive = true;       // inclusive bounds
-    metadata.is_periodic = false;        // monotonic, not periodic
-    metadata.period = 0.0;               // no period
-    metadata.is_monotonic = true;        // always increasing
-    metadata.is_monotonic_increasing = true;  // specifically increasing
-    metadata.is_monotonic_decreasing = false; // not decreasing
+// Value Value::t = []() {
+//     Value time_param;
+//     time_param.type = SIGNAL;
+//     time_param.stack_data.f = 0.0;       // Initialize time to 0.0
+//     SignalMetadata metadata;
+//     metadata.is_const = false;           // 't' varies with time
+//     metadata.min_val = -INFINITY;        // unbounded
+//     metadata.max_val = INFINITY;         // unbounded
+//     metadata.min_inclusive = true;       // inclusive bounds
+//     metadata.max_inclusive = true;       // inclusive bounds
+//     metadata.is_periodic = false;        // monotonic, not periodic
+//     metadata.period = 0.0;               // no period
+//     metadata.is_monotonic = true;        // always increasing
+//     metadata.is_monotonic_increasing = true;  // specifically increasing
+//     metadata.is_monotonic_decreasing = false; // not decreasing
     
-    // Time properties
-    metadata.time_start = -INFINITY;     // time extends infinitely backward
-    metadata.time_end = INFINITY;        // time extends infinitely forward
-    metadata.is_causal = true;           // time is causal
-    metadata.is_memoryless = true;       // current time only
-    metadata.memory_length = 0.0;       // no memory
+//     // Time properties
+//     metadata.time_start = -INFINITY;     // time extends infinitely backward
+//     metadata.time_end = INFINITY;        // time extends infinitely forward
+//     metadata.is_causal = true;           // time is causal
+//     metadata.is_memoryless = true;       // current time only
+//     metadata.memory_length = 0.0;       // no memory
     
-    // Continuity properties 
-    metadata.is_continuous = true;       // time is continuous
-    metadata.is_smooth = true;          // time is smooth
-    metadata.is_stepped = false;        // not stepped
-    metadata.is_linear_segments = true; // linear progression
+//     // Continuity properties 
+//     metadata.is_continuous = true;       // time is continuous
+//     metadata.is_smooth = true;          // time is smooth
+//     metadata.is_stepped = false;        // not stepped
+//     metadata.is_linear_segments = true; // linear progression
     
-    // Zero crossing analysis
-    metadata.has_zero_crossings = true; // crosses zero at t=0
-    metadata.zero_crossing_rate = 0.0;  // crosses zero once
-    metadata.zero_crossing_locations_known = true; // we know it crosses at t=0
+//     // Zero crossing analysis
+//     metadata.has_zero_crossings = true; // crosses zero at t=0
+//     metadata.zero_crossing_rate = 0.0;  // crosses zero once
+//     metadata.zero_crossing_locations_known = true; // we know it crosses at t=0
     
-    // Other properties
-    metadata.interpolation_type = SignalMetadata::LINEAR;
-    metadata.phase_offset = 0.0;
-    metadata.phase_locked = false;
+//     // Other properties
+//     metadata.interpolation_type = SignalMetadata::LINEAR;
+//     metadata.phase_offset = 0.0;
+//     metadata.phase_locked = false;
     
-    time_param.signal_metadata = metadata;
-    return time_param;
-}();
+//     time_param.signal_metadata = metadata;
+//     return time_param;
+// }();*()
 
 // Global reference to static t
-const Value& t = Value::t;
+// const Value& t = Value::t;
 
 //// SIGNAL METADATA HELPERS
 
