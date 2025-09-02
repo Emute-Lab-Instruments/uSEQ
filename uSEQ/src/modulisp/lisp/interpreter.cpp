@@ -5,6 +5,7 @@
 // #include "lisp/library.cpp"
 #include "../../utils.h"
 #include "../../utils/log.h"
+#include "error_context.h"
 #include "configure.h"
 #include "environment.h"
 #include "builtins.h"
@@ -32,7 +33,41 @@ String INTERP_MEM Interpreter::m_atom_currently_being_evaluated = "";
 
 uSEQ* INTERP_MEM Interpreter::useq_instance_ptr;
 
-Interpreter::Interpreter() {}
+// Constructor with dependency injection
+Interpreter::Interpreter(Environment* env, uLispParser* parser, ErrorManager* error_mgr) {
+    // Create fallback instances for any nullptr parameters
+    if (env == nullptr) {
+        m_fallback_environment = std::make_unique<Environment>();
+        m_environment = m_fallback_environment.get();
+    } else {
+        m_environment = env;
+    }
+    
+    if (error_mgr == nullptr) {
+        m_fallback_error_manager = std::make_unique<ErrorManager>();
+        m_error_manager = m_fallback_error_manager.get();
+    } else {
+        m_error_manager = error_mgr;
+    }
+    
+    if (parser == nullptr) {
+        m_fallback_parser = std::make_unique<uLispParser>(m_error_manager);
+        m_parser = m_fallback_parser.get();
+    } else {
+        m_parser = parser;
+    }
+}
+
+// Default constructor for backward compatibility
+Interpreter::Interpreter() 
+    : m_fallback_environment(std::make_unique<Environment>())
+    , m_fallback_parser(std::make_unique<uLispParser>())
+    , m_fallback_error_manager(std::make_unique<ErrorManager>()) {
+    
+    m_environment = m_fallback_environment.get();
+    m_parser = m_fallback_parser.get();
+    m_error_manager = m_fallback_error_manager.get();
+}
 
 void Interpreter::init()
 {
@@ -40,7 +75,7 @@ void Interpreter::init()
     // if (!m_builtindefs_init)
     // {
     loadBuiltinDefs();
-    set("nil", Value::nil());
+    m_environment->set("nil", Value::nil());
     // m_builtindefs_init = true;
     // }
 }
@@ -380,13 +415,13 @@ Value builtin_set(std::vector<Value>& args, Environment& env)
     return result;
 }
 
-String Interpreter::eval(const String& code) { return eval_in(code, *this); }
-Value Interpreter::eval(Value v) { return eval_in(v, *this); }
-Value Interpreter::eval_v(const String& code) { return eval(parse(code)); }
+String Interpreter::eval(const String& code) { return eval_in(code, *m_environment); }
+Value Interpreter::eval(Value v) { return eval_in(v, *m_environment); }
+Value Interpreter::eval_v(const String& code) { return eval(m_parser->parse(code)); }
 
 String Interpreter::eval_in(const String& code, Environment& env)
 {
-    Value tree   = parse(code);
+    Value tree   = uLispParser::parse_static(code);
     Value result = eval_in(tree, env);
     return result.display();
 }
@@ -455,7 +490,9 @@ Value Interpreter::eval_in(Value& v, Environment& env)
             }
             else
             {
-                report_error_atom_not_defined(v.str);
+                // TODO: Error reporting for static methods needs error manager parameter
+                report_generic_error("Variable '" + v.str + "' is not defined");
+                result = Value::error();
             }
         }
 
@@ -483,10 +520,15 @@ Value Interpreter::eval_in(Value& v, Environment& env)
         // Make sure we can find the function
         if (function.is_error())
         {
-            report_runtime_error(
-                "Trying to evaluate the function " + v.list[0].display() +
-                " results in an error. This could either mean that it hasn't been "
-                "defined, or that it's not valid.");
+            // Clear the previous variable error and report as function error instead
+            if (v.list[0].is_symbol()) {
+                report_generic_error("Function '" + v.list[0].as_atom() + "' is not defined");
+            } else {
+                report_runtime_error(
+                    "Trying to evaluate the function " + v.list[0].display() +
+                    " results in an error. This could either mean that it hasn't been "
+                    "defined, or that it's not valid.");
+            }
             result = Value::error();
         }
         else

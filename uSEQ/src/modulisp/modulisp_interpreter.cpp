@@ -2,8 +2,8 @@
 #include "../utils.h"
 
 // Constructor with dependency injection
-ModuLispInterpreter::ModuLispInterpreter(IClock* clk, ILogger* log, IRandomGenerator* rng)
-    : clock(clk), logger(log) {
+ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* env, uLispParser* parser, IClock* clk, ILogger* log, IRandomGenerator* rng)
+    : Interpreter(env, parser, error_mgr), clock(clk), logger(log) {
     
     // Create managers with dependency injection
     m_time_manager = std::make_unique<TimeManager>(clk);
@@ -20,8 +20,12 @@ ModuLispInterpreter::ModuLispInterpreter(IClock* clk, ILogger* log, IRandomGener
     // Initialize with default BPM to avoid divide-by-zero
     m_phasor_manager->set_bpm(130.0, 0.0);
     
-    // Initialize default CQP AST
-    m_scheduler->set_cqp_ast(parse("bar"));
+    // Initialize default CQP AST (only if parser is available)
+    if (get_parser()) {
+        m_scheduler->set_cqp_ast(get_parser()->parse("bar"));
+    } else {
+        m_scheduler->set_cqp_ast(Value::atom("bar"));
+    }
 }
 
 // Destructor
@@ -40,13 +44,10 @@ void ModuLispInterpreter::run_scheduled_items() {
     
     for (auto* item : items_to_run) {
         if (item && !item->ast.is_nil()) {
-            try {
-                eval(item->ast);
-            } catch (...) {
-                if (logger) {
-                    logger->error("Error executing scheduled item: " + item->id);
-                }
-            }
+            // TODO: Add proper error handling without exceptions
+            Value result = eval(item->ast);
+            // Note: Without exception handling, errors will propagate up
+            (void)result; // Suppress unused variable warning
         }
     }
 }

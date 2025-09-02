@@ -23,6 +23,9 @@ class ModuLispInterpreter : public Interpreter {
   public:
     // Constructor with dependency injection for testability
     explicit ModuLispInterpreter(
+        ErrorManager* error_mgr,
+        Environment* env = nullptr,
+        uLispParser* parser = nullptr,
         IClock* clk = nullptr, 
         ILogger* log = nullptr,
         IRandomGenerator* rng = nullptr

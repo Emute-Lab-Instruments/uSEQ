@@ -427,24 +427,24 @@ TEST_CASE("Variable operations - set and get", "[interpreter][api][variables]") 
     Interpreter interp = Interpreter::create_fresh_interpreter();
     
     // Set variables using interpreter's Environment interface
-    interp.set("test-var", Value(123));
-    interp.set("float-var", Value(2.718));
-    interp.set("string-var", Value::string("hello interpreter"));
+    interp.get_environment()->set("test-var", Value(123));
+    interp.get_environment()->set("float-var", Value(2.718));
+    interp.get_environment()->set("string-var", Value::string("hello interpreter"));
     
     // Test retrieving variables
-    auto int_result = interp.get("test-var");
+    auto int_result = interp.get_environment()->get("test-var");
     if (int_result.has_value()) {
         REQUIRE(int_result->is_int());
         REQUIRE(int_result->as_int() == 123);
     }
     
-    auto float_result = interp.get("float-var");
+    auto float_result = interp.get_environment()->get("float-var");
     if (float_result.has_value()) {
         REQUIRE(float_result->is_float());
         REQUIRE(float_result->as_float() == Approx(2.718).epsilon(0.001));
     }
     
-    auto string_result = interp.get("string-var");
+    auto string_result = interp.get_environment()->get("string-var");
     if (string_result.has_value()) {
         REQUIRE(string_result->is_string());
         REQUIRE(string_result->as_string() == "hello interpreter");
@@ -460,8 +460,8 @@ TEST_CASE("Variable evaluation in expressions", "[interpreter][api][variables][e
     Interpreter interp = Interpreter::create_fresh_interpreter();
     
     // Set up variables
-    interp.set("x", Value(10));
-    interp.set("y", Value(5));
+    interp.get_environment()->set("x", Value(10));
+    interp.get_environment()->set("y", Value(5));
     
     // Test using variables in arithmetic
     String result1 = interp.eval("(+ x y)");
@@ -668,5 +668,54 @@ TEST_CASE("Mathematical functions", "[interpreter][api][special_features][math]"
     if (result6.indexOf("error") == -1) {
         REQUIRE(result6.indexOf("9") != -1);
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// UNDEFINED SYMBOL AND FUNCTION ERROR HANDLING TESTS
+////////////////////////////////////////////////////////////////////////////////
+
+TEST_CASE("Undefined symbols return errors", "[interpreter][api][undefined][symbols]") {
+    Interpreter interp = Interpreter::create_fresh_interpreter();
+    
+    // Test undefined symbol evaluation directly
+    Value undefined_symbol = Value::atom("definitely-undefined-symbol");
+    Value result = interp.eval(undefined_symbol);
+    
+    // Should return error for undefined symbols
+    REQUIRE(result.is_error());
+    
+    // Test undefined symbol in string evaluation
+    String result2 = interp.eval("definitely-undefined-symbol");
+    REQUIRE((result2.indexOf("error") != -1 || result2.indexOf("not defined") != -1));
+}
+
+TEST_CASE("Undefined functions return errors", "[interpreter][api][undefined][functions]") {
+    Interpreter interp = Interpreter::create_fresh_interpreter();
+    
+    // Test undefined function call
+    Value result = interp.eval_v("(undefined-function-name 1 2 3)");
+    
+    // Should return error for undefined function
+    REQUIRE(result.is_error());
+    
+    // Test undefined function in string evaluation  
+    String result2 = interp.eval("(another-undefined-function 42)");
+    REQUIRE((result2.indexOf("error") != -1 || result2.indexOf("not defined") != -1));
+}
+
+TEST_CASE("Error propagation through expressions", "[interpreter][api][undefined][propagation]") {
+    Interpreter interp = Interpreter::create_fresh_interpreter();
+    
+    // Test error propagates through arithmetic
+    Value result1 = interp.eval_v("(+ undefined-var 5)");
+    REQUIRE(result1.is_error());
+    
+    // Test error propagates through function calls
+    Value result2 = interp.eval_v("(* 2 (undefined-function 10))");
+    REQUIRE(result2.is_error());
+    
+    // Test error propagates through nested expressions
+    Value result3 = interp.eval_v("(+ (* 2 3) (- undefined-var 1))");
+    REQUIRE(result3.is_error());
 }
 
