@@ -63,6 +63,11 @@ parser_api_test_src = [
   'test_parser_api.cpp'
 ]
 
+# Parser error reporting test source files
+parser_error_reporting_test_src = [
+  'test_parser_error_reporting.cpp'
+]
+
 interpreter_api_test_src = [
   'test_interpreter_api.cpp'
 ]
@@ -171,6 +176,16 @@ test_parser_api_exe = executable(
   dependencies : [modulisp_dep, math_dep]
 )
 
+# Parser error reporting test executable
+test_parser_error_reporting_exe = executable(
+  'test_parser_error_reporting',
+  sources : parser_error_reporting_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
 # Interpreter API test executable
 test_interpreter_api_exe = executable(
   'test_interpreter_api',
@@ -241,6 +256,7 @@ test('parser_test', test_parser_exe)
 test('value_api_test', test_value_api_exe)
 test('environment_api_test', test_environment_api_exe)
 test('parser_api_test', test_parser_api_exe)
+test('parser_error_reporting_test', test_parser_error_reporting_exe)
 test('interpreter_api_test', test_interpreter_api_exe)
 test('modulisp_api_test', test_modulisp_api_exe)
 test('error_handling_test', test_error_handling_exe)
