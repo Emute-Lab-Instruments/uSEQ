@@ -2,10 +2,10 @@
 
 #define _i2cUtils_
 
-bool bI2ChostMode = false;
-bool bI2CclientMode = false;
+extern bool bI2ChostMode;
+extern bool bI2CclientMode;
 
-int hex2int(char ch)
+inline int hex2int(char ch)
 {
     if (ch >= '0' && ch <= '9')
         return ch - '0';
