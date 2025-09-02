@@ -24,7 +24,7 @@ TEST_CASE("Response class basic functionality", "[error-handling][response]") {
         REQUIRE_FALSE(response.okay());
         REQUIRE(response.is_error());
         REQUIRE(response.get_error_type() == ModuLisp::ErrorType::UNDEFINED_FUNCTION);
-        REQUIRE(response.get_error_message() == "Function 'oscilator' is not defined");
+        REQUIRE(response.get_error_message() == "Function 'asdfqwerty' is not defined");
     }
     
 

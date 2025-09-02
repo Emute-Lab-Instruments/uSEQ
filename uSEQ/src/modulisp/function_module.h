@@ -27,6 +27,9 @@ struct FunctionDescriptor {
     MethodFunc* method_func = nullptr;  // For class methods
     void* instance = nullptr;       // Instance pointer for methods
     
+    // Default constructor
+    FunctionDescriptor() = default;
+    
     // Constructor for standalone functions
     FunctionDescriptor(const String& n, const String& m, BuiltinFunc f, bool special = false)
         : name(n), module(m), is_special_form(special), builtin_func(f) {}

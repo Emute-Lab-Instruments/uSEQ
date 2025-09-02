@@ -17,6 +17,8 @@ Gizmo or other products you make using this      | | source. |
 #ifndef PINMAP_H
 #define PINMAP_H
 
+#include "../utils/string.h"
+
 /*
 
 

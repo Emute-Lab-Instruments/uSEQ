@@ -2,6 +2,8 @@
 #include "uSEQ/configure.h"
 #ifndef ARDUINO
 #include "hardware_includes.h"
+#else
+#include "uSEQ/i2cHost.h"
 #endif
 #include "utils.h"
 

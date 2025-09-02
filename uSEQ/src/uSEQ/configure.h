@@ -10,8 +10,8 @@
 // #define USEQHARDWARE_0_2
 // #define USEQHARDWARE_1_0
 // #define USEQHARDWARE_EXPANDER_OUT_0_1
-/* #define MUSICTHING */
-#define DESKTOP
+#define MUSICTHING
+// #define DESKTOP
 
 // ===== FEATURE FLAGS FOR CONDITIONAL COMPILATION =====
 // These flags allow selective compilation of features to reduce binary size

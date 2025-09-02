@@ -15,7 +15,7 @@
 #include "dsp/dsp-engine.hpp"
 #include <unordered_map>
 #include <memory>
-#include "../utils/string.h"
+#include "utils/string.h"
 
 // DSP Engine Management
 LISP_FUNC_DECL(useq_dsp_start);

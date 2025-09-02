@@ -13,8 +13,8 @@
 // }
 
 BuiltinMap& Environment::builtindefs() {
-    static BuiltinMap FAST_MEM_ENV instance;
-    return instance;
+    static BuiltinMap builtin_map;
+    return builtin_map;
 }
 
 std::optional<Value> ValueMap::get(const String& name) const

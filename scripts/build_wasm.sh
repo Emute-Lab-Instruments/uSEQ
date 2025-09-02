@@ -29,7 +29,7 @@ SOURCES=(
     "uSEQ/src/modulisp/lisp/environment.cpp"
     "uSEQ/src/modulisp/lisp/interpreter.cpp"
     "uSEQ/src/modulisp/lisp/signal_metadata.cpp"
-    "uSEQ/src/modulisp/lisp/value_signal_processing.cpp"
+    # "uSEQ/src/modulisp/lisp/value_signal_processing.cpp"
     "uSEQ/src/modulisp/lisp/builtins.cpp"
     "uSEQ/src/template_instantiations.cpp"
     

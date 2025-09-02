@@ -2,6 +2,7 @@
 #define TIME_MANAGER_H_
 
 #include <cstdint>
+#include <cstddef>
 #include "../ports/IClock.h"
 
 using TimeValue = double;
