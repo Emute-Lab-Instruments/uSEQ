@@ -22,7 +22,7 @@ public:
     enum class OutputType {
         CONTINUOUS,  // Analog outputs (a1-a8)
         BINARY,      // Digital outputs (d1-d8)  
-        SERIAL       // Serial outputs (s1-s8)
+        SERIAL_OUT   // Serial outputs (s1-s8)
     };
 
     struct OutputConfig {

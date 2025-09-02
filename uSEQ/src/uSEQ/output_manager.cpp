@@ -2,6 +2,9 @@
 #include "../uSEQ.h"
 #include "../uSEQ/configure.h"
 
+// Using declaration for OutputType enum class
+using OutputType = OutputManager::OutputType;
+
 // Static configuration table - single source of truth for all output functions
 const std::vector<OutputManager::OutputConfig> OutputManager::s_output_configs = {
     // Continuous/Analog Outputs (a1-a8)
@@ -25,14 +28,14 @@ const std::vector<OutputManager::OutputConfig> OutputManager::s_output_configs =
     {8, OutputType::BINARY, 7, "d8", "get-d8"},
     
     // Serial Outputs (s1-s8)
-    {1, OutputType::SERIAL, 0, "s1", "get-s1"},
-    {2, OutputType::SERIAL, 1, "s2", "get-s2"},
-    {3, OutputType::SERIAL, 2, "s3", "get-s3"},
-    {4, OutputType::SERIAL, 3, "s4", "get-s4"},
-    {5, OutputType::SERIAL, 4, "s5", "get-s5"},
-    {6, OutputType::SERIAL, 5, "s6", "get-s6"},
-    {7, OutputType::SERIAL, 6, "s7", "get-s7"},
-    {8, OutputType::SERIAL, 7, "s8", "get-s8"}
+    {1, OutputType::SERIAL_OUT, 0, "s1", "get-s1"},
+    {2, OutputType::SERIAL_OUT, 1, "s2", "get-s2"},
+    {3, OutputType::SERIAL_OUT, 2, "s3", "get-s3"},
+    {4, OutputType::SERIAL_OUT, 3, "s4", "get-s4"},
+    {5, OutputType::SERIAL_OUT, 4, "s5", "get-s5"},
+    {6, OutputType::SERIAL_OUT, 5, "s6", "get-s6"},
+    {7, OutputType::SERIAL_OUT, 6, "s7", "get-s7"},
+    {8, OutputType::SERIAL_OUT, 7, "s8", "get-s8"}
 };
 
 OutputManager::OutputManager(uSEQ* useq_instance) : m_useq(useq_instance) {
@@ -57,7 +60,7 @@ bool OutputManager::is_output_available(int output_id, OutputType type) {
             return output_id >= 1 && static_cast<size_t>(output_id) <= NUM_CONTINUOUS_OUTS;
         case OutputType::BINARY:
             return output_id >= 1 && static_cast<size_t>(output_id) <= NUM_BINARY_OUTS;
-        case OutputType::SERIAL:
+        case OutputType::SERIAL_OUT:
             return output_id >= 1 && static_cast<size_t>(output_id) <= NUM_SERIAL_OUTS;
     }
     return false;
@@ -84,7 +87,7 @@ Value OutputManager::handle_output_setter(int output_id, OutputType type, std::v
             return set_continuous_output(output_id, args, env);
         case OutputType::BINARY:
             return set_binary_output(output_id, args, env);
-        case OutputType::SERIAL:
+        case OutputType::SERIAL_OUT:
             return set_serial_output(output_id, args, env);
     }
     return Value::nil();
@@ -101,7 +104,7 @@ Value OutputManager::handle_output_getter(int output_id, OutputType type, std::v
             return get_continuous_output(output_id, args, env);
         case OutputType::BINARY:
             return get_binary_output(output_id, args, env);
-        case OutputType::SERIAL:
+        case OutputType::SERIAL_OUT:
             return get_serial_output(output_id, args, env);
     }
     return Value(0.0);
@@ -112,7 +115,7 @@ Value OutputManager::set_continuous_output(int output_id, std::vector<Value>& ar
     if (!config) return Value::nil();
     
     // Set the expression in the environment
-    m_useq->ModuLispInterpreter::set_expr(config->lisp_name, args[0]);
+    m_useq->get_environment()->set_expr(config->lisp_name, args[0]);
     
     // Store in the AST array - convert to 0-based indexing
     m_useq->m_continuous_ASTs[config->pin_index] = args[0];
@@ -125,7 +128,7 @@ Value OutputManager::set_binary_output(int output_id, std::vector<Value>& args, 
     if (!config) return Value::nil();
     
     // Set the expression in the environment
-    m_useq->ModuLispInterpreter::set_expr(config->lisp_name, args[0]);
+    m_useq->get_environment()->set_expr(config->lisp_name, args[0]);
     
     // Store in the AST array - convert to 0-based indexing  
     m_useq->m_binary_ASTs[config->pin_index] = args[0];
@@ -134,11 +137,11 @@ Value OutputManager::set_binary_output(int output_id, std::vector<Value>& args, 
 }
 
 Value OutputManager::set_serial_output(int output_id, std::vector<Value>& args, Environment& env) {
-    const auto* config = get_config(output_id, OutputType::SERIAL);
+    const auto* config = get_config(output_id, OutputType::SERIAL_OUT);
     if (!config) return Value::nil();
     
     // Set the expression in the environment
-    m_useq->ModuLispInterpreter::set_expr(config->lisp_name, args[0]);
+    m_useq->get_environment()->set_expr(config->lisp_name, args[0]);
     
     // Store in the AST array - convert to 0-based indexing
     m_useq->m_serial_ASTs[config->pin_index] = args[0];
@@ -163,7 +166,7 @@ Value OutputManager::get_binary_output(int output_id, std::vector<Value>& args, 
 }
 
 Value OutputManager::get_serial_output(int output_id, std::vector<Value>& args, Environment& env) {
-    const auto* config = get_config(output_id, OutputType::SERIAL);
+    const auto* config = get_config(output_id, OutputType::SERIAL_OUT);
     if (!config) return Value(0.0);
     
     // Return current output value - convert to 0-based indexing
@@ -207,11 +210,11 @@ template class OutputFunctionGenerator<7, OutputManager::OutputType::BINARY>;
 template class OutputFunctionGenerator<8, OutputManager::OutputType::BINARY>;
 
 // Serial outputs (s1-s8) - setters only
-template class OutputFunctionGenerator<1, OutputManager::OutputType::SERIAL>;
-template class OutputFunctionGenerator<2, OutputManager::OutputType::SERIAL>;
-template class OutputFunctionGenerator<3, OutputManager::OutputType::SERIAL>;
-template class OutputFunctionGenerator<4, OutputManager::OutputType::SERIAL>;
-template class OutputFunctionGenerator<5, OutputManager::OutputType::SERIAL>;
-template class OutputFunctionGenerator<6, OutputManager::OutputType::SERIAL>;
-template class OutputFunctionGenerator<7, OutputManager::OutputType::SERIAL>;
-template class OutputFunctionGenerator<8, OutputManager::OutputType::SERIAL>;
+template class OutputFunctionGenerator<1, OutputType::SERIAL_OUT>;
+template class OutputFunctionGenerator<2, OutputType::SERIAL_OUT>;
+template class OutputFunctionGenerator<3, OutputType::SERIAL_OUT>;
+template class OutputFunctionGenerator<4, OutputType::SERIAL_OUT>;
+template class OutputFunctionGenerator<5, OutputType::SERIAL_OUT>;
+template class OutputFunctionGenerator<6, OutputType::SERIAL_OUT>;
+template class OutputFunctionGenerator<7, OutputType::SERIAL_OUT>;
+template class OutputFunctionGenerator<8, OutputType::SERIAL_OUT>;

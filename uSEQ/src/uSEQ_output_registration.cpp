@@ -23,14 +23,14 @@ const OutputRegistrationHelper::OutputConfig OutputRegistrationHelper::output_co
     {"d8", "get-d8", 8, OutputManager::OutputType::BINARY},
     
     // Serial outputs (s1-s8) - no getters
-    {"s1", nullptr, 1, OutputManager::OutputType::SERIAL},
-    {"s2", nullptr, 2, OutputManager::OutputType::SERIAL},
-    {"s3", nullptr, 3, OutputManager::OutputType::SERIAL},
-    {"s4", nullptr, 4, OutputManager::OutputType::SERIAL},
-    {"s5", nullptr, 5, OutputManager::OutputType::SERIAL},
-    {"s6", nullptr, 6, OutputManager::OutputType::SERIAL},
-    {"s7", nullptr, 7, OutputManager::OutputType::SERIAL},
-    {"s8", nullptr, 8, OutputManager::OutputType::SERIAL},
+    {"s1", nullptr, 1, OutputManager::OutputType::SERIAL_OUT},
+    {"s2", nullptr, 2, OutputManager::OutputType::SERIAL_OUT},
+    {"s3", nullptr, 3, OutputManager::OutputType::SERIAL_OUT},
+    {"s4", nullptr, 4, OutputManager::OutputType::SERIAL_OUT},
+    {"s5", nullptr, 5, OutputManager::OutputType::SERIAL_OUT},
+    {"s6", nullptr, 6, OutputManager::OutputType::SERIAL_OUT},
+    {"s7", nullptr, 7, OutputManager::OutputType::SERIAL_OUT},
+    {"s8", nullptr, 8, OutputManager::OutputType::SERIAL_OUT},
 };
 
 const size_t OutputRegistrationHelper::num_configs = 
@@ -79,14 +79,14 @@ INSTANTIATE_WRAPPER(6, BINARY)
 INSTANTIATE_WRAPPER(7, BINARY)
 INSTANTIATE_WRAPPER(8, BINARY)
 
-INSTANTIATE_WRAPPER(1, SERIAL)
-INSTANTIATE_WRAPPER(2, SERIAL)
-INSTANTIATE_WRAPPER(3, SERIAL)
-INSTANTIATE_WRAPPER(4, SERIAL)
-INSTANTIATE_WRAPPER(5, SERIAL)
-INSTANTIATE_WRAPPER(6, SERIAL)
-INSTANTIATE_WRAPPER(7, SERIAL)
-INSTANTIATE_WRAPPER(8, SERIAL)
+INSTANTIATE_WRAPPER(1, SERIAL_OUT)
+INSTANTIATE_WRAPPER(2, SERIAL_OUT)
+INSTANTIATE_WRAPPER(3, SERIAL_OUT)
+INSTANTIATE_WRAPPER(4, SERIAL_OUT)
+INSTANTIATE_WRAPPER(5, SERIAL_OUT)
+INSTANTIATE_WRAPPER(6, SERIAL_OUT)
+INSTANTIATE_WRAPPER(7, SERIAL_OUT)
+INSTANTIATE_WRAPPER(8, SERIAL_OUT)
 
 // Function pointer lookup table
 typedef Value (*OutputFuncPtr)(std::vector<Value>&, Environment&);
@@ -115,16 +115,16 @@ static OutputFuncPtr get_setter_func(int id, OutputManager::OutputType type) {
             case 7: return OutputFunctionWrapper<7, OutputManager::OutputType::BINARY>::setter;
             case 8: return OutputFunctionWrapper<8, OutputManager::OutputType::BINARY>::setter;
         }
-    } else if (type == OutputManager::OutputType::SERIAL) {
+    } else if (type == OutputManager::OutputType::SERIAL_OUT) {
         switch(id) {
-            case 1: return OutputFunctionWrapper<1, OutputManager::OutputType::SERIAL>::setter;
-            case 2: return OutputFunctionWrapper<2, OutputManager::OutputType::SERIAL>::setter;
-            case 3: return OutputFunctionWrapper<3, OutputManager::OutputType::SERIAL>::setter;
-            case 4: return OutputFunctionWrapper<4, OutputManager::OutputType::SERIAL>::setter;
-            case 5: return OutputFunctionWrapper<5, OutputManager::OutputType::SERIAL>::setter;
-            case 6: return OutputFunctionWrapper<6, OutputManager::OutputType::SERIAL>::setter;
-            case 7: return OutputFunctionWrapper<7, OutputManager::OutputType::SERIAL>::setter;
-            case 8: return OutputFunctionWrapper<8, OutputManager::OutputType::SERIAL>::setter;
+            case 1: return OutputFunctionWrapper<1, OutputManager::OutputType::SERIAL_OUT>::setter;
+            case 2: return OutputFunctionWrapper<2, OutputManager::OutputType::SERIAL_OUT>::setter;
+            case 3: return OutputFunctionWrapper<3, OutputManager::OutputType::SERIAL_OUT>::setter;
+            case 4: return OutputFunctionWrapper<4, OutputManager::OutputType::SERIAL_OUT>::setter;
+            case 5: return OutputFunctionWrapper<5, OutputManager::OutputType::SERIAL_OUT>::setter;
+            case 6: return OutputFunctionWrapper<6, OutputManager::OutputType::SERIAL_OUT>::setter;
+            case 7: return OutputFunctionWrapper<7, OutputManager::OutputType::SERIAL_OUT>::setter;
+            case 8: return OutputFunctionWrapper<8, OutputManager::OutputType::SERIAL_OUT>::setter;
         }
     }
     return nullptr;
