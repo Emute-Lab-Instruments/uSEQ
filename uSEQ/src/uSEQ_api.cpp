@@ -14,7 +14,7 @@ void uSEQ::init_builtinfuncs()
     DBG("uSEQ::init_builtinfuncs");
     
     // Call parent class init_builtinfuncs first
-    ModuLispInterpreter::init_builtinfuncs();
+    m_interpreter.init_builtinfuncs();
     
     // Add uSEQ-specific hardware functions
     
@@ -169,7 +169,7 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, {
                           println(msg); ret = Value();
                           }, 0)
 
-BUILTINFUNC_NOEVAL_MEMBER(useq_q0, set("q-expr", args[0]); get_scheduler()->set_q0_ast(args[0]); ret = Value::atom("q0");
+BUILTINFUNC_NOEVAL_MEMBER(useq_q0, get_environment()->set("q-expr", args[0]); get_scheduler()->set_q0_ast(args[0]); ret = Value::atom("q0");
                           , 1)
 
 // TODO: there is potentially a lot of duplicated/wasted memory by storing
@@ -231,28 +231,28 @@ Value uSEQ::useq_d8(std::vector<Value>& args, Environment& env) {
 
 // Unified serial output functions - forward to OutputManager
 Value uSEQ::useq_s1(std::vector<Value>& args, Environment& env) {
-    return m_output_manager->handle_output_setter(1, OutputManager::OutputType::SERIAL, args, env);
+    return m_output_manager->handle_output_setter(1, OutputManager::OutputType::SERIAL_OUT, args, env);
 }
 Value uSEQ::useq_s2(std::vector<Value>& args, Environment& env) {
-    return m_output_manager->handle_output_setter(2, OutputManager::OutputType::SERIAL, args, env);
+    return m_output_manager->handle_output_setter(2, OutputManager::OutputType::SERIAL_OUT, args, env);
 }
 Value uSEQ::useq_s3(std::vector<Value>& args, Environment& env) {
-    return m_output_manager->handle_output_setter(3, OutputManager::OutputType::SERIAL, args, env);
+    return m_output_manager->handle_output_setter(3, OutputManager::OutputType::SERIAL_OUT, args, env);
 }
 Value uSEQ::useq_s4(std::vector<Value>& args, Environment& env) {
-    return m_output_manager->handle_output_setter(4, OutputManager::OutputType::SERIAL, args, env);
+    return m_output_manager->handle_output_setter(4, OutputManager::OutputType::SERIAL_OUT, args, env);
 }
 Value uSEQ::useq_s5(std::vector<Value>& args, Environment& env) {
-    return m_output_manager->handle_output_setter(5, OutputManager::OutputType::SERIAL, args, env);
+    return m_output_manager->handle_output_setter(5, OutputManager::OutputType::SERIAL_OUT, args, env);
 }
 Value uSEQ::useq_s6(std::vector<Value>& args, Environment& env) {
-    return m_output_manager->handle_output_setter(6, OutputManager::OutputType::SERIAL, args, env);
+    return m_output_manager->handle_output_setter(6, OutputManager::OutputType::SERIAL_OUT, args, env);
 }
 Value uSEQ::useq_s7(std::vector<Value>& args, Environment& env) {
-    return m_output_manager->handle_output_setter(7, OutputManager::OutputType::SERIAL, args, env);
+    return m_output_manager->handle_output_setter(7, OutputManager::OutputType::SERIAL_OUT, args, env);
 }
 Value uSEQ::useq_s8(std::vector<Value>& args, Environment& env) {
-    return m_output_manager->handle_output_setter(8, OutputManager::OutputType::SERIAL, args, env);
+    return m_output_manager->handle_output_setter(8, OutputManager::OutputType::SERIAL_OUT, args, env);
 }
 
 // Function that should be available in all builds (not just Arduino)
@@ -260,19 +260,19 @@ void uSEQ::clear_all_outputs() {
     for (int i = 0; static_cast<size_t>(i) < m_continuous_ASTs.size(); i++) {
         String name = "a" + String(i + 1);
         m_continuous_ASTs[i] = default_continuous_expr;
-        m_def_exprs.erase(name);
+        get_environment()->get_def_exprs().erase(name);
     }
 
     for (int i = 0; static_cast<size_t>(i) < m_binary_ASTs.size(); i++) {
         String name = "d" + String(i + 1);
         m_binary_ASTs[i] = default_binary_expr;
-        m_def_exprs.erase(name);
+        get_environment()->get_def_exprs().erase(name);
     }
 
     for (int i = 0; static_cast<size_t>(i) < m_serial_ASTs.size(); i++) {
         String name = "s" + String(i + 1);
         m_serial_ASTs[i] = default_serial_expr;
-        m_def_exprs.erase(name);
+        get_environment()->get_def_exprs().erase(name);
     }
 }
 

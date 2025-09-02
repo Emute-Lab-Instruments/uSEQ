@@ -68,11 +68,11 @@ Value uSEQ::__test_i2c_send_to(int addr, const String& expr_str) {
 #ifdef ARDUINO
 #include "uSEQ/i2cClient.h"
 #else
-// Desktop stubs for I2C variables needed by uSEQ.cpp
-bool bNewI2CMessage = false;
-int nI2CBytesRead = 0;
+// Desktop stubs for I2C functionality
+extern bool bNewI2CMessage;
+extern int nI2CBytesRead;
+extern String i2cPrintStr;
 char i2cInBuff[500];
-String i2cPrintStr = "";
 
 #endif
 
@@ -169,7 +169,7 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
         case DSPQ::RESPONSES::UGENINFO:
             println("ugen info: " + String(response.data.ugenInfo.key) + " " +
                     response.data.ugenInfo.name);
-            set("ugen-" + String(response.data.ugenInfo.name),
+            get_environment()->set("ugen-" + String(response.data.ugenInfo.name),
                 Value(static_cast<int>(response.data.ugenInfo.key)));
             break;
         case DSPQ::RESPONSES::MESSAGE:
@@ -193,7 +193,7 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
             // println("UGEN name: " + ugenName);
             String queueName = ugenName + "-out" + String(newq.index);
             println("Created output queue: " + queueName);
-            set(queueName, Value(static_cast<int>(qIndex)));
+            get_environment()->set(queueName, Value(static_cast<int>(qIndex)));
             break;
         }
         case DSPQ::RESPONSES::ADD_INPUT_QUEUE: {
@@ -212,7 +212,7 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)() {
             // println("UGEN name: " + ugenName);
             String queueName = ugenName + "-in" + String(newq.index);
             println("Created input queue: " + queueName);
-            set(queueName, Value(static_cast<int>(qIndex)));
+            get_environment()->set(queueName, Value(static_cast<int>(qIndex)));
             break;
         }
         default:
@@ -238,7 +238,7 @@ void uSEQ::init() {
     dbg("Setting instance pointer");
 
     Interpreter::useq_instance_ptr = this;
-    Interpreter::init();
+    m_interpreter.init();
 
     uSEQ::instance = this;
 
@@ -295,10 +295,10 @@ void uSEQ::start_loop_blocking() {
 void FAST_FUNC(uSEQ::tick()) {
     DBG("uSEQ::tick");
 
-    updateSpeed = micros() - ts;
-    set("fps", Value(1000000.0 / updateSpeed));
-    set("qt", Value(updateSpeed * 0.001));
-    ts = micros();
+    get_update_speed() = micros() - get_ts();
+    get_environment()->set("fps", Value(1000000.0 / get_update_speed()));
+    get_environment()->set("qt", Value(get_update_speed() * 0.001));
+    get_ts() = micros();
 
     // Don't run the rest of the update loop if we're in sync mode
     if (m_waiting_for_sync_trigger) {
@@ -317,7 +317,7 @@ void FAST_FUNC(uSEQ::tick()) {
     update_time();
     // check_code_quant_phasor();
     run_scheduled_items();
-    ModuLispInterpreter::update_Q0();
+    update_Q0();
     // Re-run & cache output signal forms
 
     update_signals();
@@ -366,7 +366,7 @@ void uSEQ::check_and_handle_user_input() {
     // m_repl.check_and_handle_input();
 
     if (is_new_code_waiting()) {
-        m_manual_evaluation = true;
+        set_manual_evaluation(true);
 
         int first_byte;
         // Incomming serial stream isn't implemented on I2C
@@ -438,12 +438,12 @@ void uSEQ::check_and_handle_user_input() {
                     i2cPrintStr += m_last_received_code;
                 else
                     println(m_last_received_code);
-                Value expr = parse(m_last_received_code);
+                Value expr = get_parser()->parse(m_last_received_code);
                 get_scheduler()->add_to_run_queue(expr);
             }
         }
 
-        m_manual_evaluation = false;
+        set_manual_evaluation(false);
         // flush_print_jobs();
 
         // clear new i2c message flags if required
@@ -1176,7 +1176,8 @@ Value uSEQ::useq_toggle_pick(std::vector<Value> &args, Environment &env) {
     float phasor = args[1].as_float();
 
     // FIXME should this be evalled here?
-    result = list[m_input_vals[USEQT1]].eval(env);
+    int input_index = static_cast<int>(get_io_manager()->get_input_value(USEQT1));
+    result = list[input_index].eval(env);
 
     return result;
 }

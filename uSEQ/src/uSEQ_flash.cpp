@@ -5,6 +5,8 @@
 #ifdef ARDUINO
 
 #include "uSEQ.h"
+#include <hardware/flash.h>
+#include <functional>
 #ifndef ARDUINO
 #include "hardware_includes.h"
 #endif
@@ -165,9 +167,9 @@ void uSEQ::copy_def_strings_to_buffer(char* buffer)
 {
     char* write_pos = buffer;
 
-    for (auto& map : { m_defs, m_def_exprs })
+    for (auto& map : { std::ref(get_environment()->get_defs()), std::ref(get_environment()->get_def_exprs()) })
     {
-        for (auto& pair : map)
+        for (auto& pair : map.get())
         {
             // NOTE: Unless we cast to c_str first, it seems
             // that there is an issue with multi-byte UTF-8 chars
@@ -297,11 +299,11 @@ std::pair<size_t, size_t> uSEQ::num_bytes_def_strs() const
     size_t exprs_size = 0;
 
     int i = 0;
-    for (const auto& map : { m_defs, m_def_exprs })
+    for (const auto& map : { std::cref(get_environment()->get_defs()), std::cref(get_environment()->get_def_exprs()) })
     {
         size_t size = 0;
 
-        for (const auto& pair : map)
+        for (const auto& pair : map.get())
         {
             size += pair.first.length() + pair.second.to_lisp_src().length() + 2;
         }
@@ -394,7 +396,7 @@ void uSEQ::load_flash_env()
     char* read_ptr    = strings_start;
     size_t bytes_read = 0;
     // We read defs first, then swap to def_exprs
-    ValueMap* map_ptr = &m_defs;
+    ValueMap* map_ptr = &get_environment()->get_defs();
 
     while (bytes_read < m_FLASH_ENV_STRING_BUFFER_SIZE)
     {
@@ -411,10 +413,10 @@ void uSEQ::load_flash_env()
         if (bytes_read > m_FLASH_ENV_DEFS_SIZE)
         {
             // Swap pointers
-            map_ptr = &m_def_exprs;
+            map_ptr = &get_environment()->get_def_exprs();
         }
 
-        Value val = parse(def_str);
+        Value val = get_parser()->parse(def_str);
 
         if (val.is_error())
         {
@@ -430,7 +432,7 @@ void uSEQ::load_flash_env()
     for (int i = 0; static_cast<size_t>(i) < m_continuous_ASTs.size(); i++)
     {
         String name               = "a" + String(i + 1);
-        std::optional<Value> expr = get_expr(name);
+        std::optional<Value> expr = get_environment()->get_expr(name);
         if (expr)
         {
             m_continuous_ASTs[i] = *expr;
@@ -445,7 +447,7 @@ void uSEQ::load_flash_env()
     for (int i = 0; static_cast<size_t>(i) < m_binary_ASTs.size(); i++)
     {
         String name               = "d" + String(i + 1);
-        std::optional<Value> expr = get_expr(name);
+        std::optional<Value> expr = get_environment()->get_expr(name);
         if (expr)
         {
             m_binary_ASTs[i] = *expr;
@@ -460,7 +462,7 @@ void uSEQ::load_flash_env()
     for (int i = 0; static_cast<size_t>(i) < m_serial_ASTs.size(); i++)
     {
         String name               = "s" + String(i + 1);
-        std::optional<Value> expr = get_expr(name);
+        std::optional<Value> expr = get_environment()->get_expr(name);
         if (expr)
         {
             m_serial_ASTs[i] = *expr;
@@ -537,7 +539,7 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_enter_bootloader_mode,
 //         }
 //         else
 //         {
-//             flash_range_erase(addr, FLASH_SECTOR_SIZE);
+//             rom_flash_range_erase(addr, FLASH_SECTOR_SIZE);
 //         }
 //     }
 
@@ -617,7 +619,7 @@ bool uSEQ::load_env_from_storage(IStorage& s)
     size_t total_size = defs_size + exprs_size;
     if (total_size == 0) {
         // Clear existing definitions
-        m_defs.clear();
+        get_environment()->get_defs().clear();
         m_def_exprs.clear();
         return true; // Nothing to load
     }
@@ -634,11 +636,11 @@ bool uSEQ::load_env_from_storage(IStorage& s)
     char* start_ptr = read_ptr;
     
     // Clear existing definitions
-    m_defs.clear();
+    get_environment()->get_defs().clear();
     m_def_exprs.clear();
     
     // We read defs first, then swap to def_exprs
-    ValueMap* map_ptr = &m_defs;
+    ValueMap* map_ptr = &get_environment()->get_defs();
     
     while ((size_t)(read_ptr - start_ptr) < total_size) {
         String name_str = String(read_ptr);
@@ -650,7 +652,7 @@ bool uSEQ::load_env_from_storage(IStorage& s)
         // Check if we need to switch to def_exprs map
         size_t bytes_read = (size_t)(read_ptr - start_ptr);
         if (bytes_read > defs_size) {
-            map_ptr = &m_def_exprs;
+            map_ptr = &get_environment()->get_def_exprs();
         }
         
         // Parse and store the definition

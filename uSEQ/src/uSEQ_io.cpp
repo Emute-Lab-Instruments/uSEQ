@@ -49,7 +49,7 @@ void uSEQ::update_clock_from_external(double ts)
     double newBPM = tempoI1.averageBPM(ts);
     if (ext_clock_tracker.count == 0)
     {
-        newBPM *= (4.0 / meter_numerator / ext_clock_tracker.div);
+        newBPM *= (4.0 / m_interpreter.get_meter_numerator() / ext_clock_tracker.div);
         // println(String(newBPM));
         // println(String(beatCountI1));
         // println("bar: " + String(barCountI1));
@@ -66,12 +66,12 @@ void uSEQ::update_clock_from_external(double ts)
             reset_logical_time();
         }
         ext_clock_tracker.beat_count++;
-        if (meter_denominator == ext_clock_tracker.beat_count)
+        if (m_interpreter.get_meter_denominator() == ext_clock_tracker.beat_count)
         {
             ext_clock_tracker.beat_count = 0;
             ext_clock_tracker.bar_count++;
             if (ext_clock_tracker.bar_count ==
-                static_cast<size_t>(m_bars_per_phrase))
+                static_cast<size_t>(m_interpreter.get_phasor_manager()->get_bars_per_phrase()))
             {
                 ext_clock_tracker.bar_count = 0;
             }

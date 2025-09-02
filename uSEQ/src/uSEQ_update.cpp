@@ -20,7 +20,7 @@ void uSEQ::update_continuous_signals()
         static __not_in_flash("mem") String outputnames[16] = {"a1", "a2", "a3", "a4", "a5", "a6","a7", "a8", "a9", "a10", "a11", "a12", "a13", "a14", "a15", "a16"};
         #endif
         String expr_name                 = outputnames[i]; //"a" + (i + 1);
-        m_atom_currently_being_evaluated = expr_name;
+        set_atom_currently_being_evaluated(expr_name);
 
         Value expr = m_continuous_ASTs[i];
         if (expr.is_nil())
@@ -69,7 +69,7 @@ void uSEQ::update_binary_signals()
         // Clear error queue
         error_msg_q.clear();
         String expr_name                 = String("d") + String(i + 1);
-        m_atom_currently_being_evaluated = expr_name;
+        set_atom_currently_being_evaluated(expr_name);
 
         Value expr = m_binary_ASTs[i];
         if (expr.is_nil())
@@ -114,7 +114,7 @@ void uSEQ::update_serial_signals()
         // Clear error queue
         error_msg_q.clear();
         String expr_name                 = String("s") + String(i + 1);
-        m_atom_currently_being_evaluated = expr_name;
+        set_atom_currently_being_evaluated(expr_name);
 
         Value expr = m_serial_ASTs[i];
         // if it's nil we don't need to go through
@@ -165,16 +165,16 @@ void uSEQ::update_signals()
 
     // Flip flag on only for evals that happen
     // for output signals
-    m_attempt_expr_eval_first = true;
-    m_update_loop_evaluation  = true;
+    set_attempt_expr_eval_first(true);
+    set_update_loop_evaluation(true);
 
     // BODY
     update_continuous_signals();
     update_binary_signals();
     update_serial_signals();
 
-    m_attempt_expr_eval_first = false;
-    m_update_loop_evaluation  = false;
+    set_attempt_expr_eval_first(false);
+    set_update_loop_evaluation(false);
 }
 
 #if HAS_OUTPUTS

@@ -1,6 +1,10 @@
 #ifndef USEQ_H_
 #define USEQ_H_
 
+// Include first for build flags etc
+#include "uSEQ/configure.h"
+
+
 // Include compiler configuration for warning management
 #include "utils/compiler_config.h"
 
@@ -13,6 +17,7 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 
 // Functional module headers are included within the class definition
 
+
 #ifdef ENABLE_TEMPO_ESTIMATOR
 #include "dsp/tempoEstimator.h"
 #endif
@@ -23,9 +28,11 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #endif
 #include "modulisp/lisp/macros.h"
 #include "modulisp/lisp/value.h"
+#include "modulisp/lisp/error_context.h"
+#include "modulisp/lisp/environment.h"
+#include "modulisp/lisp/parser.h"
 #include "modulisp/modulisp_interpreter.h"
 #include "uSEQ/board.h"
-#include "uSEQ/configure.h"
 #include "ports/IIo.h"
 #ifdef ENABLE_I2C_NETWORKING
 #include "ports/II2CBus.h"
@@ -53,9 +60,11 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 class OutputManager;
 class IOManager;
 
-class uSEQ : public ModuLispInterpreter {
+class uSEQ {
   public:
-    uSEQ() : ModuLispInterpreter(nullptr, nullptr), m_output_manager(nullptr), m_io_manager(nullptr) {
+    uSEQ() : m_error_manager(), m_environment(), m_parser(&m_error_manager), 
+             m_interpreter(&m_error_manager, &m_environment, &m_parser),
+             m_output_manager(nullptr), m_io_manager(nullptr) {
         init();
     }
     explicit uSEQ(IClock* clk, ILogger* log, IIo* io_port = nullptr
@@ -66,7 +75,9 @@ class uSEQ : public ModuLispInterpreter {
                   , IStorage* storage_port = nullptr
 #endif
                   )
-        : ModuLispInterpreter(clk, log), m_output_manager(nullptr), m_io_manager(nullptr), io(io_port)
+        : m_error_manager(), m_environment(), m_parser(&m_error_manager),
+          m_interpreter(&m_error_manager, &m_environment, &m_parser, clk, log),
+          m_output_manager(nullptr), m_io_manager(nullptr), io(io_port)
 #ifdef ENABLE_I2C_NETWORKING
           , i2c(i2c_port)
 #endif
@@ -99,13 +110,40 @@ class uSEQ : public ModuLispInterpreter {
     void handle_input1_interrupt(double ts, int value);
     void handle_input2_interrupt(double ts, int value);
 #ifdef ENABLE_TEMPO_ESTIMATOR
-    tempoEstimator tempoI1, tempoI2;
+     tempoEstimator tempoI1, tempoI2;
 #endif
     void update_clock_from_external(double ts);
 
     double delme = 928.22234;
 
     static uSEQ *instance;
+    
+    // ModuLispInterpreter delegation methods
+    Value eval(Value v) { return m_interpreter.eval(v); }
+    String eval(const String &code) { return m_interpreter.eval(code); }
+    Environment* get_environment() { return m_interpreter.get_environment(); }
+    const Environment* get_environment() const { return m_interpreter.get_environment(); }
+    uLispParser* get_parser() { return m_interpreter.get_parser(); }
+    void reset_logical_time() { m_interpreter.reset_logical_time(); }
+    void set_atom_currently_being_evaluated(const String& atom_name) {
+        Interpreter::set_atom_currently_being_evaluated(atom_name);
+    }
+    bool get_attempt_expr_eval_first() { return Interpreter::get_attempt_expr_eval_first(); }
+    void set_attempt_expr_eval_first(bool value) { Interpreter::set_attempt_expr_eval_first(value); }
+    bool get_update_loop_evaluation() { return Interpreter::get_update_loop_evaluation(); }
+    void set_update_loop_evaluation(bool value) { Interpreter::set_update_loop_evaluation(value); }
+    bool get_manual_evaluation() { return Interpreter::get_manual_evaluation(); }
+    void set_manual_evaluation(bool value) { Interpreter::set_manual_evaluation(value); }
+    void init_interpreter() { m_interpreter.init(); }
+    void set_bpm(double newBpm, double changeThreshold) { m_interpreter.set_bpm(newBpm, changeThreshold); }
+    void update_time() { m_interpreter.update_time(); }
+    void run_scheduled_items() { m_interpreter.run_scheduled_items(); }
+    void update_Q0() { m_interpreter.update_Q0(); }
+    
+    // Access to public member variables and components
+    int& get_ts() { return m_interpreter.ts; }
+    int& get_update_speed() { return m_interpreter.updateSpeed; }
+    Scheduler* get_scheduler() { return m_interpreter.get_scheduler(); }
     
     // IOManager integration
     IOManager* get_io_manager() { return m_io_manager; }
@@ -128,6 +166,12 @@ class uSEQ : public ModuLispInterpreter {
     std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
 
   private:
+    // Core components (order matters for initialization)
+    ErrorManager m_error_manager;
+    Environment m_environment;
+    uLispParser m_parser;
+    ModuLispInterpreter m_interpreter;
+    
     // IO m_io;
 
     //     std::vector<Output> m_outputs;
@@ -256,8 +300,8 @@ class uSEQ : public ModuLispInterpreter {
 #endif
     
     // Test accessors for environment
-    ValueMap& __test_get_defs() { return m_defs; }
-    ValueMap& __test_get_def_exprs() { return m_def_exprs; }
+    ValueMap& __test_get_defs() { return m_environment.__test_get_defs(); }
+    ValueMap& __test_get_def_exprs() { return m_environment.__test_get_def_exprs(); }
     
     // Public wrappers for storage functions (for testing)
 #ifndef ARDUINO

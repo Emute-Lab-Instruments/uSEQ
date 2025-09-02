@@ -256,7 +256,7 @@ void IOManager::update_inputs() {
 #ifdef MUSICTHING
 void IOManager::read_musicthing_inputs() {
     const double recp4096 = 0.000244141;
-    const size_t muxdelay = 2;
+    const size_t muxdelay = 2; // FIXME increase this for stability
 
     // unroll loop for efficiency
     digitalWrite(MUX_LOGIC_A, 0);
@@ -436,7 +436,7 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
 
 #ifdef ARDUINO
     // write digi
-#ifdef DIGI_OUT_INVERT
+#ifdef DIGI_OUT_INVERTED
     digitalWrite(pin, 1 - (val > 0));
 #else
     digitalWrite(pin, val > 0);
