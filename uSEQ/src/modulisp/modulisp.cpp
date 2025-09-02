@@ -4,13 +4,16 @@
 #include <iomanip>
 
 // Constructor
-ModuLisp::ModuLisp() : current_context(Context::GENERAL) {
-    // Create the interpreter with default settings
-    interpreter = std::make_unique<ModuLispInterpreter>();
+ModuLisp::ModuLisp() : 
+    current_context(Context::GENERAL),
+    m_error_manager(),
+    m_environment(),
+    m_parser(&m_error_manager),
+    m_interpreter(&m_error_manager, &m_environment, &m_parser) {
     
     // Initialize the interpreter
-    interpreter->init();
-    interpreter->init_builtinfuncs();
+    m_interpreter.init();
+    m_interpreter.init_builtinfuncs();
 }
 
 // Destructor
@@ -18,18 +21,27 @@ ModuLisp::~ModuLisp() = default;
 
 // Main API: send LISP code and get response
 ModuLisp::Response ModuLisp::send(const std::string& code) {
+    // Clear any previous errors
+    m_error_manager.clear_error();
+    
     // Convert std::string to Arduino String
     String arduino_code(code.c_str());
     
     // Parse and evaluate the code
-    Value result = interpreter->eval_v(arduino_code);
+    Value result = m_interpreter.eval_v(arduino_code);
     
-    // Create response and analyze for errors
+    // Create response
     Response response(result);
     
-    // If it's an error, add helpful information
-    if (result.get_type_enum() == 15) { // ERROR type
-        response = analyze_error(result, code);
+    // If it's an error, get detailed information from error manager
+    if (result.get_type_enum() == 14) { // ERROR type
+        const ErrorContext* error_ctx = m_error_manager.get_current_error();
+        if (error_ctx) {
+            response = create_response_from_error_context(*error_ctx, result);
+        } else {
+            // Fallback to old method if no error context available
+            response = analyze_error(result, code);
+        }
     }
     
     // Check for deprecated functions
@@ -47,10 +59,40 @@ void ModuLisp::register_deprecated(const std::string& old_name, const std::strin
 ModuLisp::Response ModuLisp::analyze_error(const Value& result, const std::string& code) {
     Response response(result);
     
-    // Try to determine error type from the error value
-    // This is simplified - in reality we'd need more sophisticated parsing
-    response.set_error_type(ErrorType::GENERIC_ERROR);
-    response.set_error_message("Evaluation error occurred");
+    // Parse the code to extract function name for undefined function errors
+    std::string function_name;
+    if (code.length() > 0 && code[0] == '(') {
+        // Extract first atom after opening parenthesis
+        size_t start = 1;
+        while (start < code.length() && std::isspace(code[start])) start++;
+        size_t end = start;
+        while (end < code.length() && !std::isspace(code[end]) && code[end] != ')') end++;
+        if (end > start) {
+            function_name = code.substr(start, end - start);
+        }
+    } else {
+        // For simple symbol lookup, the code is just the symbol name
+        function_name = code;
+        // Remove whitespace
+        function_name.erase(std::remove_if(function_name.begin(), function_name.end(), ::isspace), function_name.end());
+    }
+    
+    // Determine error type and message based on context
+    if (!function_name.empty()) {
+        if (code[0] == '(') {
+            // Function call - undefined function
+            response.set_error_type(ErrorType::UNDEFINED_FUNCTION);
+            response.set_error_message("Function '" + function_name + "' is not defined");
+        } else {
+            // Variable reference - undefined variable
+            response.set_error_type(ErrorType::UNDEFINED_VARIABLE);
+            response.set_error_message("Variable '" + function_name + "' is not defined");
+        }
+    } else {
+        // Generic error
+        response.set_error_type(ErrorType::GENERIC_ERROR);
+        response.set_error_message("Evaluation error occurred");
+    }
     
     // Add context-specific suggestions
     detect_suggestions(response, code);
@@ -191,4 +233,81 @@ std::string ModuLisp::Response::to_log_format() const {
     }
     
     return log.str();
+}
+
+// Create response from centralized error context
+ModuLisp::Response ModuLisp::create_response_from_error_context(const ErrorContext& error_ctx, const Value& result) {
+    Response response(result);
+    
+    // Map ErrorCategory to ModuLisp::ErrorType
+    ModuLisp::ErrorType error_type = ErrorType::GENERIC_ERROR;
+    switch (error_ctx.category) {
+        case ErrorCategory::SYNTAX_ERROR:
+            error_type = ErrorType::SYNTAX_ERROR;
+            break;
+        case ErrorCategory::UNDEFINED_SYMBOL:
+            error_type = ErrorType::UNDEFINED_VARIABLE;
+            break;
+        case ErrorCategory::UNDEFINED_FUNCTION:
+            error_type = ErrorType::UNDEFINED_FUNCTION;
+            break;
+        case ErrorCategory::ARITY_ERROR:
+            error_type = ErrorType::ARITY_ERROR;
+            break;
+        case ErrorCategory::TYPE_ERROR:
+            error_type = ErrorType::TYPE_ERROR;
+            break;
+        case ErrorCategory::ARITHMETIC_ERROR:
+            error_type = ErrorType::ARITHMETIC_ERROR;
+            break;
+        case ErrorCategory::INDEX_ERROR:
+            error_type = ErrorType::INDEX_ERROR;
+            break;
+        case ErrorCategory::RECURSION_ERROR:
+            error_type = ErrorType::RECURSION_ERROR;
+            break;
+        case ErrorCategory::TIMEOUT_ERROR:
+            error_type = ErrorType::TIMEOUT_ERROR;
+            break;
+        case ErrorCategory::GENERIC_ERROR:
+        default:
+            error_type = ErrorType::GENERIC_ERROR;
+            break;
+    }
+    
+    // Set error information
+    response.set_error_type(error_type);
+    response.set_error_message(std::string(error_ctx.primary_message.c_str()));
+    
+    // Set location information
+    if (error_ctx.line > 0 || error_ctx.column > 0) {
+        response.set_location(error_ctx.line, error_ctx.column);
+    }
+    
+    // Set suggestion
+    if (!error_ctx.suggestion.length() == 0) {
+        response.set_suggestion(std::string(error_ctx.suggestion.c_str()));
+    }
+    
+    // Add "did you mean" suggestions
+    for (const String& suggestion : error_ctx.did_you_mean) {
+        response.add_did_you_mean(std::string(suggestion.c_str()));
+    }
+    
+    // Add examples
+    for (const String& example : error_ctx.examples) {
+        response.add_example(std::string(example.c_str()));
+    }
+    
+    // Set code snippet
+    if (!error_ctx.code_snippet.length() == 0) {
+        response.set_context_snippet(std::string(error_ctx.code_snippet.c_str()));
+    }
+    
+    // Add stack frames
+    for (const String& frame : error_ctx.stack_frames) {
+        response.add_stack_frame(std::string(frame.c_str()));
+    }
+    
+    return response;
 }

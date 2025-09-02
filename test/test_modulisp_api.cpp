@@ -4,12 +4,14 @@
 #include "../uSEQ/src/modulisp/modulisp_interpreter.h"
 #include "../uSEQ/src/modulisp/lisp/value.h"
 #include "../uSEQ/src/modulisp/lisp/environment.h"
+#include "../uSEQ/src/modulisp/lisp/error_context.h"
 #include <cmath>
 
 // Test cases for ModuLisp-specific functions
 
 TEST_CASE("Triangle wave function", "[modulisp][api][useq_tri]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Test basic triangle wave behavior
@@ -31,7 +33,8 @@ TEST_CASE("Triangle wave function", "[modulisp][api][useq_tri]") {
 }
 
 TEST_CASE("Decision making function", "[modulisp][api][useq_dm]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Test decision making: index > 0 returns v2, else v1
@@ -51,7 +54,8 @@ TEST_CASE("Decision making function", "[modulisp][api][useq_dm]") {
 }
 
 TEST_CASE("Phasor offset function", "[modulisp][api][useq_phasor_offset]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Test basic phase shifting
@@ -71,7 +75,8 @@ TEST_CASE("Phasor offset function", "[modulisp][api][useq_phasor_offset]") {
 }
 
 TEST_CASE("Step function", "[modulisp][api][useq_step]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Test basic step function (count=4, phasor=0.5)
@@ -91,7 +96,8 @@ TEST_CASE("Step function", "[modulisp][api][useq_step]") {
 }
 
 TEST_CASE("Set BPM function", "[modulisp][api][useq_setbpm]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Test setting BPM
@@ -107,7 +113,8 @@ TEST_CASE("Set BPM function", "[modulisp][api][useq_setbpm]") {
 }
 
 TEST_CASE("Set time signature function", "[modulisp][api][useq_set_time_sig]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Test setting time signature
@@ -119,7 +126,8 @@ TEST_CASE("Set time signature function", "[modulisp][api][useq_set_time_sig]") {
 }
 
 TEST_CASE("Set time offset function", "[modulisp][api][useq_set_time_offset]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Test setting time offset
@@ -130,7 +138,8 @@ TEST_CASE("Set time offset function", "[modulisp][api][useq_set_time_offset]") {
 }
 
 TEST_CASE("Nudge time function", "[modulisp][api][useq_nudge_time]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Set initial offset
@@ -160,7 +169,8 @@ TEST_CASE("Nudge time function", "[modulisp][api][useq_nudge_time]") {
 // }
 
 TEST_CASE("Euclidean rhythm function", "[modulisp][api][useq_euclidean]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Test Euclidean rhythm: 3 hits in 8 steps at phase 0.0
@@ -177,7 +187,8 @@ TEST_CASE("Euclidean rhythm function", "[modulisp][api][useq_euclidean]") {
 }
 
 TEST_CASE("Random function", "[modulisp][api][useq_random]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Note: Beat number is now managed internally by PhasorManager
@@ -192,7 +203,8 @@ TEST_CASE("Random function", "[modulisp][api][useq_random]") {
 }
 
 TEST_CASE("Index-based random function", "[modulisp][api][useq_index_rand]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Test index-based random with index only
@@ -268,7 +280,8 @@ TEST_CASE("Index-based random function", "[modulisp][api][useq_index_rand]") {
 // }
 
 TEST_CASE("Scheduling functions", "[modulisp][api][scheduling]") {
-    ModuLispInterpreter interp;
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
     Environment env;
     
     // Test scheduling an item

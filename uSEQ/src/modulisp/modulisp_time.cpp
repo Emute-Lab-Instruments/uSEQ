@@ -35,31 +35,31 @@ void ModuLispInterpreter::update_lisp_time_variables() {
     // These should appear as seconds in Lisp-land
     TimeValue time_s = m_time_manager->get_time_seconds();
     TimeValue t_s = m_time_manager->get_transport_seconds();
-    set("time", Value(time_s));
-    set("t", Value(t_s));
+    get_environment()->set("time", Value(time_s));
+    get_environment()->set("t", Value(t_s));
     
     // Update phasor variables
-    set("beat", Value(m_current_phasor_state.beat_phase));
-    set("bar", Value(m_current_phasor_state.bar_phase));
-    set("phrase", Value(m_current_phasor_state.phrase_phase));
-    set("section", Value(m_current_phasor_state.section_phase));
+    get_environment()->set("beat", Value(m_current_phasor_state.beat_phase));
+    get_environment()->set("bar", Value(m_current_phasor_state.bar_phase));
+    get_environment()->set("phrase", Value(m_current_phasor_state.phrase_phase));
+    get_environment()->set("section", Value(m_current_phasor_state.section_phase));
     
     // Update beat/bar numbers
-    set("beatNum", Value(static_cast<int>(m_current_phasor_state.current_beat_num)));
-    set("barNum", Value(static_cast<int>(m_current_phasor_state.current_bar_num)));
+    get_environment()->set("beatNum", Value(static_cast<int>(m_current_phasor_state.current_beat_num)));
+    get_environment()->set("barNum", Value(static_cast<int>(m_current_phasor_state.current_bar_num)));
     
     // Update duration variables (in seconds)
     const auto& lengths = m_phasor_manager->get_lengths();
-    set("beat-dur", Value(lengths.beat_length / 1000000.0));
-    set("bar-dur", Value(lengths.bar_length / 1000000.0));
-    set("phrase-dur", Value(lengths.phrase_length / 1000000.0));
-    set("section-dur", Value(lengths.section_length / 1000000.0));
+    get_environment()->set("beat-dur", Value(lengths.beat_length / 1000000.0));
+    get_environment()->set("bar-dur", Value(lengths.bar_length / 1000000.0));
+    get_environment()->set("phrase-dur", Value(lengths.phrase_length / 1000000.0));
+    get_environment()->set("section-dur", Value(lengths.section_length / 1000000.0));
     
     // Aliases
-    set("beatDur", Value(lengths.beat_length / 1000000.0));
-    set("barDur", Value(lengths.bar_length / 1000000.0));
-    set("phraseDur", Value(lengths.phrase_length / 1000000.0));
-    set("sectionDur", Value(lengths.section_length / 1000000.0));
+    get_environment()->set("beatDur", Value(lengths.beat_length / 1000000.0));
+    get_environment()->set("barDur", Value(lengths.bar_length / 1000000.0));
+    get_environment()->set("phraseDur", Value(lengths.phrase_length / 1000000.0));
+    get_environment()->set("sectionDur", Value(lengths.section_length / 1000000.0));
 }
 
 void ModuLispInterpreter::update_logical_time_variables(TimeValue t) {
@@ -91,16 +91,16 @@ void ModuLispInterpreter::update_bpm_variables() {
     // Update duration variables in LISP environment
     const auto& lengths = m_phasor_manager->get_lengths();
     
-    set("beat-dur", Value(lengths.beat_length * 1e-6));
-    set("bar-dur", Value(lengths.bar_length * 1e-6));
-    set("phrase-dur", Value(lengths.phrase_length * 1e-6));
-    set("section-dur", Value(lengths.section_length * 1e-6));
+    get_environment()->set("beat-dur", Value(lengths.beat_length * 1e-6));
+    get_environment()->set("bar-dur", Value(lengths.bar_length * 1e-6));
+    get_environment()->set("phrase-dur", Value(lengths.phrase_length * 1e-6));
+    get_environment()->set("section-dur", Value(lengths.section_length * 1e-6));
     
     // Aliases
-    set("beatDur", Value(lengths.beat_length * 1e-6));
-    set("barDur", Value(lengths.bar_length * 1e-6));
-    set("phraseDur", Value(lengths.phrase_length * 1e-6));
-    set("sectionDur", Value(lengths.section_length * 1e-6));
+    get_environment()->set("beatDur", Value(lengths.beat_length * 1e-6));
+    get_environment()->set("barDur", Value(lengths.bar_length * 1e-6));
+    get_environment()->set("phraseDur", Value(lengths.phrase_length * 1e-6));
+    get_environment()->set("sectionDur", Value(lengths.section_length * 1e-6));
 }
 
 void ModuLispInterpreter::set_time_sig(double numerator, double denominator) {
@@ -113,7 +113,7 @@ void ModuLispInterpreter::set_time_sig(double numerator, double denominator) {
 
 // Environment creation for time-based evaluation
 Environment ModuLispInterpreter::make_env_for_time(TimeValue time) {
-    Environment env(*this);  // Start with current environment
+    Environment env(*get_environment());  // Start with current environment
     
     // Calculate phasor values at the specified time
     PhasorState state_at_time;

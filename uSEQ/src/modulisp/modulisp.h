@@ -2,6 +2,9 @@
 #define MODULISP_H_
 
 #include "modulisp_interpreter.h"
+#include "lisp/error_context.h"
+#include "lisp/environment.h"
+#include "lisp/parser.h"
 #include <string>
 #include <memory>
 #include <vector>
@@ -48,8 +51,8 @@ class ModuLisp {
         // Check if the evaluation succeeded (not error or nil)
         bool okay() const {
             auto type_enum = value.get_type_enum();
-            // Based on enum in value.h: NIL=13, ERROR=15
-            return type_enum != 15 && type_enum != 13;
+            // Based on enum in value.h: NIL=12, ERROR=14
+            return type_enum != 14 && type_enum != 12;
         }
         
         // Get the type name (returns capitalized strings like "Integer", "Float", "Symbol")
@@ -93,7 +96,7 @@ class ModuLisp {
         const Value& get_value() const { return value; }
         
         // Error handling methods
-        bool is_error() const { return error_type != ErrorType::NONE || value.get_type_enum() == 15; }
+        bool is_error() const { return error_type != ErrorType::NONE || value.get_type_enum() == 14; }
         ErrorType get_error_type() const { return error_type; }
         const std::string& get_error_message() const { return error_message; }
         const std::string& get_suggestion() const { return suggestion; }
@@ -155,16 +158,24 @@ class ModuLisp {
     void register_deprecated(const std::string& old_name, const std::string& new_name);
     
     // Direct access to interpreter if needed (for advanced use)
-    ModuLispInterpreter* get_interpreter() { return interpreter.get(); }
+    ModuLispInterpreter* get_interpreter() { return &m_interpreter; }
     
   private:
-    std::unique_ptr<ModuLispInterpreter> interpreter;
+    // Owned components (order matters for initialization)
+    ErrorManager m_error_manager;
+    Environment m_environment;
+    uLispParser m_parser;
+    ModuLispInterpreter m_interpreter;
+    
     Context current_context;
     std::map<std::string, std::string> deprecated_functions;
     
     // Helper methods for error detection
     Response analyze_error(const Value& result, const std::string& code);
     void detect_suggestions(Response& response, const std::string& code);
+    
+    // New centralized error handling
+    Response create_response_from_error_context(const ErrorContext& error_ctx, const Value& result);
 };
 
 #endif // MODULISP_H_

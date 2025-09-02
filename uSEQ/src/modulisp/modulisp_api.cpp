@@ -105,7 +105,7 @@ Value ModuLispInterpreter::useq_set_time_offset(std::vector<Value> &args,
 
     // BODY
     m_time_manager->set_transport_offset(args[0].as_float());
-    set("useq-time-offset", args[0].as_float());
+    get_environment()->set("useq-time-offset", args[0].as_float());
 
     return args[0];
 }
@@ -144,7 +144,7 @@ Value ModuLispInterpreter::useq_nudge_time(std::vector<Value> &args,
     // BODY
     double new_offset = m_time_manager->get_transport_offset() + args[0].as_float();
     m_time_manager->set_transport_offset(new_offset);
-    set("useq-time-offset", new_offset);
+    get_environment()->set("useq-time-offset", new_offset);
 
     return args[0];
 }
