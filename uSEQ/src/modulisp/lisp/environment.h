@@ -69,6 +69,16 @@ class Environment {
     friend std::ostream &operator<<(std::ostream &os, Environment const &v);
 
     static BuiltinMap& FAST_MEM_ENV builtindefs();
+    
+    // Test accessors for internal maps
+    ValueMap& __test_get_defs() { return m_defs; }
+    ValueMap& __test_get_def_exprs() { return m_def_exprs; }
+    
+    // Public accessors for def_exprs and defs
+    ValueMap& get_defs() { return m_defs; }
+    ValueMap& get_def_exprs() { return m_def_exprs; }
+    const ValueMap& get_defs() const { return m_defs; }
+    const ValueMap& get_def_exprs() const { return m_def_exprs; }
 
   protected:
     ValueMap m_defs;
