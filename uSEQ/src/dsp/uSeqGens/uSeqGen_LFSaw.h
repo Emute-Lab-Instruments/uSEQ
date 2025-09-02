@@ -30,7 +30,7 @@ protected:
     {
         outputs.SetValue(0, phase);
         phase += inc;
-        if (phase > 1.f) {
+        if (phase >= 1.f) {
             phase -= 2.f;
         }
     }
