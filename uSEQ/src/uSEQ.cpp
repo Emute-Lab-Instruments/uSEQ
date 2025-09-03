@@ -1,5 +1,4 @@
 #include "uSEQ.h"
-#include "modulisp/lisp/LispLibrary.h"
 #include "modulisp/modulisp_interpreter.h"
 #include "uSEQ/io_manager.h"
 #include "uSEQ/output_manager.h"
@@ -129,12 +128,12 @@ void uSEQ::eval_lisp_library()
 {
     DBG("eval_lisp_library");
 
-    for (int i = 0; i < LispLibrarySize; i++)
-    {
-        String code = LispLibrary[i];
-        dbg("Evalling code " + String(i) + ":\n" + code);
-        eval(code);
-    }
+    // for (int i = 0; i < LispLibrarySize; i++)
+    // {
+    //     String code = LispLibrary[i];
+    //     dbg("Evalling code " + String(i) + ":\n" + code);
+    //     eval(code);
+    // }
 }
 
 #ifdef ARDUINO
@@ -236,35 +235,26 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)()
 void uSEQ::init()
 {
     DBG("uSEQ::init");
-    Serial.println("init start");
 
     // Make init() idempotent - return early if already initialized
     if (m_initialised)
     {
-        Serial.println("init: already initialized, returning early");
         return;
     }
-    Serial.println("init: proceeding with initialization");
 
 #ifdef ARDUINO
-    Serial.println("init: initializing DSP queues");
     init_dsp_queues();
 #endif
 
     // dbg("free heap (start):" + String(free_heap()));
-    Serial.println("init: setting instance pointer");
-    dbg("Setting instance pointer");
 
     Interpreter::useq_instance_ptr = this;
-    Serial.println("init: initializing interpreter");
     m_interpreter.init();
 
     uSEQ::instance = this;
-    Serial.println("init: calling init_builtinfuncs");
     init_builtinfuncs();
 
     // Initialize default logger if none is set
-    Serial.println("init: checking global logger");
     if (get_global_logger() == nullptr)
     {
         static DefaultLogger static_logger;
@@ -272,41 +262,31 @@ void uSEQ::init()
     }
 
     // Initialize output management system
-    Serial.println("init: creating OutputManager");
     m_output_manager = new OutputManager(this);
 
     // Initialize IO management system
-    Serial.println("init: creating IOManager");
     m_io_manager = new IOManager(this, io);
-    Serial.println("init: initializing IOManager");
     m_io_manager->init();
 
     // eval_lisp_library();
 
-    Serial.println("init: running LED animation");
     m_io_manager->led_animation();
 #ifdef USEQHARDWARE_1_0
-    Serial.println("init: starting PDM");
     start_pdm();
 #endif
 
     // dbg("Lisp library loaded.");
 
     // uSEQ software setup
-    Serial.println("init: setting BPM");
     set_bpm(130.0, 0.0); // Default BPM
-    Serial.println("init: updating time");
     update_time();
-    Serial.println("init: initializing ASTs");
     init_ASTs();
 
 #ifdef ARDUINO
-    Serial.println("init: autoloading flash");
     autoload_flash();
 #endif
 
     m_initialised = true;
-    Serial.println("init end");
 }
 
 void uSEQ::start_loop_blocking()
@@ -349,10 +329,9 @@ void FAST_FUNC(uSEQ::tick())
     update_time();
     // check_code_quant_phasor();
     run_scheduled_items();
-    // update_Q0();
+    update_Q0();
     // Re-run & cache output signal forms
-
-    // update_signals();
+    update_signals();
 
     // Write cached output signals to hardware and/or software outputs
 #if HAS_OUTPUTS
@@ -403,17 +382,13 @@ void uSEQ::check_and_handle_user_input()
 
     if (is_new_code_waiting())
     {
-        println("[DEBUG] New code detected waiting");
 
         // Debug: Show what type of input we have
         if (bNewI2CMessage)
         {
-            println("[DEBUG] Input source: I2C");
         }
         else
         {
-            println("[DEBUG] Input source: Serial, bytes available: " +
-                    String(Serial.available()));
         }
         set_manual_evaluation(true);
 
@@ -424,15 +399,11 @@ void uSEQ::check_and_handle_user_input()
         if (bNewI2CMessage)
         {
             first_byte = i2cInBuff[0];
-            println("[DEBUG] I2C first byte: " + String(first_byte) + " (" +
-                    String((char)first_byte) + ")");
         }
 #ifdef ARDUINO
         else
         {
             first_byte = Serial.read();
-            println("[DEBUG] Serial first byte: " + String(first_byte) + " (" +
-                    String((char)first_byte) + ")");
         }
 #else
         else
@@ -459,22 +430,7 @@ void uSEQ::check_and_handle_user_input()
         {
             // Read code
             m_last_received_code = get_code_waiting();
-            println("[DEBUG] Received code string:");
-            println("[DEBUG] Length: " + String(m_last_received_code.length()));
-            println("[DEBUG] Content: '" + m_last_received_code + "'");
 
-            // Show hex dump of first few characters for debugging
-            String hex_dump = "[DEBUG] Hex dump (first 20 chars): ";
-            int max_chars   = (m_last_received_code.length() < 20)
-                                  ? m_last_received_code.length()
-                                  : 20;
-            for (int i = 0; i < max_chars; i++)
-            {
-                hex_dump += "0x";
-                hex_dump += String(m_last_received_code[i], 16);
-                hex_dump += " ";
-            }
-            println(hex_dump);
 
             if (m_last_received_code == exit_command)
             {
@@ -487,14 +443,11 @@ void uSEQ::check_and_handle_user_input()
             // ... EXECUTE NOW
             if (first_byte == SerialMsg::execute_now_marker /*'@'*/)
             {
-                println("[DEBUG] EXECUTE NOW mode - immediate evaluation");
 
                 // Clear error queue
                 error_msg_q.clear();
 
-                println("[DEBUG] Starting eval() call...");
                 String result = eval(m_last_received_code);
-                println("[DEBUG] eval() returned: '" + result + "'");
 
                 if (error_msg_q.size() > 0)
                 {
@@ -514,24 +467,17 @@ void uSEQ::check_and_handle_user_input()
             // SCHEDULE FOR LATER
             else
             {
-                println("[DEBUG] SCHEDULE FOR LATER mode - adding to run queue");
 
                 m_last_received_code =
                     String((char)first_byte) + m_last_received_code;
 
-                println("[DEBUG] Full code with first byte prepended: '" +
-                        m_last_received_code + "'");
 
                 if (bNewI2CMessage)
                     i2cPrintStr += m_last_received_code;
                 else
                     println(m_last_received_code);
 
-                println("[DEBUG] Parsing code for scheduling...");
                 Value expr = get_parser()->parse(m_last_received_code);
-                println("[DEBUG] Parsed expression: " + expr.display());
-
-                println("[DEBUG] Adding to run queue...");
                 get_scheduler()->add_to_run_queue(expr);
             }
         }
