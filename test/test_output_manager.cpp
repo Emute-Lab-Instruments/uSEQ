@@ -29,10 +29,10 @@ TEST_CASE("OutputManager configuration table", "[output_manager][config]") {
         REQUIRE(std::string(d3_config->lisp_name) == "d3");
         REQUIRE(std::string(d3_config->getter_name) == "get-d3");
         
-        const auto* s5_config = OutputManager::get_config(5, OutputManager::OutputType::SERIAL);
+        const auto* s5_config = OutputManager::get_config(5, OutputManager::OutputType::SERIAL_OUT);
         REQUIRE(s5_config != nullptr);
         REQUIRE(s5_config->id == 5);
-        REQUIRE(s5_config->type == OutputManager::OutputType::SERIAL);
+        REQUIRE(s5_config->type == OutputManager::OutputType::SERIAL_OUT);
         REQUIRE(s5_config->pin_index == 4);
         REQUIRE(std::string(s5_config->lisp_name) == "s5");
         REQUIRE(std::string(s5_config->getter_name) == "get-s5");
@@ -51,15 +51,15 @@ TEST_CASE("OutputManager availability checks", "[output_manager][availability]")
         REQUIRE(OutputManager::is_output_available(3, OutputManager::OutputType::CONTINUOUS) == true);
         REQUIRE(OutputManager::is_output_available(1, OutputManager::OutputType::BINARY) == true);
         REQUIRE(OutputManager::is_output_available(3, OutputManager::OutputType::BINARY) == true);
-        REQUIRE(OutputManager::is_output_available(1, OutputManager::OutputType::SERIAL) == true);
-        REQUIRE(OutputManager::is_output_available(8, OutputManager::OutputType::SERIAL) == true);
+        REQUIRE(OutputManager::is_output_available(1, OutputManager::OutputType::SERIAL_OUT) == true);
+        REQUIRE(OutputManager::is_output_available(8, OutputManager::OutputType::SERIAL_OUT) == true);
     }
     
     SECTION("Out-of-bounds outputs are not available") {
         // Test bounds for desktop config
         REQUIRE(OutputManager::is_output_available(4, OutputManager::OutputType::CONTINUOUS) == false);
         REQUIRE(OutputManager::is_output_available(4, OutputManager::OutputType::BINARY) == false);
-        REQUIRE(OutputManager::is_output_available(9, OutputManager::OutputType::SERIAL) == false);
+        REQUIRE(OutputManager::is_output_available(9, OutputManager::OutputType::SERIAL_OUT) == false);
         REQUIRE(OutputManager::is_output_available(0, OutputManager::OutputType::CONTINUOUS) == false);
         REQUIRE(OutputManager::is_output_available(-1, OutputManager::OutputType::CONTINUOUS) == false);
     }
@@ -69,7 +69,7 @@ TEST_CASE("OutputManager name utilities", "[output_manager][names]") {
     SECTION("get_lisp_name returns correct names") {
         REQUIRE(std::string(OutputManager::get_lisp_name(1, OutputManager::OutputType::CONTINUOUS)) == "a1");
         REQUIRE(std::string(OutputManager::get_lisp_name(2, OutputManager::OutputType::BINARY)) == "d2");
-        REQUIRE(std::string(OutputManager::get_lisp_name(3, OutputManager::OutputType::SERIAL)) == "s3");
+        REQUIRE(std::string(OutputManager::get_lisp_name(3, OutputManager::OutputType::SERIAL_OUT)) == "s3");
         
         // Invalid IDs return null
         REQUIRE(OutputManager::get_lisp_name(99, OutputManager::OutputType::CONTINUOUS) == nullptr);
@@ -78,7 +78,7 @@ TEST_CASE("OutputManager name utilities", "[output_manager][names]") {
     SECTION("get_getter_name returns correct names") {
         REQUIRE(std::string(OutputManager::get_getter_name(1, OutputManager::OutputType::CONTINUOUS)) == "get-a1");
         REQUIRE(std::string(OutputManager::get_getter_name(2, OutputManager::OutputType::BINARY)) == "get-d2");
-        REQUIRE(std::string(OutputManager::get_getter_name(3, OutputManager::OutputType::SERIAL)) == "get-s3");
+        REQUIRE(std::string(OutputManager::get_getter_name(3, OutputManager::OutputType::SERIAL_OUT)) == "get-s3");
         
         // Invalid IDs return null
         REQUIRE(OutputManager::get_getter_name(99, OutputManager::OutputType::CONTINUOUS) == nullptr);
@@ -112,7 +112,7 @@ TEST_CASE("OutputManager configuration completeness", "[output_manager][complete
     
     SECTION("All serial outputs are configured") {
         for (int i = 1; i <= 8; i++) {
-            const auto* config = OutputManager::get_config(i, OutputManager::OutputType::SERIAL);
+            const auto* config = OutputManager::get_config(i, OutputManager::OutputType::SERIAL_OUT);
             REQUIRE(config != nullptr);
             REQUIRE(config->id == i);
             REQUIRE(config->pin_index == i - 1);  // 0-based indexing
@@ -131,14 +131,14 @@ TEST_CASE("OutputManager boundary condition tests", "[output_manager][boundaries
         REQUIRE(OutputManager::get_config(1, OutputManager::OutputType::BINARY) != nullptr);
         REQUIRE(OutputManager::get_config(8, OutputManager::OutputType::BINARY) != nullptr);
         
-        REQUIRE(OutputManager::get_config(1, OutputManager::OutputType::SERIAL) != nullptr);
-        REQUIRE(OutputManager::get_config(8, OutputManager::OutputType::SERIAL) != nullptr);
+        REQUIRE(OutputManager::get_config(1, OutputManager::OutputType::SERIAL_OUT) != nullptr);
+        REQUIRE(OutputManager::get_config(8, OutputManager::OutputType::SERIAL_OUT) != nullptr);
         
         // Test just outside valid boundaries
         REQUIRE(OutputManager::get_config(0, OutputManager::OutputType::CONTINUOUS) == nullptr);
         REQUIRE(OutputManager::get_config(9, OutputManager::OutputType::CONTINUOUS) == nullptr);
         REQUIRE(OutputManager::get_config(-1, OutputManager::OutputType::BINARY) == nullptr);
-        REQUIRE(OutputManager::get_config(10, OutputManager::OutputType::SERIAL) == nullptr);
+        REQUIRE(OutputManager::get_config(10, OutputManager::OutputType::SERIAL_OUT) == nullptr);
     }
     
     SECTION("Availability checks match configuration data") {
@@ -151,8 +151,8 @@ TEST_CASE("OutputManager boundary condition tests", "[output_manager][boundaries
             bool binary_config_exists = (OutputManager::get_config(i, OutputManager::OutputType::BINARY) != nullptr);
             bool binary_available = OutputManager::is_output_available(i, OutputManager::OutputType::BINARY);
             
-            bool serial_config_exists = (OutputManager::get_config(i, OutputManager::OutputType::SERIAL) != nullptr);
-            bool serial_available = OutputManager::is_output_available(i, OutputManager::OutputType::SERIAL);
+            bool serial_config_exists = (OutputManager::get_config(i, OutputManager::OutputType::SERIAL_OUT) != nullptr);
+            bool serial_available = OutputManager::is_output_available(i, OutputManager::OutputType::SERIAL_OUT);
             
             // Config always exists (1-8), but availability depends on NUM_*_OUTS constants
             REQUIRE(continuous_config_exists == true);
