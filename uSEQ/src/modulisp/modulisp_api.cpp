@@ -1291,7 +1291,7 @@ Value ModuLispInterpreter::useq_random(std::vector<Value> &args,
 
     uint32_t current_beat_num = static_cast<uint32_t>(
         env.get("beat-num")
-            .value_or(Value(static_cast<int>(m_current_phasor_state.current_beat_num)))
+            .value_or(Value(static_cast<int>(beat_num_at_time(get_time_manager()->get_transport_time()))))
             .as_int());
 
     double rand_val = simple_hashing_function(current_beat_num);

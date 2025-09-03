@@ -7,7 +7,7 @@
 namespace test_helpers {
 
 QuickInterpreter::QuickInterpreter() : impl(std::make_unique<::Interpreter>()) {
-    impl->init();
+    // impl->init();
 }
 
 QuickInterpreter::~QuickInterpreter() = default;

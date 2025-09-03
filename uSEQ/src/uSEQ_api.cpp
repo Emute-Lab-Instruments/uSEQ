@@ -89,6 +89,9 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("get-d7", useq_get_d7);
     INSERT_BUILTINDEF("get-d8", useq_get_d8);
 
+    INSERT_BUILTINDEF("useq-report-firmware-info", useq_report_firmware_info);
+    INSERT_BUILTINDEF("useq-firmware-info", useq_firmware_info);
+
     // Hardware IO functions - TODO: Implement
 #ifdef ARDUINO
     INSERT_BUILTINDEF("useqaw", ard_useqaw);
@@ -99,17 +102,14 @@ void uSEQ::init_builtinfuncs()
     
     // Flash/persistence
     // Flash/persistence functions - Not yet implemented
-    // INSERT_BUILTINDEF("flash-save", useq_flash_save);
-    // INSERT_BUILTINDEF("flash-save-named", useq_flash_save_named);
-    // INSERT_BUILTINDEF("flash-load", useq_flash_load);
-    // INSERT_BUILTINDEF("flash-list", useq_flash_list);
-    // INSERT_BUILTINDEF("flash-erase", useq_flash_erase_all);
-    // INSERT_BUILTINDEF("flash-print", useq_flash_print);
+    INSERT_BUILTINDEF("useq-memory-save", useq_memory_save);
+    INSERT_BUILTINDEF("useq-memory-restore", useq_memory_save);
+    INSERT_BUILTINDEF("useq-memory-erase", useq_memory_save);
     
     // System functions
     // INSERT_BUILTINDEF("useq-bpm", useq_bpm);  // Function doesn't exist
-    INSERT_BUILTINDEF("fw-info", useq_firmware_info);
-    INSERT_BUILTINDEF("fw-version", useq_firmware_info);
+    // INSERT_BUILTINDEF("fw-info", useq_firmware_info);
+    // INSERT_BUILTINDEF("fw-version", useq_firmware_info);
     // Control and state functions - Not yet implemented
     // INSERT_BUILTINDEF("useq-set-sync-led", useq_set_sync_led);
     // INSERT_BUILTINDEF("useq-sync-led", useq_set_sync_led);
@@ -168,6 +168,17 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_firmware_info, {
 #endif
                           println(msg); ret = Value();
                           }, 0)
+
+BUILTINFUNC_NOEVAL_MEMBER(useq_report_firmware_info, //
+                          message_editor((String)USEQ_FIRMWARE_VERSION);
+                          // String msg = "{";
+                          // msg += "\"release_date\": \"";
+                          // msg += String((String)USEQ_FIRMWARE_RELEASE_DATE);
+                          // msg += "\", {\"version\": \"";
+                          // msg += String((String)USEQ_FIRMWARE_VERSION); //
+                          // msg += "\"}";                                 //
+                          // println(msg);
+                          , 0)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_q0, get_environment()->set("q-expr", args[0]); get_scheduler()->set_q0_ast(args[0]); ret = Value::atom("q0");
                           , 1)

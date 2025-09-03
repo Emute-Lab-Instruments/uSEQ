@@ -71,7 +71,7 @@ void uSEQ::update_clock_from_external(double ts)
             ext_clock_tracker.beat_count = 0;
             ext_clock_tracker.bar_count++;
             if (ext_clock_tracker.bar_count ==
-                static_cast<size_t>(m_interpreter.get_phasor_manager()->get_bars_per_phrase()))
+                static_cast<size_t>(m_interpreter.get_bars_per_phrase()))
             {
                 ext_clock_tracker.bar_count = 0;
             }

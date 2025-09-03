@@ -32,6 +32,7 @@ bool INTERP_MEM Interpreter::m_update_loop_evaluation           = false;
 String INTERP_MEM Interpreter::m_atom_currently_being_evaluated = "";
 
 uSEQ* INTERP_MEM Interpreter::useq_instance_ptr;
+ModuLispInterpreter* INTERP_MEM Interpreter::modulisp_instance_ptr;
 
 // Constructor with dependency injection
 Interpreter::Interpreter(Environment* env, uLispParser* parser, ErrorManager* error_mgr) {
@@ -69,16 +70,16 @@ Interpreter::Interpreter()
     m_error_manager = m_fallback_error_manager.get();
 }
 
-void Interpreter::init()
-{
-    DBG("Interpreter::init");
-    // if (!m_builtindefs_init)
-    // {
-    loadBuiltinDefs();
-    m_environment->set("nil", Value::nil());
-    // m_builtindefs_init = true;
-    // }
-}
+// void Interpreter::init()
+// {
+//     DBG("Interpreter::init");
+//     // if (!m_builtindefs_init)
+//     // {
+//     loadBuiltinDefs();
+//     m_environment->set("nil", Value::nil());
+//     // m_builtindefs_init = true;
+//     // }
+// }
 
 void Interpreter::init_builtin_functions()
 {
@@ -100,7 +101,7 @@ Interpreter Interpreter::create_fresh_interpreter()
     
     // Create and initialize a new interpreter
     Interpreter interp;
-    interp.init();
+    // interp.init();
     return interp;
 }
 
@@ -711,6 +712,33 @@ Value Interpreter::apply(Value& f, LispFuncArgsVec& args, Environment& env)
             else if (Interpreter::useq_instance_ptr == NULL)
             {
                 report_generic_error("uSEQ POINTER INSTANCE IS NULL");
+            }
+            return Value::error();
+        }
+    }
+    case Value::BUILTIN_MODULISP_METHOD:
+    {
+        dbg("builtin MODULISP METHOD!");
+        if (f.stack_data.builtin_modulisp_method != NULL &&
+            Interpreter::modulisp_instance_ptr != NULL)
+        {
+            // 1. Deref the ModuLispInterpreter instance pointer
+            // 2. Find its concrete method using the builtin_modulisp_method ptr
+            // 3. Call it with the args
+            Value result =
+                (*modulisp_instance_ptr.*f.stack_data.builtin_modulisp_method)(args, env);
+            return result;
+        }
+        else
+        {
+            if (f.stack_data.builtin_modulisp_method == NULL)
+            {
+                report_generic_error("EMPTY BUILTIN MODULISP POINTER for method with name " +
+                                     f.str);
+            }
+            else if (Interpreter::modulisp_instance_ptr == NULL)
+            {
+                report_generic_error("ModuLispInterpreter POINTER INSTANCE IS NULL");
             }
             return Value::error();
         }

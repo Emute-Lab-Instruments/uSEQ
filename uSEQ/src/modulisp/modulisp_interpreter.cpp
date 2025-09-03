@@ -7,7 +7,6 @@ ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* e
     
     // Create managers with dependency injection
     m_time_manager = std::make_unique<TimeManager>(clk);
-    m_phasor_manager = std::make_unique<PhasorManager>();
     m_scheduler = std::make_unique<Scheduler>();
     
     // Use provided random generator or create default
@@ -17,8 +16,8 @@ ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* e
         m_random_generator = std::make_unique<SimpleRandomGenerator>();
     }
     
-    // Initialize with default BPM to avoid divide-by-zero
-    m_phasor_manager->set_bpm(130.0, 0.0);
+    // Initialize default BPM to avoid divide-by-zero (member variables already initialized with defaults)
+    set_bpm(130.0, 0.0);
     
     // Initialize default CQP AST (only if parser is available)
     if (get_parser()) {
@@ -31,10 +30,6 @@ ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* e
 // Destructor
 ModuLispInterpreter::~ModuLispInterpreter() = default;
 
-void ModuLispInterpreter::update_phasor_state() {
-    TimeValue transport_time = m_time_manager->get_transport_time();
-    m_phasor_manager->update_phasor_state(transport_time, m_current_phasor_state);
-}
 
 void ModuLispInterpreter::run_scheduled_items() {
     DBG("ModuLispInterpreter::runScheduledItems");

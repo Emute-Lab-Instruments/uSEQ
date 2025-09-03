@@ -609,7 +609,9 @@ std::set<String> Value::get_used_atoms() const {
 
 bool Value::is_nil() const { return type == NIL; }
 bool Value::is_builtin() const {
-    return type == BUILTIN || type == BUILTIN_METHOD;
+    // Treat all builtin function carriers as builtins so the evaluator
+    // does not pre-evaluate their arguments (special forms support).
+    return type == BUILTIN || type == BUILTIN_METHOD || type == BUILTIN_MODULISP_METHOD;
 }
 
 Value Value::apply(std::vector<Value> &args, Environment &env) {

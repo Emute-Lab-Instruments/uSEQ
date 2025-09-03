@@ -31,14 +31,24 @@ class Environment {
         // init();
     }
 
-    Environment(const Environment &v) : m_defs(v.m_defs) {
+    // Copy constructor: copy defs, def_exprs, and parent pointer
+    Environment(const Environment &v)
+        : m_defs(v.m_defs), m_def_exprs(v.m_def_exprs), m_parent_env(v.m_parent_env) {
         // init();
     }
-    Environment(Environment &&v) : m_defs(std::move(v.m_defs)) {
+    // Move constructor: move maps and copy parent pointer
+    Environment(Environment &&v)
+        : m_defs(std::move(v.m_defs)), m_def_exprs(std::move(v.m_def_exprs)),
+          m_parent_env(v.m_parent_env) {
         // init();
     }
+    // Copy assignment: copy defs, def_exprs, and parent pointer
     Environment &operator=(const Environment &env2) {
-        this->m_defs = std::move(env2.m_defs);
+        if (this != &env2) {
+            this->m_defs = env2.m_defs;
+            this->m_def_exprs = env2.m_def_exprs;
+            this->m_parent_env = env2.m_parent_env;
+        }
         return *this;
     }
 

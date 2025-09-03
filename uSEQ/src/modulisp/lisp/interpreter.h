@@ -19,7 +19,7 @@ class Interpreter {
     // Default constructor for backward compatibility
     Interpreter();
 
-    void init();
+    // void init();
 
     // Static helper functions for testing and initialization
     static void init_builtin_functions();
@@ -57,6 +57,7 @@ class Interpreter {
     static void eval_args(std::vector<Value> &args, Environment &env);
 
     static uSEQ *useq_instance_ptr;
+    static ModuLispInterpreter *modulisp_instance_ptr;
     
     // Error handling
     ErrorManager* get_error_manager() { return m_error_manager; }
@@ -90,10 +91,10 @@ class Interpreter {
     static bool m_manual_evaluation;
     static bool m_update_loop_evaluation;
     static String m_atom_currently_being_evaluated;
+    void loadBuiltinDefs();
 
   private:
     bool m_builtindefs_init = false;
-    void loadBuiltinDefs();
     
     // Injected dependencies
     Environment* m_environment;

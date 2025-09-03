@@ -22,9 +22,6 @@ void ModuLispInterpreter::reset_logical_time() {
 void ModuLispInterpreter::update_logical_time(TimeValue actual_time) {
     DBG("ModuLispInterpreter::update_logical_time");
     
-    // Update phasor state
-    update_phasor_state();
-    
     // Push them to the interpreter
     update_lisp_time_variables();
 }
@@ -38,28 +35,28 @@ void ModuLispInterpreter::update_lisp_time_variables() {
     get_environment()->set("time", Value(time_s));
     get_environment()->set("t", Value(t_s));
     
-    // Update phasor variables
-    get_environment()->set("beat", Value(m_current_phasor_state.beat_phase));
-    get_environment()->set("bar", Value(m_current_phasor_state.bar_phase));
-    get_environment()->set("phrase", Value(m_current_phasor_state.phrase_phase));
-    get_environment()->set("section", Value(m_current_phasor_state.section_phase));
+    // Calculate phasor values directly using transport time in microseconds
+    TimeValue transport_micros = m_time_manager->get_transport_time();
+    get_environment()->set("beat", Value(beat_at_time(transport_micros)));
+    get_environment()->set("bar", Value(bar_at_time(transport_micros)));
+    get_environment()->set("phrase", Value(phrase_at_time(transport_micros)));
+    get_environment()->set("section", Value(section_at_time(transport_micros)));
     
-    // Update beat/bar numbers
-    get_environment()->set("beatNum", Value(static_cast<int>(m_current_phasor_state.current_beat_num)));
-    get_environment()->set("barNum", Value(static_cast<int>(m_current_phasor_state.current_bar_num)));
+    // Update beat/bar numbers  
+    get_environment()->set("beatNum", Value(static_cast<int>(beat_num_at_time(transport_micros))));
+    get_environment()->set("barNum", Value(static_cast<int>(bar_num_at_time(transport_micros))));
     
     // Update duration variables (in seconds)
-    const auto& lengths = m_phasor_manager->get_lengths();
-    get_environment()->set("beat-dur", Value(lengths.beat_length / 1000000.0));
-    get_environment()->set("bar-dur", Value(lengths.bar_length / 1000000.0));
-    get_environment()->set("phrase-dur", Value(lengths.phrase_length / 1000000.0));
-    get_environment()->set("section-dur", Value(lengths.section_length / 1000000.0));
+    get_environment()->set("beat-dur", Value(m_beat_length / 1000000.0));
+    get_environment()->set("bar-dur", Value(m_bar_length / 1000000.0));
+    get_environment()->set("phrase-dur", Value(m_phrase_length / 1000000.0));
+    get_environment()->set("section-dur", Value(m_section_length / 1000000.0));
     
     // Aliases
-    get_environment()->set("beatDur", Value(lengths.beat_length / 1000000.0));
-    get_environment()->set("barDur", Value(lengths.bar_length / 1000000.0));
-    get_environment()->set("phraseDur", Value(lengths.phrase_length / 1000000.0));
-    get_environment()->set("sectionDur", Value(lengths.section_length / 1000000.0));
+    get_environment()->set("beatDur", Value(m_beat_length / 1000000.0));
+    get_environment()->set("barDur", Value(m_bar_length / 1000000.0));
+    get_environment()->set("phraseDur", Value(m_phrase_length / 1000000.0));
+    get_environment()->set("sectionDur", Value(m_section_length / 1000000.0));
 }
 
 void ModuLispInterpreter::update_logical_time_variables(TimeValue t) {
@@ -77,8 +74,14 @@ void ModuLispInterpreter::set_bpm(double newBpm, double changeThreshold = 0.0) {
     if (newBpm <= 0.0) {
         report_generic_error("Invalid BPM requested: " + String(newBpm));
     } else {
-        // Delegate to PhasorManager
-        m_phasor_manager->set_bpm(newBpm, changeThreshold);
+        // Update direct member variables like old uSEQ
+        m_bpm = newBpm;
+        
+        // Derive phasor lengths (in microseconds)
+        m_beat_length = bpm_to_micros_per_beat(newBpm);
+        m_bar_length = m_beat_length * 4.0; // Assuming 4/4 time for now
+        m_phrase_length = m_bar_length * m_bars_per_phrase;
+        m_section_length = m_phrase_length * m_phrases_per_section;
         
         // Update LISP variables
         update_bpm_variables();
@@ -88,46 +91,44 @@ void ModuLispInterpreter::set_bpm(double newBpm, double changeThreshold = 0.0) {
 void ModuLispInterpreter::update_bpm_variables() {
     DBG("ModuLispInterpreter::update_bpm_variables");
     
-    // Update duration variables in LISP environment
-    const auto& lengths = m_phasor_manager->get_lengths();
-    
-    get_environment()->set("beat-dur", Value(lengths.beat_length * 1e-6));
-    get_environment()->set("bar-dur", Value(lengths.bar_length * 1e-6));
-    get_environment()->set("phrase-dur", Value(lengths.phrase_length * 1e-6));
-    get_environment()->set("section-dur", Value(lengths.section_length * 1e-6));
+    // Update duration variables in LISP environment (convert microseconds to seconds)
+    get_environment()->set("beat-dur", Value(m_beat_length * 1e-6));
+    get_environment()->set("bar-dur", Value(m_bar_length * 1e-6));
+    get_environment()->set("phrase-dur", Value(m_phrase_length * 1e-6));
+    get_environment()->set("section-dur", Value(m_section_length * 1e-6));
     
     // Aliases
-    get_environment()->set("beatDur", Value(lengths.beat_length * 1e-6));
-    get_environment()->set("barDur", Value(lengths.bar_length * 1e-6));
-    get_environment()->set("phraseDur", Value(lengths.phrase_length * 1e-6));
-    get_environment()->set("sectionDur", Value(lengths.section_length * 1e-6));
+    get_environment()->set("beatDur", Value(m_beat_length * 1e-6));
+    get_environment()->set("barDur", Value(m_bar_length * 1e-6));
+    get_environment()->set("phraseDur", Value(m_phrase_length * 1e-6));
+    get_environment()->set("sectionDur", Value(m_section_length * 1e-6));
 }
 
 void ModuLispInterpreter::set_time_sig(double numerator, double denominator) {
-    // Delegate to PhasorManager
-    m_phasor_manager->set_time_signature(numerator, denominator);
+    // Update bar length based on time signature
+    // Assuming quarter note = beat, so bar_length = beat_length * numerator * (4/denominator)
+    m_bar_length = m_beat_length * numerator * (4.0 / denominator);
+    m_phrase_length = m_bar_length * m_bars_per_phrase;
+    m_section_length = m_phrase_length * m_phrases_per_section;
     
     // Update LISP variables
-    update_lisp_time_variables();
+    update_bpm_variables();
 }
 
 // Environment creation for time-based evaluation
-Environment ModuLispInterpreter::make_env_for_time(TimeValue time) {
-    Environment env(*get_environment());  // Start with current environment
-    
-    // Calculate phasor values at the specified time
-    PhasorState state_at_time;
-    m_phasor_manager->update_phasor_state(time, state_at_time);
-    
-    // Set time-specific variables
-    env.set("t", Value(time / 1000000.0));
-    env.set("beat", Value(state_at_time.beat_phase));
-    env.set("bar", Value(state_at_time.bar_phase));
-    env.set("phrase", Value(state_at_time.phrase_phase));
-    env.set("section", Value(state_at_time.section_phase));
-    env.set("beatNum", Value(static_cast<int>(state_at_time.current_beat_num)));
-    env.set("barNum", Value(static_cast<int>(state_at_time.current_bar_num)));
-    
+Environment ModuLispInterpreter::make_env_for_time(TimeValue t_micros) {
+    Environment env;
+
+    // TimeValue time_s = m_time_since_boot * 1e-6;
+    TimeValue t_s = t_micros * 1e-6;
+
+    // env.set("time", Value(time_s));
+    env.set("t", Value(t_s));
+    env.set("beat", Value(beat_at_time(t_micros)));
+    env.set("bar", Value(bar_at_time(t_micros)));
+    env.set("phrase", Value(phrase_at_time(t_micros)));
+    env.set("section", Value(section_at_time(t_micros)));
+
     return env;
 }
 
@@ -135,11 +136,10 @@ Environment ModuLispInterpreter::make_env_with_updated_time_durs(const Environme
     Environment new_env(env);
     
     // Update duration variables based on current tempo settings
-    const auto& lengths = m_phasor_manager->get_lengths();
-    new_env.set("beatDur", Value(lengths.beat_length / 1000000.0));
-    new_env.set("barDur", Value(lengths.bar_length / 1000000.0));
-    new_env.set("phraseDur", Value(lengths.phrase_length / 1000000.0));
-    new_env.set("sectionDur", Value(lengths.section_length / 1000000.0));
+    new_env.set("beatDur", Value(m_beat_length / 1000000.0));
+    new_env.set("barDur", Value(m_bar_length / 1000000.0));
+    new_env.set("phraseDur", Value(m_phrase_length / 1000000.0));
+    new_env.set("sectionDur", Value(m_section_length / 1000000.0));
     
     return new_env;
 }
