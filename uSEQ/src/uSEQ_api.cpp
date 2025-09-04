@@ -92,10 +92,17 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("useq-report-firmware-info", useq_report_firmware_info);
     INSERT_BUILTINDEF("useq-firmware-info", useq_firmware_info);
 
-    // Hardware IO functions - TODO: Implement
 #ifdef ARDUINO
     INSERT_BUILTINDEF("useqaw", ard_useqaw);
     INSERT_BUILTINDEF("useqdw", ard_useqdw);
+    INSERT_BUILTINDEF("aw", ard_aw);
+    INSERT_BUILTINDEF("dw", ard_dw);
+#else
+    // Desktop build versions
+    INSERT_BUILTINDEF("useqaw", ard_useqaw);
+    INSERT_BUILTINDEF("useqdw", ard_useqdw);
+    INSERT_BUILTINDEF("aw", ard_aw);
+    INSERT_BUILTINDEF("dw", ard_dw);
 #endif
     // INSERT_BUILTINDEF("useqdr", ard_useqdr);  // Function doesn't exist
     // INSERT_BUILTINDEF("useqar", ard_useqar);  // Function doesn't exist

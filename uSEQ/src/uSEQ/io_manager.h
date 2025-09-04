@@ -64,9 +64,11 @@ public:
     // === Output Operations ===
     // Analog/PWM outputs
     void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val);
+    void analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE val);
     
     // Digital outputs
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
+    void digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val);
     
     // Serial stream outputs
     void serial_write(int output, SERIAL_OUTPUT_VALUE_TYPE val);

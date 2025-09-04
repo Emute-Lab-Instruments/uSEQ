@@ -287,6 +287,8 @@ class uSEQ {
     void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val);
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
     void serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val);
+    void analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE val);
+    void digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val);
 
 #ifndef ARDUINO
   public:

@@ -335,7 +335,7 @@ void IOManager::read_hardware_1_0_inputs() {
 void IOManager::gpio_irq_gate1() {
     if (!s_instance || !s_instance->m_parent) return;
     
-#ifdef ARDUINO
+#if defined(ARDUINO) && !defined(MUSICTHING)
     double ts = static_cast<double>(micros());
     const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
     s_instance->set_input_value(USEQI1, input1);
@@ -349,7 +349,7 @@ void IOManager::gpio_irq_gate1() {
 void IOManager::gpio_irq_gate2() {
     if (!s_instance || !s_instance->m_parent) return;
     
-#ifdef ARDUINO
+#if defined(ARDUINO) && !defined(MUSICTHING)
     double ts = static_cast<double>(micros());
     const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
     s_instance->set_input_value(USEQI2, input2);
@@ -366,20 +366,26 @@ void IOManager::gpio_irq_gate2() {
 void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val) {
     DBG("IOManager::analog_write_with_led");
 
-    constexpr double maxpwm = 2047.0;
+    constexpr int maxpwm_i = 2047;
+    constexpr double maxpwm = static_cast<double>(maxpwm_i);
 
-    int scaled_val = val * maxpwm;
+    int scaled_val = static_cast<int>(val * maxpwm);
     dbg("scaled_val (before clamping) = " + String(scaled_val));
 
     // clamping
-    if (scaled_val > maxpwm) {
+    if (scaled_val > maxpwm_i) {
         dbg("over maxpwm, clamping");
-        scaled_val = maxpwm;
+        scaled_val = maxpwm_i;
     }
     if (scaled_val < 0) {
         dbg("less than 0, clamping");
         scaled_val = 0;
     }
+
+#ifdef ANALOG_OUT_INVERTED
+    // invert analog output (not the LED)
+    scaled_val = maxpwm_i - scaled_val;
+#endif
 
     // led
     int led_pin = get_analog_out_led_pin(output + 1);
@@ -405,7 +411,7 @@ void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE v
     // write led
     analogWrite(led_pin, ledsigval);
 #else
-    // write pwm
+    // write pwm to LED via PIO
     pio_pwm_set_level(pio0, output, ledsigval);
 #endif
     // write output
@@ -433,6 +439,7 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
         m_io_adapter->digitalWrite(static_cast<uint8_t>(led_pin), v);
         return;
     }
+    
 
 #ifdef ARDUINO
     // write digi
@@ -466,6 +473,63 @@ void IOManager::serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val) {
     }
 #else
     (void)out; (void)val;
+#endif
+}
+
+void IOManager::analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE val) {
+    DBG("IOManager::analog_write_led_direct");
+    
+    constexpr double maxpwm = 2047.0;
+    
+    int scaled_val = val * maxpwm;
+    
+    // clamping
+    if (scaled_val > maxpwm) {
+        scaled_val = maxpwm;
+    }
+    if (scaled_val < 0) {
+        scaled_val = 0;
+    }
+    
+    // Apply exponential curve for LED brightness
+    int ledsigval = scaled_val;
+    ledsigval = (ledsigval * ledsigval) >> 11;
+    
+    dbg("pin = " + String(pin));
+    dbg("val = " + String(val));
+    dbg("scaled_val = " + String(scaled_val));
+    dbg("ledsigval = " + String(ledsigval));
+    
+    // If an I/O adapter is provided, use it and return (desktop tests)
+    if (m_io_adapter) {
+        m_io_adapter->analogWrite(static_cast<uint8_t>(pin), ledsigval);
+        return;
+    }
+    
+#ifdef ARDUINO
+    analogWrite(pin, ledsigval);
+#else
+    (void)pin; (void)ledsigval;
+#endif
+}
+
+void IOManager::digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val) {
+    DBG("IOManager::digital_write_led_direct");
+    
+    dbg("pin = " + String(pin));
+    dbg("val = " + String(val));
+    
+    // If an I/O adapter is provided, use it and return
+    if (m_io_adapter) {
+        uint8_t v = static_cast<uint8_t>(val > 0.5);
+        m_io_adapter->digitalWrite(static_cast<uint8_t>(pin), v);
+        return;
+    }
+    
+#ifdef ARDUINO
+    digitalWrite(pin, val > 0.5);
+#else
+    (void)pin; (void)val;
 #endif
 }
 

@@ -77,10 +77,14 @@ LISP_FUNC_DECL(useq_q0);
 // Arduino-specific I/O
 LISP_FUNC_DECL(ard_useqaw);
 LISP_FUNC_DECL(ard_useqdw);
+LISP_FUNC_DECL(ard_aw);
+LISP_FUNC_DECL(ard_dw);
 #else
 // Desktop build versions
 LISP_FUNC_DECL(ard_useqaw);
 LISP_FUNC_DECL(ard_useqdw);
+LISP_FUNC_DECL(ard_aw);
+LISP_FUNC_DECL(ard_dw);
 #endif
 
 #ifdef MIDIOUT

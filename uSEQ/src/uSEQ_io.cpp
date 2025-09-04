@@ -110,6 +110,18 @@ void uSEQ::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val) {
     }
 }
 
+void uSEQ::analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE val) {
+    if (m_io_manager) {
+        m_io_manager->analog_write_led_direct(pin, val);
+    }
+}
+
+void uSEQ::digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val) {
+    if (m_io_manager) {
+        m_io_manager->digital_write_led_direct(pin, val);
+    }
+}
+
 
 
 // Filters moved to IOManager

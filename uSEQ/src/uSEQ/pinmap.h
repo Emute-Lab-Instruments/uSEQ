@@ -56,12 +56,12 @@ ___ .-.     .--.
 #define USEQ_PIN_I1 2
 #define USEQ_PIN_I2 3
 
-#define USEQ_PIN_LED_I1 14
-#define USEQ_PIN_LED_I2 15
+// #define USEQ_PIN_LED_I1 14
+// #define USEQ_PIN_LED_I2 15
 
 const int useq_output_pins[]     = { 23, 22, 8, 9 };
 const int useq_output_led_pins[] = {
-    10, 11, 12, 13, USEQ_PIN_LED_I1, USEQ_PIN_LED_I2
+    10, 11, 12, 13, 14, 15
 };
 
 #define MUX_IN_1 28

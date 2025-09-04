@@ -1253,6 +1253,80 @@ Value uSEQ::ard_useqaw(std::vector<Value>& args, Environment& env)
     return Value::nil();
 }
 
+Value uSEQ::ard_aw(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "aw";
+
+    if (!(args.size() == 2))
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+        if (!(args[i].is_number()))
+        {
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
+            return Value::error();
+        }
+    }
+
+    // BODY
+    analog_write_led_direct(args[0].as_int(), args[1].as_float());
+
+    return Value::nil();
+}
+
+Value uSEQ::ard_dw(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "dw";
+
+    if (!(args.size() == 2))
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
+    }
+
+    // Evaluating & checking args for errors
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
+    {
+        // Eval
+        Value pre_eval = args[i];
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
+            return Value::error();
+        }
+
+        if (!(args[i].is_number()))
+        {
+            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
+                                        args[i].display());
+            return Value::error();
+        }
+    }
+
+    // BODY - using direct pin control with threshold at 0.5
+    digital_write_led_direct(args[0].as_int(), args[1].as_float());
+
+    return Value::nil();
+}
+
 // FIXME
 Value uSEQ::useq_toggle_pick(std::vector<Value>& args, Environment& env)
 {
@@ -1297,6 +1371,41 @@ Value uSEQ::useq_toggle_pick(std::vector<Value>& args, Environment& env)
     result          = list[input_index].eval(env);
 
     return result;
+}
+
+#else
+// Desktop build versions of Arduino-specific functions
+
+Value uSEQ::ard_useqaw(std::vector<Value>& args, Environment& env)
+{
+    // Desktop stub - just return nil
+    (void)args;
+    (void)env;
+    return Value::nil();
+}
+
+Value uSEQ::ard_useqdw(std::vector<Value>& args, Environment& env)
+{
+    // Desktop stub - just return nil
+    (void)args;
+    (void)env;
+    return Value::nil();
+}
+
+Value uSEQ::ard_aw(std::vector<Value>& args, Environment& env)
+{
+    // Desktop stub - just return nil
+    (void)args;
+    (void)env;
+    return Value::nil();
+}
+
+Value uSEQ::ard_dw(std::vector<Value>& args, Environment& env)
+{
+    // Desktop stub - just return nil
+    (void)args;
+    (void)env;
+    return Value::nil();
 }
 
 #endif
