@@ -177,8 +177,9 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)()
         switch (response.response)
         {
         case DSPQ::RESPONSES::UGENINFO:
-            println("ugen info: " + String(response.data.ugenInfo.key) + " " +
-                    response.data.ugenInfo.name);
+            // FIXME: This interferes with the editor handshake if it's printed before the editor asks for firmware version
+            // println("ugen info: " + String(response.data.ugenInfo.key) + " " +
+            //         response.data.ugenInfo.name);
             get_environment()->set(
                 "ugen-" + String(response.data.ugenInfo.name),
                 Value(static_cast<int>(response.data.ugenInfo.key)));
@@ -327,7 +328,7 @@ void FAST_FUNC(uSEQ::tick())
 #endif
     // Update time
     update_time();
-    // check_code_quant_phasor();
+    m_interpreter.check_code_quant_phasor();
     run_scheduled_items();
     update_Q0();
     // Re-run & cache output signal forms
