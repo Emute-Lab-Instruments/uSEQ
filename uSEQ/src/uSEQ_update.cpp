@@ -1,5 +1,8 @@
 #include "uSEQ.h"
 #include "utils.h"
+#ifdef MUSICTHING
+#include "dsp/uSeqGens/uSeqGen_MT_DAC.h"
+#endif
 
 /// UPDATE methods
 #if defined(USE_NOT_IN_FLASH)
@@ -54,6 +57,10 @@ void uSEQ::update_continuous_signals()
             }
         }
     }
+
+#ifdef MUSICTHING
+    update_dac_leds();
+#endif
 }
 
 #if defined(USE_NOT_IN_FLASH)
@@ -238,6 +245,57 @@ void uSEQ::update_serial_outs()
                                              SerialMsg::serial_message_rate_limit);
     }
 }
+
+#ifdef MUSICTHING
+void uSEQ::update_dac_leds()
+{
+    DBG("uSEQ::update_dac_leds");
+    
+    // Static circular buffers for running average
+    static constexpr size_t BUFFER_SIZE = 32;
+    static uint16_t left_buffer[BUFFER_SIZE] = {0};
+    static uint16_t right_buffer[BUFFER_SIZE] = {0};
+    static size_t buffer_index = 0;
+    
+    // Read latest DAC values from DSP thread (thread-safe volatile read)
+    uint16_t dac_left = uSeqGen_MT_DAC::latest_dac_left;
+    uint16_t dac_right = uSeqGen_MT_DAC::latest_dac_right;
+    
+    // Convert from 12-bit DAC range (0-4095 with 2048 center) to absolute values
+    // DAC center is 2048 (0V), so we calculate distance from center
+    int left_signed = static_cast<int>(dac_left) - 2048;
+    int right_signed = static_cast<int>(dac_right) - 2048;
+    
+    // Store absolute values in circular buffer
+    left_buffer[buffer_index] = static_cast<uint16_t>(abs(left_signed));
+    right_buffer[buffer_index] = static_cast<uint16_t>(abs(right_signed));
+    
+    // Calculate running average of absolute values
+    uint32_t left_sum = 0;
+    uint32_t right_sum = 0;
+    for (size_t i = 0; i < BUFFER_SIZE; i++) {
+        left_sum += left_buffer[i];
+        right_sum += right_buffer[i];
+    }
+    
+    // Average and scale to 0-2047 range (matching existing LED scaling)
+    // Max absolute value is 2048, so average can be at most 2048
+    int led_val_left = static_cast<int>(left_sum / BUFFER_SIZE);
+    int led_val_right = static_cast<int>(right_sum / BUFFER_SIZE);
+    
+    // Apply exponential curve for visual response (same as analog_write_with_led)
+    led_val_left = (led_val_left * led_val_left) >> 11;
+    led_val_right = (led_val_right * led_val_right) >> 11;
+    
+    // Update circular buffer index
+    buffer_index = (buffer_index + 1) % BUFFER_SIZE;
+    
+#ifdef ARDUINO
+    analogWrite(USEQ_LED_PIN_AUDIO_L, led_val_left);  
+    analogWrite(USEQ_LED_PIN_AUDIO_R, led_val_right);
+#endif
+}
+#endif // MUSICTHING
 
 #endif // HAS_OUTPUTS
 

@@ -58,10 +58,18 @@ ___ .-.     .--.
 
 // #define USEQ_PIN_LED_I1 14
 // #define USEQ_PIN_LED_I2 15
+    #define USEQ_LED_PIN_AUDIO_L 10
+    #define USEQ_LED_PIN_AUDIO_R 11
+    #define USEQ_LED_PIN_A1 12
+    #define USEQ_LED_PIN_A2 13
+    #define USEQ_LED_PIN_D1 14
+    #define USEQ_LED_PIN_D2 15
 
 const int useq_output_pins[]     = { 23, 22, 8, 9 };
 const int useq_output_led_pins[] = {
-    10, 11, 12, 13, 14, 15
+  USEQ_LED_PIN_AUDIO_L, USEQ_LED_PIN_AUDIO_R,
+  USEQ_LED_PIN_A1, USEQ_LED_PIN_A2,
+  USEQ_LED_PIN_D1, USEQ_LED_PIN_D2
 };
 
 #define MUX_IN_1 28

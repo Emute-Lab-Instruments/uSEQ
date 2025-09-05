@@ -31,6 +31,11 @@ public:
 
     }
 
+    // Static volatile variables for thread-safe access to latest DAC values
+    // DSP thread writes, main thread reads - no synchronization needed
+    static volatile uint16_t latest_dac_left;
+    static volatile uint16_t latest_dac_right;
+
     ~uSeqGen_MT_DAC() override
     {
     }
@@ -44,6 +49,10 @@ protected:
       const float inR = GET_INPUT_SAFE(inputs, float, 0, 0.f);
       const int sigL = static_cast<int>(inL * 2048.f) + 2047;
       const int sigR = static_cast<int>(inR * 2048.f) + 2047;
+
+      // Store latest DAC values for LED visualization (zero overhead)
+      latest_dac_left = static_cast<uint16_t>(sigL & 0xFFF);
+      latest_dac_right = static_cast<uint16_t>(sigR & 0xFFF);
 
       //assuming SPI already set up, so no need for begin/end transaction
       //CS is hardware controlled

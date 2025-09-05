@@ -233,6 +233,9 @@ class uSEQ {
     void update_continuous_signals();
     void update_binary_signals();
     void update_serial_signals();
+#ifdef MUSICTHING
+    void update_dac_leds();
+#endif
     // updating (i.e. writing to) the actual outputs
     void update_outs();
     void update_continuous_outs();
