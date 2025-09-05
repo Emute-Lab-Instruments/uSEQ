@@ -307,7 +307,7 @@ void IOManager::update_inputs()
 void IOManager::read_musicthing_inputs()
 {
     const double recp4096 = 0.000244141;
-    const size_t muxdelay = 2; // FIXME increase this for stability
+    const size_t muxdelay = 8; // FIXME increase this for stability
 
     // Read audio inputs directly (always available)
     m_responsive_inputs[6]->update(analogRead(AUDIO_IN_L));
@@ -999,5 +999,3 @@ double maxiFilter::lopass(double input, double cutoff)
     z = z + (input - z) * cutoff;
     return z;
 }
-
-Value useq_print_led_info()
