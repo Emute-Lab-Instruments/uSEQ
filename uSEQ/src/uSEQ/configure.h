@@ -94,7 +94,7 @@
 /* #define NUM_SERIAL_INS 0 */
 
 #define CONTINUOUS_OUTPUT_VALUE_TYPE double
-#define BINARY_OUTPUT_VALUE_TYPE int
+#define BINARY_OUTPUT_VALUE_TYPE double
 #define SERIAL_OUTPUT_VALUE_TYPE double
 
 #define CONTINUOUS_INPUT_VALUE_TYPE double

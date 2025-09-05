@@ -167,7 +167,8 @@ void uSEQ::init_builtinfuncs()
 
 #ifdef MUSICTHING
     // Music Thing knob values are now automatically updated as environment variables
-    // Users access them directly as 'knob', 'knobx', 'knoby', 'swz' (no function call needed)
+    // Users access them directly as 'knob', 'knobx', 'knoby', 'swz' (no function
+    // call needed)
 #endif
 }
 
@@ -510,8 +511,9 @@ Value uSEQ::useq_get_d8(std::vector<Value>& args, Environment& env)
 // }
 
 #ifdef MUSICTHING
-// Music Thing knob functions removed - values now automatically updated as environment variables
-// in update_inputs() function. Users access them directly as 'knob', 'knobx', 'knoby', 'swz'.
+// Music Thing knob functions removed - values now automatically updated as
+// environment variables in update_inputs() function. Users access them directly as
+// 'knob', 'knobx', 'knoby', 'swz'.
 #endif
 // clock sources
 

@@ -19,33 +19,10 @@ Gizmo or other products you make using this      | | source. |
 
 #include "../utils/string.h"
 
-/*
-
-
-                                                         ___       ___
-                                       .-.              (   )     (   )       .-.
- ___ .-. .-.    ___  ___      .--.    ( __)   .--.       | |_      | | .-.   ( __)
-___ .-.     .--.
-(   )   '   \  (   )(   )   /  _  \   (''")  /    \     (   __)    | |/   \  (''") (
-)   \   /    \ |  .-.  .-. ;  | |  | |   . .' `. ;   | |  |  .-. ;     | |       |
-.-. .   | |   |  .-. .  ;  ,-. ' | |  | |  | |  | |  | |   | '   | |   | |  |  |(___)
-| | ___   | |  | |   | |   | |  | |  | |  | | | |  | |  | |  | |  | |   _\_`.(___)  |
-|  |  |         | |(   )  | |  | |   | |   | |  | |  | |  | | | |  | |  | |  | |  | |
-(   ). '.    | |  |  | ___     | | | |   | |  | |   | |   | |  | |  | |  | | | |  | |
-| |  | |  ; '   | |  `\ |   | |  |  '(   )    | ' | |   | |  | |   | |   | |  | |  |
-'  | | | |  | |  | |  ' `-'  /   ; '._,' '   | |  '  `-' |     ' `-' ;   | |  | |   |
-|   | |  | |  '  `-' |
-(___)(___)(___)  '.__.'     '.___.'   (___)  `.__,'       `.__.   (___)(___) (___)
-(___)(___)  `.__. | ( `-' ;
-                                                                                                `.__.
-
-*/
-
 #ifdef MEMLNAUT
 #define USEQ_I2C_SDA_PIN 38
 #define USEQ_I2C_SCL_PIN 39
 #endif
-
 
 #ifdef MUSICTHING
 
@@ -58,19 +35,17 @@ ___ .-.     .--.
 
 // #define USEQ_PIN_LED_I1 14
 // #define USEQ_PIN_LED_I2 15
-    #define USEQ_LED_PIN_AUDIO_L 10
-    #define USEQ_LED_PIN_AUDIO_R 11
-    #define USEQ_LED_PIN_A1 12
-    #define USEQ_LED_PIN_A2 13
-    #define USEQ_LED_PIN_D1 14
-    #define USEQ_LED_PIN_D2 15
+#define USEQ_LED_PIN_AUDIO_L 10
+#define USEQ_LED_PIN_AUDIO_R 11
+#define USEQ_LED_PIN_A1 12
+#define USEQ_LED_PIN_A2 13
+#define USEQ_LED_PIN_D1 14
+#define USEQ_LED_PIN_D2 15
 
 const int useq_output_pins[]     = { 23, 22, 8, 9 };
-const int useq_output_led_pins[] = {
-  USEQ_LED_PIN_AUDIO_L, USEQ_LED_PIN_AUDIO_R,
-  USEQ_LED_PIN_A1, USEQ_LED_PIN_A2,
-  USEQ_LED_PIN_D1, USEQ_LED_PIN_D2
-};
+const int useq_output_led_pins[] = { USEQ_LED_PIN_AUDIO_L, USEQ_LED_PIN_AUDIO_R,
+                                     USEQ_LED_PIN_A1,      USEQ_LED_PIN_A2,
+                                     USEQ_LED_PIN_D1,      USEQ_LED_PIN_D2 };
 
 #define MUX_IN_1 28
 #define MUX_IN_2 29
@@ -161,7 +136,8 @@ const int useq_output_led_pins[] = { USEQ_PIN_LED_A1, USEQ_PIN_LED_A2,
 #define NUM_CONTINUOUS_OUTS 3
 #define NUM_BINARY_OUTS (6 - NUM_CONTINUOUS_OUTS)
 
-const String hardwareTypeID = "uSEQ10";  //used to distinguish between hardware on i2c
+const String hardwareTypeID = "uSEQ10"; // used to distinguish between hardware on
+                                        // i2c
 
 #define _USEQ_SDA_PIN_ 0
 #define _USEQ_SCL_PIN_ 1
@@ -234,7 +210,8 @@ const int useq_output_led_pins[] = { USEQ_PIN_LED_A1, USEQ_PIN_LED_A2,
 
 ///////////////////////////////////////////
 #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
-const String hardwareTypeID = "aout08";  //used to distinguish between hardware on i2c
+const String hardwareTypeID = "aout08"; // used to distinguish between hardware on
+                                        // i2c
 #define HAS_OUTPUTS 1
 #define HAS_INPUTS 0
 #define HAS_CONTROLS 0
@@ -245,10 +222,9 @@ const String hardwareTypeID = "aout08";  //used to distinguish between hardware 
 #define _USEQ_SDA_PIN_ 4
 #define _USEQ_SCL_PIN_ 1
 
-
 // TODO
-const int useq_output_pins[]     = { 13,14,10,11,8,7,5,3};
-const int useq_output_led_pins[] = { 15,20,17,12,9,6,2,0};
+const int useq_output_pins[]     = { 13, 14, 10, 11, 8, 7, 5, 3 };
+const int useq_output_led_pins[] = { 15, 20, 17, 12, 9, 6, 2, 0 };
 
 #endif // USEQHARDWARE_EXPANDER_OUT_0_1
 

@@ -470,7 +470,7 @@ void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE v
     }
 
 #ifdef ANALOG_OUT_INVERTED
-    // invert analog output (not the LED)
+    // invert analog output
     scaled_val = maxpwm_i - scaled_val;
 #endif
 
@@ -480,6 +480,11 @@ void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE v
     int ledsigval = scaled_val;
     ledsigval =
         (ledsigval * ledsigval) >> 11; // cheap way to square and get a exp curve
+
+#ifdef ANALOG_OUT_INVERTED
+    // invert LED signal as well
+    ledsigval = maxpwm_i - ledsigval;
+#endif
 
     dbg("output = " + String(output));
     dbg("pin = " + String(pwm_pin));
@@ -496,7 +501,7 @@ void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE v
     }
 
 #ifdef ARDUINO
-#ifdef USEQHARDWARE_EXPANDER_OUT_0_1
+#if defined(USEQHARDWARE_EXPANDER_OUT_0_1) || defined(MUSICTHING)
     // write led
     analogWrite(led_pin, ledsigval);
 #else
@@ -526,28 +531,32 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
     dbg("val = " + String(val));
 
     // If an I/O adapter is provided, use it and return
-    if (m_io_adapter)
-    {
-        uint8_t v = static_cast<uint8_t>(val > 0);
-        m_io_adapter->digitalWrite(static_cast<uint8_t>(pin), v);
-        m_io_adapter->digitalWrite(static_cast<uint8_t>(led_pin), v);
-        return;
-    }
+    // if (m_io_adapter)
+    // {
+    //     uint8_t v = static_cast<uint8_t>(val > 0);
+    //     m_io_adapter->digitalWrite(static_cast<uint8_t>(pin), v);
+    //     m_io_adapter->digitalWrite(static_cast<uint8_t>(led_pin), v);
+    //     return;
+    // }
 
 #ifdef ARDUINO
     // write digi
 #ifdef DIGI_OUT_INVERTED
-    digitalWrite(pin, 1 - (val > 0));
+    digitalWrite(pin, 1 - (val > 0.5));
 #else
-    digitalWrite(pin, val > 0);
+    digitalWrite(pin, val > 0.5);
 #endif
-    // write led
-    digitalWrite(led_pin, val > 0);
+    // write led - should match the actual output polarity
+#ifdef DIGI_OUT_INVERTED
+    // digitalWrite(led_pin, 1 - (val > 0.5)); // LED should also be inverted
+    digitalWrite(led_pin, 1); // LED should also be inverted
 #else
+    digitalWrite(led_pin, 0);
+#endif // DIGI_OUT_INVERTED
     (void)pin;
     (void)led_pin;
     (void)val;
-#endif
+#endif // ARDUINO
 }
 
 void IOManager::serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val)
