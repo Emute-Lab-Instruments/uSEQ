@@ -13,8 +13,8 @@
 #ifdef USEQHARDWARE_1_0
 #include "hardware/timer.h"
 #endif
-#include <hardware/pio.h>
 #include <hardware/gpio.h>
+#include <hardware/pio.h>
 #endif
 
 // Static instance for interrupt callbacks
@@ -22,34 +22,55 @@ IOManager* IOManager::s_instance = nullptr;
 
 // PDM globals for hardware 1.0
 #ifdef USEQHARDWARE_1_0
-float pdm_y = 0;
+float pdm_y   = 0;
 float pdm_err = 0;
-float pdm_w = 0;
+float pdm_w   = 0;
 #endif
 
 // Constructor
 IOManager::IOManager(uSEQ* parent, IIo* io_adapter)
-    : m_parent(parent)
-    , m_io_adapter(io_adapter)
-    , m_filter1(51)
-    , m_filter2(51)
+    : m_parent(parent), m_io_adapter(io_adapter), m_filter1(51), m_filter2(51)
 {
     // Initialize input values to zero
-    for (int i = 0; i < 14; i++) {
+    for (int i = 0; i < 14; i++)
+    {
         m_input_vals[i] = 0.0;
     }
-    
+
+#ifdef MUSICTHING
+    // Initialize ResponsiveAnalogRead pointers to nullptr
+    for (int i = 0; i < 8; i++)
+    {
+        m_responsive_inputs[i] = nullptr;
+    }
+#endif
+
     // Set static instance for interrupt callbacks
     IOManager::set_instance(this);
 }
 
-// === Initialization ===
-
-void IOManager::init() {
-    setup_io();
+// Destructor
+IOManager::~IOManager()
+{
+#ifdef MUSICTHING
+    // Clean up ResponsiveAnalogRead objects
+    for (int i = 0; i < 8; i++)
+    {
+        if (m_responsive_inputs[i])
+        {
+            delete m_responsive_inputs[i];
+            m_responsive_inputs[i] = nullptr;
+        }
+    }
+#endif
 }
 
-void IOManager::setup_io() {
+// === Initialization ===
+
+void IOManager::init() { setup_io(); }
+
+void IOManager::setup_io()
+{
     DBG("IOManager::setup_io");
 
 #if HAS_OUTPUTS
@@ -84,11 +105,13 @@ void IOManager::setup_io() {
 // === Setup Functions ===
 
 #if HAS_OUTPUTS
-void IOManager::setup_outputs() {
+void IOManager::setup_outputs()
+{
     DBG("IOManager::setup_outputs");
-    
+
 #ifdef ARDUINO
-    for (int i = 0; i < NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS; i++) {
+    for (int i = 0; i < NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS; i++)
+    {
         pinMode(useq_output_pins[i], OUTPUT_2MA);
     }
 
@@ -99,9 +122,10 @@ void IOManager::setup_outputs() {
 #endif // ARDUINO
 }
 
-void IOManager::setup_analog_outputs() {
+void IOManager::setup_analog_outputs()
+{
     DBG("IOManager::setup_analog_outputs");
-    
+
 #ifdef ARDUINO
     // PWM outputs
     analogWriteFreq(100000);   // out of hearing range
@@ -109,13 +133,14 @@ void IOManager::setup_analog_outputs() {
 
 #ifndef USEQHARDWARE_EXPANDER_OUT_0_1
     // set PIO PWM state machines to run PWM outputs
-    uint offset = pio_add_program(pio0, &pwm_program);
+    uint offset  = pio_add_program(pio0, &pwm_program);
     uint offset2 = pio_add_program(pio1, &pwm_program);
 
-    for (int i = 0; i < NUM_CONTINUOUS_OUTS; i++) {
+    for (int i = 0; i < NUM_CONTINUOUS_OUTS; i++)
+    {
         auto pioInstance = i < 4 ? pio0 : pio1;
-        uint pioOffset = i < 4 ? offset : offset2;
-        auto smIdx = i % 4;
+        uint pioOffset   = i < 4 ? offset : offset2;
+        auto smIdx       = i % 4;
         pwm_program_init(pioInstance, smIdx, pioOffset, useq_output_led_pins[i]);
         pio_pwm_set_period(pioInstance, smIdx, (1u << 11) - 1);
     }
@@ -125,21 +150,25 @@ void IOManager::setup_analog_outputs() {
 #endif // HAS_OUTPUTS
 
 #if HAS_INPUTS
-void IOManager::setup_digital_inputs() {
+void IOManager::setup_digital_inputs()
+{
     DBG("IOManager::setup_digital_inputs");
-    
+
 #ifdef ARDUINO
     pinMode(USEQ_PIN_I1, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I1), IOManager::gpio_irq_gate1, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I1), IOManager::gpio_irq_gate1,
+                    CHANGE);
     pinMode(USEQ_PIN_I2, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I2), IOManager::gpio_irq_gate2, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(USEQ_PIN_I2), IOManager::gpio_irq_gate2,
+                    CHANGE);
 #endif
 }
 
 #ifdef ANALOG_INPUTS
-void IOManager::setup_analog_inputs() {
+void IOManager::setup_analog_inputs()
+{
     DBG("IOManager::setup_analog_inputs");
-    
+
 #ifdef ARDUINO
 #ifdef USEQHARDWARE_1_0
     analogReadResolution(11);
@@ -152,6 +181,18 @@ void IOManager::setup_analog_inputs() {
     pinMode(MUX_IN_2, INPUT);
     pinMode(AUDIO_IN_L, INPUT);
     pinMode(AUDIO_IN_R, INPUT);
+
+    // Initialize ResponsiveAnalogRead for each input channel
+    // Channels 0-3: MUX_IN_1 readings (main knob, Y knob, X knob, switch)
+    // Channels 4-5: MUX_IN_2 readings (CV1, CV2)
+    // Channels 6-7: Direct audio inputs (L, R)
+
+    for (int i = 0; i < 8; i++)
+    {
+        m_responsive_inputs[i] = new ResponsiveAnalogRead(0, true, 0.1);
+        m_responsive_inputs[i]->setActivityThreshold(16);
+        m_responsive_inputs[i]->setAnalogResolution(4096); // 12-bit ADC
+    }
 #endif
 #endif // ARDUINO
 }
@@ -159,9 +200,10 @@ void IOManager::setup_analog_inputs() {
 #endif // HAS_INPUTS
 
 #if HAS_CONTROLS
-void IOManager::setup_switches() {
+void IOManager::setup_switches()
+{
     DBG("IOManager::setup_switches");
-    
+
 #ifdef ARDUINO
 #ifdef USEQHARDWARE_1_0
     pinMode(USEQ_PIN_SWITCH_M1, INPUT_PULLUP);
@@ -179,9 +221,10 @@ void IOManager::setup_switches() {
 #endif
 
 #ifdef ENABLE_LED_CONTROL
-void IOManager::setup_leds() {
+void IOManager::setup_leds()
+{
     DBG("IOManager::setup_leds");
-    
+
 #ifdef ARDUINO
 #ifdef USEQHARDWARE_1_0
     pinMode(USEQ_PIN_LED_AI1, OUTPUT_2MA);
@@ -190,7 +233,8 @@ void IOManager::setup_leds() {
     pinMode(USEQ_PIN_LED_I2, OUTPUT_2MA);
 #endif
 
-    for (int i = 0; i < (NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS); i++) {
+    for (int i = 0; i < (NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS); i++)
+    {
         pinMode(useq_output_led_pins[i], OUTPUT_2MA);
         gpio_set_slew_rate(useq_output_led_pins[i], GPIO_SLEW_RATE_SLOW);
     }
@@ -199,7 +243,8 @@ void IOManager::setup_leds() {
 #endif
 
 #ifdef MIDIOUT
-void IOManager::setup_midi() {
+void IOManager::setup_midi()
+{
 #ifdef ARDUINO
     Serial1.setRX(1);
     Serial1.setTX(0);
@@ -210,21 +255,26 @@ void IOManager::setup_midi() {
 
 // === Input Operations ===
 
-void IOManager::set_input_value(size_t index, double value) {
-    if (index < 14) {
+void IOManager::set_input_value(size_t index, double value)
+{
+    if (index < 14)
+    {
         m_input_vals[index] = value;
     }
 }
 
-double IOManager::get_input_value(size_t index) const {
-    if (index < 14) {
+double IOManager::get_input_value(size_t index) const
+{
+    if (index < 14)
+    {
         return m_input_vals[index];
     }
     return 0.0;
 }
 
 #if HAS_INPUTS
-void IOManager::update_inputs() {
+void IOManager::update_inputs()
+{
     DBG("IOManager::update_inputs");
 
 #ifdef USEQHARDWARE_0_2
@@ -242,8 +292,8 @@ void IOManager::update_inputs() {
 
 #ifdef USEQHARDWARE_0_2
     m_input_vals[USEQRS1] = 1 - digitalRead(USEQ_PIN_SWITCH_R1);
-    m_input_vals[USEQM2] = 1 - digitalRead(USEQ_PIN_SWITCH_M2);
-    m_input_vals[USEQT2] = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
+    m_input_vals[USEQM2]  = 1 - digitalRead(USEQ_PIN_SWITCH_M2);
+    m_input_vals[USEQT2]  = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
 #endif
 
 #ifdef USEQHARDWARE_1_0
@@ -254,37 +304,60 @@ void IOManager::update_inputs() {
 }
 
 #ifdef MUSICTHING
-void IOManager::read_musicthing_inputs() {
+void IOManager::read_musicthing_inputs()
+{
     const double recp4096 = 0.000244141;
     const size_t muxdelay = 2; // FIXME increase this for stability
 
-    // unroll loop for efficiency
+    // Read audio inputs directly (always available)
+    m_responsive_inputs[6]->update(analogRead(AUDIO_IN_L));
+    m_responsive_inputs[7]->update(analogRead(AUDIO_IN_R));
+
+    // Mux channel 0: Main knob + CV1
     digitalWrite(MUX_LOGIC_A, 0);
     digitalWrite(MUX_LOGIC_B, 0);
     delayMicroseconds(muxdelay);
-    m_input_vals[MTMAINKNOB] = analogRead(MUX_IN_1) * recp4096;
-    m_input_vals[USEQAI1] = 1.0 - (analogRead(MUX_IN_2) * recp4096);
+    m_responsive_inputs[0]->update(analogRead(MUX_IN_1));
+    m_responsive_inputs[4]->update(4095 - analogRead(MUX_IN_2)); // Inverted
 
+    // Mux channel 1: Y knob
     digitalWrite(MUX_LOGIC_A, 0);
     digitalWrite(MUX_LOGIC_B, 1);
     delayMicroseconds(muxdelay);
-    m_input_vals[MTYKNOB] = analogRead(MUX_IN_1) * recp4096;
+    m_responsive_inputs[1]->update(analogRead(MUX_IN_1));
 
+    // Mux channel 2: X knob + CV2
     digitalWrite(MUX_LOGIC_A, 1);
     digitalWrite(MUX_LOGIC_B, 0);
     delayMicroseconds(muxdelay);
-    m_input_vals[MTXKNOB] = analogRead(MUX_IN_1) * recp4096;
-    m_input_vals[USEQAI2] = 1.0 - (analogRead(MUX_IN_2) * recp4096);
+    m_responsive_inputs[2]->update(analogRead(MUX_IN_1));
+    m_responsive_inputs[5]->update(4095 - analogRead(MUX_IN_2)); // Inverted
 
+    // Mux channel 3: Switch
     digitalWrite(MUX_LOGIC_A, 1);
     digitalWrite(MUX_LOGIC_B, 1);
     delayMicroseconds(muxdelay);
-    int switchVal = analogRead(MUX_IN_1);
-    if (switchVal < 100) {
+    m_responsive_inputs[3]->update(analogRead(MUX_IN_1));
+
+    // Extract values after filtering
+    m_input_vals[MTMAINKNOB] = m_responsive_inputs[0]->getValue() * recp4096;
+    m_input_vals[MTYKNOB]    = m_responsive_inputs[1]->getValue() * recp4096;
+    m_input_vals[MTXKNOB]    = m_responsive_inputs[2]->getValue() * recp4096;
+    m_input_vals[USEQAI1]    = m_responsive_inputs[4]->getValue() * recp4096;
+    m_input_vals[USEQAI2]    = m_responsive_inputs[5]->getValue() * recp4096;
+
+    // Handle switch with threshold detection
+    int switchVal = m_responsive_inputs[3]->getValue();
+    if (switchVal < 100)
+    {
         switchVal = 0;
-    } else if (switchVal > 3500) {
+    }
+    else if (switchVal > 3500)
+    {
         switchVal = 2;
-    } else {
+    }
+    else
+    {
         switchVal = 1;
     }
     m_input_vals[MTZSWITCH] = switchVal;
@@ -292,19 +365,26 @@ void IOManager::read_musicthing_inputs() {
 #endif
 
 #ifdef USEQHARDWARE_1_0
-void IOManager::read_hardware_1_0_inputs() {
+void IOManager::read_hardware_1_0_inputs()
+{
     const double recp2048 = 1 / 2048.0;
-    
+
     // TOGGLES
     const int ts_a = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
     const int ts_b = 1 - digitalRead(USEQ_PIN_SWITCH_T2);
 
-    if ((ts_a == 0) && (ts_b == 0)) {
+    if ((ts_a == 0) && (ts_b == 0))
+    {
         m_input_vals[USEQT1] = 1;
-    } else {
-        if (ts_a == 1) {
+    }
+    else
+    {
+        if (ts_a == 1)
+        {
             m_input_vals[USEQT1] = 2;
-        } else {
+        }
+        else
+        {
             m_input_vals[USEQT1] = 0;
         }
     }
@@ -317,44 +397,48 @@ void IOManager::read_hardware_1_0_inputs() {
     auto v_ai2 = analogRead(USEQ_PIN_AI2);
 
     auto v_ai1_11 = v_ai1;
-    v_ai1_11 = (v_ai1_11 * v_ai1_11) >> 11; // sqr to get exp curve
-    pdm_w = v_ai1_11 / 2048.0;
-    
+    v_ai1_11      = (v_ai1_11 * v_ai1_11) >> 11; // sqr to get exp curve
+    pdm_w         = v_ai1_11 / 2048.0;
+
     auto v_ai2_11 = v_ai2;
-    v_ai2_11 = (v_ai2_11 * v_ai2_11) >> 11;
+    v_ai2_11      = (v_ai2_11 * v_ai2_11) >> 11;
     analogWrite(USEQ_PIN_LED_AI2, v_ai2_11);
 
-    double filt1 = m_filter1.process(v_ai1 * recp2048);
-    double filt2 = m_filter2.process(v_ai2 * recp2048);
+    double filt1          = m_filter1.process(v_ai1 * recp2048);
+    double filt2          = m_filter2.process(v_ai2 * recp2048);
     m_input_vals[USEQAI1] = filt1;
     m_input_vals[USEQAI2] = filt2;
 }
 #endif
 
 // Static interrupt handlers
-void IOManager::gpio_irq_gate1() {
-    if (!s_instance || !s_instance->m_parent) return;
-    
+void IOManager::gpio_irq_gate1()
+{
+    if (!s_instance || !s_instance->m_parent)
+        return;
+
 #if defined(ARDUINO) && !defined(MUSICTHING)
-    double ts = static_cast<double>(micros());
+    double ts         = static_cast<double>(micros());
     const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
     s_instance->set_input_value(USEQI1, input1);
     digitalWrite(USEQ_PIN_LED_I1, input1);
-    
+
     // Delegate to parent for clock handling
     s_instance->m_parent->handle_input1_interrupt(ts, input1);
 #endif
 }
 
-void IOManager::gpio_irq_gate2() {
-    if (!s_instance || !s_instance->m_parent) return;
-    
+void IOManager::gpio_irq_gate2()
+{
+    if (!s_instance || !s_instance->m_parent)
+        return;
+
 #if defined(ARDUINO) && !defined(MUSICTHING)
-    double ts = static_cast<double>(micros());
+    double ts         = static_cast<double>(micros());
     const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
     s_instance->set_input_value(USEQI2, input2);
     digitalWrite(USEQ_PIN_LED_I2, input2);
-    
+
     // Delegate to parent for clock handling
     s_instance->m_parent->handle_input2_interrupt(ts, input2);
 #endif
@@ -363,21 +447,24 @@ void IOManager::gpio_irq_gate2() {
 
 // === Output Operations ===
 
-void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val) {
+void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val)
+{
     DBG("IOManager::analog_write_with_led");
 
-    constexpr int maxpwm_i = 2047;
+    constexpr int maxpwm_i  = 2047;
     constexpr double maxpwm = static_cast<double>(maxpwm_i);
 
     int scaled_val = static_cast<int>(val * maxpwm);
     dbg("scaled_val (before clamping) = " + String(scaled_val));
 
     // clamping
-    if (scaled_val > maxpwm_i) {
+    if (scaled_val > maxpwm_i)
+    {
         dbg("over maxpwm, clamping");
         scaled_val = maxpwm_i;
     }
-    if (scaled_val < 0) {
+    if (scaled_val < 0)
+    {
         dbg("less than 0, clamping");
         scaled_val = 0;
     }
@@ -388,10 +475,11 @@ void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE v
 #endif
 
     // led
-    int led_pin = get_analog_out_led_pin(output + 1);
-    int pwm_pin = get_analog_out_pin(output + 1);
+    int led_pin   = get_analog_out_led_pin(output + 1);
+    int pwm_pin   = get_analog_out_pin(output + 1);
     int ledsigval = scaled_val;
-    ledsigval = (ledsigval * ledsigval) >> 11; // cheap way to square and get a exp curve
+    ledsigval =
+        (ledsigval * ledsigval) >> 11; // cheap way to square and get a exp curve
 
     dbg("output = " + String(output));
     dbg("pin = " + String(pwm_pin));
@@ -400,7 +488,8 @@ void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE v
     dbg("scaled_val = " + String(scaled_val));
 
     // If an I/O adapter is provided, use it and return (desktop tests)
-    if (m_io_adapter) {
+    if (m_io_adapter)
+    {
         m_io_adapter->analogWrite(static_cast<uint8_t>(led_pin), ledsigval);
         m_io_adapter->analogWrite(static_cast<uint8_t>(pwm_pin), scaled_val);
         return;
@@ -417,14 +506,18 @@ void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE v
     // write output
     analogWrite(pwm_pin, scaled_val);
 #else
-    (void)led_pin; (void)pwm_pin; (void)ledsigval; (void)scaled_val;
+    (void)led_pin;
+    (void)pwm_pin;
+    (void)ledsigval;
+    (void)scaled_val;
 #endif
 }
 
-void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val) {
+void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
+{
     DBG("IOManager::digital_write_with_led");
 
-    int pin = get_digital_out_pin(output + 1);
+    int pin     = get_digital_out_pin(output + 1);
     int led_pin = get_digital_out_led_pin(output + 1);
 
     dbg("output = " + String(output));
@@ -433,13 +526,13 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
     dbg("val = " + String(val));
 
     // If an I/O adapter is provided, use it and return
-    if (m_io_adapter) {
+    if (m_io_adapter)
+    {
         uint8_t v = static_cast<uint8_t>(val > 0);
         m_io_adapter->digitalWrite(static_cast<uint8_t>(pin), v);
         m_io_adapter->digitalWrite(static_cast<uint8_t>(led_pin), v);
         return;
     }
-    
 
 #ifdef ARDUINO
     // write digi
@@ -451,14 +544,18 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
     // write led
     digitalWrite(led_pin, val > 0);
 #else
-    (void)pin; (void)led_pin; (void)val;
+    (void)pin;
+    (void)led_pin;
+    (void)val;
 #endif
 }
 
-void IOManager::serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val) {
+void IOManager::serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val)
+{
     DBG("IOManager::serial_write");
 
-    if (m_io_adapter) {
+    if (m_io_adapter)
+    {
         m_io_adapter->serialWrite(static_cast<uint8_t>(out), val);
         return;
     }
@@ -468,79 +565,91 @@ void IOManager::serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val) {
     Serial.write((u_int8_t)SerialMsg::serial_message_types::STREAM);
     Serial.write((u_int8_t)(out + 1));
     u_int8_t* byteArray = reinterpret_cast<u_int8_t*>(&val);
-    for (size_t b = 0; b < 8; b++) {
+    for (size_t b = 0; b < 8; b++)
+    {
         Serial.write(byteArray[b]);
     }
 #else
-    (void)out; (void)val;
+    (void)out;
+    (void)val;
 #endif
 }
 
-void IOManager::analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE val) {
+void IOManager::analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE val)
+{
     DBG("IOManager::analog_write_led_direct");
-    
+
     constexpr double maxpwm = 2047.0;
-    
+
     int scaled_val = val * maxpwm;
-    
+
     // clamping
-    if (scaled_val > maxpwm) {
+    if (scaled_val > maxpwm)
+    {
         scaled_val = maxpwm;
     }
-    if (scaled_val < 0) {
+    if (scaled_val < 0)
+    {
         scaled_val = 0;
     }
-    
+
     // Apply exponential curve for LED brightness
     int ledsigval = scaled_val;
-    ledsigval = (ledsigval * ledsigval) >> 11;
-    
+    ledsigval     = (ledsigval * ledsigval) >> 11;
+
     dbg("pin = " + String(pin));
     dbg("val = " + String(val));
     dbg("scaled_val = " + String(scaled_val));
     dbg("ledsigval = " + String(ledsigval));
-    
+
     // If an I/O adapter is provided, use it and return (desktop tests)
-    if (m_io_adapter) {
+    if (m_io_adapter)
+    {
         m_io_adapter->analogWrite(static_cast<uint8_t>(pin), ledsigval);
         return;
     }
-    
+
 #ifdef ARDUINO
     analogWrite(pin, ledsigval);
 #else
-    (void)pin; (void)ledsigval;
+    (void)pin;
+    (void)ledsigval;
 #endif
 }
 
-void IOManager::digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val) {
+void IOManager::digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val)
+{
     DBG("IOManager::digital_write_led_direct");
-    
+
     dbg("pin = " + String(pin));
     dbg("val = " + String(val));
-    
+
     // If an I/O adapter is provided, use it and return
-    if (m_io_adapter) {
+    if (m_io_adapter)
+    {
         uint8_t v = static_cast<uint8_t>(val > 0.5);
         m_io_adapter->digitalWrite(static_cast<uint8_t>(pin), v);
         return;
     }
-    
+
 #ifdef ARDUINO
     digitalWrite(pin, val > 0.5);
 #else
-    (void)pin; (void)val;
+    (void)pin;
+    (void)val;
 #endif
 }
 
 // === LED Control ===
 
-void IOManager::led_animation() {
+void IOManager::led_animation()
+{
 #ifdef ARDUINO
     int ledDelay = 30;
 #ifdef MUSICTHING
     ledDelay = 40;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 8; i++)
+    {
         digitalWrite(useq_output_led_pins[0], 1);
         delay(ledDelay);
         digitalWrite(useq_output_led_pins[2], 1);
@@ -564,7 +673,8 @@ void IOManager::led_animation() {
     }
 #endif
 #ifdef USEQHARDWARE_0_2
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 8; i++)
+    {
         digitalWrite(USEQ_PIN_LED_I1, 1);
         delay(ledDelay);
         digitalWrite(USEQ_PIN_LED_A1, 1);
@@ -595,7 +705,8 @@ void IOManager::led_animation() {
     }
 #endif
 #ifdef USEQHARDWARE_1_0
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 8; i++)
+    {
         digitalWrite(USEQ_PIN_LED_AI1, 1);
         delay(ledDelay);
         digitalWrite(USEQ_PIN_LED_AI2, 1);
@@ -632,7 +743,8 @@ void IOManager::led_animation() {
     }
 #endif
 #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 8; i++)
+    {
         digitalWrite(useq_output_led_pins[0], 1);
         delay(ledDelay);
         digitalWrite(useq_output_led_pins[1], 1);
@@ -669,9 +781,11 @@ void IOManager::led_animation() {
 
 // === Helper Functions ===
 
-int IOManager::get_analog_out_pin(int out) const {
+int IOManager::get_analog_out_pin(int out) const
+{
 #ifdef ARDUINO
-    if (out > 0 && out <= NUM_CONTINUOUS_OUTS) {
+    if (out > 0 && out <= NUM_CONTINUOUS_OUTS)
+    {
         return useq_output_pins[out - 1];
     }
 #else
@@ -680,21 +794,33 @@ int IOManager::get_analog_out_pin(int out) const {
     return -1;
 }
 
-int IOManager::get_analog_out_led_pin(int out) const {
-#ifdef ARDUINO
-    if (out > 0 && out <= NUM_CONTINUOUS_OUTS) {
+int IOManager::get_analog_out_led_pin(int out) const
+{
+#if defined(ARDUINO) && !defined(MUSICTHING)
+    if (out > 0 && out <= NUM_CONTINUOUS_OUTS)
+    {
         return useq_output_led_pins[out - 1];
     }
+#elif defined(MUSICTHING)
+    // FIXME
+    if (out == 1)
+        return USEQ_LED_PIN_A1;
+    else if (out == 2)
+        return USEQ_LED_PIN_A2;
+    else
+        return -1;
 #else
     (void)out;
 #endif
     return -1;
 }
 
-int IOManager::get_digital_out_pin(int out) const {
+int IOManager::get_digital_out_pin(int out) const
+{
 #ifdef ARDUINO
     int pindex = NUM_CONTINUOUS_OUTS + out;
-    if (pindex > 0 && pindex <= (NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS)) {
+    if (pindex > 0 && pindex <= (NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS))
+    {
         return useq_output_pins[pindex - 1];
     }
 #else
@@ -703,12 +829,22 @@ int IOManager::get_digital_out_pin(int out) const {
     return -1;
 }
 
-int IOManager::get_digital_out_led_pin(int out) const {
-#ifdef ARDUINO
+int IOManager::get_digital_out_led_pin(int out) const
+{
+#if defined(ARDUINO) && !defined(MUSICTHING)
     int pindex = NUM_CONTINUOUS_OUTS + out;
-    if (pindex > 0 && pindex <= 6) {
+    if (pindex > 0 && pindex <= 6)
+    {
         return useq_output_led_pins[pindex - 1];
     }
+#elif defined(MUSICTHING)
+    // FIXME
+    if (out == 1)
+        return USEQ_LED_PIN_D1;
+    else if (out == 2)
+        return USEQ_LED_PIN_D2;
+    else
+        return -1;
 #else
     (void)out;
 #endif
@@ -718,7 +854,8 @@ int IOManager::get_digital_out_led_pin(int out) const {
 // === Rotary Encoder Support (Hardware 0.2) ===
 
 #ifdef USEQHARDWARE_0_2
-void IOManager::setup_rotary_encoder() {
+void IOManager::setup_rotary_encoder()
+{
 #ifdef ARDUINO
     pinMode(USEQ_PIN_SWITCH_R1, INPUT_PULLUP);
     pinMode(USEQ_PIN_ROTARYENC_A, INPUT_PULLUP);
@@ -727,7 +864,8 @@ void IOManager::setup_rotary_encoder() {
 #endif
 }
 
-int8_t IOManager::read_rotary() {
+int8_t IOManager::read_rotary()
+{
 #ifdef ARDUINO
     static int8_t rot_enc_table[] = {
         0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0
@@ -741,7 +879,8 @@ int8_t IOManager::read_rotary() {
     m_prev_next_code &= 0x0f;
 
     // If valid then store as 16 bit data.
-    if (rot_enc_table[m_prev_next_code]) {
+    if (rot_enc_table[m_prev_next_code])
+    {
         m_store <<= 4;
         m_store |= m_prev_next_code;
         if ((m_store & 0xff) == 0x2b)
@@ -753,10 +892,12 @@ int8_t IOManager::read_rotary() {
     return 0;
 }
 
-void IOManager::read_rotary_encoders() {
+void IOManager::read_rotary_encoders()
+{
 #ifdef ARDUINO
     int8_t val = read_rotary();
-    if (val) {
+    if (val)
+    {
         m_input_vals[USEQR1] += val;
     }
 #endif
@@ -766,7 +907,8 @@ void IOManager::read_rotary_encoders() {
 // === PIO PWM Functions (Arduino Pico) ===
 
 #ifdef ARDUINO
-void IOManager::pio_pwm_set_level(PIO pio, uint sm, uint32_t level) {
+void IOManager::pio_pwm_set_level(PIO pio, uint sm, uint32_t level)
+{
     DBG("IOManager::pio_pwm_set_level");
     dbg(String(reinterpret_cast<size_t>(pio)));
     dbg(String(sm));
@@ -774,7 +916,8 @@ void IOManager::pio_pwm_set_level(PIO pio, uint sm, uint32_t level) {
     pio_sm_put_blocking(pio, sm, level);
 }
 
-void IOManager::pio_pwm_set_period(PIO pio, uint sm, uint32_t period) {
+void IOManager::pio_pwm_set_period(PIO pio, uint sm, uint32_t period)
+{
     pio_sm_set_enabled(pio, sm, false);
     pio_sm_put_blocking(pio, sm, period);
     pio_sm_exec(pio, sm, pio_encode_pull(false, false));
@@ -783,31 +926,39 @@ void IOManager::pio_pwm_set_period(PIO pio, uint sm, uint32_t period) {
 }
 
 // Global helper functions for backward compatibility
-int analog_out_pin(int out) {
-    if (out > 0 && out <= NUM_CONTINUOUS_OUTS) {
+int analog_out_pin(int out)
+{
+    if (out > 0 && out <= NUM_CONTINUOUS_OUTS)
+    {
         return useq_output_pins[out - 1];
     }
     return -1;
 }
 
-int analog_out_LED_pin(int out) {
-    if (out > 0 && out <= NUM_CONTINUOUS_OUTS) {
+int analog_out_LED_pin(int out)
+{
+    if (out > 0 && out <= NUM_CONTINUOUS_OUTS)
+    {
         return useq_output_led_pins[out - 1];
     }
     return -1;
 }
 
-int digital_out_pin(int out) {
+int digital_out_pin(int out)
+{
     int pindex = NUM_CONTINUOUS_OUTS + out;
-    if (pindex > 0 && pindex <= (NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS)) {
+    if (pindex > 0 && pindex <= (NUM_CONTINUOUS_OUTS + NUM_BINARY_OUTS))
+    {
         return useq_output_pins[pindex - 1];
     }
     return -1;
 }
 
-int digital_out_LED_pin(int out) {
+int digital_out_LED_pin(int out)
+{
     int pindex = NUM_CONTINUOUS_OUTS + out;
-    if (pindex > 0 && pindex <= 6) {
+    if (pindex > 0 && pindex <= 6)
+    {
         return useq_output_led_pins[pindex - 1];
     }
     return -1;
@@ -817,18 +968,23 @@ int digital_out_LED_pin(int out) {
 // === PDM Timer Callback (Hardware 1.0) ===
 
 #ifdef USEQHARDWARE_1_0
-bool timer_callback(repeating_timer_t* rt) {
-    pdm_y = pdm_w > pdm_err ? 1 : 0;
+bool timer_callback(repeating_timer_t* rt)
+{
+    pdm_y   = pdm_w > pdm_err ? 1 : 0;
     pdm_err = pdm_y - pdm_w + pdm_err;
-    if (pdm_y == 1) {
+    if (pdm_y == 1)
+    {
         digitalWrite(USEQ_PIN_LED_AI1, HIGH);
-    } else {
+    }
+    else
+    {
         digitalWrite(USEQ_PIN_LED_AI1, LOW);
     }
     return true;
 }
 
-void start_pdm() {
+void start_pdm()
+{
 #ifdef ARDUINO
     static repeating_timer_t mst;
     add_repeating_timer_us(150, timer_callback, NULL, &mst);
@@ -838,7 +994,10 @@ void start_pdm() {
 
 // === maxiFilter Implementation ===
 
-double maxiFilter::lopass(double input, double cutoff) {
+double maxiFilter::lopass(double input, double cutoff)
+{
     z = z + (input - z) * cutoff;
     return z;
 }
+
+Value useq_print_led_info()

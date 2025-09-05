@@ -8,11 +8,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifdef MUSICTHING
-// Music Thing hardware-specific functions
-LISP_FUNC_DECL(useq_mt_knob);
-LISP_FUNC_DECL(useq_mt_knobx);
-LISP_FUNC_DECL(useq_mt_knoby);
-LISP_FUNC_DECL(useq_mt_swz);
+// Music Thing knob functions removed - values now automatically updated as environment variables
+// in update_inputs() function. Users access them directly as 'knob', 'knobx', 'knoby', 'swz'.
 #endif
 
 #ifdef ARDUINO
@@ -26,5 +23,7 @@ LISP_FUNC_DECL(useq_ssin);
 // Hardware interface functions (cross-platform)
 LISP_FUNC_DECL(useq_swr);
 LISP_FUNC_DECL(useq_rot);
+
+LISP_FUNC_DECL(useq_print_led_info);
 
 #endif // USEQ_HARDWARE_H_

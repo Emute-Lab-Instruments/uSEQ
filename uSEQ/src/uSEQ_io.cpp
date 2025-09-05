@@ -130,6 +130,16 @@ void uSEQ::digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val) {
 void uSEQ::update_inputs() {
     if (m_io_manager) {
         m_io_manager->update_inputs();
+        
+#ifdef MUSICTHING
+        // Update Music Thing input values as environment variables
+        // This allows users to access them directly as 'knob', 'knobx', 'knoby', 'swz'
+        // instead of requiring function calls like '(knob)'
+        get_environment()->set("knob", Value(m_io_manager->get_input_value(MTMAINKNOB)));
+        get_environment()->set("knobx", Value(m_io_manager->get_input_value(MTXKNOB)));
+        get_environment()->set("knoby", Value(m_io_manager->get_input_value(MTYKNOB)));
+        get_environment()->set("swz", Value(m_io_manager->get_input_value(MTZSWITCH)));
+#endif
     }
 }
 #endif // HAS_INPUTS

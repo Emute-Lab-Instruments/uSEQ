@@ -1,10 +1,10 @@
 #ifndef USEQ_IO_MANAGER_H
 #define USEQ_IO_MANAGER_H
 
+#include "../dsp/MedianFilter.h"
+#include "../ports/IIo.h"
 #include "../utils/compiler_config.h"
 #include "configure.h"
-#include "../ports/IIo.h"
-#include "../dsp/MedianFilter.h"
 #include <cstdint>
 #include <memory>
 
@@ -14,13 +14,18 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 USEQ_SUPPRESS_EXTERNAL_WARNINGS_POP
 #endif
 
+#ifdef MUSICTHING
+#include "ResponsiveAnalogRead.h"
+#endif
+
 // Forward declarations
 class uSEQ;
 
 // Simple low-pass filter (moved from global scope)
-class maxiFilter {
+class maxiFilter
+{
 private:
-    double z = 0;
+    double z      = 0;
     double output = 0;
 
 public:
@@ -34,7 +39,7 @@ public:
 
 /**
  * IOManager - Encapsulates all hardware I/O operations for uSEQ
- * 
+ *
  * This class manages:
  * - Digital and analog inputs/outputs
  * - LED control and animations
@@ -42,42 +47,43 @@ public:
  * - Interrupt handling for inputs
  * - Platform abstraction (Arduino vs Desktop)
  */
-class IOManager {
+class IOManager
+{
 public:
     // Constructor/Destructor
     explicit IOManager(uSEQ* parent, IIo* io_adapter = nullptr);
-    ~IOManager() = default;
+    ~IOManager();
 
     // === Initialization ===
     void init();
     void setup_io();
-    
+
     // === Input Operations ===
     void update_inputs();
     void set_input_value(size_t index, double value);
     double get_input_value(size_t index) const;
-    
+
     // Input interrupt handlers (static for Arduino interrupts)
     static void gpio_irq_gate1();
     static void gpio_irq_gate2();
-    
+
     // === Output Operations ===
     // Analog/PWM outputs
     void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val);
     void analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE val);
-    
+
     // Digital outputs
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
     void digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val);
-    
+
     // Serial stream outputs
     void serial_write(int output, SERIAL_OUTPUT_VALUE_TYPE val);
-    
+
     // === LED Control ===
     void led_animation();
     void set_led(uint8_t led_pin, bool state);
     void set_led_pwm(uint8_t led_pin, int value);
-    
+
     // === Platform-specific operations ===
 #ifdef ARDUINO
     void setup_pio_pwm();
@@ -94,24 +100,35 @@ public:
     static void set_instance(IOManager* instance) { s_instance = instance; }
     static IOManager* get_instance() { return s_instance; }
 
+    // === Helper functions ===
+    int get_analog_out_pin(int output) const;
+    int get_analog_out_led_pin(int output) const;
+    int get_digital_out_pin(int output) const;
+    int get_digital_out_led_pin(int output) const;
+
 private:
     // Parent uSEQ instance
     uSEQ* m_parent;
-    
+
     // Optional I/O adapter for testing/simulation
     IIo* m_io_adapter;
-    
+
     // Static instance for interrupt callbacks
     static IOManager* s_instance;
-    
+
     // Input value storage
     double m_input_vals[14];
-    
+
     // Input filtering
     MedianFilter m_filter1;
     MedianFilter m_filter2;
     maxiFilter m_cv_filters[2];
-    
+
+#ifdef MUSICTHING
+    // ResponsiveAnalogRead for noise reduction on MusicThing hardware
+    ResponsiveAnalogRead* m_responsive_inputs[8]; // All MusicThing analog inputs
+#endif
+
     // === Setup functions ===
     void setup_outputs();
     void setup_analog_outputs();
@@ -121,13 +138,7 @@ private:
     void setup_analog_inputs();
     void setup_switches();
     void setup_leds();
-    
-    // === Helper functions ===
-    int get_analog_out_pin(int output) const;
-    int get_analog_out_led_pin(int output) const;
-    int get_digital_out_pin(int output) const;
-    int get_digital_out_led_pin(int output) const;
-    
+
     // === Platform-specific helpers ===
 #ifdef MUSICTHING
     void read_musicthing_inputs();
@@ -141,7 +152,7 @@ private:
     int8_t read_rotary();
     // Rotary encoder state
     uint8_t m_prev_next_code = 0;
-    uint16_t m_store = 0;
+    uint16_t m_store         = 0;
 #endif
 
 #ifdef MIDIOUT
