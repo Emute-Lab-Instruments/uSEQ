@@ -287,11 +287,15 @@ void uSEQ::update_dac_leds()
     led_val_left = (led_val_left * led_val_left) >> 11;
     led_val_right = (led_val_right * led_val_right) >> 11;
     
+    // Invert the values so low average = high LED brightness
+    led_val_left = 2047 - led_val_left;
+    led_val_right = 2047 - led_val_right;
+    
     // Update circular buffer index
     buffer_index = (buffer_index + 1) % BUFFER_SIZE;
     
 #ifdef ARDUINO
-    analogWrite(USEQ_LED_PIN_AUDIO_L, led_val_left);  
+    analogWrite(USEQ_LED_PIN_AUDIO_L, led_val_left);
     analogWrite(USEQ_LED_PIN_AUDIO_R, led_val_right);
 #endif
 }
