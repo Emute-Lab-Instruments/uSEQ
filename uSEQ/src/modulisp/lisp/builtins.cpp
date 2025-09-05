@@ -127,11 +127,11 @@ Value defn(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "defn";
 
-    // Checking number of args
-    if (!(args.size() == 3))
+    // Checking number of args - now allow 3 or more arguments
+    if (!(args.size() >= 3))
     {
         report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 3, -1);
+                                    NumArgsComparison::AtLeast, 3, -1);
         return Value::error();
     }
 
@@ -154,8 +154,26 @@ Value defn(std::vector<Value>& args, Environment& env)
     Value result              = Value::nil();
     String f_name             = args[0].display();
     std::vector<Value> params = args[1].as_sequential();
-    Value body                = args[2];
-    result                    = Value(params, body, env);
+    
+    Value body;
+    if (args.size() == 3)
+    {
+        // Single body expression
+        body = args[2];
+    }
+    else
+    {
+        // Multiple body expressions - wrap in implicit 'do'
+        std::vector<Value> body_expressions;
+        body_expressions.push_back(Value::atom("do"));
+        for (size_t i = 2; i < args.size(); i++)
+        {
+            body_expressions.push_back(args[i]);
+        }
+        body = Value(body_expressions);
+    }
+    
+    result = Value(params, body, env);
     env.set(f_name, result);
     return result;
 }
@@ -2488,11 +2506,11 @@ Value lambda(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "lambda";
 
-    // Checking number of args
-    if (!(args.size() == 2))
+    // Checking number of args - now allow 2 or more arguments
+    if (!(args.size() >= 2))
     {
         report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, -1);
+                                    NumArgsComparison::AtLeast, 2, -1);
         return Value::error();
     }
 
@@ -2506,7 +2524,26 @@ Value lambda(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result       = Value(args[0].as_vector(), args[1], env);
+    
+    Value body;
+    if (args.size() == 2)
+    {
+        // Single body expression
+        body = args[1];
+    }
+    else
+    {
+        // Multiple body expressions - wrap in implicit 'do'
+        std::vector<Value> body_expressions;
+        body_expressions.push_back(Value::atom("do"));
+        for (size_t i = 1; i < args.size(); i++)
+        {
+            body_expressions.push_back(args[i]);
+        }
+        body = Value(body_expressions);
+    }
+    
+    result = Value(args[0].as_vector(), body, env);
     return result;
 }
 
