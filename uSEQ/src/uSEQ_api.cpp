@@ -2,6 +2,9 @@
 #include "uSEQ/io_manager.h"
 #include "uSEQ/output_manager.h"
 #include "utils.h"
+#ifdef ARDUINO
+#include "dsp/uSeqGens/uSeqGen_Sampler.h"
+#endif
 
 // Creates a Lisp Value of type BUILTIN_METHOD,
 // which requires
@@ -100,6 +103,9 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("useq-stop", useq_stop);
     INSERT_BUILTINDEF("useq-rewind", useq_rewind);
     INSERT_BUILTINDEF("useq-clear", useq_clear);
+
+    // Sample management functions
+    INSERT_BUILTINDEF("list-samples", useq_list_samples);
 
 #ifdef ARDUINO
     INSERT_BUILTINDEF("useqaw", ard_useqaw);
@@ -767,3 +773,32 @@ BUILTINFUNC_MEMBER(
         println(name + ": " + led_pin);
     },
     0)
+
+// Sample management functions
+BUILTINFUNC_NOEVAL_MEMBER(
+    useq_list_samples,
+#ifdef ARDUINO
+    // Read pointers from memory based on flash address
+    const uint8_t* binary_data = (const uint8_t*)AUDIO_FLASH_ADDRESS;
+    const audio_header_t* header = (const audio_header_t*)binary_data;
+    const audio_file_entry_t* file_table = (const audio_file_entry_t*)(binary_data + 16);
+    
+    // Verify binary is valid
+    if (header->magic != AUDIO_MAGIC) {
+        println("Error: Invalid audio binary at 0x" + String(AUDIO_FLASH_ADDRESS, 16));
+        ret = Value::error();
+    } else if (header->file_count == 0) {
+        println("No samples found.");
+        ret = Value::nil();
+    } else {
+        // Print each sample name on a new line
+        for (uint32_t i = 0; i < header->file_count; i++) {
+            println(String(file_table[i].name));
+        }
+        ret = Value::nil();
+    }
+#else
+    println("Sample listing not available on desktop build.");
+    ret = Value::nil();
+#endif
+    , 0)

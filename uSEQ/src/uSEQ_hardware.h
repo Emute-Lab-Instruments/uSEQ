@@ -26,4 +26,7 @@ LISP_FUNC_DECL(useq_rot);
 
 LISP_FUNC_DECL(useq_print_led_info);
 
+// Sample management functions
+LISP_FUNC_DECL(useq_list_samples);
+
 #endif // USEQ_HARDWARE_H_
