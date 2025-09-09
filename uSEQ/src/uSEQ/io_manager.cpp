@@ -486,20 +486,6 @@ void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE v
     ledsigval = maxpwm_i - ledsigval;
 #endif
 
-    dbg("output = " + String(output));
-    dbg("pin = " + String(pwm_pin));
-    dbg("led pin = " + String(led_pin));
-    dbg("val = " + String(val));
-    dbg("scaled_val = " + String(scaled_val));
-
-    // If an I/O adapter is provided, use it and return (desktop tests)
-    if (m_io_adapter)
-    {
-        m_io_adapter->analogWrite(static_cast<uint8_t>(led_pin), ledsigval);
-        m_io_adapter->analogWrite(static_cast<uint8_t>(pwm_pin), scaled_val);
-        return;
-    }
-
 #ifdef ARDUINO
 #if defined(USEQHARDWARE_EXPANDER_OUT_0_1) || defined(MUSICTHING)
     // write led
@@ -525,20 +511,6 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
     int pin     = get_digital_out_pin(output + 1);
     int led_pin = get_digital_out_led_pin(output + 1);
 
-    dbg("output = " + String(output));
-    dbg("pin = " + String(pin));
-    dbg("led pin = " + String(led_pin));
-    dbg("val = " + String(val));
-
-    // If an I/O adapter is provided, use it and return
-    // if (m_io_adapter)
-    // {
-    //     uint8_t v = static_cast<uint8_t>(val > 0);
-    //     m_io_adapter->digitalWrite(static_cast<uint8_t>(pin), v);
-    //     m_io_adapter->digitalWrite(static_cast<uint8_t>(led_pin), v);
-    //     return;
-    // }
-
 #ifdef ARDUINO
     // write digi
 #ifdef DIGI_OUT_INVERTED
@@ -549,9 +521,10 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
     // write led - should match the actual output polarity
 #ifdef DIGI_OUT_INVERTED
     // digitalWrite(led_pin, 1 - (val > 0.5)); // LED should also be inverted
-    digitalWrite(led_pin, 1); // LED should also be inverted
+    // FIXME just to test that this can write hi
+    digitalWrite(led_pin, 1 - (val > 0.5)); // LED should also be inverted
 #else
-    digitalWrite(led_pin, 0);
+    digitalWrite(led_pin, val > 0.5);
 #endif // DIGI_OUT_INVERTED
     (void)pin;
     (void)led_pin;
