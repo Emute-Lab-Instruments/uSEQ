@@ -70,10 +70,10 @@ Value uSEQ::__test_i2c_send_to(int addr, const String& expr_str)
 #ifdef ARDUINO
 #include "uSEQ/i2cClient.h"
 #else
-// Desktop stubs for I2C functionality
-extern bool bNewI2CMessage;
-extern int nI2CBytesRead;
-extern String i2cPrintStr;
+// Desktop stubs for I2C functionality - define the variables using Arduino String class
+bool bNewI2CMessage = false;
+int nI2CBytesRead = 0;
+String i2cPrintStr = "";
 char i2cInBuff[500];
 
 #endif
@@ -249,7 +249,7 @@ void uSEQ::init()
 
     // dbg("free heap (start):" + String(free_heap()));
 
-    Interpreter::useq_instance_ptr = this;
+    ModuLispInterpreter::set_useq_instance_ptr(this);
     m_interpreter.init();
 
     uSEQ::instance = this;

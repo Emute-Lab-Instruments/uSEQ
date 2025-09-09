@@ -36,8 +36,9 @@ void setup_i2cCLIENT();
 
 #else
 // Desktop stubs for I2C functionality
-static bool bNewI2CMessage = false;
-static int nI2CBytesRead = 0;
+#include "../utils/string.h" // Arduino-compatible String class for desktop
+extern bool bNewI2CMessage;
+extern int nI2CBytesRead;
 static int nI2CResponseLen = 0;
 static char i2cInBuff[500];
 static char i2cOutBuff[150];

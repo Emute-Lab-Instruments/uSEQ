@@ -408,7 +408,7 @@ Value fromList(std::vector<Value> &lst, double phasor, Environment &env) {
     // keep index in bounds
     if (idx == lst.size())
         idx--;
-    return Interpreter::eval_in(lst[idx], env);
+    return ModuLispInterpreter::eval_in(lst[idx], env);
 }
 
 
@@ -1172,7 +1172,7 @@ Value flatten_impl(const Value &val, Environment &env) {
     } else {
         auto valList = val.as_sequential();
         for (size_t i = 0; static_cast<size_t>(i) < valList.size(); i++) {
-            Value evaluatedElement = Interpreter::eval_in(valList[i], env);
+            Value evaluatedElement = ModuLispInterpreter::eval_in(valList[i], env);
             if (evaluatedElement.is_sequential()) {
                 auto flattenedElement =
                     flatten_impl(evaluatedElement, env).as_list();

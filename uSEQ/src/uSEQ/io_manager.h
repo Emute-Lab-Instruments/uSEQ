@@ -173,7 +173,9 @@ int digital_out_LED_pin(int out);
 extern float pdm_y;
 extern float pdm_err;
 extern float pdm_w;
+#ifdef ARDUINO
 bool timer_callback(repeating_timer_t* rt);
+#endif
 void start_pdm();
 #endif
 

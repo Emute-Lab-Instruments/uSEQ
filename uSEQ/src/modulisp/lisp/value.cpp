@@ -17,7 +17,7 @@
 // TODO do we care to support this some_value.apply() and .eval()
 // syntax and, if so, is there a better way?
 class Interpreter;
-#include "interpreter.h"
+#include "../modulisp_interpreter.h"
 
 ////DESTRUCTOR
 Value::~Value() {}
@@ -615,10 +615,10 @@ bool Value::is_builtin() const {
 }
 
 Value Value::apply(std::vector<Value> &args, Environment &env) {
-    return Interpreter::apply(*this, args, env);
+    return ModuLispInterpreter::apply(*this, args, env);
 }
 
-Value Value::eval(Environment &env) { return Interpreter::eval_in(*this, env); }
+Value Value::eval(Environment &env) { return ModuLispInterpreter::eval_in(*this, env); }
 
 bool Value::is_number() const { return type == INT || type == FLOAT; }
 bool Value::is_int() const { return type == INT; }
@@ -1311,6 +1311,56 @@ String Value::to_lisp_src() const {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// STATIC MEMBER DEFINITIONS
+////////////////////////////////////////////////////////////////////////////////
 
+// Simple implementation of static time parameter 't' 
+Value Value::t = Value(0.0);
+
+////////////////////////////////////////////////////////////////////////////////
+/// MATHEMATICAL FUNCTIONS 
+////////////////////////////////////////////////////////////////////////////////
+
+Value Value::sin() const {
+    if (!is_number()) return Value::error();
+    double val = as_float();
+    return Value(std::sin(val));
+}
+
+Value Value::cos() const {
+    if (!is_number()) return Value::error();
+    double val = as_float();
+    return Value(std::cos(val));
+}
+
+Value Value::exp() const {
+    if (!is_number()) return Value::error();
+    double val = as_float();
+    return Value(std::exp(val));
+}
+
+Value Value::log() const {
+    if (!is_number()) return Value::error();
+    double val = as_float();
+    if (val <= 0.0) return Value::error();
+    return Value(std::log(val));
+}
+
+Value Value::sqrt() const {
+    if (!is_number()) return Value::error();
+    double val = as_float();
+    if (val < 0.0) return Value::error();
+    return Value(std::sqrt(val));
+}
+
+Value Value::abs() const {
+    if (!is_number()) return Value::error();
+    if (is_int()) {
+        return Value(std::abs(stack_data.i));
+    } else {
+        return Value(std::abs(stack_data.f));
+    }
+}
 
 #pragma GCC diagnostic pop

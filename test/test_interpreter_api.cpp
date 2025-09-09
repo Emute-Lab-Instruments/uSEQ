@@ -1,10 +1,17 @@
 #define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
 #include "catch.hpp"
 
-#include "../uSEQ/src/modulisp/lisp/interpreter.h"
+#include "../uSEQ/src/modulisp/modulisp_interpreter.h"
 #include "../uSEQ/src/modulisp/lisp/value.h"
 #include "../uSEQ/src/modulisp/lisp/environment.h"
 #include <cmath>
+
+// Ensure builtins are initialized once for all tests in this binary
+namespace {
+struct BuiltinsInitOnce {
+    BuiltinsInitOnce() { ModuLispInterpreter::init_builtin_functions(); }
+} _builtinsInitOnce;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// INTERPRETER CONSTRUCTION AND INITIALIZATION API TESTS
@@ -12,7 +19,7 @@
 
 TEST_CASE("Interpreter construction using factory function", "[interpreter][api][construction]") {
     // Test interpreter construction using factory function
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     REQUIRE(true); // If we get here, construction and initialization succeeded
 }
 
@@ -21,7 +28,7 @@ TEST_CASE("Interpreter construction using factory function", "[interpreter][api]
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST_CASE("String evaluation of basic values", "[interpreter][api][string_eval]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test evaluating integer literals
     String result1 = interp.eval("42");
@@ -49,7 +56,7 @@ TEST_CASE("String evaluation of basic values", "[interpreter][api][string_eval]"
 }
 
 TEST_CASE("String evaluation of arithmetic operations", "[interpreter][api][string_eval][arithmetic]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test basic arithmetic operations
     String result1 = interp.eval("(+ 2 3)");
@@ -75,7 +82,7 @@ TEST_CASE("String evaluation of arithmetic operations", "[interpreter][api][stri
 }
 
 TEST_CASE("String evaluation of comparison operations", "[interpreter][api][string_eval][comparisons]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test equality
     String result1 = interp.eval("(= 5 5)");
@@ -101,7 +108,7 @@ TEST_CASE("String evaluation of comparison operations", "[interpreter][api][stri
 }
 
 TEST_CASE("String evaluation of list operations", "[interpreter][api][string_eval][lists]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test list creation
     String result1 = interp.eval("(list 1 2 3)");
@@ -125,7 +132,7 @@ TEST_CASE("String evaluation of list operations", "[interpreter][api][string_eva
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST_CASE("Value evaluation of literals", "[interpreter][api][value_eval]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test evaluating integer Value
     Value int_val(42);
@@ -152,7 +159,7 @@ TEST_CASE("Value evaluation of literals", "[interpreter][api][value_eval]") {
 }
 
 TEST_CASE("Value evaluation of symbols", "[interpreter][api][value_eval][symbols]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test evaluating undefined symbol (should return error or the symbol itself)
     Value symbol_val = Value::atom("undefined-symbol");
@@ -168,7 +175,7 @@ TEST_CASE("Value evaluation of symbols", "[interpreter][api][value_eval][symbols
 }
 
 TEST_CASE("Value evaluation of lists", "[interpreter][api][value_eval][lists]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test evaluating arithmetic expression as Value
     std::vector<Value> add_expr = {
@@ -211,7 +218,7 @@ TEST_CASE("Value evaluation of lists", "[interpreter][api][value_eval][lists]") 
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST_CASE("Parse and evaluate basic values (eval_v)", "[interpreter][api][eval_v]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test parsing and evaluating integer
     Value result1 = interp.eval_v("42");
@@ -234,7 +241,7 @@ TEST_CASE("Parse and evaluate basic values (eval_v)", "[interpreter][api][eval_v
 }
 
 TEST_CASE("Parse and evaluate expressions (eval_v)", "[interpreter][api][eval_v][expressions]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test arithmetic expressions
     Value result1 = interp.eval_v("(+ 10 20)");
@@ -268,7 +275,7 @@ TEST_CASE("Static string evaluation with environment", "[interpreter][api][stati
     Environment env;
     
     // Test static string evaluation with empty environment
-    String result1 = Interpreter::eval_in("42", env);
+    String result1 = ModuLispInterpreter::eval_in("42", env);
     REQUIRE_FALSE(result1.length() == 0);
     REQUIRE(result1.indexOf("42") != -1);
     
@@ -276,7 +283,7 @@ TEST_CASE("Static string evaluation with environment", "[interpreter][api][stati
     env.set("x", Value(10));
     env.set("y", Value(20));
     
-    String result2 = Interpreter::eval_in("(+ x y)", env);
+    String result2 = ModuLispInterpreter::eval_in("(+ x y)", env);
     if (!result2.length() == 0) {
         // Should contain result of 10 + 20 = 30
         REQUIRE((result2.indexOf("30") != -1 || result2.indexOf("error") != -1));
@@ -288,14 +295,14 @@ TEST_CASE("Static value evaluation with environment", "[interpreter][api][static
     
     // Test static Value evaluation
     Value int_val(100);
-    Value result1 = Interpreter::eval_in(int_val, env);
+    Value result1 = ModuLispInterpreter::eval_in(int_val, env);
     REQUIRE(result1.is_int());
     REQUIRE(result1.as_int() == 100);
     
     // Test with variables in environment
     env.set("test-var", Value(42));
     Value symbol_val = Value::atom("test-var");
-    Value result2 = Interpreter::eval_in(symbol_val, env);
+    Value result2 = ModuLispInterpreter::eval_in(symbol_val, env);
     
     if (!result2.is_error()) {
         REQUIRE(result2.is_int());
@@ -305,7 +312,7 @@ TEST_CASE("Static value evaluation with environment", "[interpreter][api][static
     // Test list evaluation
     std::vector<Value> expr = {Value::atom("+"), Value(5), Value(15)};
     Value list_val(expr);
-    Value result3 = Interpreter::eval_in(list_val, env);
+    Value result3 = ModuLispInterpreter::eval_in(list_val, env);
     
     if (result3.is_number() && !result3.is_error()) {
         double expected = 20.0;
@@ -330,7 +337,7 @@ TEST_CASE("Argument evaluation API", "[interpreter][api][eval_args]") {
     };
     
     // Evaluate arguments in place
-    Interpreter::eval_args(args, env);
+    ModuLispInterpreter::eval_args(args, env);
     
     // Literals should remain unchanged
     REQUIRE(args[0].is_int());
@@ -362,7 +369,7 @@ TEST_CASE("Argument evaluation with expressions", "[interpreter][api][eval_args]
         Value(10)      // Literal, should remain 10
     };
     
-    Interpreter::eval_args(args, env);
+    ModuLispInterpreter::eval_args(args, env);
     
     // Check if expressions were evaluated (exact behavior depends on implementation)
     REQUIRE(args.size() == 3);
@@ -390,7 +397,7 @@ TEST_CASE("Function application with builtin functions", "[interpreter][api][app
     Value add_func = Value::atom("+");
     std::vector<Value> add_args = {Value(10), Value(20)};
     
-    Value result1 = Interpreter::apply(add_func, add_args, env);
+    Value result1 = ModuLispInterpreter::apply(add_func, add_args, env);
     if (result1.is_number() && !result1.is_error()) {
         double expected = 30.0;
         double actual = result1.is_int() ? result1.as_int() : result1.as_float();
@@ -401,7 +408,7 @@ TEST_CASE("Function application with builtin functions", "[interpreter][api][app
     Value mult_func = Value::atom("*");
     std::vector<Value> mult_args = {Value(6), Value(7)};
     
-    Value result2 = Interpreter::apply(mult_func, mult_args, env);
+    Value result2 = ModuLispInterpreter::apply(mult_func, mult_args, env);
     if (result2.is_number() && !result2.is_error()) {
         double expected = 42.0;
         double actual = result2.is_int() ? result2.as_int() : result2.as_float();
@@ -412,7 +419,7 @@ TEST_CASE("Function application with builtin functions", "[interpreter][api][app
     Value eq_func = Value::atom("=");
     std::vector<Value> eq_args = {Value(5), Value(5)};
     
-    Value result3 = Interpreter::apply(eq_func, eq_args, env);
+    Value result3 = ModuLispInterpreter::apply(eq_func, eq_args, env);
     // Should return truthy value for equal comparison
     if (!result3.is_error()) {
         REQUIRE((result3.is_number() || result3.is_symbol()));
@@ -424,7 +431,7 @@ TEST_CASE("Function application with builtin functions", "[interpreter][api][app
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST_CASE("Variable operations - set and get", "[interpreter][api][variables]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Set variables using interpreter's Environment interface
     interp.get_environment()->set("test-var", Value(123));
@@ -457,7 +464,7 @@ TEST_CASE("Variable operations - set and get", "[interpreter][api][variables]") 
 }
 
 TEST_CASE("Variable evaluation in expressions", "[interpreter][api][variables][expressions]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Set up variables
     interp.get_environment()->set("x", Value(10));
@@ -488,7 +495,7 @@ TEST_CASE("Variable evaluation in expressions", "[interpreter][api][variables][e
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST_CASE("Error handling for various edge cases", "[interpreter][api][error_handling]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test malformed expressions
     String result1 = interp.eval("(+ 1 2");  // Missing closing paren
@@ -512,7 +519,7 @@ TEST_CASE("Error handling for various edge cases", "[interpreter][api][error_han
 }
 
 TEST_CASE("Error checking in evaluated arguments", "[interpreter][api][error_handling][args]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test the protected error checking method through inheritance
     // We can't test this directly since it's protected, but we can test
@@ -534,7 +541,7 @@ TEST_CASE("Error checking in evaluated arguments", "[interpreter][api][error_han
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST_CASE("Complex expressions - conditionals and functions", "[interpreter][api][complex_expressions]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test conditional expressions (if available)
     String result1 = interp.eval("(if (> 5 3) \"true-case\" \"false-case\")");
@@ -565,7 +572,7 @@ TEST_CASE("Complex expressions - conditionals and functions", "[interpreter][api
 }
 
 TEST_CASE("List processing operations", "[interpreter][api][complex_expressions][lists]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test basic list operations
     String result1 = interp.eval("(list 1 2 3 4)");
@@ -600,7 +607,7 @@ TEST_CASE("List processing operations", "[interpreter][api][complex_expressions]
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST_CASE("Quote handling for special forms", "[interpreter][api][special_features][quote]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test quoted expressions
     String result1 = interp.eval("'42");
@@ -616,7 +623,7 @@ TEST_CASE("Quote handling for special forms", "[interpreter][api][special_featur
 }
 
 TEST_CASE("Empty and whitespace handling", "[interpreter][api][special_features][whitespace]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test empty string evaluation
     String result1 = interp.eval("");
@@ -635,7 +642,7 @@ TEST_CASE("Empty and whitespace handling", "[interpreter][api][special_features]
 }
 
 TEST_CASE("Mathematical functions", "[interpreter][api][special_features][math]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test trigonometric functions (if available)
     String result1 = interp.eval("(sin 0)");
@@ -675,7 +682,7 @@ TEST_CASE("Mathematical functions", "[interpreter][api][special_features][math]"
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST_CASE("Undefined symbols return errors", "[interpreter][api][undefined][symbols]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test undefined symbol evaluation directly
     Value undefined_symbol = Value::atom("definitely-undefined-symbol");
@@ -690,7 +697,7 @@ TEST_CASE("Undefined symbols return errors", "[interpreter][api][undefined][symb
 }
 
 TEST_CASE("Undefined functions return errors", "[interpreter][api][undefined][functions]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test undefined function call
     Value result = interp.eval_v("(undefined-function-name 1 2 3)");
@@ -704,7 +711,7 @@ TEST_CASE("Undefined functions return errors", "[interpreter][api][undefined][fu
 }
 
 TEST_CASE("Error propagation through expressions", "[interpreter][api][undefined][propagation]") {
-    Interpreter interp = Interpreter::create_fresh_interpreter();
+    ModuLispInterpreter interp(nullptr);
     
     // Test error propagates through arithmetic
     Value result1 = interp.eval_v("(+ undefined-var 5)");
@@ -718,4 +725,3 @@ TEST_CASE("Error propagation through expressions", "[interpreter][api][undefined
     Value result3 = interp.eval_v("(+ (* 2 3) (- undefined-var 1))");
     REQUIRE(result3.is_error());
 }
-

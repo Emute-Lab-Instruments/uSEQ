@@ -3,7 +3,10 @@
 
 #include "../ports/IClock.h"
 #include "../ports/ILogger.h"
-#include "lisp/interpreter.h"
+#include "lisp/environment.h"
+#include "lisp/parser.h"
+#include "lisp/error_context.h"
+#include "lisp/value.h"
 #include "random_generator.h"
 #include "scheduler.h"
 #include "time_manager.h"
@@ -19,7 +22,7 @@
 using TimeValue  = double;
 using PhaseValue = double;
 
-class ModuLispInterpreter : public Interpreter
+class ModuLispInterpreter
 {
 public:
     // Constructor with dependency injection for testability
@@ -32,8 +35,9 @@ public:
     void init()
     {
         loadBuiltinDefs();
+        init_builtin_functions();
         init_builtinfuncs();
-        Interpreter::modulisp_instance_ptr = this;
+        ModuLispInterpreter::modulisp_instance_ptr = this;
     }
 
     // Destructor
@@ -96,11 +100,11 @@ public:
     double get_bpm() const { return m_bpm; }
     double get_meter_numerator() const
     {
-        return 4.0; // Default 4/4 time - can be made configurable later
+        return m_meter_numerator;
     }
     double get_meter_denominator() const
     {
-        return 4.0; // Default 4/4 time - can be made configurable later
+        return m_meter_denominator;
     }
     
     // Phase structure getters
@@ -129,6 +133,43 @@ public:
     TimeManager* get_time_manager() { return m_time_manager.get(); }
     Scheduler* get_scheduler() { return m_scheduler.get(); }
     IRandomGenerator* get_random_generator() { return m_random_generator.get(); }
+
+    // --- Absorbed Interpreter API ---
+    // Evaluation API
+    String eval(const String &code);
+    Value eval(Value v);
+    Value eval_v(const String &code);
+
+    // Static evaluation helpers
+    static String eval_in(const String &code, Environment &env);
+    static Value eval_in(Value &v, Environment &env);
+    static Value apply(Value &f, LispFuncArgsVec &args, Environment &env);
+    static void eval_args(std::vector<Value> &args, Environment &env);
+    static void init_builtin_functions();
+    void loadBuiltinDefs();
+
+    // Factory for tests
+    static std::unique_ptr<ModuLispInterpreter> create_fresh_interpreter();
+
+    // Error handling and accessors
+    ErrorManager* get_error_manager() { return m_error_manager; }
+    const ErrorManager* get_error_manager() const { return m_error_manager; }
+    Environment* get_environment() { return m_environment; }
+    const Environment* get_environment() const { return m_environment; }
+    uLispParser* get_parser() { return m_parser; }
+    const uLispParser* get_parser() const { return m_parser; }
+
+    // Atom evaluation tracking and flags
+    static void set_atom_currently_being_evaluated(const String& atom_name) { m_atom_currently_being_evaluated = atom_name; }
+    static bool get_attempt_expr_eval_first() { return m_attempt_expr_eval_first; }
+    static void set_attempt_expr_eval_first(bool value) { m_attempt_expr_eval_first = value; }
+    static bool get_update_loop_evaluation() { return m_update_loop_evaluation; }
+    static void set_update_loop_evaluation(bool value) { m_update_loop_evaluation = value; }
+    static bool get_manual_evaluation() { return m_manual_evaluation; }
+    static void set_manual_evaluation(bool value) { m_manual_evaluation = value; }
+
+    // Instance pointer helper for uSEQ integration
+    static void set_useq_instance_ptr(uSEQ* ptr) { useq_instance_ptr = ptr; }
 
     // LISP function declarations
     LISP_FUNC_DECL(useq_eval_at_time);
@@ -188,8 +229,30 @@ protected:
     double m_bpm = 120.0;
     double m_bars_per_phrase = 4.0;
     double m_phrases_per_section = 4.0;
+    double m_meter_numerator = 4.0;   // Time signature numerator (default 4/4)
+    double m_meter_denominator = 4.0; // Time signature denominator (default 4/4)
 
 private:
+    // Absorbed Interpreter state
+    bool m_builtindefs_init = false;
+
+    Environment* m_environment;
+    uLispParser* m_parser;
+    ErrorManager* m_error_manager;
+
+    std::unique_ptr<Environment> m_fallback_environment;
+    std::unique_ptr<uLispParser> m_fallback_parser;
+    std::unique_ptr<ErrorManager> m_fallback_error_manager;
+
+    // Static flags and shared state
+    static bool m_attempt_expr_eval_first;
+    static bool m_eval_expr_if_def_not_found;
+    static bool m_manual_evaluation;
+    static bool m_update_loop_evaluation;
+    static String m_atom_currently_being_evaluated;
+
+    static uSEQ* useq_instance_ptr;
+    static ModuLispInterpreter* modulisp_instance_ptr;
 };
 
 #endif // MODULISP_INTERPRETER_H_

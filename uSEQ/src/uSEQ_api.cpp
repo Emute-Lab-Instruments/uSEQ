@@ -124,10 +124,10 @@ void uSEQ::init_builtinfuncs()
     // INSERT_BUILTINDEF("useqar", ard_useqar);  // Function doesn't exist
 
     // Flash/persistence
-    // Flash/persistence functions - Not yet implemented
-    INSERT_BUILTINDEF("useq-memory-save", useq_memory_save);
-    INSERT_BUILTINDEF("useq-memory-restore", useq_memory_save);
-    INSERT_BUILTINDEF("useq-memory-erase", useq_memory_save);
+    // Flash/persistence functions - Commented out until build issues resolved
+    // INSERT_BUILTINDEF("useq-memory-save", useq_memory_save);
+    // INSERT_BUILTINDEF("useq-memory-restore", useq_memory_restore);
+    // INSERT_BUILTINDEF("useq-memory-erase", useq_memory_erase);
 
 // System functions
 // INSERT_BUILTINDEF("useq-bpm", useq_bpm);  // Function doesn't exist

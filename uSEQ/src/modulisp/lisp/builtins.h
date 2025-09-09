@@ -78,6 +78,11 @@ Value useq_pulse(std::vector<Value>& args, Environment& env);
 Value u_to_b(std::vector<Value>& args, Environment& env);
 Value ard_tan(std::vector<Value>& args, Environment& env);
 Value if_then_else(std::vector<Value>& args, Environment& env);
+
+// List processing helpers (reintroduced)
+Value map_list(std::vector<Value>& args, Environment& env);
+Value filter_list(std::vector<Value>& args, Environment& env);
+Value reduce_list(std::vector<Value>& args, Environment& env);
 } // namespace builtin
 
 #endif // GENERATED_BUILTINS_H_

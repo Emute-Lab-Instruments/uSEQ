@@ -50,7 +50,7 @@ Value ModuLispInterpreter::eval_at_time(Value &expr, Environment &env,
 
     new_env.set_parent_scope(&env);
     // Eval in new env
-    Value result = Interpreter::eval_in(expr, new_env);
+    Value result = ModuLispInterpreter::eval_in(expr, new_env);
     return result;
 }
 

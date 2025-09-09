@@ -4,6 +4,10 @@
 #include "i2cUtils.h"
 #ifdef ARDUINO
 #include <Wire.h>
+#else
+// Desktop stubs
+#include "../utils/string.h" // Arduino-compatible String class for desktop
+class TwoWire; // Forward declaration for desktop
 #endif
 
 #define _talkingToMyslefBus_ Wire1

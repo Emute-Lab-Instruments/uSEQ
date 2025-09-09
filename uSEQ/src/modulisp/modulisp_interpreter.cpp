@@ -1,34 +1,7 @@
 #include "modulisp_interpreter.h"
 #include "../utils.h"
 
-// Constructor with dependency injection
-ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* env, uLispParser* parser, IClock* clk, ILogger* log, IRandomGenerator* rng)
-    : Interpreter(env, parser, error_mgr), clock(clk), logger(log) {
-    
-    // Create managers with dependency injection
-    m_time_manager = std::make_unique<TimeManager>(clk);
-    m_scheduler = std::make_unique<Scheduler>();
-    
-    // Use provided random generator or create default
-    if (rng) {
-        m_random_generator.reset(rng);
-    } else {
-        m_random_generator = std::make_unique<SimpleRandomGenerator>();
-    }
-    
-    // Initialize default BPM to avoid divide-by-zero (member variables already initialized with defaults)
-    set_bpm(130.0, 0.0);
-    
-    // Initialize default CQP AST (only if parser is available)
-    if (get_parser()) {
-        m_scheduler->set_cqp_ast(get_parser()->parse("bar"));
-    } else {
-        m_scheduler->set_cqp_ast(Value::atom("bar"));
-    }
-}
-
-// Destructor
-ModuLispInterpreter::~ModuLispInterpreter() = default;
+// Constructor and destructor now implemented in modulisp_interpreter_core.cpp
 
 
 void ModuLispInterpreter::run_scheduled_items() {

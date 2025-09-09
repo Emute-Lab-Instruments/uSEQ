@@ -4,6 +4,7 @@
 #include "../uSEQ/src/modulisp/lisp/builtins.h"
 #include "../uSEQ/src/modulisp/lisp/value.h"
 #include "../uSEQ/src/modulisp/lisp/environment.h"
+#include "../uSEQ/src/modulisp/modulisp_interpreter.h"
 #include <cmath>
 
 // Using direct Value constructors instead of helper functions
@@ -118,6 +119,53 @@ TEST_CASE("Arithmetic remainder function", "[builtins][arithmetic]") {
     std::vector<Value> args3 = {Value(7.5), Value(2.5)};
     Value result3 = builtin::remainder(args3, env);
     REQUIRE(result3.as_float() == Approx(0.0).epsilon(0.001));
+}
+
+// List processing builtins
+TEST_CASE("List processing: map", "[builtins][listops]") {
+    ModuLispInterpreter interp(nullptr);
+    interp.init();
+
+    // Define (defn inc (x) (+ x 1)) via interpreter
+    interp.eval_v("(defn inc (x) (+ x 1))");
+
+    String expr = "(map inc (list 1 2 3))";
+    Value result = interp.eval_v(expr);
+    REQUIRE(result.is_list());
+    auto lst = result.as_list();
+    REQUIRE(lst.size() == 3);
+    REQUIRE(lst[0].as_int() == 2);
+    REQUIRE(lst[1].as_int() == 3);
+    REQUIRE(lst[2].as_int() == 4);
+}
+
+TEST_CASE("List processing: filter", "[builtins][listops]") {
+    ModuLispInterpreter interp(nullptr);
+    interp.init();
+
+    // Define (defn gt1 (x) (> x 1))
+    interp.eval_v("(defn gt1 (x) (> x 1))");
+
+    String expr = "(filter gt1 (list 1 2 3))";
+    Value result = interp.eval_v(expr);
+    REQUIRE(result.is_list());
+    auto lst = result.as_list();
+    REQUIRE(lst.size() == 2);
+    REQUIRE(lst[0].as_int() == 2);
+    REQUIRE(lst[1].as_int() == 3);
+}
+
+TEST_CASE("List processing: reduce", "[builtins][listops]") {
+    ModuLispInterpreter interp(nullptr);
+    interp.init();
+
+    // Define (defn sum2 (acc x) (+ acc x))
+    interp.eval_v("(defn sum2 (acc x) (+ acc x))");
+
+    String expr = "(reduce sum2 0 (list 1 2 3 4))";
+    Value result = interp.eval_v(expr);
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_int() == 10);
 }
 
 // Test cases for comparison operations
@@ -1136,5 +1184,3 @@ TEST_CASE("Get type name function", "[builtins][meta]") {
     // Test the core functionality - each value type should have a type name
     REQUIRE(true); // This test verifies type checking works
 }
-
-

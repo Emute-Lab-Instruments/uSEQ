@@ -1,13 +1,13 @@
 #include "test_helpers.h"
-#include "../modulisp/lisp/interpreter.h"
+#include "../modulisp/modulisp_interpreter.h"
 #include "../modulisp/lisp/value.h"
 #include <cmath>
 #include <sstream>
 
 namespace test_helpers {
 
-QuickInterpreter::QuickInterpreter() : impl(std::make_unique<::Interpreter>()) {
-    // impl->init();
+QuickInterpreter::QuickInterpreter() : impl(std::make_unique<ModuLispInterpreter>(nullptr)) {
+    impl->init();
 }
 
 QuickInterpreter::~QuickInterpreter() = default;

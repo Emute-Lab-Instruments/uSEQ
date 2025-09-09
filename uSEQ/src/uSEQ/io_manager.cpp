@@ -486,6 +486,14 @@ void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE v
     ledsigval = maxpwm_i - ledsigval;
 #endif
 
+    // If an I/O adapter is provided, use it and return (desktop tests)
+    if (m_io_adapter)
+    {
+        m_io_adapter->analogWrite(static_cast<uint8_t>(led_pin), ledsigval);
+        m_io_adapter->analogWrite(static_cast<uint8_t>(pwm_pin), scaled_val);
+        return;
+    }
+
 #ifdef ARDUINO
 #if defined(USEQHARDWARE_EXPANDER_OUT_0_1) || defined(MUSICTHING)
     // write led
@@ -511,6 +519,18 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
     int pin     = get_digital_out_pin(output + 1);
     int led_pin = get_digital_out_led_pin(output + 1);
 
+    // If an I/O adapter is provided, use it and return (desktop tests)
+    if (m_io_adapter)
+    {
+        uint8_t digital_val = static_cast<uint8_t>(val > 0.5);
+#ifdef DIGI_OUT_INVERTED
+        digital_val = 1 - digital_val; // Invert if needed
+#endif
+        m_io_adapter->digitalWrite(static_cast<uint8_t>(pin), digital_val);
+        m_io_adapter->digitalWrite(static_cast<uint8_t>(led_pin), digital_val);
+        return;
+    }
+
 #ifdef ARDUINO
     // write digi
 #ifdef DIGI_OUT_INVERTED
@@ -526,6 +546,7 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
 #else
     digitalWrite(led_pin, val > 0.5);
 #endif // DIGI_OUT_INVERTED
+#else
     (void)pin;
     (void)led_pin;
     (void)val;
@@ -950,6 +971,7 @@ int digital_out_LED_pin(int out)
 // === PDM Timer Callback (Hardware 1.0) ===
 
 #ifdef USEQHARDWARE_1_0
+#ifdef ARDUINO
 bool timer_callback(repeating_timer_t* rt)
 {
     pdm_y   = pdm_w > pdm_err ? 1 : 0;
@@ -964,14 +986,9 @@ bool timer_callback(repeating_timer_t* rt)
     }
     return true;
 }
-
-void start_pdm()
-{
-#ifdef ARDUINO
-    static repeating_timer_t mst;
-    add_repeating_timer_us(150, timer_callback, NULL, &mst);
 #endif
-}
+
+// start_pdm() is defined in hardware_includes.h
 #endif // USEQHARDWARE_1_0
 
 // === maxiFilter Implementation ===

@@ -3,8 +3,7 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #else
-#include <string>
-typedef std::string String;
+#include "../utils/string.h" // Arduino-compatible String class for desktop
 #endif
 
 // Define variables that are shared between i2cClient and uSEQ

@@ -105,6 +105,10 @@ void ModuLispInterpreter::update_bpm_variables() {
 }
 
 void ModuLispInterpreter::set_time_sig(double numerator, double denominator) {
+    // Store the time signature values
+    m_meter_numerator = numerator;
+    m_meter_denominator = denominator;
+    
     // Update bar length based on time signature
     // Assuming quarter note = beat, so bar_length = beat_length * numerator * (4/denominator)
     m_bar_length = m_beat_length * numerator * (4.0 / denominator);

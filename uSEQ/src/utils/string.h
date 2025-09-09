@@ -29,6 +29,8 @@
 #elif defined(USE_STD_STR)
 
 #include <string>
+#include <cmath>
+#include <climits>
 
 class Extended_STD_String : public std::string
 {
@@ -50,7 +52,16 @@ public:
     Extended_STD_String(unsigned int value) : std::string(std::to_string(value)) {}
     Extended_STD_String(unsigned long value) : std::string(std::to_string(value)) {}
     Extended_STD_String(float value) : std::string(std::to_string(value)) {}
-    Extended_STD_String(double value) : std::string(std::to_string(value)) {}
+    Extended_STD_String(double value) : std::string() {
+        // Check if the value is a whole number (no fractional part)
+        if (value == std::floor(value) && value >= INT_MIN && value <= INT_MAX) {
+            // Format as integer (no decimal places)
+            *this = std::to_string(static_cast<int>(value));
+        } else {
+            // Format with default precision
+            *this = std::to_string(value);
+        }
+    }
     
     // Assignment operators to handle std::string results
     Extended_STD_String& operator=(const std::string& str) {

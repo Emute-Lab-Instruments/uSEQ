@@ -105,7 +105,7 @@ class Value {
     static Value vector(std::vector<Value> vec);
 
     // Static time parameter - higher-order signal that updates automatically
-    // static Value t;
+    static Value t;
 
     Value(std::vector<Value> params, Value ret, const Environment &env);
 
@@ -229,18 +229,18 @@ class Value {
     ////////////////////////////////////////////////////////////////////////////////
     
     // Trigonometric functions
-    // Value sin() const { return ValueSignalProcessing::sin(*this); }
-    // Value cos() const { return ValueSignalProcessing::cos(*this); }
+    Value sin() const;
+    Value cos() const;
     
     // Exponential and logarithmic functions
-    // Value exp() const { return ValueSignalProcessing::exp(*this); }
-    // Value log() const { return ValueSignalProcessing::log(*this); }
+    Value exp() const;
+    Value log() const;
     
     // Root functions
-    // Value sqrt() const { return ValueSignalProcessing::sqrt(*this); }
+    Value sqrt() const;
     
     // Other mathematical functions
-    // Value abs() const { return ValueSignalProcessing::abs(*this); }
+    Value abs() const;
     // Value floor() const { return ValueSignalProcessing::floor(*this); }
     // Value round() const { return ValueSignalProcessing::round(*this); }
     // Value sign() const { return ValueSignalProcessing::sign(*this); }

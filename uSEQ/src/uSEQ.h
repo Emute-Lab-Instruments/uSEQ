@@ -126,14 +126,14 @@ class uSEQ {
     uLispParser* get_parser() { return m_interpreter.get_parser(); }
     void reset_logical_time() { m_interpreter.reset_logical_time(); }
     void set_atom_currently_being_evaluated(const String& atom_name) {
-        Interpreter::set_atom_currently_being_evaluated(atom_name);
+        ModuLispInterpreter::set_atom_currently_being_evaluated(atom_name);
     }
-    bool get_attempt_expr_eval_first() { return Interpreter::get_attempt_expr_eval_first(); }
-    void set_attempt_expr_eval_first(bool value) { Interpreter::set_attempt_expr_eval_first(value); }
-    bool get_update_loop_evaluation() { return Interpreter::get_update_loop_evaluation(); }
-    void set_update_loop_evaluation(bool value) { Interpreter::set_update_loop_evaluation(value); }
-    bool get_manual_evaluation() { return Interpreter::get_manual_evaluation(); }
-    void set_manual_evaluation(bool value) { Interpreter::set_manual_evaluation(value); }
+    bool get_attempt_expr_eval_first() { return ModuLispInterpreter::get_attempt_expr_eval_first(); }
+    void set_attempt_expr_eval_first(bool value) { ModuLispInterpreter::set_attempt_expr_eval_first(value); }
+    bool get_update_loop_evaluation() { return ModuLispInterpreter::get_update_loop_evaluation(); }
+    void set_update_loop_evaluation(bool value) { ModuLispInterpreter::set_update_loop_evaluation(value); }
+    bool get_manual_evaluation() { return ModuLispInterpreter::get_manual_evaluation(); }
+    void set_manual_evaluation(bool value) { ModuLispInterpreter::set_manual_evaluation(value); }
     void init_interpreter() { m_interpreter.init(); }
     void set_bpm(double newBpm, double changeThreshold) { m_interpreter.set_bpm(newBpm, changeThreshold); }
     void update_time() { m_interpreter.update_time(); }

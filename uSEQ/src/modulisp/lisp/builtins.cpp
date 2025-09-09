@@ -3,7 +3,7 @@
 #include "../../utils/log.h"
 #include "../../utils/compiler_config.h"
 #include "environment.h"
-#include "interpreter.h"
+#include "../modulisp_interpreter.h"
 #include "value.h"
 #include <iostream>
 
@@ -2700,3 +2700,69 @@ Value if_then_else(std::vector<Value>& args, Environment& env)
 } // namespace builtin
 
 USEQ_SUPPRESS_WARNINGS_POP
+Value map_list(std::vector<Value>& args, Environment& env)
+{
+    // Evaluate args
+    for (size_t i = 0; i < args.size(); i++) {
+        Value pre = args[i];
+        args[i] = args[i].eval(env);
+        if (args[i].is_error()) {
+            report_error_arg_is_error("map", static_cast<int>(i+1), pre.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    std::vector<Value> result, l = args[1].as_list(), tmp;
+    for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
+    {
+        tmp.push_back(l[i]);
+        result.push_back(args[0].apply(tmp, env));
+        tmp.clear();
+    }
+    return Value(result);
+}
+
+Value filter_list(std::vector<Value>& args, Environment& env)
+{
+    for (size_t i = 0; i < args.size(); i++) {
+        Value pre = args[i];
+        args[i] = args[i].eval(env);
+        if (args[i].is_error()) {
+            report_error_arg_is_error("filter", static_cast<int>(i+1), pre.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    std::vector<Value> result, l = args[1].as_list(), tmp;
+    for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
+    {
+        tmp.push_back(l[i]);
+        if (args[0].apply(tmp, env).as_bool())
+            result.push_back(l[i]);
+        tmp.clear();
+    }
+    return Value(result);
+}
+
+Value reduce_list(std::vector<Value>& args, Environment& env)
+{
+    for (size_t i = 0; i < args.size(); i++) {
+        Value pre = args[i];
+        args[i] = args[i].eval(env);
+        if (args[i].is_error()) {
+            report_error_arg_is_error("reduce", static_cast<int>(i+1), pre.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    std::vector<Value> l = args[2].as_list(), tmp;
+    Value acc            = args[1];
+    for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
+    {
+        tmp.push_back(acc);
+        tmp.push_back(l[i]);
+        acc = args[0].apply(tmp, env);
+        tmp.clear();
+    }
+    return acc;
+}

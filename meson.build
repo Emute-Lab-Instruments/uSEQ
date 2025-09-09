@@ -138,7 +138,7 @@ lisp_core_lib = static_library('useq_lisp_core',
   'uSEQ/src/modulisp/lisp/parser.cpp',
   'uSEQ/src/modulisp/lisp/value.cpp',
   'uSEQ/src/modulisp/lisp/environment.cpp',
-  'uSEQ/src/modulisp/lisp/interpreter.cpp',
+  # interpreter merged into ModuLispInterpreter
   'uSEQ/src/modulisp/lisp/signal_metadata.cpp',
   # 'uSEQ/src/modulisp/lisp/value_signal_processing.cpp',
   'uSEQ/src/modulisp/lisp/builtins.cpp',
@@ -162,6 +162,7 @@ lisp_core_dep = declare_dependency(
 modulisp_lib = static_library('useq_modulisp',
   'uSEQ/src/modulisp/modulisp.cpp',
   'uSEQ/src/modulisp/modulisp_interpreter.cpp',
+  'uSEQ/src/modulisp/modulisp_interpreter_core.cpp',
   'uSEQ/src/modulisp/modulisp_time.cpp',
   'uSEQ/src/modulisp/modulisp_api.cpp',
   'uSEQ/src/modulisp/modulisp_eval.cpp',
@@ -175,13 +176,20 @@ modulisp_lib = static_library('useq_modulisp',
   override_options : unity_override_options
 )
 
+# Create a dependency object for modulisp (placed before test_helpers)
+modulisp_dep = declare_dependency(
+  link_with : modulisp_lib,
+  include_directories : src_inc,
+  dependencies : lisp_core_dep
+)
+
 # Test helpers library - minimal interfaces for faster test compilation
 test_helpers_lib = static_library('useq_test_helpers',
   'uSEQ/src/interfaces/test_helpers.cpp',
   include_directories : src_inc,
   cpp_args : standalone_args,
   cpp_pch : pch_file,
-  dependencies : lisp_core_dep,
+  dependencies : [lisp_core_dep, modulisp_dep],
   override_options : unity_override_options
 )
 
@@ -189,15 +197,10 @@ test_helpers_lib = static_library('useq_test_helpers',
 test_helpers_dep = declare_dependency(
   link_with : test_helpers_lib,
   include_directories : src_inc,
-  dependencies : lisp_core_dep
+  dependencies : [lisp_core_dep, modulisp_dep]
 )
 
-# Create a dependency object for modulisp
-modulisp_dep = declare_dependency(
-  link_with : modulisp_lib,
-  include_directories : src_inc,
-  dependencies : lisp_core_dep
-)
+# (modulisp_dep defined above)
 
 # DSP library - depends on utils
 dsp_lib = static_library('useq_dsp',

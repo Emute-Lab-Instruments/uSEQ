@@ -21,6 +21,8 @@
 */
 
 #include "string.h"
+#include <cmath>
+#include <climits>
 
 #ifdef ARDUINO
 
@@ -174,7 +176,15 @@ String::String(double value, unsigned char decimalPlaces)
     init();
     char buf[DOUBLE_BUF_SIZE];
     decimalPlaces = min(decimalPlaces, static_cast<unsigned char>(DBL_MAX_DECIMAL_PLACES));
-    *this         = dtostrf(value, static_cast<signed char>(decimalPlaces + 2), decimalPlaces, buf);
+    
+    // Check if the value is a whole number (no fractional part)
+    if (value == floor(value) && value >= INT_MIN && value <= INT_MAX) {
+        // Format as integer (no decimal places)
+        *this = dtostrf(value, 1, 0, buf);
+    } else {
+        // Format with specified decimal places
+        *this = dtostrf(value, static_cast<signed char>(decimalPlaces + 2), decimalPlaces, buf);
+    }
 }
 
 String::~String()

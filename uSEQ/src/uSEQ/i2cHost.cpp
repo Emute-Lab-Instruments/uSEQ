@@ -5,9 +5,7 @@
 #include <Arduino.h>
 #else
 // Desktop stubs
-#include <string>
 #include <cstdio>
-#define String std::string
 #define println(x) printf("%s\n", x)
 #define delayMicroseconds(x)
 class TwoWire {}; // Stub for desktop

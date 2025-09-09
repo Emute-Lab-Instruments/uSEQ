@@ -7,14 +7,14 @@
 #include <memory>
 
 // Forward declaration from global namespace
-class Interpreter;
+class ModuLispInterpreter;
 
 namespace test_helpers {
 
 // Simple test interpreter wrapper that hides implementation details
 class QuickInterpreter {
 private:
-    std::unique_ptr<::Interpreter> impl;
+    std::unique_ptr<ModuLispInterpreter> impl;
     
 public:
     QuickInterpreter();
