@@ -94,6 +94,13 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("useq-report-firmware-info", useq_report_firmware_info);
     INSERT_BUILTINDEF("useq-firmware-info", useq_firmware_info);
 
+    // Playback/transport control
+    INSERT_BUILTINDEF("useq-play", useq_play);
+    INSERT_BUILTINDEF("useq-pause", useq_pause);
+    INSERT_BUILTINDEF("useq-stop", useq_stop);
+    INSERT_BUILTINDEF("useq-rewind", useq_rewind);
+    INSERT_BUILTINDEF("useq-clear", useq_clear);
+
 #ifdef ARDUINO
     INSERT_BUILTINDEF("useqaw", ard_useqaw);
     INSERT_BUILTINDEF("useqdw", ard_useqdw);
@@ -202,6 +209,50 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_report_firmware_info, //
 BUILTINFUNC_NOEVAL_MEMBER(useq_q0, get_environment()->set("q-expr", args[0]);
                           get_scheduler()->set_q0_ast(args[0]);
                           ret = Value::atom("q0");, 1)
+
+// Playback/transport control implementations (0-arg)
+BUILTINFUNC_MEMBER(
+    useq_play,
+    m_is_playing = true;
+    return Value::nil();,
+    0)
+
+BUILTINFUNC_MEMBER(
+    useq_pause,
+    m_is_playing = false;
+    return Value::nil();,
+    0)
+
+BUILTINFUNC_MEMBER(
+    useq_stop,
+    m_is_playing = false;
+    reset_logical_time();
+    return Value::nil();,
+    0)
+
+BUILTINFUNC_MEMBER(
+    useq_rewind,
+    reset_logical_time();
+    return Value::nil();,
+    0)
+
+// Set output expressions to defaults (0.5 for continuous, 0 for binary)
+BUILTINFUNC_MEMBER(
+    useq_clear,
+    for (int i = 0; i < m_num_continuous_outs; i++) {
+        String name = "a" + String(i + 1);
+        Value v = Value(0.5);
+        get_environment()->set_expr(name, v);
+        m_continuous_ASTs[i] = v;
+    }
+    for (int i = 0; i < m_num_binary_outs; i++) {
+        String name = "d" + String(i + 1);
+        Value v = Value(0);
+        get_environment()->set_expr(name, v);
+        m_binary_ASTs[i] = v;
+    }
+    return Value::nil();,
+    0)
 
 // TODO: there is potentially a lot of duplicated/wasted memory by storing
 // the exprs in both the environment and the class member vectors

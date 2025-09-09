@@ -318,6 +318,13 @@ void FAST_FUNC(uSEQ::tick())
         delayMicroseconds(100);
         return;
     }
+    // If paused/stopped, only handle user input and idle
+    if (!m_is_playing)
+    {
+        check_and_handle_user_input();
+        delayMicroseconds(100);
+        return;
+    }
 // Read & cache the hardware & software inputs
 #if HAS_INPUTS
 #ifdef ARDUINO

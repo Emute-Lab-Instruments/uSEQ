@@ -192,6 +192,8 @@ class uSEQ {
     bool m_should_quit = false;
     bool m_current_expr_sound = true;
     bool m_waiting_for_sync_trigger = false;
+    // Playback state
+    bool m_is_playing = true;
 
     // Output management (moved to public section)
     OutputManager* m_output_manager;

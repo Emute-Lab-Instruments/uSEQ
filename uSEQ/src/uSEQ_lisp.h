@@ -11,6 +11,12 @@
 LISP_FUNC_DECL(useq_stop_all);
 LISP_FUNC_DECL(useq_firmware_info);
 LISP_FUNC_DECL(useq_report_firmware_info);
+// Playback/transport control
+LISP_FUNC_DECL(useq_play);
+LISP_FUNC_DECL(useq_pause);
+LISP_FUNC_DECL(useq_stop);
+LISP_FUNC_DECL(useq_rewind);
+LISP_FUNC_DECL(useq_clear);
 
 #ifdef ARDUINO
 // Flash memory and storage functions
