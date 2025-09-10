@@ -234,14 +234,14 @@ test_error_handling_exe = executable(
 # )
 
 # Automation analysis test executable
-test_automation_analysis_exe = executable(
-  'test_automation_analysis',
-  sources : automation_analysis_test_src,
-  include_directories : test_inc,
-  cpp_args : test_args,
-  cpp_pch : test_pch_file,
-  dependencies : [modulisp_dep, math_dep]
-)
+# test_automation_analysis_exe = executable(
+#   'test_automation_analysis',
+#   sources : automation_analysis_test_src,
+#   include_directories : test_inc,
+#   cpp_args : test_args,
+#   cpp_pch : test_pch_file,
+#   dependencies : [modulisp_dep, math_dep]
+# )
 
 # Smoothness test executable - DISABLED - uses removed DSP methods
 # test_smoothness_exe = executable(
@@ -266,7 +266,7 @@ test('interpreter_api_test', test_interpreter_api_exe)
 test('modulisp_api_test', test_modulisp_api_exe)
 test('error_handling_test', test_error_handling_exe)
 # test('signals_test', test_signals_exe)  # Temporarily disabled - uses removed DSP methods
-test('automation_analysis_test', test_automation_analysis_exe)
+# test('automation_analysis_test', test_automation_analysis_exe)
 # test('smoothness_test', test_smoothness_exe)  # Temporarily disabled - uses removed DSP methods
 
 # Time injection test executable

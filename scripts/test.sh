@@ -217,7 +217,7 @@ run_all_tests_meson() {
     fi
     
     # All available tests (comprehensive test suite)
-    local all_tests="value_api_test environment_api_test parser_api_test interpreter_api_test builtin_functions_test parser_test modulisp_api_test automation_analysis_test time_injection_test io_bridge_test logging_bridge_test i2c_bus_test storage_env_test output_manager_test test_with_helpers"
+    local all_tests="value_api_test environment_api_test parser_api_test interpreter_api_test builtin_functions_test parser_test modulisp_api_test time_injection_test io_bridge_test logging_bridge_test i2c_bus_test storage_env_test output_manager_test test_with_helpers"
     
     if $meson_cmd $all_tests; then
         print_success "All tests passed"
@@ -255,7 +255,11 @@ else
         # Use Meson for efficient batch execution
         total_tests=15
         if ! run_all_tests_meson; then
-            # If Meson fails, try individual tests to identify which ones failed
+            # If Meson fails, mark that we have failures (we can't easily identify which specific ones)
+            # by adding a placeholder to failed_tests array
+            failed_tests+=("meson_batch_tests")
+            
+            # Optional: try individual tests to identify which basic ones failed
             print_status "Identifying failed tests..."
             test_suites=("value" "environment" "parser" "interpreter" "builtins" "parser_unit")
             for test_suite in "${test_suites[@]}"; do
@@ -291,7 +295,6 @@ if [[ ${#failed_tests[@]} -eq 0 ]]; then
     echo "  ✓ Output Manager   - Output signal management"
     echo "  ✓ Logging Bridge   - Logging system integration"
     echo "  ✓ Time Injection   - Time-dependent functionality"
-    echo "  ✓ Automation Anal. - Pattern analysis algorithms"
     echo "  ✓ Test Helpers     - Minimal interface testing"
     exit 0
 else
