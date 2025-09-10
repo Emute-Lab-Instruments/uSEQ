@@ -120,8 +120,6 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_autoload_flash,
                           autoload_flash();
                           , 0)
 
-// NOTE: This function was moved to ModuLispInterpreter
-
 // NOTE: only these are meant for user interface
 BUILTINFUNC_MEMBER(
     useq_set_my_id,                  //
@@ -142,18 +140,6 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_memory_restore, //
 BUILTINFUNC_NOEVAL_MEMBER(useq_memory_erase, //
                           reset_flash_env_var_info();
                           , 0)
-
-// BUILTINFUNC_NOEVAL_MEMBER(useq_stop_all, //
-//                           clear_all_outputs();
-//                           println("All outputs cleared.");, 0)
-
-// NOTE: clear_all_outputs() was moved to uSEQ_api.cpp
-
-//     for (int i = 0; i < m_binary_ASTs.size(); i++)
-//     {
-//         String name      = "d" + String(i + 1);
-//         m_binary_ASTs[i] = default_binary_expr;
-// NOTE: clear_all_outputs() implementation was moved to uSEQ_api.cpp
 
 void uSEQ::set_my_id(int num)
 {
@@ -521,30 +507,6 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_enter_bootloader_mode,
 
                               , 0)
 
-
-// FIXME hangs
-// void uSEQ::clear_non_program_flash()
-// {
-//     // NOTE: this was taken from the Arduino's IDE printout
-//     // during compilation
-//     constexpr uint32_t max_code_bytes = 1044480;
-
-//     for (uint32_t addr = max_code_bytes; addr < PICO_FLASH_SIZE_BYTES;
-//          addr += FLASH_SECTOR_SIZE)
-//     {
-//         if (addr % FLASH_SECTOR_SIZE != 0)
-//         {
-//             println("Address " + String(addr) +
-//                     " is NOT aligned on sector borders.");
-//         }
-//         else
-//         {
-//             rom_flash_range_erase(addr, FLASH_SECTOR_SIZE);
-//         }
-//     }
-
-//     println("Cleared flash memory.");
-// }
 
 void uSEQ::reboot()
 {

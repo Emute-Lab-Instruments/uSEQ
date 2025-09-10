@@ -120,48 +120,6 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("aw", ard_aw);
     INSERT_BUILTINDEF("dw", ard_dw);
 #endif
-    // INSERT_BUILTINDEF("useqdr", ard_useqdr);  // Function doesn't exist
-    // INSERT_BUILTINDEF("useqar", ard_useqar);  // Function doesn't exist
-
-    // Flash/persistence
-    // Flash/persistence functions - Commented out until build issues resolved
-    // INSERT_BUILTINDEF("useq-memory-save", useq_memory_save);
-    // INSERT_BUILTINDEF("useq-memory-restore", useq_memory_restore);
-    // INSERT_BUILTINDEF("useq-memory-erase", useq_memory_erase);
-
-// System functions
-// INSERT_BUILTINDEF("useq-bpm", useq_bpm);  // Function doesn't exist
-// INSERT_BUILTINDEF("fw-info", useq_firmware_info);
-// INSERT_BUILTINDEF("fw-version", useq_firmware_info);
-// Control and state functions - Not yet implemented
-// INSERT_BUILTINDEF("useq-set-sync-led", useq_set_sync_led);
-// INSERT_BUILTINDEF("useq-sync-led", useq_set_sync_led);
-// INSERT_BUILTINDEF("trigger-out", useq_sync_led_off);
-// INSERT_BUILTINDEF("useq-stop", useq_stop);
-// INSERT_BUILTINDEF("quit", useq_stop);
-// INSERT_BUILTINDEF("useq-save", useq_save);
-// INSERT_BUILTINDEF("spit", useq_save);
-// INSERT_BUILTINDEF("save", useq_save);
-// INSERT_BUILTINDEF("useq-save-form", useq_save_form);
-// INSERT_BUILTINDEF("useq-load", useq_load);
-// INSERT_BUILTINDEF("slurp", useq_load);
-// INSERT_BUILTINDEF("load", useq_load);
-// INSERT_BUILTINDEF("print-schedule", useq_print_schedule);
-
-// I2C/sync functions - TODO: Implement these
-// I2C functions - Not yet implemented
-// INSERT_BUILTINDEF("useq-send-trigger-i2c", useq_send_trigger_i2c);
-// INSERT_BUILTINDEF("useq-send-clock-i2c", useq_send_clock_i2c);
-// INSERT_BUILTINDEF("useq-send-note-i2c", useq_send_note_i2c);
-// INSERT_BUILTINDEF("wait-trigger", useq_wait_trigger);
-// INSERT_BUILTINDEF("useq-wait-trigger-from-i2c", useq_wait_trigger_from_i2c);
-// INSERT_BUILTINDEF("sync", useq_wait_for_sync_trigger);
-// INSERT_BUILTINDEF("wait-clock", useq_wait_for_clock_trigger);
-// INSERT_BUILTINDEF("useq-get-i2c-device-count", useq_i2c_device_count);
-// INSERT_BUILTINDEF("print-i2c-devices", useq_print_i2c_device_addresses);
-// INSERT_BUILTINDEF("i2c-leader", useq_i2c_set_as_leader);
-// INSERT_BUILTINDEF("i2c-follower", useq_i2c_set_as_follower);
-// INSERT_BUILTINDEF("i2c-receive", useq_i2c_recieve_notenum);
 
 // DSP engine functions (including the new ones)
 #ifdef ARDUINO
@@ -179,11 +137,6 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-qlist", useq_dsp_listqueues);
 #endif
 
-#ifdef MUSICTHING
-    // Music Thing knob values are now automatically updated as environment variables
-    // Users access them directly as 'knob', 'knobx', 'knoby', 'swz' (no function
-    // call needed)
-#endif
 }
 
 ////////////////////

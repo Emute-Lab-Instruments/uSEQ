@@ -166,25 +166,14 @@ class uSEQ {
     std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
 
   private:
-    // Core components (order matters for initialization)
     ErrorManager m_error_manager;
     Environment m_environment;
     uLispParser m_parser;
     ModuLispInterpreter m_interpreter;
     
-    // IO m_io;
-
-    //     std::vector<Output> m_outputs;
-    // std::vector<Input> m_inputs;
-
-    // NOTE these may be useful later on for
-    // dynamically adding/removing outputs
-    // when running in virtual mode
     uint m_num_continuous_outs = NUM_CONTINUOUS_OUTS;
     uint m_num_binary_outs = NUM_BINARY_OUTS;
     uint m_num_serial_outs = NUM_SERIAL_OUTS;
-    // uint m_num_continuous_ins  = NUM_CONTINUOUS_INS;
-    // uint m_num_binary_ins      = NUM_BINARY_INS;
     uint m_num_serial_ins = NUM_SERIAL_INS;
 
     // Flags
@@ -192,13 +181,11 @@ class uSEQ {
     bool m_should_quit = false;
     bool m_current_expr_sound = true;
     bool m_waiting_for_sync_trigger = false;
-    // Playback state
     bool m_is_playing = true;
 
-    // Output management (moved to public section)
     OutputManager* m_output_manager;
     
-    // IO management system
+    
     IOManager* m_io_manager;
 
     // Optional I/O adapter for desktop tests/hardware abstraction (now managed by IOManager)
