@@ -1,4 +1,5 @@
 #include "utils.h"
+#include "uSEQ/hardware_output.h"
 #include <algorithm>
 // #include <iterator>
 
@@ -52,11 +53,11 @@ void flash_builtin(int sleep, int times = 10)
 {
     for (int i = 0; i < times; i++)
     {
-        digitalWrite(LED_BUILTIN, HIGH);
+    HardwareOutput::digital(LED_BUILTIN, HIGH);
         // turn the LED on (HIGH is the voltage level)
         delay(sleep);
         // wait for a second
-        digitalWrite(LED_BUILTIN, LOW);
+    HardwareOutput::digital(LED_BUILTIN, LOW);
         // turn the LED off by making the voltage LOW
         delay(sleep);
     }

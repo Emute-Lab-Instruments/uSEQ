@@ -2,6 +2,7 @@
 #include "../uSEQ.h"
 #include "../utils.h"
 #include "../utils/serial_message.h"
+#include "hardware_output.h"
 
 #ifndef ARDUINO
 #include "../hardware_includes.h"
@@ -314,28 +315,28 @@ void IOManager::read_musicthing_inputs()
     m_responsive_inputs[7]->update(analogRead(AUDIO_IN_R));
 
     // Mux channel 0: Main knob + CV1
-    digitalWrite(MUX_LOGIC_A, 0);
-    digitalWrite(MUX_LOGIC_B, 0);
+    HardwareOutput::digital(MUX_LOGIC_A, 0);
+    HardwareOutput::digital(MUX_LOGIC_B, 0);
     delayMicroseconds(muxdelay);
     m_responsive_inputs[0]->update(analogRead(MUX_IN_1));
     m_responsive_inputs[4]->update(4095 - analogRead(MUX_IN_2)); // Inverted
 
     // Mux channel 1: Y knob
-    digitalWrite(MUX_LOGIC_A, 0);
-    digitalWrite(MUX_LOGIC_B, 1);
+    HardwareOutput::digital(MUX_LOGIC_A, 0);
+    HardwareOutput::digital(MUX_LOGIC_B, 1);
     delayMicroseconds(muxdelay);
     m_responsive_inputs[1]->update(analogRead(MUX_IN_1));
 
     // Mux channel 2: X knob + CV2
-    digitalWrite(MUX_LOGIC_A, 1);
-    digitalWrite(MUX_LOGIC_B, 0);
+    HardwareOutput::digital(MUX_LOGIC_A, 1);
+    HardwareOutput::digital(MUX_LOGIC_B, 0);
     delayMicroseconds(muxdelay);
     m_responsive_inputs[2]->update(analogRead(MUX_IN_1));
     m_responsive_inputs[5]->update(4095 - analogRead(MUX_IN_2)); // Inverted
 
     // Mux channel 3: Switch
-    digitalWrite(MUX_LOGIC_A, 1);
-    digitalWrite(MUX_LOGIC_B, 1);
+    HardwareOutput::digital(MUX_LOGIC_A, 1);
+    HardwareOutput::digital(MUX_LOGIC_B, 1);
     delayMicroseconds(muxdelay);
     m_responsive_inputs[3]->update(analogRead(MUX_IN_1));
 
@@ -402,7 +403,9 @@ void IOManager::read_hardware_1_0_inputs()
 
     auto v_ai2_11 = v_ai2;
     v_ai2_11      = (v_ai2_11 * v_ai2_11) >> 11;
-    analogWrite(USEQ_PIN_LED_AI2, v_ai2_11);
+#ifdef ARDUINO
+    HardwareOutput::analog(static_cast<uint8_t>(USEQ_PIN_LED_AI2), static_cast<uint16_t>(v_ai2_11));
+#endif
 
     double filt1          = m_filter1.process(v_ai1 * recp2048);
     double filt2          = m_filter2.process(v_ai2 * recp2048);
@@ -421,7 +424,7 @@ void IOManager::gpio_irq_gate1()
     double ts         = static_cast<double>(micros());
     const auto input1 = 1 - digitalRead(USEQ_PIN_I1);
     s_instance->set_input_value(USEQI1, input1);
-    digitalWrite(USEQ_PIN_LED_I1, input1);
+    HardwareOutput::digital(USEQ_PIN_LED_I1, static_cast<uint8_t>(input1));
 
     // Delegate to parent for clock handling
     s_instance->m_parent->handle_input1_interrupt(ts, input1);
@@ -437,7 +440,7 @@ void IOManager::gpio_irq_gate2()
     double ts         = static_cast<double>(micros());
     const auto input2 = 1 - digitalRead(USEQ_PIN_I2);
     s_instance->set_input_value(USEQI2, input2);
-    digitalWrite(USEQ_PIN_LED_I2, input2);
+    HardwareOutput::digital(USEQ_PIN_LED_I2, static_cast<uint8_t>(input2));
 
     // Delegate to parent for clock handling
     s_instance->m_parent->handle_input2_interrupt(ts, input2);
@@ -486,29 +489,25 @@ void IOManager::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE v
     ledsigval = maxpwm_i - ledsigval;
 #endif
 
-    // If an I/O adapter is provided, use it and return (desktop tests)
-    if (m_io_adapter)
-    {
-        m_io_adapter->analogWrite(static_cast<uint8_t>(led_pin), ledsigval);
-        m_io_adapter->analogWrite(static_cast<uint8_t>(pwm_pin), scaled_val);
-        return;
-    }
+        // If an I/O adapter is provided, use it and return (desktop tests)
+        if (m_io_adapter)
+        {
+                m_io_adapter->analogWrite(static_cast<uint8_t>(led_pin), ledsigval);
+                m_io_adapter->analogWrite(static_cast<uint8_t>(pwm_pin), scaled_val);
+                return;
+        }
 
-#ifdef ARDUINO
-#if defined(USEQHARDWARE_EXPANDER_OUT_0_1) || defined(MUSICTHING)
-    // write led
-    analogWrite(led_pin, ledsigval);
+        // Centralized hardware writes
+#if defined(ARDUINO)
+    #if defined(USEQHARDWARE_EXPANDER_OUT_0_1) || defined(MUSICTHING)
+        HardwareOutput::analog(static_cast<uint8_t>(led_pin), static_cast<uint16_t>(ledsigval));
+    #else
+        // Use PIO for LED path when available; map output index to SM index
+        HardwareOutput::pio_pwm_level(static_cast<uint8_t>(output), static_cast<uint16_t>(ledsigval));
+    #endif
+        HardwareOutput::analog(static_cast<uint8_t>(pwm_pin), static_cast<uint16_t>(scaled_val));
 #else
-    // write pwm to LED via PIO
-    pio_pwm_set_level(pio0, output, ledsigval);
-#endif
-    // write output
-    analogWrite(pwm_pin, scaled_val);
-#else
-    (void)led_pin;
-    (void)pwm_pin;
-    (void)ledsigval;
-    (void)scaled_val;
+        (void)led_pin; (void)pwm_pin; (void)ledsigval; (void)scaled_val;
 #endif
 }
 
@@ -532,24 +531,14 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
     }
 
 #ifdef ARDUINO
-    // write digi
+    uint8_t v = static_cast<uint8_t>(val > 0.5);
 #ifdef DIGI_OUT_INVERTED
-    digitalWrite(pin, 1 - (val > 0.5));
-#else
-    digitalWrite(pin, val > 0.5);
+    v = 1 - v;
 #endif
-    // write led - should match the actual output polarity
-#ifdef DIGI_OUT_INVERTED
-    // digitalWrite(led_pin, 1 - (val > 0.5)); // LED should also be inverted
-    // FIXME just to test that this can write hi
-    digitalWrite(led_pin, 1 - (val > 0.5)); // LED should also be inverted
+    HardwareOutput::digital(static_cast<uint8_t>(pin), v);
+    HardwareOutput::digital(static_cast<uint8_t>(led_pin), v);
 #else
-    digitalWrite(led_pin, val > 0.5);
-#endif // DIGI_OUT_INVERTED
-#else
-    (void)pin;
-    (void)led_pin;
-    (void)val;
+    (void)pin; (void)led_pin; (void)val;
 #endif // ARDUINO
 }
 
@@ -613,10 +602,9 @@ void IOManager::analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE va
     }
 
 #ifdef ARDUINO
-    analogWrite(pin, ledsigval);
+    HardwareOutput::analog(static_cast<uint8_t>(pin), static_cast<uint16_t>(ledsigval));
 #else
-    (void)pin;
-    (void)ledsigval;
+    (void)pin; (void)ledsigval;
 #endif
 }
 
@@ -636,10 +624,9 @@ void IOManager::digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val)
     }
 
 #ifdef ARDUINO
-    digitalWrite(pin, val > 0.5);
+    HardwareOutput::digital(static_cast<uint8_t>(pin), static_cast<uint8_t>(val > 0.5));
 #else
-    (void)pin;
-    (void)val;
+    (void)pin; (void)val;
 #endif
 }
 
@@ -653,56 +640,56 @@ void IOManager::led_animation()
     ledDelay = 40;
     for (int i = 0; i < 8; i++)
     {
-        digitalWrite(useq_output_led_pins[0], 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[0]), 1);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[2], 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[2]), 1);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[4], 1);
-        digitalWrite(useq_output_led_pins[0], 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[4]), 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[0]), 0);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[5], 1);
-        digitalWrite(useq_output_led_pins[2], 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[5]), 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[2]), 0);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[3], 1);
-        digitalWrite(useq_output_led_pins[4], 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[3]), 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[4]), 0);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[1], 1);
-        digitalWrite(useq_output_led_pins[5], 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[1]), 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[5]), 0);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[3], 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[3]), 0);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[1], 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[1]), 0);
         ledDelay -= 3;
     }
 #endif
 #ifdef USEQHARDWARE_0_2
     for (int i = 0; i < 8; i++)
     {
-        digitalWrite(USEQ_PIN_LED_I1, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_I1, 1);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_A1, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_A1, 1);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_D1, 1);
-        digitalWrite(USEQ_PIN_LED_I1, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_D1, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_I1, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_D3, 1);
-        digitalWrite(USEQ_PIN_LED_A1, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_D3, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_A1, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_D4, 1);
-        digitalWrite(USEQ_PIN_LED_D1, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_D4, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_D1, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_D2, 1);
-        digitalWrite(USEQ_PIN_LED_D3, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_D2, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_D3, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_A2, 1);
-        digitalWrite(USEQ_PIN_LED_D4, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_A2, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_D4, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_I2, 1);
-        digitalWrite(USEQ_PIN_LED_D2, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_I2, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_D2, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_A2, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_A2, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_I2, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_I2, 0);
         delay(ledDelay);
         ledDelay -= 3;
     }
@@ -710,37 +697,37 @@ void IOManager::led_animation()
 #ifdef USEQHARDWARE_1_0
     for (int i = 0; i < 8; i++)
     {
-        digitalWrite(USEQ_PIN_LED_AI1, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_AI1, 1);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_AI2, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_AI2, 1);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_A1, 1);
-        digitalWrite(USEQ_PIN_LED_AI1, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_A1, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_AI1, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_A2, 1);
-        digitalWrite(USEQ_PIN_LED_AI2, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_A2, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_AI2, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_A3, 1);
-        digitalWrite(USEQ_PIN_LED_A1, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_A3, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_A1, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_D3, 1);
-        digitalWrite(USEQ_PIN_LED_A2, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_D3, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_A2, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_D2, 1);
-        digitalWrite(USEQ_PIN_LED_A3, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_D2, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_A3, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_D1, 1);
-        digitalWrite(USEQ_PIN_LED_D3, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_D1, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_D3, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_I2, 1);
-        digitalWrite(USEQ_PIN_LED_D2, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_I2, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_D2, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_I1, 1);
-        digitalWrite(USEQ_PIN_LED_D1, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_I1, 1);
+    HardwareOutput::digital(USEQ_PIN_LED_D1, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_I2, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_I2, 0);
         delay(ledDelay);
-        digitalWrite(USEQ_PIN_LED_I1, 0);
+    HardwareOutput::digital(USEQ_PIN_LED_I1, 0);
         delay(ledDelay);
         ledDelay -= 3;
     }
@@ -748,31 +735,31 @@ void IOManager::led_animation()
 #ifdef USEQHARDWARE_EXPANDER_OUT_0_1
     for (int i = 0; i < 8; i++)
     {
-        digitalWrite(useq_output_led_pins[0], 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[0]), 1);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[1], 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[1]), 1);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[0], 0);
-        digitalWrite(useq_output_led_pins[2], 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[0]), 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[2]), 1);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[1], 0);
-        digitalWrite(useq_output_led_pins[3], 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[1]), 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[3]), 1);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[2], 0);
-        digitalWrite(useq_output_led_pins[4], 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[2]), 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[4]), 1);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[3], 0);
-        digitalWrite(useq_output_led_pins[5], 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[3]), 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[5]), 1);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[4], 0);
-        digitalWrite(useq_output_led_pins[6], 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[4]), 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[6]), 1);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[5], 0);
-        digitalWrite(useq_output_led_pins[7], 1);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[5]), 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[7]), 1);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[6], 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[6]), 0);
         delay(ledDelay);
-        digitalWrite(useq_output_led_pins[7], 0);
+    HardwareOutput::digital(static_cast<uint8_t>(useq_output_led_pins[7]), 0);
         ledDelay -= 3;
     }
 #endif
@@ -978,11 +965,11 @@ bool timer_callback(repeating_timer_t* rt)
     pdm_err = pdm_y - pdm_w + pdm_err;
     if (pdm_y == 1)
     {
-        digitalWrite(USEQ_PIN_LED_AI1, HIGH);
+        HardwareOutput::digital(USEQ_PIN_LED_AI1, HIGH);
     }
     else
     {
-        digitalWrite(USEQ_PIN_LED_AI1, LOW);
+        HardwareOutput::digital(USEQ_PIN_LED_AI1, LOW);
     }
     return true;
 }

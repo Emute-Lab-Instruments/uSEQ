@@ -1,4 +1,5 @@
 #include "uSEQ.h"
+#include "uSEQ/hardware_output.h"
 #include "utils.h"
 #ifdef MUSICTHING
 #include "dsp/uSeqGens/uSeqGen_MT_DAC.h"
@@ -301,8 +302,8 @@ void uSEQ::update_dac_leds()
     buffer_index = (buffer_index + 1) % BUFFER_SIZE;
 
 #ifdef ARDUINO
-    analogWrite(USEQ_LED_PIN_AUDIO_L, led_val_left);
-    analogWrite(USEQ_LED_PIN_AUDIO_R, led_val_right);
+    HardwareOutput::analog(static_cast<uint8_t>(USEQ_LED_PIN_AUDIO_L), static_cast<uint16_t>(led_val_left));
+    HardwareOutput::analog(static_cast<uint8_t>(USEQ_LED_PIN_AUDIO_R), static_cast<uint16_t>(led_val_right));
 #endif
 }
 #endif // MUSICTHING
