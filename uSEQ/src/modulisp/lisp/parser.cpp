@@ -1,6 +1,6 @@
 #include "parser.h"
-#include "value.h"
 #include "error_context.h"
+#include "value.h"
 
 const String uLispParser::unescape(const String str) const
 {
@@ -50,28 +50,37 @@ bool uLispParser::is_symbol(const String& s, int ptr) const
 {
     char ch = s[ptr];
     return (isdigit(ch) || isalpha(ch) || ispunct(ch)) && ch != '(' && ch != ')' &&
-           ch != '[' && ch != ']' && ch != '{' && ch != '}' && ch != '"' && ch != '\'' && ch != ';' && ch != ',' && ch != ' ' && ch != '\t' && ch != '\n';
+           ch != '[' && ch != ']' && ch != '{' && ch != '}' && ch != '"' &&
+           ch != '\'' && ch != ';' && ch != ',' && ch != ' ' && ch != '\t' &&
+           ch != '\n';
 }
 
-bool uLispParser::is_comment(const String& s, int ptr) const { return s[ptr] == ';'; }
+bool uLispParser::is_comment(const String& s, int ptr) const
+{
+    return s[ptr] == ';';
+}
 bool uLispParser::is_quote(const String& s, int ptr) const { return s[ptr] == '\''; }
 bool uLispParser::is_list(const String& s, int ptr) const { return s[ptr] == '('; }
 bool uLispParser::is_vector(const String& s, int ptr) const { return s[ptr] == '['; }
 bool uLispParser::is_map(const String& s, int ptr) const { return s[ptr] == '{'; }
-bool uLispParser::is_midinote(const String& s, int ptr) const { 
-    if (s[ptr] != 'M') return false;
-    
+bool uLispParser::is_midinote(const String& s, int ptr) const
+{
+    if (s[ptr] != 'M')
+        return false;
+
     // Check if there's at least one digit following 'M'
     int pos = ptr + 1;
-    if (pos >= s.length() || !isdigit(s[pos])) return false;
-    
+    if (pos >= s.length() || !isdigit(s[pos]))
+        return false;
+
     // Parse the number part to ensure it's valid
     int number = 0;
-    while (pos < s.length() && isdigit(s[pos])) {
+    while (pos < s.length() && isdigit(s[pos]))
+    {
         number = number * 10 + (s[pos] - '0');
         pos++;
     }
-    
+
     // MIDI notes should be 0-127
     return number >= 0 && number <= 127;
 }
@@ -183,7 +192,8 @@ Value uLispParser::parse(String s, int& ptr) const
     }
     else if (is_map(s, ptr))
     {
-        // Parse map as a list: {key1 value1 key2 value2} -> (key1 value1 key2 value2)
+        // Parse map as a list: {key1 value1 key2 value2} -> (key1 value1 key2
+        // value2)
         std::vector<Value> list;
         ptr++; // Skip opening brace
         skip_whitespace(s, ptr);
@@ -199,8 +209,10 @@ Value uLispParser::parse(String s, int& ptr) const
 
         if (ptr >= int(s.length()))
         {
-            if (m_error_manager) {
-                m_error_manager->report_syntax_error("Unmatched closing parenthesis");
+            if (m_error_manager)
+            {
+                m_error_manager->report_syntax_error(
+                    "Unmatched closing parenthesis");
             }
             return Value::error();
         }
@@ -209,7 +221,8 @@ Value uLispParser::parse(String s, int& ptr) const
         skip_whitespace(s, ptr);
         return Value(list);
     }
-    else if (isdigit(s[ptr]) || (s[ptr] == '-' && isdigit(s[ptr + 1])) || (s[ptr] == '.' && isdigit(s[ptr + 1])))
+    else if (isdigit(s[ptr]) || (s[ptr] == '-' && isdigit(s[ptr + 1])) ||
+             (s[ptr] == '.' && isdigit(s[ptr + 1])))
     {
 
         // println("is digit");
@@ -240,8 +253,10 @@ Value uLispParser::parse(String s, int& ptr) const
         {
             if (ptr + n >= int(s.length()))
             {
-                if (m_error_manager) {
-                    m_error_manager->report_syntax_error("Unexpected end of input, expected closing quote");
+                if (m_error_manager)
+                {
+                    m_error_manager->report_syntax_error(
+                        "Unexpected end of input, expected closing quote");
                 }
                 return Value::error();
             }
@@ -284,8 +299,10 @@ Value uLispParser::parse(String s, int& ptr) const
     }
     else
     {
-        if (m_error_manager) {
-            m_error_manager->report_syntax_error("Invalid input - cannot parse token");
+        if (m_error_manager)
+        {
+            m_error_manager->report_syntax_error(
+                "Invalid input - cannot parse token");
         }
         return Value::error();
     }
@@ -340,7 +357,7 @@ Value uLispParser::parse(String code) const
         }
 
         list.push_back(item);
-        
+
         // Skip any trailing comments after parsing an expression
         skip_whitespace(code, i);
         while (is_comment(code, i))
@@ -361,8 +378,10 @@ Value uLispParser::parse(String code) const
     // If the whole string wasn't parsed, the program must be bad.
     if (i < int(code.length()))
     {
-        if (m_error_manager) {
-            m_error_manager->report_syntax_error("Malformed program - unexpected end of input");
+        if (m_error_manager)
+        {
+            m_error_manager->report_syntax_error(
+                "Malformed program - unexpected end of input");
         }
         error = true;
     }
@@ -392,91 +411,110 @@ Value uLispParser::parse(String code) const
 }
 
 // Missing instance methods implementation
-bool uLispParser::is_freq(const String& s, int ptr) const {
+bool uLispParser::is_freq(const String& s, int ptr) const
+{
     // Check for Hz suffix - could be extended for more frequency units
     int pos = ptr;
-    while (pos < s.length() && (isdigit(s[pos]) || s[pos] == '.')) {
+    while (pos < s.length() && (isdigit(s[pos]) || s[pos] == '.'))
+    {
         pos++;
     }
     return pos < s.length() - 1 && s[pos] == 'H' && s[pos + 1] == 'z';
 }
 
-bool uLispParser::is_fraction(const String& s, int ptr) const {
+bool uLispParser::is_fraction(const String& s, int ptr) const
+{
     // Check for pattern like "3/8"
     int pos = ptr;
-    while (pos < s.length() && isdigit(s[pos])) {
+    while (pos < s.length() && isdigit(s[pos]))
+    {
         pos++;
     }
-    if (pos >= s.length() || s[pos] != '/') return false;
+    if (pos >= s.length() || s[pos] != '/')
+        return false;
     pos++;
-    while (pos < s.length() && isdigit(s[pos])) {
+    while (pos < s.length() && isdigit(s[pos]))
+    {
         pos++;
     }
     return pos > ptr + 2; // Must have at least "1/1"
 }
 
 // Static methods for backward compatibility
-const String uLispParser::unescape_static(const String str) {
+const String uLispParser::unescape_static(const String str)
+{
     uLispParser parser;
     return parser.unescape(str);
 }
 
-void uLispParser::skip_whitespace_static(const String &s, int &ptr) {
+void uLispParser::skip_whitespace_static(const String& s, int& ptr)
+{
     uLispParser parser;
     parser.skip_whitespace(s, ptr);
 }
 
-bool uLispParser::is_symbol_static(const String &s, int ptr) {
+bool uLispParser::is_symbol_static(const String& s, int ptr)
+{
     uLispParser parser;
     return parser.is_symbol(s, ptr);
 }
 
-bool uLispParser::is_comment_static(const String &s, int ptr) {
+bool uLispParser::is_comment_static(const String& s, int ptr)
+{
     uLispParser parser;
     return parser.is_comment(s, ptr);
 }
 
-bool uLispParser::is_quote_static(const String &s, int ptr) {
+bool uLispParser::is_quote_static(const String& s, int ptr)
+{
     uLispParser parser;
     return parser.is_quote(s, ptr);
 }
 
-bool uLispParser::is_list_static(const String &s, int ptr) {
+bool uLispParser::is_list_static(const String& s, int ptr)
+{
     uLispParser parser;
     return parser.is_list(s, ptr);
 }
 
-bool uLispParser::is_vector_static(const String &s, int ptr) {
+bool uLispParser::is_vector_static(const String& s, int ptr)
+{
     uLispParser parser;
     return parser.is_vector(s, ptr);
 }
 
-bool uLispParser::is_map_static(const String &s, int ptr) {
+bool uLispParser::is_map_static(const String& s, int ptr)
+{
     uLispParser parser;
     return parser.is_map(s, ptr);
 }
 
-bool uLispParser::is_midinote_static(const String &s, int ptr) {
+bool uLispParser::is_midinote_static(const String& s, int ptr)
+{
     uLispParser parser;
     return parser.is_midinote(s, ptr);
 }
 
-bool uLispParser::is_freq_static(const String &s, int ptr) {
+bool uLispParser::is_freq_static(const String& s, int ptr)
+{
     uLispParser parser;
     return parser.is_freq(s, ptr);
 }
 
-bool uLispParser::is_fraction_static(const String &s, int ptr) {
+bool uLispParser::is_fraction_static(const String& s, int ptr)
+{
     uLispParser parser;
     return parser.is_fraction(s, ptr);
 }
 
-Value uLispParser::parse_static(String s, int &ptr) {
+Value uLispParser::parse_static(String s, int& ptr)
+{
     uLispParser parser;
     return parser.parse(s, ptr);
 }
 
-Value uLispParser::parse_static(String s) {
+Value uLispParser::parse_static(String s)
+{
     uLispParser parser;
     return parser.parse(s);
 }

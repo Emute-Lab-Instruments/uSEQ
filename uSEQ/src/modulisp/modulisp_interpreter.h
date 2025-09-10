@@ -4,14 +4,14 @@
 #include "../ports/IClock.h"
 #include "../ports/ILogger.h"
 #include "lisp/environment.h"
-#include "lisp/parser.h"
 #include "lisp/error_context.h"
+#include "lisp/parser.h"
 #include "lisp/value.h"
 #include "random_generator.h"
 #include "scheduler.h"
 #include "time_manager.h"
-#include <memory>
 #include <cmath>
+#include <memory>
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
 #define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
@@ -70,7 +70,8 @@ public:
     }
     uint32_t beat_num_at_time(TimeValue time)
     {
-        if (m_beat_length <= 0) return 0;
+        if (m_beat_length <= 0)
+            return 0;
         return static_cast<uint32_t>(time / m_beat_length);
     }
     PhaseValue bar_at_time(TimeValue time)
@@ -79,7 +80,8 @@ public:
     }
     uint32_t bar_num_at_time(TimeValue time)
     {
-        if (m_bar_length <= 0) return 0;
+        if (m_bar_length <= 0)
+            return 0;
         return static_cast<uint32_t>(time / m_bar_length);
     }
     PhaseValue phrase_at_time(TimeValue time)
@@ -98,15 +100,9 @@ public:
 
     // Get current settings
     double get_bpm() const { return m_bpm; }
-    double get_meter_numerator() const
-    {
-        return m_meter_numerator;
-    }
-    double get_meter_denominator() const
-    {
-        return m_meter_denominator;
-    }
-    
+    double get_meter_numerator() const { return m_meter_numerator; }
+    double get_meter_denominator() const { return m_meter_denominator; }
+
     // Phase structure getters
     double get_bars_per_phrase() const { return m_bars_per_phrase; }
     double get_phrases_per_section() const { return m_phrases_per_section; }
@@ -136,15 +132,15 @@ public:
 
     // --- Absorbed Interpreter API ---
     // Evaluation API
-    String eval(const String &code);
+    String eval(const String& code);
     Value eval(Value v);
-    Value eval_v(const String &code);
+    Value eval_v(const String& code);
 
     // Static evaluation helpers
-    static String eval_in(const String &code, Environment &env);
-    static Value eval_in(Value &v, Environment &env);
-    static Value apply(Value &f, LispFuncArgsVec &args, Environment &env);
-    static void eval_args(std::vector<Value> &args, Environment &env);
+    static String eval_in(const String& code, Environment& env);
+    static Value eval_in(Value& v, Environment& env);
+    static Value apply(Value& f, LispFuncArgsVec& args, Environment& env);
+    static void eval_args(std::vector<Value>& args, Environment& env);
     static void init_builtin_functions();
     void loadBuiltinDefs();
 
@@ -160,11 +156,20 @@ public:
     const uLispParser* get_parser() const { return m_parser; }
 
     // Atom evaluation tracking and flags
-    static void set_atom_currently_being_evaluated(const String& atom_name) { m_atom_currently_being_evaluated = atom_name; }
+    static void set_atom_currently_being_evaluated(const String& atom_name)
+    {
+        m_atom_currently_being_evaluated = atom_name;
+    }
     static bool get_attempt_expr_eval_first() { return m_attempt_expr_eval_first; }
-    static void set_attempt_expr_eval_first(bool value) { m_attempt_expr_eval_first = value; }
+    static void set_attempt_expr_eval_first(bool value)
+    {
+        m_attempt_expr_eval_first = value;
+    }
     static bool get_update_loop_evaluation() { return m_update_loop_evaluation; }
-    static void set_update_loop_evaluation(bool value) { m_update_loop_evaluation = value; }
+    static void set_update_loop_evaluation(bool value)
+    {
+        m_update_loop_evaluation = value;
+    }
     static bool get_manual_evaluation() { return m_manual_evaluation; }
     static void set_manual_evaluation(bool value) { m_manual_evaluation = value; }
 
@@ -222,15 +227,15 @@ protected:
     ILogger* logger = nullptr;
 
     // Phase timing (direct implementation like old uSEQ)
-    double m_beat_length = 500000.0;    // microseconds per beat (120 BPM default)
-    double m_bar_length = 2000000.0;    // microseconds per bar
-    double m_phrase_length = 8000000.0; // microseconds per phrase
-    double m_section_length = 32000000.0; // microseconds per section
-    double m_bpm = 120.0;
+    double m_beat_length     = 500000.0;   // microseconds per beat (120 BPM default)
+    double m_bar_length      = 2000000.0;  // microseconds per bar
+    double m_phrase_length   = 8000000.0;  // microseconds per phrase
+    double m_section_length  = 32000000.0; // microseconds per section
+    double m_bpm             = 120.0;
     double m_bars_per_phrase = 4.0;
     double m_phrases_per_section = 4.0;
-    double m_meter_numerator = 4.0;   // Time signature numerator (default 4/4)
-    double m_meter_denominator = 4.0; // Time signature denominator (default 4/4)
+    double m_meter_numerator     = 4.0; // Time signature numerator (default 4/4)
+    double m_meter_denominator   = 4.0; // Time signature denominator (default 4/4)
 
 private:
     // Absorbed Interpreter state

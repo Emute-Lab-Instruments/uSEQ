@@ -28,38 +28,40 @@
 #define i2s_in_slave_wrap 17
 
 static const uint16_t i2s_in_slave_program_instructions[] = {
-            //     .wrap_target
-    0x20a1, //  0: wait   1 pin, 1                   
-    0x4001, //  1: in     pins, 1                    
-    0x8000, //  2: push   noblock                    
-    0x2021, //  3: wait   0 pin, 1                   
-    0x2022, //  4: wait   0 pin, 2                   
-    0x20a1, //  5: wait   1 pin, 1                   
-    0x4001, //  6: in     pins, 1                    
-    0x2021, //  7: wait   0 pin, 1                   
-    0x00ca, //  8: jmp    pin, 10                    
-    0x0005, //  9: jmp    5                          
-    0x20a1, // 10: wait   1 pin, 1                   
-    0x4001, // 11: in     pins, 1                    
-    0x8000, // 12: push   noblock                    
-    0x2021, // 13: wait   0 pin, 1                   
-    0x20a1, // 14: wait   1 pin, 1                   
-    0x4001, // 15: in     pins, 1                    
-    0x2021, // 16: wait   0 pin, 1                   
-    0x00ce, // 17: jmp    pin, 14                    
+    //     .wrap_target
+    0x20a1, //  0: wait   1 pin, 1
+    0x4001, //  1: in     pins, 1
+    0x8000, //  2: push   noblock
+    0x2021, //  3: wait   0 pin, 1
+    0x2022, //  4: wait   0 pin, 2
+    0x20a1, //  5: wait   1 pin, 1
+    0x4001, //  6: in     pins, 1
+    0x2021, //  7: wait   0 pin, 1
+    0x00ca, //  8: jmp    pin, 10
+    0x0005, //  9: jmp    5
+    0x20a1, // 10: wait   1 pin, 1
+    0x4001, // 11: in     pins, 1
+    0x8000, // 12: push   noblock
+    0x2021, // 13: wait   0 pin, 1
+    0x20a1, // 14: wait   1 pin, 1
+    0x4001, // 15: in     pins, 1
+    0x2021, // 16: wait   0 pin, 1
+    0x00ce, // 17: jmp    pin, 14
             //     .wrap
 };
 
 #if !PICO_NO_HARDWARE
 static const struct pio_program i2s_in_slave_program = {
     .instructions = i2s_in_slave_program_instructions,
-    .length = 18,
-    .origin = -1,
+    .length       = 18,
+    .origin       = -1,
 };
 
-static inline pio_sm_config i2s_in_slave_program_get_default_config(uint offset) {
+static inline pio_sm_config i2s_in_slave_program_get_default_config(uint offset)
+{
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset + i2s_in_slave_wrap_target, offset + i2s_in_slave_wrap);
+    sm_config_set_wrap(&c, offset + i2s_in_slave_wrap_target,
+                       offset + i2s_in_slave_wrap);
     return c;
 }
 #endif

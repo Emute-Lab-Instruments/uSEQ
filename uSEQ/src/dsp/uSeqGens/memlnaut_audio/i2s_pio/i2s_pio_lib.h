@@ -1,11 +1,11 @@
 #pragma once
-#include "i2s_sck.pio.h"
-#include "i2s_out_master.pio.h"
 #include "i2s_bidi_slave.pio.h"
 #include "i2s_in_slave.pio.h"
+#include "i2s_out_master.pio.h"
+#include "i2s_sck.pio.h"
 
 // These constants are the I2S clock to pio clock ratio
-const int i2s_sck_program_pio_mult = 2;
+const int i2s_sck_program_pio_mult        = 2;
 const int i2s_out_master_program_pio_mult = 2;
 
 /*
@@ -17,19 +17,24 @@ const int i2s_out_master_program_pio_mult = 2;
  *       It is up to you to ensure that the divider config is set up for a
  *       precise (not approximate) ratio between the BCK, LRCK, and SCK outputs.
  */
-static void i2s_sck_program_init(PIO pio, uint8_t sm, uint8_t offset, uint8_t sck_pin) {
+static void i2s_sck_program_init(PIO pio, uint8_t sm, uint8_t offset,
+                                 uint8_t sck_pin)
+{
     pio_gpio_init(pio, sck_pin);
     pio_sm_config sm_config = i2s_sck_program_get_default_config(offset);
     sm_config_set_set_pins(&sm_config, sck_pin, 1);
 
     uint pin_mask = (1u << sck_pin);
-    pio_sm_set_pins_with_mask(pio, sm, 0, pin_mask);  // zero output
+    pio_sm_set_pins_with_mask(pio, sm, 0, pin_mask); // zero output
     pio_sm_set_pindirs_with_mask(pio, sm, pin_mask, pin_mask);
 
     pio_sm_init(pio, sm, offset, &sm_config);
 }
 
-static inline void i2s_out_master_program_init(PIO pio, uint8_t sm, uint8_t offset, uint8_t bit_depth, uint8_t dout_pin, uint8_t clock_pin_base) {
+static inline void i2s_out_master_program_init(PIO pio, uint8_t sm, uint8_t offset,
+                                               uint8_t bit_depth, uint8_t dout_pin,
+                                               uint8_t clock_pin_base)
+{
     pio_gpio_init(pio, dout_pin);
     pio_gpio_init(pio, clock_pin_base);
     pio_gpio_init(pio, clock_pin_base + 1);
@@ -42,11 +47,13 @@ static inline void i2s_out_master_program_init(PIO pio, uint8_t sm, uint8_t offs
     pio_sm_init(pio, sm, offset, &sm_config);
 
     uint32_t pin_mask = (1u << dout_pin) | (3u << clock_pin_base);
-    pio_sm_set_pins_with_mask(pio, sm, 0, pin_mask);  // zero output
+    pio_sm_set_pins_with_mask(pio, sm, 0, pin_mask); // zero output
     pio_sm_set_pindirs_with_mask(pio, sm, pin_mask, pin_mask);
 }
 
-static inline void i2s_bidi_slave_program_init(PIO pio, uint8_t sm, uint8_t offset, uint8_t dout_pin, uint8_t in_pin_base) {
+static inline void i2s_bidi_slave_program_init(PIO pio, uint8_t sm, uint8_t offset,
+                                               uint8_t dout_pin, uint8_t in_pin_base)
+{
     pio_gpio_init(pio, dout_pin);
     pio_gpio_init(pio, in_pin_base);
     pio_gpio_init(pio, in_pin_base + 1);
@@ -62,11 +69,11 @@ static inline void i2s_bidi_slave_program_init(PIO pio, uint8_t sm, uint8_t offs
 
     // Setup output pins
     uint32_t pin_mask = (1u << dout_pin);
-    pio_sm_set_pins_with_mask(pio, sm, 0, pin_mask);  // zero output
+    pio_sm_set_pins_with_mask(pio, sm, 0, pin_mask); // zero output
     pio_sm_set_pindirs_with_mask(pio, sm, pin_mask, pin_mask);
 
     // Setup input pins
-    pin_mask = (7u << in_pin_base);  // Three input pins
+    pin_mask = (7u << in_pin_base); // Three input pins
     pio_sm_set_pindirs_with_mask(pio, sm, 0, pin_mask);
 }
 
@@ -79,7 +86,9 @@ static inline void i2s_bidi_slave_program_init(PIO pio, uint8_t sm, uint8_t offs
  *  Intended to be run at SCK rate (4x BCK), so clock same as SCK module if using
  *  it, or 4x the BCK frequency (BCK is 64x fs, so 256x fs).
  */
-static inline void i2s_in_slave_program_init(PIO pio, uint8_t sm, uint8_t offset, uint8_t din_pin_base) {
+static inline void i2s_in_slave_program_init(PIO pio, uint8_t sm, uint8_t offset,
+                                             uint8_t din_pin_base)
+{
     pio_gpio_init(pio, din_pin_base);
     gpio_set_pulls(din_pin_base, false, false);
     gpio_set_dir(din_pin_base, GPIO_IN);
@@ -91,6 +100,6 @@ static inline void i2s_in_slave_program_init(PIO pio, uint8_t sm, uint8_t offset
     sm_config_set_jmp_pin(&sm_config, din_pin_base + 2);
     pio_sm_init(pio, sm, offset, &sm_config);
 
-    uint32_t pin_mask = (7u << din_pin_base);  // Three input pins
+    uint32_t pin_mask = (7u << din_pin_base); // Three input pins
     pio_sm_set_pindirs_with_mask(pio, sm, 0, pin_mask);
 }

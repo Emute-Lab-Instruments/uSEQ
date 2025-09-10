@@ -107,328 +107,328 @@ public:
     void Optimize();
 
 private:
-//     class AutoTickThread final
-//     {
-//     public:
-//         AutoTickThread( const AutoTickThread& ) = delete;
-//         AutoTickThread& operator=( const AutoTickThread& ) = delete;
+    //     class AutoTickThread final
+    //     {
+    //     public:
+    //         AutoTickThread( const AutoTickThread& ) = delete;
+    //         AutoTickThread& operator=( const AutoTickThread& ) = delete;
 
-//         inline AutoTickThread() = default;
+    //         inline AutoTickThread() = default;
 
-//         inline ~AutoTickThread()
-//         {
-//             Stop();
-//         }
+    //         inline ~AutoTickThread()
+    //         {
+    //             Stop();
+    //         }
 
-//         inline void Start( DSPatch::Circuit* circuit )
-//         {
-//             if ( !_stopped )
-//             {
-//                 Resume();
-//                 return;
-//             }
+    //         inline void Start( DSPatch::Circuit* circuit )
+    //         {
+    //             if ( !_stopped )
+    //             {
+    //                 Resume();
+    //                 return;
+    //             }
 
-//             _circuit = circuit;
+    //             _circuit = circuit;
 
-//             _stop = false;
-//             _stopped = false;
-//             _pause = false;
+    //             _stop = false;
+    //             _stopped = false;
+    //             _pause = false;
 
-//             _thread = std::thread( &AutoTickThread::_Run, this );
-//         }
+    //             _thread = std::thread( &AutoTickThread::_Run, this );
+    //         }
 
-//         inline void Stop()
-//         {
-//             _stop = true;
-//             _pause = true;
+    //         inline void Stop()
+    //         {
+    //             _stop = true;
+    //             _pause = true;
 
-//             if ( _thread.joinable() )
-//             {
-//                 _thread.join();
-//             }
-//         }
+    //             if ( _thread.joinable() )
+    //             {
+    //                 _thread.join();
+    //             }
+    //         }
 
-//         inline void Pause()
-//         {
-//             if ( !_stopped && ++pauseCount == 1 )
-//             {
-//                 std::unique_lock<std::mutex> lock( _resumeMutex );
-//                 _pause = true;
-//                 _pauseCondt.wait( lock );  // wait for pause
-//             }
-//         }
+    //         inline void Pause()
+    //         {
+    //             if ( !_stopped && ++pauseCount == 1 )
+    //             {
+    //                 std::unique_lock<std::mutex> lock( _resumeMutex );
+    //                 _pause = true;
+    //                 _pauseCondt.wait( lock );  // wait for pause
+    //             }
+    //         }
 
-//         inline void Resume()
-//         {
-//             if ( _pause && --pauseCount == 0 )
-//             {
-//                 _pause = false;
-//                 _resumeCondt.notify_all();
-//                 std::this_thread::yield();
-//             }
-//         }
+    //         inline void Resume()
+    //         {
+    //             if ( _pause && --pauseCount == 0 )
+    //             {
+    //                 _pause = false;
+    //                 _resumeCondt.notify_all();
+    //                 std::this_thread::yield();
+    //             }
+    //         }
 
-//     private:
-//         inline void _Run()
-//         {
-//             if ( _circuit )
-//             {
-//                 while ( true )
-//                 {
-//                     _circuit->Tick();
+    //     private:
+    //         inline void _Run()
+    //         {
+    //             if ( _circuit )
+    //             {
+    //                 while ( true )
+    //                 {
+    //                     _circuit->Tick();
 
-//                     if ( _pause )
-//                     {
-//                         if ( _stop )
-//                         {
-//                             break;
-//                         }
+    //                     if ( _pause )
+    //                     {
+    //                         if ( _stop )
+    //                         {
+    //                             break;
+    //                         }
 
-//                         std::unique_lock<std::mutex> lock( _resumeMutex );
+    //                         std::unique_lock<std::mutex> lock( _resumeMutex );
 
-//                         _pauseCondt.notify_all();
-//                         _resumeCondt.wait( lock );  // wait for resume
-//                     }
-//                 }
-//             }
+    //                         _pauseCondt.notify_all();
+    //                         _resumeCondt.wait( lock );  // wait for resume
+    //                     }
+    //                 }
+    //             }
 
-//             _stopped = true;
-//         }
+    //             _stopped = true;
+    //         }
 
-//         std::thread _thread;
-//         DSPatch::Circuit* _circuit = nullptr;
-//         int pauseCount = 0;
-//         bool _stop = false;
-//         bool _pause = false;
-//         bool _stopped = true;
-//         std::mutex _resumeMutex;
-//         std::condition_variable _resumeCondt, _pauseCondt;
-//     };
+    //         std::thread _thread;
+    //         DSPatch::Circuit* _circuit = nullptr;
+    //         int pauseCount = 0;
+    //         bool _stop = false;
+    //         bool _pause = false;
+    //         bool _stopped = true;
+    //         std::mutex _resumeMutex;
+    //         std::condition_variable _resumeCondt, _pauseCondt;
+    //     };
 
-//     class CircuitThread final
-//     {
-//     public:
-//         CircuitThread( const CircuitThread& ) = delete;
-//         CircuitThread& operator=( const CircuitThread& ) = delete;
+    //     class CircuitThread final
+    //     {
+    //     public:
+    //         CircuitThread( const CircuitThread& ) = delete;
+    //         CircuitThread& operator=( const CircuitThread& ) = delete;
 
-//         inline CircuitThread() = default;
+    //         inline CircuitThread() = default;
 
-//         // cppcheck-suppress missingMemberCopy
-//         inline CircuitThread( CircuitThread&& )
-//         {
-//         }
+    //         // cppcheck-suppress missingMemberCopy
+    //         inline CircuitThread( CircuitThread&& )
+    //         {
+    //         }
 
-//         inline ~CircuitThread()
-//         {
-//             Stop();
-//         }
+    //         inline ~CircuitThread()
+    //         {
+    //             Stop();
+    //         }
 
-//         inline void Start( std::vector<DSPatch::Component*>* components, int bufferNo )
-//         {
-//             _components = components;
-//             _bufferNo = bufferNo;
+    //         inline void Start( std::vector<DSPatch::Component*>* components, int bufferNo )
+    //         {
+    //             _components = components;
+    //             _bufferNo = bufferNo;
 
-//             _stop = false;
-//             _gotSync = false;
+    //             _stop = false;
+    //             _gotSync = false;
 
-//             _thread = std::thread( &CircuitThread::_Run, this );
-//         }
+    //             _thread = std::thread( &CircuitThread::_Run, this );
+    //         }
 
-//         inline void Stop()
-//         {
-//             _stop = true;
+    //         inline void Stop()
+    //         {
+    //             _stop = true;
 
-//             Resume();
+    //             Resume();
 
-//             if ( _thread.joinable() )
-//             {
-//                 _thread.join();
-//             }
-//         }
+    //             if ( _thread.joinable() )
+    //             {
+    //                 _thread.join();
+    //             }
+    //         }
 
-//         inline void Sync()
-//         {
-//             std::unique_lock<std::mutex> lock( _syncMutex );
+    //         inline void Sync()
+    //         {
+    //             std::unique_lock<std::mutex> lock( _syncMutex );
 
-//             if ( !_gotSync )  // if haven't already got sync
-//             {
-//                 _syncCondt.wait( lock );  // wait for sync
-//             }
-//         }
+    //             if ( !_gotSync )  // if haven't already got sync
+    //             {
+    //                 _syncCondt.wait( lock );  // wait for sync
+    //             }
+    //         }
 
-//         inline void Resume()
-//         {
-//             _gotSync = false;  // reset the sync flag
-//             _resumeCondt.notify_all();
-//             std::this_thread::yield();
-//         }
+    //         inline void Resume()
+    //         {
+    //             _gotSync = false;  // reset the sync flag
+    //             _resumeCondt.notify_all();
+    //             std::this_thread::yield();
+    //         }
 
-//         inline void SyncAndResume()
-//         {
-//             Sync();
-//             Resume();
-//         }
+    //         inline void SyncAndResume()
+    //         {
+    //             Sync();
+    //             Resume();
+    //         }
 
-//     private:
-//         inline void _Run()
-//         {
-// #ifdef _WIN32
-//             SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_HIGHEST );
-// #else
-//             sched_param sch_params;
-//             sch_params.sched_priority = sched_get_priority_max( SCHED_RR );
-//             pthread_setschedparam( pthread_self(), SCHED_RR, &sch_params );
-// #endif
+    //     private:
+    //         inline void _Run()
+    //         {
+    // #ifdef _WIN32
+    //             SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_HIGHEST );
+    // #else
+    //             sched_param sch_params;
+    //             sch_params.sched_priority = sched_get_priority_max( SCHED_RR );
+    //             pthread_setschedparam( pthread_self(), SCHED_RR, &sch_params );
+    // #endif
 
-//             if ( _components )
-//             {
-//                 while ( true )
-//                 {
-//                     {
-//                         std::unique_lock<std::mutex> lock( _syncMutex );
+    //             if ( _components )
+    //             {
+    //                 while ( true )
+    //                 {
+    //                     {
+    //                         std::unique_lock<std::mutex> lock( _syncMutex );
 
-//                         _gotSync = true;  // set the sync flag
-//                         _syncCondt.notify_all();
-//                         _resumeCondt.wait( lock );  // wait for resume
-//                     }
+    //                         _gotSync = true;  // set the sync flag
+    //                         _syncCondt.notify_all();
+    //                         _resumeCondt.wait( lock );  // wait for resume
+    //                     }
 
-//                     if ( _stop )
-//                     {
-//                         break;
-//                     }
+    //                     if ( _stop )
+    //                     {
+    //                         break;
+    //                     }
 
-//                     // You might be thinking: Can't we have each thread start on a different component?
+    //                     // You might be thinking: Can't we have each thread start on a different component?
 
-//                     // Well no. In order to maintain synchronisation within the circuit, when a component
-//                     // wants to process its buffers in-order, it requires that every other in-order
-//                     // component in the system has not only processed its buffers in the same order, but
-//                     // has processed the same number of buffers too.
+    //                     // Well no. In order to maintain synchronisation within the circuit, when a component
+    //                     // wants to process its buffers in-order, it requires that every other in-order
+    //                     // component in the system has not only processed its buffers in the same order, but
+    //                     // has processed the same number of buffers too.
 
-//                     // E.g. 1,2,3 and 1,2,3. Not 1,2,3 and 2,3,1,2,3.
+    //                     // E.g. 1,2,3 and 1,2,3. Not 1,2,3 and 2,3,1,2,3.
 
-//                     for ( auto component : *_components )
-//                     {
-//                         component->Tick( _bufferNo );
-//                     }
-//                 }
-//             }
-//         }
+    //                     for ( auto component : *_components )
+    //                     {
+    //                         component->Tick( _bufferNo );
+    //                     }
+    //                 }
+    //             }
+    //         }
 
-//         std::thread _thread;
-//         std::vector<DSPatch::Component*>* _components = nullptr;
-//         int _bufferNo = 0;
-//         bool _stop = false;
-//         bool _gotSync = false;
-//         std::mutex _syncMutex;
-//         std::condition_variable _resumeCondt, _syncCondt;
-//     };
+    //         std::thread _thread;
+    //         std::vector<DSPatch::Component*>* _components = nullptr;
+    //         int _bufferNo = 0;
+    //         bool _stop = false;
+    //         bool _gotSync = false;
+    //         std::mutex _syncMutex;
+    //         std::condition_variable _resumeCondt, _syncCondt;
+    //     };
 
-//     class CircuitThreadParallel final
-//     {
-//     public:
-//         CircuitThreadParallel( const CircuitThreadParallel& ) = delete;
-//         CircuitThreadParallel& operator=( const CircuitThreadParallel& ) = delete;
+    //     class CircuitThreadParallel final
+    //     {
+    //     public:
+    //         CircuitThreadParallel( const CircuitThreadParallel& ) = delete;
+    //         CircuitThreadParallel& operator=( const CircuitThreadParallel& ) = delete;
 
-//         inline CircuitThreadParallel() = default;
+    //         inline CircuitThreadParallel() = default;
 
-//         // cppcheck-suppress missingMemberCopy
-//         inline CircuitThreadParallel( CircuitThreadParallel&& )
-//         {
-//         }
+    //         // cppcheck-suppress missingMemberCopy
+    //         inline CircuitThreadParallel( CircuitThreadParallel&& )
+    //         {
+    //         }
 
-//         inline ~CircuitThreadParallel()
-//         {
-//             Stop();
-//         }
+    //         inline ~CircuitThreadParallel()
+    //         {
+    //             Stop();
+    //         }
 
-//         inline void Start( std::vector<DSPatch::Component*>* components, int bufferNo, int threadNo, int threadCount )
-//         {
-//             _components = components;
-//             _bufferNo = bufferNo;
-//             _threadNo = threadNo;
-//             _threadCount = threadCount;
+    //         inline void Start( std::vector<DSPatch::Component*>* components, int bufferNo, int threadNo, int threadCount )
+    //         {
+    //             _components = components;
+    //             _bufferNo = bufferNo;
+    //             _threadNo = threadNo;
+    //             _threadCount = threadCount;
 
-//             _stop = false;
-//             _gotSync = false;
+    //             _stop = false;
+    //             _gotSync = false;
 
-//             _thread = std::thread( &CircuitThreadParallel::_Run, this );
-//         }
+    //             _thread = std::thread( &CircuitThreadParallel::_Run, this );
+    //         }
 
-//         inline void Stop()
-//         {
-//             _stop = true;
+    //         inline void Stop()
+    //         {
+    //             _stop = true;
 
-//             Resume();
+    //             Resume();
 
-//             if ( _thread.joinable() )
-//             {
-//                 _thread.join();
-//             }
-//         }
+    //             if ( _thread.joinable() )
+    //             {
+    //                 _thread.join();
+    //             }
+    //         }
 
-//         inline void Sync()
-//         {
-//             std::unique_lock<std::mutex> lock( _syncMutex );
+    //         inline void Sync()
+    //         {
+    //             std::unique_lock<std::mutex> lock( _syncMutex );
 
-//             if ( !_gotSync )  // if haven't already got sync
-//             {
-//                 _syncCondt.wait( lock );  // wait for sync
-//             }
-//         }
+    //             if ( !_gotSync )  // if haven't already got sync
+    //             {
+    //                 _syncCondt.wait( lock );  // wait for sync
+    //             }
+    //         }
 
-//         inline void Resume()
-//         {
-//             _gotSync = false;  // reset the sync flag
-//             _resumeCondt.notify_all();
-//             std::this_thread::yield();
-//         }
+    //         inline void Resume()
+    //         {
+    //             _gotSync = false;  // reset the sync flag
+    //             _resumeCondt.notify_all();
+    //             std::this_thread::yield();
+    //         }
 
-//     private:
-//         inline void _Run()
-//         {
-// #ifdef _WIN32
-//             SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_HIGHEST );
-// #else
-//             sched_param sch_params;
-//             sch_params.sched_priority = sched_get_priority_max( SCHED_RR );
-//             pthread_setschedparam( pthread_self(), SCHED_RR, &sch_params );
-// #endif
+    //     private:
+    //         inline void _Run()
+    //         {
+    // #ifdef _WIN32
+    //             SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_HIGHEST );
+    // #else
+    //             sched_param sch_params;
+    //             sch_params.sched_priority = sched_get_priority_max( SCHED_RR );
+    //             pthread_setschedparam( pthread_self(), SCHED_RR, &sch_params );
+    // #endif
 
-//             if ( _components )
-//             {
-//                 while ( true )
-//                 {
-//                     {
-//                         std::unique_lock<std::mutex> lock( _syncMutex );
+    //             if ( _components )
+    //             {
+    //                 while ( true )
+    //                 {
+    //                     {
+    //                         std::unique_lock<std::mutex> lock( _syncMutex );
 
-//                         _gotSync = true;  // set the sync flag
-//                         _syncCondt.notify_all();
-//                         _resumeCondt.wait( lock );  // wait for resume
-//                     }
+    //                         _gotSync = true;  // set the sync flag
+    //                         _syncCondt.notify_all();
+    //                         _resumeCondt.wait( lock );  // wait for resume
+    //                     }
 
-//                     if ( _stop )
-//                     {
-//                         break;
-//                     }
+    //                     if ( _stop )
+    //                     {
+    //                         break;
+    //                     }
 
-//                     for ( auto it = _components->begin() + _threadNo; it < _components->end(); it += _threadCount )
-//                     {
-//                         ( *it )->TickParallel( _bufferNo );
-//                     }
-//                 }
-//             }
-//         }
+    //                     for ( auto it = _components->begin() + _threadNo; it < _components->end(); it += _threadCount )
+    //                     {
+    //                         ( *it )->TickParallel( _bufferNo );
+    //                     }
+    //                 }
+    //             }
+    //         }
 
-//         std::thread _thread;
-//         std::vector<DSPatch::Component*>* _components = nullptr;
-//         int _bufferNo = 0;
-//         int _threadNo = 0;
-//         int _threadCount = 0;
-//         bool _stop = false;
-//         bool _gotSync = false;
-//         std::mutex _syncMutex;
-//         std::condition_variable _resumeCondt, _syncCondt;
-//     };
+    //         std::thread _thread;
+    //         std::vector<DSPatch::Component*>* _components = nullptr;
+    //         int _bufferNo = 0;
+    //         int _threadNo = 0;
+    //         int _threadCount = 0;
+    //         bool _stop = false;
+    //         bool _gotSync = false;
+    //         std::mutex _syncMutex;
+    //         std::condition_variable _resumeCondt, _syncCondt;
+    //     };
 
     void _Optimize();
 
@@ -710,16 +710,16 @@ inline void Circuit::Tick()
     // }
     // // process in a single thread if this circuit has no threads
     // // =========================================================
-    // else 
+    // else
     // if ( _bufferCount == 0 )
     // {
-        // tick all internal components
-        for ( auto component : _components )
-        {
-            component->Tick( 0 );
-        }
+    // tick all internal components
+    for ( auto component : _components )
+    {
+        component->Tick( 0 );
+    }
 
-        return;
+    return;
     // }
     // else
     // {

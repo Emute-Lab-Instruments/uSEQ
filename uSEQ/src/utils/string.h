@@ -28,23 +28,23 @@
 
 #elif defined(USE_STD_STR)
 
-#include <string>
-#include <cmath>
 #include <climits>
+#include <cmath>
+#include <string>
 
 class Extended_STD_String : public std::string
 {
 public:
     // Inherit all constructors from std::string
     using std::string::string;
-    
+
     // Default constructor
     Extended_STD_String() : std::string() {}
-    
+
     // Constructor from std::string
     Extended_STD_String(const std::string& str) : std::string(str) {}
     Extended_STD_String(std::string&& str) : std::string(std::move(str)) {}
-    
+
     // Arduino String compatibility constructors
     Extended_STD_String(char c) : std::string(1, c) {}
     Extended_STD_String(int value) : std::string(std::to_string(value)) {}
@@ -52,63 +52,77 @@ public:
     Extended_STD_String(unsigned int value) : std::string(std::to_string(value)) {}
     Extended_STD_String(unsigned long value) : std::string(std::to_string(value)) {}
     Extended_STD_String(float value) : std::string(std::to_string(value)) {}
-    Extended_STD_String(double value) : std::string() {
+    Extended_STD_String(double value) : std::string()
+    {
         // Check if the value is a whole number (no fractional part)
-        if (value == std::floor(value) && value >= INT_MIN && value <= INT_MAX) {
+        if (value == std::floor(value) && value >= INT_MIN && value <= INT_MAX)
+        {
             // Format as integer (no decimal places)
             *this = std::to_string(static_cast<int>(value));
-        } else {
+        }
+        else
+        {
             // Format with default precision
             *this = std::to_string(value);
         }
     }
-    
+
     // Assignment operators to handle std::string results
-    Extended_STD_String& operator=(const std::string& str) {
+    Extended_STD_String& operator=(const std::string& str)
+    {
         std::string::assign(str);
         return *this;
     }
-    
+
     // Concatenation operators that return Extended_STD_String
-    Extended_STD_String operator+(const Extended_STD_String& rhs) const {
+    Extended_STD_String operator+(const Extended_STD_String& rhs) const
+    {
         return Extended_STD_String(std::string(*this) + std::string(rhs));
     }
-    
-    Extended_STD_String operator+(const std::string& rhs) const {
+
+    Extended_STD_String operator+(const std::string& rhs) const
+    {
         return Extended_STD_String(std::string(*this) + rhs);
     }
-    
-    Extended_STD_String operator+(const char* rhs) const {
+
+    Extended_STD_String operator+(const char* rhs) const
+    {
         return Extended_STD_String(std::string(*this) + rhs);
     }
-    
+
     // Arduino String compatibility methods
-    int indexOf(char ch) const {
+    int indexOf(char ch) const
+    {
         size_t pos = find(ch);
         return (pos == std::string::npos) ? -1 : static_cast<int>(pos);
     }
-    
-    int indexOf(const std::string& str) const {
+
+    int indexOf(const std::string& str) const
+    {
         size_t pos = find(str);
         return (pos == std::string::npos) ? -1 : static_cast<int>(pos);
     }
-    
-    int indexOf(const char* str) const {
+
+    int indexOf(const char* str) const
+    {
         size_t pos = find(str);
         return (pos == std::string::npos) ? -1 : static_cast<int>(pos);
     }
-    
+
     // Define a method named substring
     std::string substring(size_t pos, size_t len) const { return substr(pos, len); }
     std::string substring(size_t len) const { return substr(len); }
 };
 
 // Global operators for const char* + Extended_STD_String
-inline Extended_STD_String operator+(const char* lhs, const Extended_STD_String& rhs) {
+inline Extended_STD_String operator+(const char* lhs, const Extended_STD_String& rhs)
+{
     return Extended_STD_String(std::string(lhs) + std::string(rhs));
 }
 
-inline Extended_STD_String operator+(const std::string& lhs, const Extended_STD_String& rhs) {
+inline Extended_STD_String operator+(const std::string& lhs,
+                                     const Extended_STD_String& rhs)
+{
     return Extended_STD_String(lhs + std::string(rhs));
 }
 

@@ -70,10 +70,11 @@ Value uSEQ::__test_i2c_send_to(int addr, const String& expr_str)
 #ifdef ARDUINO
 #include "uSEQ/i2cClient.h"
 #else
-// Desktop stubs for I2C functionality - define the variables using Arduino String class
+// Desktop stubs for I2C functionality - define the variables using Arduino String
+// class
 bool bNewI2CMessage = false;
-int nI2CBytesRead = 0;
-String i2cPrintStr = "";
+int nI2CBytesRead   = 0;
+String i2cPrintStr  = "";
 char i2cInBuff[500];
 
 #endif
@@ -177,8 +178,9 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)()
         switch (response.response)
         {
         case DSPQ::RESPONSES::UGENINFO:
-            // FIXME: This interferes with the editor handshake if it's printed before the editor asks for firmware version
-            // println("ugen info: " + String(response.data.ugenInfo.key) + " " +
+            // FIXME: This interferes with the editor handshake if it's printed
+            // before the editor asks for firmware version println("ugen info: " +
+            // String(response.data.ugenInfo.key) + " " +
             //         response.data.ugenInfo.name);
             get_environment()->set(
                 "ugen-" + String(response.data.ugenInfo.name),
@@ -439,7 +441,6 @@ void uSEQ::check_and_handle_user_input()
             // Read code
             m_last_received_code = get_code_waiting();
 
-
             if (m_last_received_code == exit_command)
             {
                 m_should_quit = true;
@@ -478,7 +479,6 @@ void uSEQ::check_and_handle_user_input()
 
                 m_last_received_code =
                     String((char)first_byte) + m_last_received_code;
-
 
                 if (bNewI2CMessage)
                     i2cPrintStr += m_last_received_code;

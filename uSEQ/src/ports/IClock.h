@@ -3,10 +3,10 @@
 
 #include <cstdint>
 
-struct IClock {
+struct IClock
+{
     virtual ~IClock() = default;
     // Microseconds and milliseconds since boot (monotonic)
     virtual uint64_t micros() = 0;
     virtual uint64_t millis() = 0;
 };
-

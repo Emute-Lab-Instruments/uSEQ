@@ -20,7 +20,8 @@ void message_editor(const String& s)
 
 void println(const String& s)
 {
-    if (auto L = get_global_logger()) {
+    if (auto L = get_global_logger())
+    {
         L->info(s);
     }
 #ifdef ARDUINO
@@ -36,13 +37,13 @@ void println(const String& s)
 #endif
 }
 
-
-
 // ERRORS
 std::vector<String> error_msg_q = {};
-void report_error(const String& s) {
+void report_error(const String& s)
+{
     error_msg_q.push_back(s);
-    if (auto L = get_global_logger()) {
+    if (auto L = get_global_logger())
+    {
         L->error(s);
     }
 }
@@ -58,9 +59,11 @@ void report_runtime_error(const String& s)
     report_error(msg);
 }
 
-void report_user_warning(const String& s) {
+void report_user_warning(const String& s)
+{
     String msg = "**Warning**: " + s;
-    if (auto L = get_global_logger()) {
+    if (auto L = get_global_logger())
+    {
         L->warn(msg);
     }
     report_error(msg);
@@ -166,9 +169,10 @@ void report_custom_function_error(const String& function_name, const String& msg
     report_error("(`" + function_name + "`) " + msg);
 }
 
-int free_heap() { 
+int free_heap()
+{
 #ifdef ARDUINO
-    return rp2040.getFreeHeap() / 1024; 
+    return rp2040.getFreeHeap() / 1024;
 #else
     return 0; // Stub for desktop build
 #endif

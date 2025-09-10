@@ -1,8 +1,8 @@
 #ifdef ARDUINO
-#include <Wire.h>
-#include "i2cUtils.h"
 #include "configure.h"
+#include "i2cUtils.h"
 #include "pinmap.h"
+#include <Wire.h>
 
 #define ENABLEI2CCLIENT true
 
@@ -18,10 +18,8 @@ static int i2cRequest = _i2c_req_none;
 // Define a type for this module
 //************************
 
-
-
-static char i2cInBuff[500];   // buffer for incomming messages
-static char i2cOutBuff[150];  // buffer for outgoing messages
+static char i2cInBuff[500];  // buffer for incomming messages
+static char i2cOutBuff[150]; // buffer for outgoing messages
 extern String i2cPrintStr;
 
 extern bool bNewI2CMessage;
@@ -44,4 +42,3 @@ static char i2cInBuff[500];
 static char i2cOutBuff[150];
 extern String i2cPrintStr;
 #endif
-

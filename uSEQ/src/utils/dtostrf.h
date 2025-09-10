@@ -37,12 +37,12 @@ extern "C"
         asm(".global _printf_float");
 
 #include "compiler_config.h"
-USEQ_SUPPRESS_FORMAT_WARNINGS_PUSH
+        USEQ_SUPPRESS_FORMAT_WARNINGS_PUSH
         char fmt[20];
         sprintf(fmt, "%%%d.%df", width, prec);
         sprintf(sout, fmt, val);
         return sout;
-USEQ_SUPPRESS_FORMAT_WARNINGS_POP
+        USEQ_SUPPRESS_FORMAT_WARNINGS_POP
     }
 
 #ifdef __cplusplus

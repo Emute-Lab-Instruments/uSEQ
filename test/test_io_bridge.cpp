@@ -2,17 +2,19 @@
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
 
-#include "../uSEQ/src/uSEQ.h"
 #include "../uSEQ/src/ports/mocks/MockClock.h"
 #include "../uSEQ/src/ports/mocks/MockIo.h"
+#include "../uSEQ/src/uSEQ.h"
 
-TEST_CASE("uSEQ I/O adapters are used via tick/update_outs", "[io][bridge][tick]") {
-    MockClock clk; clk.set_micros(0);
+TEST_CASE("uSEQ I/O adapters are used via tick/update_outs", "[io][bridge][tick]")
+{
+    MockClock clk;
+    clk.set_micros(0);
     MockIo io;
 
     uSEQ device(&clk, nullptr, &io);
     // IOManager now initialized automatically in constructor
-    
+
     // Manually size AST/value arrays to expected output counts
     device.m_continuous_ASTs.resize(3);
     device.m_continuous_vals.resize(3);

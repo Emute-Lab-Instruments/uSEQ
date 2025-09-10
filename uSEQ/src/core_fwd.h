@@ -2,7 +2,7 @@
 #define CORE_FWD_H_
 
 // Forward declarations for core uSEQ types
-// This lightweight header provides forward declarations for frequently-used 
+// This lightweight header provides forward declarations for frequently-used
 // classes to reduce compilation dependencies and header weight.
 
 // Core LISP interpreter classes

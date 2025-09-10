@@ -5,8 +5,8 @@
 #ifdef ARDUINO
 
 #include "uSEQ.h"
-#include <hardware/flash.h>
 #include <functional>
+#include <hardware/flash.h>
 #ifndef ARDUINO
 #include "hardware_includes.h"
 #endif
@@ -14,9 +14,9 @@
 
 #else
 
-#include "uSEQ.h"
-#include "ports/IStorage.h"
 #include "hardware_includes.h"
+#include "ports/IStorage.h"
+#include "uSEQ.h"
 #include "utils.h"
 
 #endif
@@ -29,7 +29,6 @@
 #ifndef FLASH_PAGE_SIZE
 #define FLASH_PAGE_SIZE 256
 #endif
-
 
 // FLASH
 
@@ -153,7 +152,8 @@ void uSEQ::copy_def_strings_to_buffer(char* buffer)
 {
     char* write_pos = buffer;
 
-    for (auto& map : { std::ref(get_environment()->get_defs()), std::ref(get_environment()->get_def_exprs()) })
+    for (auto& map : { std::ref(get_environment()->get_defs()),
+                       std::ref(get_environment()->get_def_exprs()) })
     {
         for (auto& pair : map.get())
         {
@@ -285,7 +285,8 @@ std::pair<size_t, size_t> uSEQ::num_bytes_def_strs() const
     size_t exprs_size = 0;
 
     int i = 0;
-    for (const auto& map : { std::cref(get_environment()->get_defs()), std::cref(get_environment()->get_def_exprs()) })
+    for (const auto& map : { std::cref(get_environment()->get_defs()),
+                             std::cref(get_environment()->get_def_exprs()) })
     {
         size_t size = 0;
 
@@ -493,7 +494,6 @@ void uSEQ::autoload_flash()
     }
 }
 
-
 // extern "C" {
 //     #include "pico/bootrom.h"
 // }
@@ -503,10 +503,9 @@ void uSEQ::autoload_flash()
 #endif
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_enter_bootloader_mode,
-    reset_usb_boot(0, 0); // delay_ms=0, interface=0
+                          reset_usb_boot(0, 0); // delay_ms=0, interface=0
 
-                              , 0)
-
+                          , 0)
 
 void uSEQ::reboot()
 {
@@ -536,20 +535,22 @@ bool uSEQ::save_env_to_storage(IStorage& s)
 
     // 1. Collect all env strings and figure out their total size
     std::pair<size_t, size_t> pair = num_bytes_def_strs();
-    size_t defs_size = pair.first;
-    size_t exprs_size = pair.second;
-    size_t total_size = defs_size + exprs_size;
+    size_t defs_size               = pair.first;
+    size_t exprs_size              = pair.second;
+    size_t total_size              = defs_size + exprs_size;
 
     // 2. Write size information first (8 bytes for two size_t values)
     uint8_t size_header[16];
     memcpy(size_header, &defs_size, sizeof(size_t));
     memcpy(size_header + sizeof(size_t), &exprs_size, sizeof(size_t));
-    
-    if (!s.write(0, size_header, 16)) {
+
+    if (!s.write(0, size_header, 16))
+    {
         return false;
     }
 
-    if (total_size == 0) {
+    if (total_size == 0)
+    {
         return true; // Nothing more to save
     }
 
@@ -567,73 +568,78 @@ bool uSEQ::save_env_to_storage(IStorage& s)
 bool uSEQ::load_env_from_storage(IStorage& s)
 {
     // Parameter s is a reference, so it's always valid
-    
+
     // 1. Read size information first
     uint8_t size_header[16];
-    if (!s.read(0, size_header, 16)) {
+    if (!s.read(0, size_header, 16))
+    {
         return false;
     }
-    
+
     size_t defs_size, exprs_size;
     memcpy(&defs_size, size_header, sizeof(size_t));
     memcpy(&exprs_size, size_header + sizeof(size_t), sizeof(size_t));
-    
+
     size_t total_size = defs_size + exprs_size;
-    if (total_size == 0) {
+    if (total_size == 0)
+    {
         // Clear existing definitions
         get_environment()->get_defs().clear();
         m_def_exprs.clear();
         return true; // Nothing to load
     }
-    
+
     // 2. Read environment data
     uint8_t* buffer = new uint8_t[total_size];
-    if (!s.read(16, buffer, total_size)) {
+    if (!s.read(16, buffer, total_size))
+    {
         delete[] buffer;
         return false;
     }
-    
+
     // 3. Parse the data similar to Arduino load_flash_env
-    char* read_ptr = reinterpret_cast<char*>(buffer);
+    char* read_ptr  = reinterpret_cast<char*>(buffer);
     char* start_ptr = read_ptr;
-    
+
     // Clear existing definitions
     get_environment()->get_defs().clear();
     m_def_exprs.clear();
-    
+
     // We read defs first, then swap to def_exprs
     ValueMap* map_ptr = &get_environment()->get_defs();
-    
-    while ((size_t)(read_ptr - start_ptr) < total_size) {
+
+    while ((size_t)(read_ptr - start_ptr) < total_size)
+    {
         String name_str = String(read_ptr);
         read_ptr += name_str.length() + 1;
-        
+
         String def_str = String(read_ptr);
         read_ptr += def_str.length() + 1;
-        
+
         // Check if we need to switch to def_exprs map
         size_t bytes_read = (size_t)(read_ptr - start_ptr);
-        if (bytes_read > defs_size) {
+        if (bytes_read > defs_size)
+        {
             map_ptr = &get_environment()->get_def_exprs();
         }
-        
+
         // Parse and store the definition
         Value parsed_value = uLispParser::parse(def_str);
-        if (!parsed_value.is_error()) {
+        if (!parsed_value.is_error())
+        {
             (*map_ptr)[name_str] = parsed_value;
         }
     }
-    
+
     delete[] buffer;
     return true;
 }
 
 // Test helper method implementations
-bool uSEQ::__test_save_env_to_storage(IStorage& s) {
-    return save_env_to_storage(s);
-}
+bool uSEQ::__test_save_env_to_storage(IStorage& s) { return save_env_to_storage(s); }
 
-bool uSEQ::__test_load_env_from_storage(IStorage& s) {
+bool uSEQ::__test_load_env_from_storage(IStorage& s)
+{
     return load_env_from_storage(s);
 }
 

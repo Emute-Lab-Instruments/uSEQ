@@ -2,7 +2,7 @@
 #define USEQ_LISP_H_
 
 ////////////////////////////////////////////////////////////////////////////////
-/// LISP INTEGRATION FUNCTION DECLARATIONS  
+/// LISP INTEGRATION FUNCTION DECLARATIONS
 /// This header contains LISP integration function declarations
 /// that need to be included within the uSEQ class definition.
 ////////////////////////////////////////////////////////////////////////////////

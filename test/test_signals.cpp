@@ -1,10 +1,11 @@
-#include "catch.hpp"
 #include "../uSEQ/src/modulisp/lisp/environment.h"
 #include "../uSEQ/src/modulisp/lisp/value.h"
+#include "catch.hpp"
 #include <cmath>
 #include <iostream>
 
-TEST_CASE("Static t variable initialization", "[signals][initialization]") {
+TEST_CASE("Static t variable initialization", "[signals][initialization]")
+{
     // Test that t is a signal
     REQUIRE(Value::t.is_signal());
     REQUIRE(Value::t.type == Value::SIGNAL);
@@ -17,8 +18,9 @@ TEST_CASE("Static t variable initialization", "[signals][initialization]") {
     REQUIRE(&t == &Value::t);
 }
 
-// Commented out test function for signal metadata (converted to Catch2 format but kept commented)
-// TEST_CASE("Signal metadata properties", "[signals][metadata][basic]") {
+// Commented out test function for signal metadata (converted to Catch2 format but
+// kept commented) TEST_CASE("Signal metadata properties",
+// "[signals][metadata][basic]") {
 //     // IS
 //     REQUIRE(Value::t.is_monotonic());
 //     REQUIRE(Value::t.is_increasing());
@@ -33,39 +35,46 @@ TEST_CASE("Static t variable initialization", "[signals][initialization]") {
 //     REQUIRE(std::isinf(Value::t.get_max()) && Value::t.get_max() > 0);
 // }
 
-// Commented out test function for t zeros (converted to Catch2 format but kept commented)
-// TEST_CASE("Time variable zeros", "[signals][zeros]") {
+// Commented out test function for t zeros (converted to Catch2 format but kept
+// commented) TEST_CASE("Time variable zeros", "[signals][zeros]") {
 //     REQUIRE(t.find_zeros() == 0.0); // t is only zero at time = 0
 //     REQUIRE(t.find_zeros() == 0.0); // t is only zero at time = 0
 // }
 
-TEST_CASE("Signal arithmetic operations", "[signals][arithmetic]") {
+TEST_CASE("Signal arithmetic operations", "[signals][arithmetic]")
+{
     // Test addition
     Value result1 = Value::t + Value(5);
     REQUIRE(result1.is_signal());
     REQUIRE_FALSE(result1.is_constant());
-    REQUIRE(result1.as_float() == Approx(5.0).epsilon(1e-9)); // t starts at 0, so t + 5 = 5
+    REQUIRE(result1.as_float() ==
+            Approx(5.0).epsilon(1e-9)); // t starts at 0, so t + 5 = 5
 
     // Test subtraction
     Value result2 = Value::t - Value(3);
     REQUIRE(result2.is_signal());
     REQUIRE_FALSE(result2.is_constant());
-    REQUIRE(result2.as_float() == Approx(-3.0).epsilon(1e-9)); // t starts at 0, so t - 3 = -3
+    REQUIRE(result2.as_float() ==
+            Approx(-3.0).epsilon(1e-9)); // t starts at 0, so t - 3 = -3
 
     // Test multiplication
     Value result3 = Value::t * Value(2);
     REQUIRE(result3.is_signal());
     REQUIRE_FALSE(result3.is_constant());
-    REQUIRE(result3.as_float() == Approx(0.0).epsilon(1e-9)); // t starts at 0, so t * 2 = 0
+    REQUIRE(result3.as_float() ==
+            Approx(0.0).epsilon(1e-9)); // t starts at 0, so t * 2 = 0
 
     // Test division
     Value result4 = (Value::t + Value(4)) / Value(2);
     REQUIRE(result4.is_signal());
     REQUIRE_FALSE(result4.is_constant());
-    REQUIRE(result4.as_float() == Approx(2.0).epsilon(1e-9)); // (t + 4) / 2 = (0 + 4) / 2 = 2
+    REQUIRE(result4.as_float() ==
+            Approx(2.0).epsilon(1e-9)); // (t + 4) / 2 = (0 + 4) / 2 = 2
 }
 
-TEST_CASE("Signal modulo operation (periodic signals)", "[signals][modulo][periodic]") {
+TEST_CASE("Signal modulo operation (periodic signals)",
+          "[signals][modulo][periodic]")
+{
     // Test the example from the user: (t % 1.5) * 2
     Value mod_result = Value::t % Value(1.5);
     REQUIRE(mod_result.is_signal());
@@ -86,13 +95,14 @@ TEST_CASE("Signal modulo operation (periodic signals)", "[signals][modulo][perio
     REQUIRE(final_result.as_float() == Approx(0.0).epsilon(1e-9));
 }
 
-TEST_CASE("Signal pow operation", "[signals][power]") {
+TEST_CASE("Signal pow operation", "[signals][power]")
+{
     // Test t^2
     Value pow_result = Value::t.pow(Value(2));
     REQUIRE(pow_result.is_signal());
     REQUIRE_FALSE(pow_result.is_constant());
     REQUIRE_FALSE(pow_result.is_monotonic()); // Power operations break monotonicity
-    REQUIRE_FALSE(pow_result.is_periodic()); // Power operations break periodicity
+    REQUIRE_FALSE(pow_result.is_periodic());  // Power operations break periodicity
 
     // Test actual computation: t starts at 0, so 0^2 = 0
     REQUIRE(pow_result.as_float() == Approx(0.0).epsilon(1e-9));
@@ -107,10 +117,11 @@ TEST_CASE("Signal pow operation", "[signals][power]") {
     REQUIRE(pow_result2.as_float() == Approx(4.0).epsilon(1e-9));
 }
 
-TEST_CASE("Metadata propagation", "[signals][metadata]") {
+TEST_CASE("Metadata propagation", "[signals][metadata]")
+{
     // Test that operations between constants don't create signals
-    Value const1 = Value(3);
-    Value const2 = Value(7);
+    Value const1       = Value(3);
+    Value const2       = Value(7);
     Value const_result = const1 + const2;
     REQUIRE_FALSE(const_result.is_signal());
     REQUIRE(const_result.is_constant());
@@ -121,17 +132,18 @@ TEST_CASE("Metadata propagation", "[signals][metadata]") {
     REQUIRE_FALSE(mixed_result.is_constant());
 
     // Test that signal + signal creates signal
-    Value t2 = Value::t * Value(2); // Create another signal
+    Value t2            = Value::t * Value(2); // Create another signal
     Value signal_result = Value::t + t2;
     REQUIRE(signal_result.is_signal());
     REQUIRE_FALSE(signal_result.is_constant());
 }
 
-TEST_CASE("Complex signal expressions", "[signals][complex]") {
+TEST_CASE("Complex signal expressions", "[signals][complex]")
+{
     // Test complex expression: ((t * 2) + 3) % 5
-    Value t_times_2 = Value::t * Value(2);
+    Value t_times_2        = Value::t * Value(2);
     Value t_times_2_plus_3 = t_times_2 + Value(3);
-    Value complex_result = t_times_2_plus_3 % Value(5);
+    Value complex_result   = t_times_2_plus_3 % Value(5);
 
     REQUIRE(complex_result.is_signal());
     REQUIRE_FALSE(complex_result.is_constant());
@@ -142,7 +154,8 @@ TEST_CASE("Complex signal expressions", "[signals][complex]") {
     REQUIRE(complex_result.as_float() == Approx(3.0).epsilon(1e-9));
 }
 
-TEST_CASE("is_signal() method", "[signals][method]") {
+TEST_CASE("is_signal() method", "[signals][method]")
+{
     // Constants should not be signals
     REQUIRE_FALSE(Value(42).is_signal());
     REQUIRE_FALSE(Value(3.14).is_signal());
@@ -158,7 +171,8 @@ TEST_CASE("is_signal() method", "[signals][method]") {
     REQUIRE(Value::t.pow(Value(2)).is_signal());
 }
 
-TEST_CASE("Signal edge cases", "[signals][edge_cases]") {
+TEST_CASE("Signal edge cases", "[signals][edge_cases]")
+{
     // Test modulo with zero (should handle gracefully)
     Value zero_mod = Value::t % Value(0);
     REQUIRE(zero_mod.is_signal());
@@ -176,7 +190,8 @@ TEST_CASE("Signal edge cases", "[signals][edge_cases]") {
     REQUIRE_FALSE(tiny_result.is_constant());
 }
 
-TEST_CASE("Metadata query methods", "[signals][metadata][query]") {
+TEST_CASE("Metadata query methods", "[signals][metadata][query]")
+{
     // Test on constants (should return value itself for min/max)
     Value const_val = Value(42);
     REQUIRE(const_val.is_constant());
@@ -200,7 +215,8 @@ TEST_CASE("Metadata query methods", "[signals][metadata][query]") {
 /// EXTENDED METADATA TESTS (TDD-STYLE - TESTS FIRST)
 ////////////////////////////////////////////////////////////////////////////////
 
-TEST_CASE("Smoothness and continuity metadata", "[signals][metadata][smoothness]") {
+TEST_CASE("Smoothness and continuity metadata", "[signals][metadata][smoothness]")
+{
     // Basic time parameter should be analytic (smooth)
     REQUIRE(Value::t.is_smooth());
     REQUIRE(Value::t.is_continuous());
@@ -228,7 +244,8 @@ TEST_CASE("Smoothness and continuity metadata", "[signals][metadata][smoothness]
     REQUIRE_FALSE(floor_signal.is_smooth());
 }
 
-TEST_CASE("Symmetry metadata", "[signals][metadata][symmetry]") {
+TEST_CASE("Symmetry metadata", "[signals][metadata][symmetry]")
+{
     // t should be odd: f(-x) = -f(x)
     REQUIRE(Value::t.is_odd());
     REQUIRE_FALSE(Value::t.is_even());
@@ -269,7 +286,8 @@ TEST_CASE("Symmetry metadata", "[signals][metadata][symmetry]") {
     REQUIRE_FALSE(cos_t.is_odd());
 }
 
-TEST_CASE("Rate and derivative metadata", "[signals][metadata][derivative]") {
+TEST_CASE("Rate and derivative metadata", "[signals][metadata][derivative]")
+{
     // t has constant derivative = 1
     REQUIRE(Value::t.get_min_derivative() == Approx(1.0).epsilon(1e-9));
     REQUIRE(Value::t.get_max_derivative() == Approx(1.0).epsilon(1e-9));
@@ -302,7 +320,8 @@ TEST_CASE("Rate and derivative metadata", "[signals][metadata][derivative]") {
     REQUIRE(scaled_t.get_max_derivative() == Approx(2.0).epsilon(1e-9));
 }
 
-TEST_CASE("Frequency domain metadata", "[signals][metadata][frequency]") {
+TEST_CASE("Frequency domain metadata", "[signals][metadata][frequency]")
+{
     // DC signal (constant) should have zero frequency
     Value dc_signal = Value(10);
     REQUIRE(dc_signal.is_pure_tone());
@@ -318,7 +337,8 @@ TEST_CASE("Frequency domain metadata", "[signals][metadata][frequency]") {
     // Periodic sawtooth (t % period) should have harmonics
     Value sawtooth = Value::t % Value(2.0);
     REQUIRE_FALSE(sawtooth.is_pure_tone());
-    REQUIRE(sawtooth.get_fundamental_frequency() == Approx(0.5).epsilon(1e-9)); // freq = 1/period = 1/2
+    REQUIRE(sawtooth.get_fundamental_frequency() ==
+            Approx(0.5).epsilon(1e-9));       // freq = 1/period = 1/2
     REQUIRE_FALSE(sawtooth.is_bandlimited()); // Sawtooth has infinite harmonics
 
     // sin(2πft) should be pure tone
@@ -331,12 +351,14 @@ TEST_CASE("Frequency domain metadata", "[signals][metadata][frequency]") {
     // Harmonics test for square wave approximation
     Value square_approx = sine_440 + (sine_440 * Value(3)).sin() / Value(3);
     REQUIRE_FALSE(square_approx.is_pure_tone());
-    REQUIRE(square_approx.get_fundamental_frequency() == Approx(440.0).epsilon(1e-6));
+    REQUIRE(square_approx.get_fundamental_frequency() ==
+            Approx(440.0).epsilon(1e-6));
     std::vector<double> harmonics = square_approx.get_harmonics();
     REQUIRE(harmonics.size() >= 2); // Should contain 440Hz and 1320Hz
 }
 
-TEST_CASE("Statistical metadata", "[signals][metadata][statistics]") {
+TEST_CASE("Statistical metadata", "[signals][metadata][statistics]")
+{
     // Constants should have zero variance, mean = value
     Value constant = Value(5);
     REQUIRE(constant.get_mean_value() == Approx(5.0).epsilon(1e-9));
@@ -374,7 +396,8 @@ TEST_CASE("Statistical metadata", "[signals][metadata][statistics]") {
     REQUIRE(offset_sin.get_mean_value() == Approx(3.0).epsilon(1e-9));
 }
 
-TEST_CASE("Causality and memory metadata", "[signals][metadata][causality]") {
+TEST_CASE("Causality and memory metadata", "[signals][metadata][causality]")
+{
     // Basic time parameter should be causal and memoryless
     REQUIRE(Value::t.is_causal());
     REQUIRE(Value::t.is_memoryless());
@@ -415,7 +438,8 @@ TEST_CASE("Causality and memory metadata", "[signals][metadata][causality]") {
     REQUIRE(moving_avg.get_memory_length() == Approx(2.0).epsilon(1e-9));
 }
 
-TEST_CASE("Energy and power metadata", "[signals][metadata][energy]") {
+TEST_CASE("Energy and power metadata", "[signals][metadata][energy]")
+{
     // Constants should be neither energy nor power signals (except zero)
     Value constant = Value(5);
     REQUIRE_FALSE(constant.is_energy_signal());
@@ -453,7 +477,8 @@ TEST_CASE("Energy and power metadata", "[signals][metadata][energy]") {
     REQUIRE(std::isfinite(periodic.get_average_power()));
 }
 
-TEST_CASE("Quantization metadata", "[signals][metadata][quantization]") {
+TEST_CASE("Quantization metadata", "[signals][metadata][quantization]")
+{
     // Continuous signals should not be quantized
     REQUIRE_FALSE(Value::t.is_quantized());
     REQUIRE_FALSE(Value::t.is_integer_valued());
@@ -496,7 +521,8 @@ TEST_CASE("Quantization metadata", "[signals][metadata][quantization]") {
     REQUIRE(binary_allowed.count(1.0) > 0);
 }
 
-TEST_CASE("Transcendental function metadata", "[signals][metadata][transcendental]") {
+TEST_CASE("Transcendental function metadata", "[signals][metadata][transcendental]")
+{
     // sin(t) metadata
     Value sin_t = Value::t.sin();
     REQUIRE_FALSE(sin_t.is_constant());
@@ -534,7 +560,7 @@ TEST_CASE("Transcendental function metadata", "[signals][metadata][transcendenta
 
     // log(t) metadata (for positive t domain)
     Value positive_t = Value::t.abs() + Value(0.1); // Ensure positive domain
-    Value log_t = positive_t.log();
+    Value log_t      = positive_t.log();
     REQUIRE_FALSE(log_t.is_constant());
     REQUIRE(log_t.is_monotonic());
     REQUIRE(log_t.is_analytic()); // On positive domain
@@ -548,7 +574,8 @@ TEST_CASE("Transcendental function metadata", "[signals][metadata][transcendenta
     REQUIRE(sqrt_t.is_analytic()); // On positive domain
 }
 
-TEST_CASE("Composition and chaining metadata", "[signals][metadata][composition]") {
+TEST_CASE("Composition and chaining metadata", "[signals][metadata][composition]")
+{
     // sin(cos(t)) should be bounded [-1, 1] and non-monotonic
     Value sin_cos_t = Value::t.cos().sin();
     REQUIRE_FALSE(sin_cos_t.is_constant());
@@ -579,7 +606,8 @@ TEST_CASE("Composition and chaining metadata", "[signals][metadata][composition]
     REQUIRE(abs_sin_t.get_min() == Approx(0.0).epsilon(1e-9));
     REQUIRE(abs_sin_t.get_max() == Approx(1.0).epsilon(1e-9));
     REQUIRE(abs_sin_t.is_periodic());
-    REQUIRE(abs_sin_t.get_period() == Approx(M_PI).epsilon(1e-6)); // Period halved by abs
+    REQUIRE(abs_sin_t.get_period() ==
+            Approx(M_PI).epsilon(1e-6)); // Period halved by abs
     REQUIRE(abs_sin_t.is_even());
 
     // Integration of sin(t) should lose boundedness but remain periodic in envelope
@@ -591,10 +619,11 @@ TEST_CASE("Composition and chaining metadata", "[signals][metadata][composition]
     REQUIRE(std::isfinite(int_sin_t.get_max()));
 }
 
-TEST_CASE("Mathematical identity preservation", "[signals][metadata][identity]") {
+TEST_CASE("Mathematical identity preservation", "[signals][metadata][identity]")
+{
     // sin^2(t) + cos^2(t) = 1
-    Value sin_t = Value::t.sin();
-    Value cos_t = Value::t.cos();
+    Value sin_t     = Value::t.sin();
+    Value cos_t     = Value::t.cos();
     Value identity1 = sin_t * sin_t + cos_t * cos_t;
     REQUIRE(identity1.is_constant());
     REQUIRE(identity1.get_min() == Approx(1.0).epsilon(1e-9));
@@ -602,11 +631,13 @@ TEST_CASE("Mathematical identity preservation", "[signals][metadata][identity]")
     REQUIRE(identity1.as_float() == Approx(1.0).epsilon(1e-9));
 
     // exp(log(x)) = x for positive x
-    Value positive_signal = Value::t.abs() + Value(1);
+    Value positive_signal  = Value::t.abs() + Value(1);
     Value exp_log_identity = positive_signal.log().exp();
     // Should preserve all metadata of positive_signal
-    REQUIRE(exp_log_identity.get_min() == Approx(positive_signal.get_min()).epsilon(1e-9));
-    REQUIRE(exp_log_identity.get_max() == Approx(positive_signal.get_max()).epsilon(1e-9));
+    REQUIRE(exp_log_identity.get_min() ==
+            Approx(positive_signal.get_min()).epsilon(1e-9));
+    REQUIRE(exp_log_identity.get_max() ==
+            Approx(positive_signal.get_max()).epsilon(1e-9));
     REQUIRE(exp_log_identity.is_monotonic() == positive_signal.is_monotonic());
 
     // log(exp(x)) = x
@@ -616,7 +647,7 @@ TEST_CASE("Mathematical identity preservation", "[signals][metadata][identity]")
 
     // sqrt(x^2) = abs(x)
     Value sqrt_square_identity = (Value::t * Value::t).sqrt();
-    Value abs_t = Value::t.abs();
+    Value abs_t                = Value::t.abs();
     REQUIRE(sqrt_square_identity.get_min() == Approx(abs_t.get_min()).epsilon(1e-9));
     REQUIRE(sqrt_square_identity.get_max() == Approx(abs_t.get_max()).epsilon(1e-9));
     REQUIRE(sqrt_square_identity.is_even() == abs_t.is_even());
@@ -629,17 +660,21 @@ TEST_CASE("Mathematical identity preservation", "[signals][metadata][identity]")
     REQUIRE(double_abs.is_even() == single_abs.is_even());
 }
 
-TEST_CASE("Domain validation and error handling", "[signals][metadata][error_handling]") {
+TEST_CASE("Domain validation and error handling",
+          "[signals][metadata][error_handling]")
+{
     // log of negative values should create error metadata
     Value negative_signal = Value::t - Value(10); // Creates negative values
-    Value log_negative = negative_signal.log();
+    Value log_negative    = negative_signal.log();
     REQUIRE(log_negative.has_domain_error());
-    REQUIRE(log_negative.get_error_message() == "log domain error: non-positive input");
+    REQUIRE(log_negative.get_error_message() ==
+            "log domain error: non-positive input");
 
     // sqrt of negative values should create error metadata
     Value sqrt_negative = negative_signal.sqrt();
     REQUIRE(sqrt_negative.has_domain_error());
-    REQUIRE(sqrt_negative.get_error_message() == "sqrt domain error: negative input");
+    REQUIRE(sqrt_negative.get_error_message() ==
+            "sqrt domain error: negative input");
 
     // Division by zero should create error metadata
     Value zero_signal = Value::t - Value::t; // Always zero
@@ -649,7 +684,7 @@ TEST_CASE("Domain validation and error handling", "[signals][metadata][error_han
 
     // asin of values outside [-1, 1] should create error
     Value large_signal = Value::t + Value(2); // Values outside [-1, 1]
-    Value asin_large = large_signal.asin();
+    Value asin_large   = large_signal.asin();
     REQUIRE(asin_large.has_domain_error());
 
     // Valid operations should not have errors
@@ -660,7 +695,8 @@ TEST_CASE("Domain validation and error handling", "[signals][metadata][error_han
     REQUIRE_FALSE(valid_sqrt.has_domain_error());
 }
 
-TEST_CASE("Optimization validation metadata", "[signals][metadata][optimization]") {
+TEST_CASE("Optimization validation metadata", "[signals][metadata][optimization]")
+{
     // Constant folding should be detected
     Value const_expr = Value(3) + Value(4) * Value(2);
     REQUIRE(const_expr.is_constant());
@@ -683,7 +719,7 @@ TEST_CASE("Optimization validation metadata", "[signals][metadata][optimization]
     REQUIRE(identity_add.simplifies_to(Value::t));
 
     // Strength reduction: x^2 can use multiplication instead of pow
-    Value square_pow = Value::t.pow(Value(2));
+    Value square_pow  = Value::t.pow(Value(2));
     Value square_mult = Value::t * Value::t;
     REQUIRE(square_pow.can_use_strength_reduction());
     REQUIRE(square_pow.strength_reduces_to(square_mult));
@@ -695,20 +731,24 @@ TEST_CASE("Optimization validation metadata", "[signals][metadata][optimization]
     REQUIRE(expr1.get_common_subexpressions(expr2).size() > 0);
 }
 
-TEST_CASE("Property interaction matrix", "[signals][metadata][interaction]") {
-    // Constant × Periodic → Should be false (constants can't be periodic with period > 0)
+TEST_CASE("Property interaction matrix", "[signals][metadata][interaction]")
+{
+    // Constant × Periodic → Should be false (constants can't be periodic with period
+    // > 0)
     Value constant = Value(5);
     REQUIRE(constant.is_constant());
     REQUIRE_FALSE(constant.is_periodic());
     // Validate this is impossible combination
-    REQUIRE_FALSE(constant.is_constant() && constant.is_periodic() && constant.get_period() > 0);
+    REQUIRE_FALSE(constant.is_constant() && constant.is_periodic() &&
+                  constant.get_period() > 0);
 
     // Monotonic × Periodic → Only possible for constant signals
     Value periodic_mono = Value::t % Value(2.0);
     REQUIRE(periodic_mono.is_periodic());
     REQUIRE_FALSE(periodic_mono.is_monotonic());
     // Non-constant periodic signals cannot be monotonic
-    REQUIRE_FALSE(!periodic_mono.is_constant() && periodic_mono.is_periodic() && periodic_mono.is_monotonic());
+    REQUIRE_FALSE(!periodic_mono.is_constant() && periodic_mono.is_periodic() &&
+                  periodic_mono.is_monotonic());
 
     // Even × Odd → Only possible for zero signal
     Value zero = Value(0);
@@ -753,4 +793,3 @@ TEST_CASE("Property interaction matrix", "[signals][metadata][interaction]") {
     REQUIRE(causal_memory.is_causal());
     REQUIRE_FALSE(causal_memory.is_memoryless());
 }
-

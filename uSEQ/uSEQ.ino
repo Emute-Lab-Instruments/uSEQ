@@ -47,12 +47,7 @@ void setup()
 
 void __not_in_flash_func(loop)() { u->tick(); }
 
+// core 1
+void setup1() { u->initDSP(); }
 
-//core 1
-void setup1() {
-    u->initDSP();
-}
-
-void __not_in_flash_func(loop1)() {
-    u->tick_dsp();
-}
+void __not_in_flash_func(loop1)() { u->tick_dsp(); }

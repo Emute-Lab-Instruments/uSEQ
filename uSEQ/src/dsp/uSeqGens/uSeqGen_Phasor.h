@@ -6,38 +6,38 @@
 class uSeqGen_Phasor final : public uSeqGen_Base
 {
 public:
-    uSeqGen_Phasor(queue_t *q, size_t key) : uSeqGen_Base(q, key)
+    uSeqGen_Phasor(queue_t* q, size_t key) : uSeqGen_Base(q, key)
     {
         SetInputCount_(0);
         SetOutputCount_(1);
 
-        addMessageHandler("freq", [this](command_data_message_data &data) {
-            setFrequency(data.floatData.value);
-        });        
+        addMessageHandler("freq", [this](command_data_message_data& data)
+                          { setFrequency(data.floatData.value); });
     }
 
-    void setFrequency(float freq) {
-         inc = freq * uSeqGen_Base::sampleRateRcpr;
-         frequency = freq;
+    void setFrequency(float freq)
+    {
+        inc       = freq * uSeqGen_Base::sampleRateRcpr;
+        frequency = freq;
     }
-
-
 
 protected:
-    void __force_inline Process_(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
+    void __force_inline Process_(DSPatch::SignalBus& inputs,
+                                 DSPatch::SignalBus& outputs) override
     {
         outputs.SetValue(0, phase);
         phase += inc;
-        if (phase > 1.f) {
+        if (phase > 1.f)
+        {
             phase -= 1.f;
         }
     }
-private:
-    float count = 0;
-    float frequency = 100.0;
-    float phase=0;
-    float inc=0.02f;
 
+private:
+    float count     = 0;
+    float frequency = 100.0;
+    float phase     = 0;
+    float inc       = 0.02f;
 };
 
 #endif // USEQGEN_MUL_H

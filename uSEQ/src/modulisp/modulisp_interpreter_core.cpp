@@ -1,11 +1,11 @@
-#include "modulisp_interpreter.h"
 #include "../utils.h"
 #include "../utils/log.h"
+#include "lisp/builtins.h"
 #include "lisp/configure.h"
 #include "lisp/environment.h"
-#include "lisp/builtins.h"
 #include "lisp/macros.h"
 #include "lisp/value.h"
+#include "modulisp_interpreter.h"
 #include <cmath>
 #include <cstdlib>
 
@@ -27,42 +27,60 @@ uSEQ* INTERP_MEM ModuLispInterpreter::useq_instance_ptr;
 ModuLispInterpreter* INTERP_MEM ModuLispInterpreter::modulisp_instance_ptr;
 
 // Constructors
-ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* env, uLispParser* parser, IClock* clk, ILogger* log, IRandomGenerator* rng)
-    : clock(clk), logger(log) {
-    if (env == nullptr) {
+ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* env,
+                                         uLispParser* parser, IClock* clk,
+                                         ILogger* log, IRandomGenerator* rng)
+    : clock(clk), logger(log)
+{
+    if (env == nullptr)
+    {
         m_fallback_environment = std::make_unique<Environment>();
-        m_environment = m_fallback_environment.get();
-    } else {
+        m_environment          = m_fallback_environment.get();
+    }
+    else
+    {
         m_environment = env;
     }
 
-    if (error_mgr == nullptr) {
+    if (error_mgr == nullptr)
+    {
         m_fallback_error_manager = std::make_unique<ErrorManager>();
-        m_error_manager = m_fallback_error_manager.get();
-    } else {
+        m_error_manager          = m_fallback_error_manager.get();
+    }
+    else
+    {
         m_error_manager = error_mgr;
     }
 
-    if (parser == nullptr) {
+    if (parser == nullptr)
+    {
         m_fallback_parser = std::make_unique<uLispParser>(m_error_manager);
-        m_parser = m_fallback_parser.get();
-    } else {
+        m_parser          = m_fallback_parser.get();
+    }
+    else
+    {
         m_parser = parser;
     }
 
     // Managers
     m_time_manager = std::make_unique<TimeManager>(clk);
-    m_scheduler = std::make_unique<Scheduler>();
-    if (rng) {
+    m_scheduler    = std::make_unique<Scheduler>();
+    if (rng)
+    {
         m_random_generator.reset(rng);
-    } else {
+    }
+    else
+    {
         m_random_generator = std::make_unique<SimpleRandomGenerator>();
     }
 
     set_bpm(130.0, 0.0);
-    if (get_parser()) {
+    if (get_parser())
+    {
         m_scheduler->set_cqp_ast(get_parser()->parse("bar"));
-    } else {
+    }
+    else
+    {
         m_scheduler->set_cqp_ast(Value::atom("bar"));
     }
 }
@@ -71,28 +89,38 @@ ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* e
 ModuLispInterpreter::~ModuLispInterpreter() = default;
 
 // Builtins initialization
-void ModuLispInterpreter::init_builtin_functions() {
+void ModuLispInterpreter::init_builtin_functions()
+{
     DBG("ModuLispInterpreter::init_builtin_functions");
     static bool initialized = false;
-    if (!initialized) {
+    if (!initialized)
+    {
         ModuLispInterpreter temp(nullptr);
         temp.loadBuiltinDefs();
         initialized = true;
     }
 }
 
-std::unique_ptr<ModuLispInterpreter> ModuLispInterpreter::create_fresh_interpreter() {
+std::unique_ptr<ModuLispInterpreter> ModuLispInterpreter::create_fresh_interpreter()
+{
     init_builtin_functions();
     return std::make_unique<ModuLispInterpreter>(nullptr);
 }
 
 // Instance eval wrappers
-String ModuLispInterpreter::eval(const String& code) { return eval_in(code, *m_environment); }
+String ModuLispInterpreter::eval(const String& code)
+{
+    return eval_in(code, *m_environment);
+}
 Value ModuLispInterpreter::eval(Value v) { return eval_in(v, *m_environment); }
-Value ModuLispInterpreter::eval_v(const String& code) { return eval(m_parser->parse(code)); }
+Value ModuLispInterpreter::eval_v(const String& code)
+{
+    return eval(m_parser->parse(code));
+}
 
 // Static helpers (ported)
-String ModuLispInterpreter::eval_in(const String &code, Environment &env) {
+String ModuLispInterpreter::eval_in(const String& code, Environment& env)
+{
     Value tree   = uLispParser::parse_static(code);
     Value result = eval_in(tree, env);
     return result.display();
@@ -141,15 +169,22 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
             break;
         }
 
-        std::vector<Value> args = std::vector<Value>(v.list.begin() + 1, v.list.end());
+        std::vector<Value> args =
+            std::vector<Value>(v.list.begin() + 1, v.list.end());
         Value function = eval_in(v.list[0], env);
         if (function.is_error())
         {
-            if (v.list[0].is_symbol()) {
-                report_generic_error("Function '" + v.list[0].as_atom() + "' is not defined");
-            } else {
-                report_runtime_error("Trying to evaluate the function " + v.list[0].display() +
-                                     " results in an error. This could either mean that it hasn't been defined, or that it's not valid.");
+            if (v.list[0].is_symbol())
+            {
+                report_generic_error("Function '" + v.list[0].as_atom() +
+                                     "' is not defined");
+            }
+            else
+            {
+                report_runtime_error(
+                    "Trying to evaluate the function " + v.list[0].display() +
+                    " results in an error. This could either mean that it hasn't "
+                    "been defined, or that it's not valid.");
             }
             result = Value::error();
         }
@@ -191,7 +226,8 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
         for (auto& val : v.list)
         {
             Value evalled = val.eval(env);
-            if (evalled.is_error()) return Value::error();
+            if (evalled.is_error())
+                return Value::error();
             result_vec.push_back(evalled);
         }
         return Value::vector(result_vec);
@@ -207,7 +243,9 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
 }
 
 #if defined(USE_NOT_IN_FLASH)
-Value __not_in_flash_func(ModuLispInterpreter::apply)(Value& f, LispFuncArgsVec& args, Environment& env)
+Value __not_in_flash_func(ModuLispInterpreter::apply)(Value& f,
+                                                      LispFuncArgsVec& args,
+                                                      Environment& env)
 #else
 Value ModuLispInterpreter::apply(Value& f, LispFuncArgsVec& args, Environment& env)
 #endif
@@ -231,8 +269,14 @@ Value ModuLispInterpreter::apply(Value& f, LispFuncArgsVec& args, Environment& e
         e.set_parent_scope(&env);
         for (size_t i = 0; i < params->size(); i++)
         {
-            if ((*params)[i].type != Value::ATOM) { ::println(INVALID_LAMBDA); }
-            else { e.set((*params)[i].str, args[i]); }
+            if ((*params)[i].type != Value::ATOM)
+            {
+                ::println(INVALID_LAMBDA);
+            }
+            else
+            {
+                e.set((*params)[i].str, args[i]);
+            }
         }
         auto result = eval_in(f.list[1], e);
         return result;
@@ -252,25 +296,43 @@ Value ModuLispInterpreter::apply(Value& f, LispFuncArgsVec& args, Environment& e
     case Value::BUILTIN_METHOD:
     {
         dbg("builtin METHOD!");
-        if (f.stack_data.builtin_method != NULL && ModuLispInterpreter::useq_instance_ptr != NULL)
+        if (f.stack_data.builtin_method != NULL &&
+            ModuLispInterpreter::useq_instance_ptr != NULL)
         {
-            Value result = (*useq_instance_ptr.*f.stack_data.builtin_method)(args, env);
+            Value result =
+                (*useq_instance_ptr.*f.stack_data.builtin_method)(args, env);
             return result;
         }
-        if (f.stack_data.builtin_method == NULL) { report_generic_error("EMPTY BUILTIN POINTER for method with name " + f.str); }
-        else if (ModuLispInterpreter::useq_instance_ptr == NULL) { report_generic_error("uSEQ POINTER INSTANCE IS NULL"); }
+        if (f.stack_data.builtin_method == NULL)
+        {
+            report_generic_error("EMPTY BUILTIN POINTER for method with name " +
+                                 f.str);
+        }
+        else if (ModuLispInterpreter::useq_instance_ptr == NULL)
+        {
+            report_generic_error("uSEQ POINTER INSTANCE IS NULL");
+        }
         return Value::error();
     }
     case Value::BUILTIN_MODULISP_METHOD:
     {
         dbg("builtin MODULISP METHOD!");
-        if (f.stack_data.builtin_modulisp_method != NULL && ModuLispInterpreter::modulisp_instance_ptr != NULL)
+        if (f.stack_data.builtin_modulisp_method != NULL &&
+            ModuLispInterpreter::modulisp_instance_ptr != NULL)
         {
-            Value result = (*modulisp_instance_ptr.*f.stack_data.builtin_modulisp_method)(args, env);
+            Value result = (*modulisp_instance_ptr.*
+                            f.stack_data.builtin_modulisp_method)(args, env);
             return result;
         }
-        if (f.stack_data.builtin_modulisp_method == NULL) { report_generic_error("EMPTY BUILTIN MODULISP POINTER for method with name " + f.str); }
-        else if (ModuLispInterpreter::modulisp_instance_ptr == NULL) { report_generic_error("ModuLispInterpreter POINTER INSTANCE IS NULL"); }
+        if (f.stack_data.builtin_modulisp_method == NULL)
+        {
+            report_generic_error(
+                "EMPTY BUILTIN MODULISP POINTER for method with name " + f.str);
+        }
+        else if (ModuLispInterpreter::modulisp_instance_ptr == NULL)
+        {
+            report_generic_error("ModuLispInterpreter POINTER INSTANCE IS NULL");
+        }
         return Value::error();
     }
     case Value::VECTOR:
@@ -280,7 +342,10 @@ Value ModuLispInterpreter::apply(Value& f, LispFuncArgsVec& args, Environment& e
         {
             float phasor = std::clamp(fmod(args[0].as_float(), 1.0), 0.0, 1.0);
             size_t idx   = floor(args[0].as_float() * size);
-            if (idx >= size) { idx = size - 1; }
+            if (idx >= size)
+            {
+                idx = size - 1;
+            }
             return f.list[idx];
         }
         report_custom_function_error("[]",
@@ -293,7 +358,8 @@ Value ModuLispInterpreter::apply(Value& f, LispFuncArgsVec& args, Environment& e
     return Value::error();
 }
 
-void ModuLispInterpreter::eval_args(std::vector<Value>& args, Environment& env) {
+void ModuLispInterpreter::eval_args(std::vector<Value>& args, Environment& env)
+{
     Value result = Value::nil();
     for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
     {
@@ -307,7 +373,8 @@ void ModuLispInterpreter::eval_args(std::vector<Value>& args, Environment& env) 
     (void)result;
 }
 
-void ModuLispInterpreter::loadBuiltinDefs() {
+void ModuLispInterpreter::loadBuiltinDefs()
+{
     DBG("ModuLispInterpreter::loadBuiltinDefs");
     // Register core builtins into the static builtin map
     // Collections
@@ -337,29 +404,29 @@ void ModuLispInterpreter::loadBuiltinDefs() {
     Environment::builtindefs()["<="] = Value("<=", builtin::less_eq);
 
     // Arithmetic
-    Environment::builtindefs()["+"] = Value("+", builtin::sum);
-    Environment::builtindefs()["-"] = Value("-", builtin::subtract);
-    Environment::builtindefs()["*"] = Value("*", builtin::product);
-    Environment::builtindefs()["/"] = Value("/", builtin::divide);
-    Environment::builtindefs()["%"] = Value("%", builtin::remainder);
+    Environment::builtindefs()["+"]     = Value("+", builtin::sum);
+    Environment::builtindefs()["-"]     = Value("-", builtin::subtract);
+    Environment::builtindefs()["*"]     = Value("*", builtin::product);
+    Environment::builtindefs()["/"]     = Value("/", builtin::divide);
+    Environment::builtindefs()["%"]     = Value("%", builtin::remainder);
     Environment::builtindefs()["floor"] = Value("floor", builtin::ard_floor);
     Environment::builtindefs()["ceil"]  = Value("ceil", builtin::ard_ceil);
 
     // Meta
-    Environment::builtindefs()["type"] = Value("type", builtin::get_type_name);
-    Environment::builtindefs()["eval"] = Value("eval", builtin::eval);
-    Environment::builtindefs()["defn"] = Value("defn", builtin::defn);
-    Environment::builtindefs()["lambda"] = Value("lambda", builtin::lambda);
-    Environment::builtindefs()["def"]   = Value("def", builtin::def);
-    Environment::builtindefs()["defun"] = Value("defun", builtin::defun);
-    Environment::builtindefs()["defs"]  = Value("defs", builtin::defs);
-    Environment::builtindefs()["set"]   = Value("set", builtin::set);
+    Environment::builtindefs()["type"]     = Value("type", builtin::get_type_name);
+    Environment::builtindefs()["eval"]     = Value("eval", builtin::eval);
+    Environment::builtindefs()["defn"]     = Value("defn", builtin::defn);
+    Environment::builtindefs()["lambda"]   = Value("lambda", builtin::lambda);
+    Environment::builtindefs()["def"]      = Value("def", builtin::def);
+    Environment::builtindefs()["defun"]    = Value("defun", builtin::defun);
+    Environment::builtindefs()["defs"]     = Value("defs", builtin::defs);
+    Environment::builtindefs()["set"]      = Value("set", builtin::set);
     Environment::builtindefs()["get-expr"] = Value("get-expr", builtin::get_expr);
-    Environment::builtindefs()["do"]    = Value("do", builtin::do_block);
-    Environment::builtindefs()["let"]   = Value("let", builtin::let_block);
-    Environment::builtindefs()["for"]   = Value("for", builtin::for_loop);
-    Environment::builtindefs()["while"] = Value("while", builtin::while_loop);
-    Environment::builtindefs()["if"]    = Value("if", builtin::if_then_else);
+    Environment::builtindefs()["do"]       = Value("do", builtin::do_block);
+    Environment::builtindefs()["let"]      = Value("let", builtin::let_block);
+    Environment::builtindefs()["for"]      = Value("for", builtin::for_loop);
+    Environment::builtindefs()["while"]    = Value("while", builtin::while_loop);
+    Environment::builtindefs()["if"]       = Value("if", builtin::if_then_else);
 
 #ifndef ARDUINO
     Environment::builtindefs()["print"]   = Value("print", builtin::print);
@@ -376,22 +443,22 @@ void ModuLispInterpreter::loadBuiltinDefs() {
     Environment::builtindefs()["quote"]   = Value("quote", builtin::quote);
 
     // Math / trig and helpers
-    Environment::builtindefs()["sin"]    = Value("sin", builtin::ard_sin);
-    Environment::builtindefs()["sine"]   = Value("sine", builtin::ard_sin);
-    Environment::builtindefs()["usin"]   = Value("usin", builtin::ard_usin);
-    Environment::builtindefs()["usine"]  = Value("usine", builtin::ard_usin);
-    Environment::builtindefs()["cos"]    = Value("cos", builtin::ard_cos);
-    Environment::builtindefs()["cosine"] = Value("cosine", builtin::ard_cos);
-    Environment::builtindefs()["ucos"]   = Value("ucos", builtin::ard_ucos);
+    Environment::builtindefs()["sin"]     = Value("sin", builtin::ard_sin);
+    Environment::builtindefs()["sine"]    = Value("sine", builtin::ard_sin);
+    Environment::builtindefs()["usin"]    = Value("usin", builtin::ard_usin);
+    Environment::builtindefs()["usine"]   = Value("usine", builtin::ard_usin);
+    Environment::builtindefs()["cos"]     = Value("cos", builtin::ard_cos);
+    Environment::builtindefs()["cosine"]  = Value("cosine", builtin::ard_cos);
+    Environment::builtindefs()["ucos"]    = Value("ucos", builtin::ard_ucos);
     Environment::builtindefs()["ucosine"] = Value("ucosine", builtin::ard_ucos);
-    Environment::builtindefs()["tan"]    = Value("tan", builtin::ard_tan);
-    Environment::builtindefs()["abs"]    = Value("abs", builtin::ard_abs);
-    Environment::builtindefs()["min"]    = Value("min", builtin::ard_min);
-    Environment::builtindefs()["max"]    = Value("max", builtin::ard_max);
-    Environment::builtindefs()["pow"]    = Value("pow", builtin::ard_pow);
-    Environment::builtindefs()["sqrt"]   = Value("sqrt", builtin::ard_sqrt);
-    Environment::builtindefs()["scale"]  = Value("scale", builtin::ard_map);
-    Environment::builtindefs()["lerp"]   = Value("lerp", builtin::ard_lerp);
+    Environment::builtindefs()["tan"]     = Value("tan", builtin::ard_tan);
+    Environment::builtindefs()["abs"]     = Value("abs", builtin::ard_abs);
+    Environment::builtindefs()["min"]     = Value("min", builtin::ard_min);
+    Environment::builtindefs()["max"]     = Value("max", builtin::ard_max);
+    Environment::builtindefs()["pow"]     = Value("pow", builtin::ard_pow);
+    Environment::builtindefs()["sqrt"]    = Value("sqrt", builtin::ard_sqrt);
+    Environment::builtindefs()["scale"]   = Value("scale", builtin::ard_map);
+    Environment::builtindefs()["lerp"]    = Value("lerp", builtin::ard_lerp);
 
     // Conversions
     Environment::builtindefs()["b->u"]    = Value("b->u", builtin::b_to_u);
@@ -404,49 +471,7 @@ void ModuLispInterpreter::loadBuiltinDefs() {
     Environment::builtindefs()["millis"] = Value("millis", builtin::ard_millis);
     Environment::builtindefs()["micros"] = Value("micros", builtin::ard_micros);
     Environment::builtindefs()["delay"]  = Value("delay", builtin::ard_delay);
-    Environment::builtindefs()["delayus"] = Value("delayus", builtin::ard_delaymicros);
-    Environment::builtindefs()["zeros"]  = Value("zeros", builtin::zeros);
-}
-namespace builtin {
-Value map_list(std::vector<Value>& args, Environment& env)
-{
-    ModuLispInterpreter::eval_args(args, env);
-    std::vector<Value> result, l = args[1].as_list(), tmp;
-    for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
-    {
-        tmp.push_back(l[i]);
-        result.push_back(args[0].apply(tmp, env));
-        tmp.clear();
-    }
-    return Value(result);
-} // namespace builtin
-
-Value filter_list(std::vector<Value>& args, Environment& env)
-{
-    ModuLispInterpreter::eval_args(args, env);
-    std::vector<Value> result, l = args[1].as_list(), tmp;
-    for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
-    {
-        tmp.push_back(l[i]);
-        if (args[0].apply(tmp, env).as_bool())
-            result.push_back(l[i]);
-        tmp.clear();
-    }
-    return Value(result);
-}
-
-Value reduce_list(std::vector<Value>& args, Environment& env)
-{
-    ModuLispInterpreter::eval_args(args, env);
-    std::vector<Value> l = args[2].as_list(), tmp;
-    Value acc            = args[1];
-    for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
-    {
-        tmp.push_back(acc);
-        tmp.push_back(l[i]);
-        acc = args[0].apply(tmp, env);
-        tmp.clear();
-    }
-    return acc;
-}
+    Environment::builtindefs()["delayus"] =
+        Value("delayus", builtin::ard_delaymicros);
+    Environment::builtindefs()["zeros"] = Value("zeros", builtin::zeros);
 }

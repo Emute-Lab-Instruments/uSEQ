@@ -1,14 +1,11 @@
 #include "builtins.h"
 #include "../../utils.h"
-#include "../../utils/log.h"
 #include "../../utils/compiler_config.h"
-#include "environment.h"
+#include "../../utils/log.h"
 #include "../modulisp_interpreter.h"
+#include "environment.h"
 #include "value.h"
 #include <iostream>
-
-// Suppress warnings for generated code (cannot be modified by hand)
-USEQ_SUPPRESS_WARNINGS_PUSH
 
 namespace builtin
 {
@@ -154,7 +151,7 @@ Value defn(std::vector<Value>& args, Environment& env)
     Value result              = Value::nil();
     String f_name             = args[0].display();
     std::vector<Value> params = args[1].as_sequential();
-    
+
     Value body;
     if (args.size() == 3)
     {
@@ -172,7 +169,7 @@ Value defn(std::vector<Value>& args, Environment& env)
         }
         body = Value(body_expressions);
     }
-    
+
     result = Value(params, body, env);
     env.set(f_name, result);
     return result;
@@ -768,7 +765,7 @@ Value pop(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    result = args[0].pop();
+    result       = args[0].pop();
     return result;
 }
 
@@ -1715,33 +1712,34 @@ Value slice(std::vector<Value>& args, Environment& env)
         return Value::error();
     }
 
-
     // BODY
     Value result            = Value::nil();
     std::vector<Value> list = args[0].as_sequential();
     if (list.empty())
     {
-        //report_error(INDEX_OUT_OF_RANGE);
-        //just return nothing
-        // result = list;
+        // report_error(INDEX_OUT_OF_RANGE);
+        // just return nothing
+        //  result = list;
     }
     else
     {
         long startIdx = args[1].as_int();
-        long endIdx = args[2].as_int();
-        //ensure in the range of the list
-        if (startIdx < 0) {
+        long endIdx   = args[2].as_int();
+        // ensure in the range of the list
+        if (startIdx < 0)
+        {
             startIdx = list.size() + startIdx;
         }
         startIdx = std::max(0L, std::min((long)list.size(), startIdx));
-        if (endIdx < 0) {
+        if (endIdx < 0)
+        {
             endIdx = list.size() + endIdx;
         }
         // message_editor(Value((int)startIdx).display());
         // message_editor(Value((int)endIdx).display());
         endIdx = std::max(0L, std::min((long)list.size(), endIdx));
         endIdx = std::max(endIdx, startIdx);
-        list = std::vector<Value>(list.begin() + startIdx, list.begin() + endIdx);
+        list   = std::vector<Value>(list.begin() + startIdx, list.begin() + endIdx);
     }
     result = args[0].is_vector() ? Value::vector(list) : Value(list);
     return result;
@@ -1921,7 +1919,7 @@ Value divide(std::vector<Value>& args, Environment& env)
     // BODY
     Value result = Value::nil();
     // Default to floating point division
-    result       = Value(args[0].as_float() / args[1].as_float());
+    result = Value(args[0].as_float() / args[1].as_float());
     return result;
 }
 
@@ -2016,10 +2014,12 @@ Value insert(std::vector<Value>& args, Environment& env)
     Value result            = Value::nil();
     std::vector<Value> list = args[0].as_sequential();
     int i                   = args[1].as_int();
-    if (i > list.size() || i < 0) {
+    if (i > list.size() || i < 0)
+    {
         message_editor(INDEX_OUT_OF_RANGE);
     }
-    else {
+    else
+    {
         list.insert(list.begin() + i, args[2]);
     }
     result = args[0].is_vector() ? Value::vector(list) : Value(list);
@@ -2524,7 +2524,7 @@ Value lambda(std::vector<Value>& args, Environment& env)
 
     // BODY
     Value result = Value::nil();
-    
+
     Value body;
     if (args.size() == 2)
     {
@@ -2542,7 +2542,7 @@ Value lambda(std::vector<Value>& args, Environment& env)
         }
         body = Value(body_expressions);
     }
-    
+
     result = Value(args[0].as_vector(), body, env);
     return result;
 }
@@ -2697,17 +2697,17 @@ Value if_then_else(std::vector<Value>& args, Environment& env)
     return result;
 }
 
-} // namespace builtin
-
-USEQ_SUPPRESS_WARNINGS_POP
 Value map_list(std::vector<Value>& args, Environment& env)
 {
     // Evaluate args
-    for (size_t i = 0; i < args.size(); i++) {
+    for (size_t i = 0; i < args.size(); i++)
+    {
         Value pre = args[i];
-        args[i] = args[i].eval(env);
-        if (args[i].is_error()) {
-            report_error_arg_is_error("map", static_cast<int>(i+1), pre.to_lisp_src());
+        args[i]   = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error("map", static_cast<int>(i + 1),
+                                      pre.to_lisp_src());
             return Value::error();
         }
     }
@@ -2724,11 +2724,14 @@ Value map_list(std::vector<Value>& args, Environment& env)
 
 Value filter_list(std::vector<Value>& args, Environment& env)
 {
-    for (size_t i = 0; i < args.size(); i++) {
+    for (size_t i = 0; i < args.size(); i++)
+    {
         Value pre = args[i];
-        args[i] = args[i].eval(env);
-        if (args[i].is_error()) {
-            report_error_arg_is_error("filter", static_cast<int>(i+1), pre.to_lisp_src());
+        args[i]   = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error("filter", static_cast<int>(i + 1),
+                                      pre.to_lisp_src());
             return Value::error();
         }
     }
@@ -2746,11 +2749,14 @@ Value filter_list(std::vector<Value>& args, Environment& env)
 
 Value reduce_list(std::vector<Value>& args, Environment& env)
 {
-    for (size_t i = 0; i < args.size(); i++) {
+    for (size_t i = 0; i < args.size(); i++)
+    {
         Value pre = args[i];
-        args[i] = args[i].eval(env);
-        if (args[i].is_error()) {
-            report_error_arg_is_error("reduce", static_cast<int>(i+1), pre.to_lisp_src());
+        args[i]   = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error("reduce", static_cast<int>(i + 1),
+                                      pre.to_lisp_src());
             return Value::error();
         }
     }
@@ -2766,3 +2772,5 @@ Value reduce_list(std::vector<Value>& args, Environment& env)
     }
     return acc;
 }
+
+} // namespace builtin

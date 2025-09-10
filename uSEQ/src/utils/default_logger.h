@@ -4,7 +4,8 @@
 
 // Default ILogger implementation that writes to console/Serial.
 // Avoids recursion by not calling println()/report_*() functions.
-class DefaultLogger : public ILogger {
+class DefaultLogger : public ILogger
+{
 public:
     void info(const String& msg) override;
     void warn(const String& msg) override;

@@ -13,9 +13,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "dsp/dsp-engine.hpp"
-#include <unordered_map>
-#include <memory>
 #include "utils/string.h"
+#include <memory>
+#include <unordered_map>
 
 // DSP Engine Management
 LISP_FUNC_DECL(useq_dsp_start);
@@ -32,22 +32,25 @@ LISP_FUNC_DECL(useq_dsp_message);
 LISP_FUNC_DECL(useq_dsp_listqueues);
 
 // DSP-related data structures and types
-struct ugenOutputQueue {
-    queue_t *q;
+struct ugenOutputQueue
+{
+    queue_t* q;
     size_t index;
     size_t queueSize;
     size_t key;
-    std::vector<float> lastValue = {0.f}; // TODO: expand for list outputs
+    std::vector<float> lastValue = { 0.f }; // TODO: expand for list outputs
 };
 
-struct ugenInputQueue {
-    queue_t *q;
+struct ugenInputQueue
+{
+    queue_t* q;
     size_t index;
     size_t queueSize;
     size_t key;
 };
 
-struct dsp_engine_info {
+struct dsp_engine_info
+{
     std::unique_ptr<uSEQDSPEngine> obj;
     size_t nextKey = 0;
 

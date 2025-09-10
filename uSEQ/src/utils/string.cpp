@@ -21,8 +21,8 @@
 */
 
 #include "string.h"
-#include <cmath>
 #include <climits>
+#include <cmath>
 
 #ifdef ARDUINO
 
@@ -56,9 +56,9 @@
 */
 
 #include "common.h"
-#include "string.h"
 #include "dtostrf.h"
 #include "itoa.h"
+#include "string.h"
 
 #include <float.h>
 
@@ -165,8 +165,10 @@ String::String(float value, unsigned char decimalPlaces)
                                          1 /* '-' */ + 1 /* '.' */ + 1 /* '\0' */;
     init();
     char buf[FLOAT_BUF_SIZE];
-    decimalPlaces = min(decimalPlaces, static_cast<unsigned char>(FLT_MAX_DECIMAL_PLACES));
-    *this         = dtostrf(value, static_cast<signed char>(decimalPlaces + 2), decimalPlaces, buf);
+    decimalPlaces =
+        min(decimalPlaces, static_cast<unsigned char>(FLT_MAX_DECIMAL_PLACES));
+    *this = dtostrf(value, static_cast<signed char>(decimalPlaces + 2),
+                    decimalPlaces, buf);
 }
 
 String::String(double value, unsigned char decimalPlaces)
@@ -175,15 +177,20 @@ String::String(double value, unsigned char decimalPlaces)
                                           1 /* '-' */ + 1 /* '.' */ + 1 /* '\0' */;
     init();
     char buf[DOUBLE_BUF_SIZE];
-    decimalPlaces = min(decimalPlaces, static_cast<unsigned char>(DBL_MAX_DECIMAL_PLACES));
-    
+    decimalPlaces =
+        min(decimalPlaces, static_cast<unsigned char>(DBL_MAX_DECIMAL_PLACES));
+
     // Check if the value is a whole number (no fractional part)
-    if (value == floor(value) && value >= INT_MIN && value <= INT_MAX) {
+    if (value == floor(value) && value >= INT_MIN && value <= INT_MAX)
+    {
         // Format as integer (no decimal places)
         *this = dtostrf(value, 1, 0, buf);
-    } else {
+    }
+    else
+    {
         // Format with specified decimal places
-        *this = dtostrf(value, static_cast<signed char>(decimalPlaces + 2), decimalPlaces, buf);
+        *this = dtostrf(value, static_cast<signed char>(decimalPlaces + 2),
+                        decimalPlaces, buf);
     }
 }
 

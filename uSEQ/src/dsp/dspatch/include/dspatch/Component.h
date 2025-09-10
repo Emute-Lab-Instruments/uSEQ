@@ -386,8 +386,8 @@ inline void Component::Tick( int bufferNo )
     // }
     // else
     // {
-        // call Process_() with newly aquired inputs
-        Process_( inputBus, outputBus );
+    // call Process_() with newly aquired inputs
+    Process_( inputBus, outputBus );
     // }
 }
 

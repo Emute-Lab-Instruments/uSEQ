@@ -8,9 +8,10 @@
 #include <cstdio>
 #define println(x) printf("%s\n", x)
 #define delayMicroseconds(x)
-class TwoWire {}; // Stub for desktop
+class TwoWire
+{
+}; // Stub for desktop
 #endif
-
 
 // FIXME: sort out access to println builtin and uncomment
 
@@ -86,17 +87,20 @@ void i2cScanForExpanders()
         else if (error == 4)
         {
             // error handling not added as yet!
-           // println("Unknown error at address 0x");
-            if (address < 16) {
-               // println("0");
+            // println("Unknown error at address 0x");
+            if (address < 16)
+            {
+                // println("0");
             }
             // println(String(address));
         }
     }
-    if (nDevices == 0) {
+    if (nDevices == 0)
+    {
         // println("No I2C devices found\n");
     }
-    else {
+    else
+    {
         // println("done\n");
     }
 #endif
@@ -106,7 +110,7 @@ void setup_i2cHOST()
 {
 #ifdef ARDUINO
     bI2CclientMode = false;
-    bI2ChostMode = true;
+    bI2ChostMode   = true;
     if (bI2ChostMode && bI2CclientMode)
     {
         i2cHOST = &_talkingToMyslefBus_;
@@ -120,8 +124,8 @@ void setup_i2cHOST()
         i2cHOST->end();
         i2cHOST->setSDA(_USEQ_SDA_PIN_); // ELI2040 SDA
         i2cHOST->setSCL(_USEQ_SCL_PIN_); // ELI2040 CLK
-        //i2cHOST->setSDA(0); // uSEQ SDA
-        //i2cHOST->setSCL(1); // uSEQ CLK
+        // i2cHOST->setSDA(0); // uSEQ SDA
+        // i2cHOST->setSCL(1); // uSEQ CLK
         i2cHOST->begin();
     }
 
@@ -184,7 +188,7 @@ String getI2CResults(int expander)
         {
             // b[nRecdChars] = (char)i2cHOST->read();
             res += String((char)i2cHOST->read());
-            //println(b[nRecdChars]);
+            // println(b[nRecdChars]);
             nRecdChars++;
         }
     }

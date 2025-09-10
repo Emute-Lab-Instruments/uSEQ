@@ -8,8 +8,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifdef MUSICTHING
-// Music Thing knob functions removed - values now automatically updated as environment variables
-// in update_inputs() function. Users access them directly as 'knob', 'knobx', 'knoby', 'swz'.
+// Music Thing knob functions removed - values now automatically updated as
+// environment variables in update_inputs() function. Users access them directly as
+// 'knob', 'knobx', 'knoby', 'swz'.
 #endif
 
 #ifdef ARDUINO

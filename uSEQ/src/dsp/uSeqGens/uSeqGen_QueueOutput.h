@@ -6,18 +6,16 @@
 #include "pico/util/queue.h"
 #endif
 
-class uSeqGen_QueueOutput final : public uSeqGen_Base //uSeqGen_Base
+class uSeqGen_QueueOutput final : public uSeqGen_Base // uSeqGen_Base
 {
 public:
-    uSeqGen_QueueOutput(queue_t *q, size_t key) 
-        : uSeqGen_Base(q, key)
+    uSeqGen_QueueOutput(queue_t* q, size_t key) : uSeqGen_Base(q, key)
     {
         SetInputCount_(1);
         SetOutputCount_(1);
 
-        //create an output queue
-        // queue_init(&q_output, sizeof(float), 1);
-
+        // create an output queue
+        //  queue_init(&q_output, sizeof(float), 1);
 
         // //share it with the interpreter
         // DSPQ::response_info resp;
@@ -29,25 +27,26 @@ public:
         // queue_try_add(q_message, &resp);
         createOutputQueue(0, q_output);
     }
-    
-    ~uSeqGen_QueueOutput() {
-        queue_free(&q_output);
-    }
+
+    ~uSeqGen_QueueOutput() { queue_free(&q_output); }
 
 protected:
-    void __not_in_flash_func(Process_)(DSPatch::SignalBus& inputs, DSPatch::SignalBus& outputs) override
+    void __not_in_flash_func(Process_)(DSPatch::SignalBus& inputs,
+                                       DSPatch::SignalBus& outputs) override
     {
         const float sig0 = GET_INPUT_SAFE(inputs, float, 0, 0.0);
-        // const float sig0 = *inputs.GetValue<float>(0);   
+        // const float sig0 = *inputs.GetValue<float>(0);
         // lastValue = sig0;
-        if (!queue_try_add(&q_output, &sig0)) {
+        if (!queue_try_add(&q_output, &sig0))
+        {
             float nothingness;
             queue_try_remove(&q_output, &nothingness);
             queue_try_add(&q_output, &sig0);
         };
-            // println("QueueOutput: " + String(sig0));
+        // println("QueueOutput: " + String(sig0));
         outputs.SetValue(0, sig0);
     }
+
 private:
     queue_t q_output;
     // float lastValue = 0.f;

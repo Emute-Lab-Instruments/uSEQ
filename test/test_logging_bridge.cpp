@@ -1,11 +1,12 @@
-#include <iostream>
 #include <cassert>
+#include <iostream>
 
-#include "../uSEQ/src/utils/logger_bridge.h"
-#include "../uSEQ/src/utils/log.h"
 #include "../uSEQ/src/ports/mocks/MockLogger.h"
+#include "../uSEQ/src/utils/log.h"
+#include "../uSEQ/src/utils/logger_bridge.h"
 
-void test_global_logger_bridge() {
+void test_global_logger_bridge()
+{
     std::cout << "Testing global logger bridge..." << std::endl;
 
     // Initialize mock logger
@@ -23,8 +24,11 @@ void test_global_logger_bridge() {
     report_generic_error("Test error message");
     assert(mock.entries.size() >= 1);
     bool found_error = false;
-    for (const auto& entry : mock.entries) {
-        if (entry.level == "error" && entry.msg.indexOf("**Error**: Test error message") >= 0) {
+    for (const auto& entry : mock.entries)
+    {
+        if (entry.level == "error" &&
+            entry.msg.indexOf("**Error**: Test error message") >= 0)
+        {
             found_error = true;
             break;
         }
@@ -39,8 +43,11 @@ void test_global_logger_bridge() {
     report_user_warning("Test warning message");
     assert(mock.entries.size() >= 1);
     bool found_warning = false;
-    for (const auto& entry : mock.entries) {
-        if (entry.level == "warn" && entry.msg.indexOf("**Warning**: Test warning message") >= 0) {
+    for (const auto& entry : mock.entries)
+    {
+        if (entry.level == "warn" &&
+            entry.msg.indexOf("**Warning**: Test warning message") >= 0)
+        {
             found_warning = true;
             break;
         }
@@ -55,8 +62,10 @@ void test_global_logger_bridge() {
     println("Test info message");
     assert(mock.entries.size() >= 1);
     bool found_info = false;
-    for (const auto& entry : mock.entries) {
-        if (entry.level == "info" && entry.msg == "Test info message") {
+    for (const auto& entry : mock.entries)
+    {
+        if (entry.level == "info" && entry.msg == "Test info message")
+        {
             found_info = true;
             break;
         }
@@ -72,7 +81,8 @@ void test_global_logger_bridge() {
     std::cout << "✅ All logging bridge tests passed!" << std::endl;
 }
 
-int main() {
+int main()
+{
     test_global_logger_bridge();
     return 0;
 }

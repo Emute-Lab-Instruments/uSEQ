@@ -9,15 +9,13 @@
 class uSeqGen_QueueInput final : public uSeqGen_Base
 {
 public:
-    uSeqGen_QueueInput(queue_t *q, size_t key) 
-        : uSeqGen_Base(q, key)
+    uSeqGen_QueueInput(queue_t* q, size_t key) : uSeqGen_Base(q, key)
     {
         SetInputCount_(0);
         SetOutputCount_(1);
 
-        //create a queue
-        // queue_init(&q_input, sizeof(float), 1);
-
+        // create a queue
+        //  queue_init(&q_input, sizeof(float), 1);
 
         // //share it with the interpreter
         // DSPQ::response_info resp;
@@ -29,22 +27,23 @@ public:
         // queue_try_add(q_message, &resp);
         createInputQueue(0, q_input);
     }
-    
-    ~uSeqGen_QueueInput() {
-        queue_free(&q_input);
-    }
+
+    ~uSeqGen_QueueInput() { queue_free(&q_input); }
 
 protected:
-    void __not_in_flash_func(Process_)(DSPatch::SignalBus&, DSPatch::SignalBus& outputs) override
+    void __not_in_flash_func(Process_)(DSPatch::SignalBus&,
+                                       DSPatch::SignalBus& outputs) override
     {
         float tmp;
         // println("QueueInput");
-        if (queue_try_remove(&q_input, &tmp)) {
+        if (queue_try_remove(&q_input, &tmp))
+        {
             lastValue = tmp;
             // println("QueueInput: " + String(tmp));
         }
         outputs.SetValue(0, lastValue);
     }
+
 private:
     // queue_t *queue;
     // double val = 0;

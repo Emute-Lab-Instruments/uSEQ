@@ -8,40 +8,41 @@
 // PDM globals moved to IOManager implementation
 
 // Input handling now delegated to IOManager
-void uSEQ::handle_input1_interrupt(double ts, int value) {
+void uSEQ::handle_input1_interrupt(double ts, int value)
+{
     // Check for sync trigger
-    if (m_waiting_for_sync_trigger && value == 1) {
+    if (m_waiting_for_sync_trigger && value == 1)
+    {
         m_waiting_for_sync_trigger = false;
         reset_logical_time();
         // TODO propagate the trigger to connected I2C devices
         return;
     }
-    
-    if (value == 1 && getClockSource() == CLOCK_SOURCES::EXTERNAL_I1) {
+
+    if (value == 1 && getClockSource() == CLOCK_SOURCES::EXTERNAL_I1)
+    {
         update_clock_from_external(ts);
     }
 }
 
-void uSEQ::handle_input2_interrupt(double ts, int value) {
+void uSEQ::handle_input2_interrupt(double ts, int value)
+{
     // Check for sync trigger
-    if (m_waiting_for_sync_trigger && value == 1) {
+    if (m_waiting_for_sync_trigger && value == 1)
+    {
         m_waiting_for_sync_trigger = false;
         reset_logical_time();
         // TODO propagate the trigger to connected I2C devices
         return;
     }
-    
-    if (value == 1 && getClockSource() == CLOCK_SOURCES::EXTERNAL_I2) {
+
+    if (value == 1 && getClockSource() == CLOCK_SOURCES::EXTERNAL_I2)
+    {
         update_clock_from_external(ts);
     }
 }
-
-
 
 // Setup functions moved to IOManager
-
-
-
 
 #if HAS_INPUTS
 void uSEQ::update_clock_from_external(double ts)
@@ -49,7 +50,8 @@ void uSEQ::update_clock_from_external(double ts)
     double newBPM = tempoI1.averageBPM(ts);
     if (ext_clock_tracker.count == 0)
     {
-        newBPM *= (4.0 / m_interpreter.get_meter_numerator() / ext_clock_tracker.div);
+        newBPM *=
+            (4.0 / m_interpreter.get_meter_numerator() / ext_clock_tracker.div);
         // println(String(newBPM));
         // println(String(beatCountI1));
         // println("bar: " + String(barCountI1));
@@ -90,143 +92,159 @@ void uSEQ::update_clock_from_external(double ts)
 
 // Setup functions moved to IOManager
 
-
 // Output write functions now delegate to IOManager
-void uSEQ::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val) {
-    if (m_io_manager) {
+void uSEQ::analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val)
+{
+    if (m_io_manager)
+    {
         m_io_manager->analog_write_with_led(output, val);
     }
 }
 
-void uSEQ::serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val) {
-    if (m_io_manager) {
+void uSEQ::serial_write(int out, SERIAL_OUTPUT_VALUE_TYPE val)
+{
+    if (m_io_manager)
+    {
         m_io_manager->serial_write(out, val);
     }
 }
 
-void uSEQ::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val) {
-    if (m_io_manager) {
+void uSEQ::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
+{
+    if (m_io_manager)
+    {
         m_io_manager->digital_write_with_led(output, val);
     }
 }
 
-void uSEQ::analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE val) {
-    if (m_io_manager) {
+void uSEQ::analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE val)
+{
+    if (m_io_manager)
+    {
         m_io_manager->analog_write_led_direct(pin, val);
     }
 }
 
-void uSEQ::digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val) {
-    if (m_io_manager) {
+void uSEQ::digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val)
+{
+    if (m_io_manager)
+    {
         m_io_manager->digital_write_led_direct(pin, val);
     }
 }
 
-
-
 // Filters moved to IOManager
 
 #if HAS_INPUTS
-void uSEQ::update_inputs() {
-    if (m_io_manager) {
+void uSEQ::update_inputs()
+{
+    if (m_io_manager)
+    {
         m_io_manager->update_inputs();
-        
+
 #ifdef MUSICTHING
         // Update Music Thing input values as environment variables
-        // This allows users to access them directly as 'knob', 'knobx', 'knoby', 'swz'
-        // instead of requiring function calls like '(knob)'
-        get_environment()->set("knob", Value(m_io_manager->get_input_value(MTMAINKNOB)));
-        get_environment()->set("knobx", Value(m_io_manager->get_input_value(MTXKNOB)));
-        get_environment()->set("knoby", Value(m_io_manager->get_input_value(MTYKNOB)));
-        get_environment()->set("swz", Value(m_io_manager->get_input_value(MTZSWITCH)));
+        // This allows users to access them directly as 'knob', 'knobx', 'knoby',
+        // 'swz' instead of requiring function calls like '(knob)'
+        get_environment()->set("knob",
+                               Value(m_io_manager->get_input_value(MTMAINKNOB)));
+        get_environment()->set("knobx",
+                               Value(m_io_manager->get_input_value(MTXKNOB)));
+        get_environment()->set("knoby",
+                               Value(m_io_manager->get_input_value(MTYKNOB)));
+        get_environment()->set("swz",
+                               Value(m_io_manager->get_input_value(MTZSWITCH)));
 #endif
     }
 }
 #endif // HAS_INPUTS
 
-
-
 #ifdef ARDUINO
 
-Value uSEQ::useq_swm(std::vector<Value> &args,
-                                    Environment &env) {
-    constexpr const char *user_facing_name = "swm";
+Value uSEQ::useq_swm(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "swm";
 
     // Checking number of args
-    if (!(args.size() == 0)) {
-        report_error_wrong_num_args(user_facing_name,
-                                    static_cast<int>(args.size()),
+    if (!(args.size() == 0))
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 0, 0);
         return Value::error();
     }
 
     // BODY
     Value result = Value::nil();
-    if (m_io_manager) {
+    if (m_io_manager)
+    {
         result = Value(m_io_manager->get_input_value(USEQM1));
     }
     return result;
 }
 
-Value uSEQ::useq_swt(std::vector<Value> &args,
-                                    Environment &env) {
-    constexpr const char *user_facing_name = "swt";
+Value uSEQ::useq_swt(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "swt";
 
     // Checking number of args
-    if (!(args.size() == 0)) {
-        report_error_wrong_num_args(user_facing_name,
-                                    static_cast<int>(args.size()),
+    if (!(args.size() == 0))
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 0, 0);
         return Value::error();
     }
 
     // BODY
     Value result = Value::nil();
-    if (m_io_manager) {
+    if (m_io_manager)
+    {
         result = Value(m_io_manager->get_input_value(USEQT1));
     }
     return result;
 }
 
-
-Value uSEQ::useq_ssin(std::vector<Value> &args,
-                                     Environment &env) {
-    constexpr const char *user_facing_name = "ssin";
+Value uSEQ::useq_ssin(std::vector<Value>& args, Environment& env)
+{
+    constexpr const char* user_facing_name = "ssin";
 
     // Checking number of args
-    if (!(args.size() == 1)) {
-        report_error_wrong_num_args(user_facing_name,
-                                    static_cast<int>(args.size()),
+    if (!(args.size() == 1))
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
                                     NumArgsComparison::EqualTo, 1, 0);
         return Value::error();
     }
 
     // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++) {
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
+    {
         // Eval
         Value pre_eval = args[i];
-        args[i] = args[i].eval(env);
-        if (args[i].is_error()) {
-            report_error_arg_is_error(user_facing_name, i + 1,
-                                      pre_eval.display());
+        args[i]        = args[i].eval(env);
+        if (args[i].is_error())
+        {
+            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
             return Value::error();
         }
     }
 
     // Checking individual args
-    if (!(args[0].is_number())) {
+    if (!(args[0].is_number()))
+    {
         report_error_wrong_specific_pred(user_facing_name, 1, "a number",
                                          args[0].display());
         return Value::error();
     }
 
-    int index = args[0].as_int();
+    int index    = args[0].as_int();
     Value result = Value::nil();
-    if (index > 0 && index <= m_num_serial_ins) {
+    if (index > 0 && index <= m_num_serial_ins)
+    {
         result = Value(m_serial_input_streams[index - 1]);
-    } else {
-        report_user_warning("(ssin) Received request for index " +
-                            String(index) +
+    }
+    else
+    {
+        report_user_warning("(ssin) Received request for index " + String(index) +
                             ", which is out of bounds; returning nil.");
     }
 
@@ -240,16 +258,9 @@ Value uSEQ::useq_ssin(std::vector<Value> &args,
 
 // PDM functions moved to IOManager
 
-
-
 // PIO PWM functions moved to IOManager
 
-
 // Timer callback moved to IOManager
-
-
-
-
 
 // MIDI OUT
 
@@ -258,7 +269,7 @@ double last_midi_t = 0;
 void uSEQ::update_midi_out()
 {
     DBG("uSEQ::update_midi_out");
-    const double midiRes        = 48 * meter_numerator * 1;
+    const double midiRes = 48 * meter_numerator * 1;
     // FIXME: where is this barDur supposed to be coming from?
     const double timeUnitMillis = (barDur / midiRes);
 
@@ -308,6 +319,5 @@ void uSEQ::update_midi_out()
         last_midi_t = t;
     }
 }
-
 
 #endif // end of MIDI OUT SECTION

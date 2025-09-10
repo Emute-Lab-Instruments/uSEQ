@@ -4,7 +4,6 @@
 // Include first for build flags etc
 #include "uSEQ/configure.h"
 
-
 // Include compiler configuration for warning management
 #include "utils/compiler_config.h"
 
@@ -17,7 +16,6 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 
 // Functional module headers are included within the class definition
 
-
 #ifdef ENABLE_TEMPO_ESTIMATOR
 #include "dsp/tempoEstimator.h"
 #endif
@@ -26,14 +24,14 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #ifndef ARDUINO
 #include "hardware_includes.h"
 #endif
-#include "modulisp/lisp/macros.h"
-#include "modulisp/lisp/value.h"
-#include "modulisp/lisp/error_context.h"
 #include "modulisp/lisp/environment.h"
+#include "modulisp/lisp/error_context.h"
+#include "modulisp/lisp/macros.h"
 #include "modulisp/lisp/parser.h"
+#include "modulisp/lisp/value.h"
 #include "modulisp/modulisp_interpreter.h"
-#include "uSEQ/board.h"
 #include "ports/IIo.h"
+#include "uSEQ/board.h"
 #ifdef ENABLE_I2C_NETWORKING
 #include "ports/II2CBus.h"
 #endif
@@ -60,33 +58,40 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 class OutputManager;
 class IOManager;
 
-class uSEQ {
-  public:
-    uSEQ() : m_error_manager(), m_environment(), m_parser(&m_error_manager), 
-             m_interpreter(&m_error_manager, &m_environment, &m_parser),
-             m_output_manager(nullptr), m_io_manager(nullptr) {
+class uSEQ
+{
+public:
+    uSEQ()
+        : m_error_manager(), m_environment(), m_parser(&m_error_manager),
+          m_interpreter(&m_error_manager, &m_environment, &m_parser),
+          m_output_manager(nullptr), m_io_manager(nullptr)
+    {
         init();
     }
     explicit uSEQ(IClock* clk, ILogger* log, IIo* io_port = nullptr
 #ifdef ENABLE_I2C_NETWORKING
-                  , II2CBus* i2c_port = nullptr
+                  ,
+                  II2CBus* i2c_port = nullptr
 #endif
 #ifdef ENABLE_FLASH_STORAGE
-                  , IStorage* storage_port = nullptr
+                  ,
+                  IStorage* storage_port = nullptr
 #endif
                   )
         : m_error_manager(), m_environment(), m_parser(&m_error_manager),
           m_interpreter(&m_error_manager, &m_environment, &m_parser, clk, log),
           m_output_manager(nullptr), m_io_manager(nullptr), io(io_port)
 #ifdef ENABLE_I2C_NETWORKING
-          , i2c(i2c_port)
+          ,
+          i2c(i2c_port)
 #endif
 #ifdef ENABLE_FLASH_STORAGE
-          , storage(storage_port)
+          ,
+          storage(storage_port)
 #endif
-          {
-              init();
-          }
+    {
+        init();
+    }
     ~uSEQ(); // Custom destructor to manage OutputManager and IOManager lifecycle
 
 #ifdef ARDUINO
@@ -95,7 +100,7 @@ class uSEQ {
     void tick_dsp();
 #endif
     void init();
-    void init_builtinfuncs();  // Override to add hardware-specific functions
+    void init_builtinfuncs(); // Override to add hardware-specific functions
     void run();
 
     void start_loop_blocking();
@@ -110,51 +115,81 @@ class uSEQ {
     void handle_input1_interrupt(double ts, int value);
     void handle_input2_interrupt(double ts, int value);
 #ifdef ENABLE_TEMPO_ESTIMATOR
-     tempoEstimator tempoI1, tempoI2;
+    tempoEstimator tempoI1, tempoI2;
 #endif
     void update_clock_from_external(double ts);
 
     double delme = 928.22234;
 
-    static uSEQ *instance;
-    
+    static uSEQ* instance;
+
     // ModuLispInterpreter delegation methods
     Value eval(Value v) { return m_interpreter.eval(v); }
-    String eval(const String &code) { return m_interpreter.eval(code); }
+    String eval(const String& code) { return m_interpreter.eval(code); }
     Environment* get_environment() { return m_interpreter.get_environment(); }
-    const Environment* get_environment() const { return m_interpreter.get_environment(); }
+    const Environment* get_environment() const
+    {
+        return m_interpreter.get_environment();
+    }
     uLispParser* get_parser() { return m_interpreter.get_parser(); }
     void reset_logical_time() { m_interpreter.reset_logical_time(); }
-    void set_atom_currently_being_evaluated(const String& atom_name) {
+    void set_atom_currently_being_evaluated(const String& atom_name)
+    {
         ModuLispInterpreter::set_atom_currently_being_evaluated(atom_name);
     }
-    bool get_attempt_expr_eval_first() { return ModuLispInterpreter::get_attempt_expr_eval_first(); }
-    void set_attempt_expr_eval_first(bool value) { ModuLispInterpreter::set_attempt_expr_eval_first(value); }
-    bool get_update_loop_evaluation() { return ModuLispInterpreter::get_update_loop_evaluation(); }
-    void set_update_loop_evaluation(bool value) { ModuLispInterpreter::set_update_loop_evaluation(value); }
-    bool get_manual_evaluation() { return ModuLispInterpreter::get_manual_evaluation(); }
-    void set_manual_evaluation(bool value) { ModuLispInterpreter::set_manual_evaluation(value); }
+    bool get_attempt_expr_eval_first()
+    {
+        return ModuLispInterpreter::get_attempt_expr_eval_first();
+    }
+    void set_attempt_expr_eval_first(bool value)
+    {
+        ModuLispInterpreter::set_attempt_expr_eval_first(value);
+    }
+    bool get_update_loop_evaluation()
+    {
+        return ModuLispInterpreter::get_update_loop_evaluation();
+    }
+    void set_update_loop_evaluation(bool value)
+    {
+        ModuLispInterpreter::set_update_loop_evaluation(value);
+    }
+    bool get_manual_evaluation()
+    {
+        return ModuLispInterpreter::get_manual_evaluation();
+    }
+    void set_manual_evaluation(bool value)
+    {
+        ModuLispInterpreter::set_manual_evaluation(value);
+    }
     void init_interpreter() { m_interpreter.init(); }
-    void set_bpm(double newBpm, double changeThreshold) { m_interpreter.set_bpm(newBpm, changeThreshold); }
+    void set_bpm(double newBpm, double changeThreshold)
+    {
+        m_interpreter.set_bpm(newBpm, changeThreshold);
+    }
     void update_time() { m_interpreter.update_time(); }
     void run_scheduled_items() { m_interpreter.run_scheduled_items(); }
     void update_Q0() { m_interpreter.update_Q0(); }
-    
+
     // Access to public member variables and components
     int& get_ts() { return m_interpreter.ts; }
     int& get_update_speed() { return m_interpreter.updateSpeed; }
     Scheduler* get_scheduler() { return m_interpreter.get_scheduler(); }
-    
+
     // IOManager integration
     IOManager* get_io_manager() { return m_io_manager; }
 
-    enum CLOCK_SOURCES { INTERNAL = 0, EXTERNAL_I1, EXTERNAL_I2 };
+    enum CLOCK_SOURCES
+    {
+        INTERNAL = 0,
+        EXTERNAL_I1,
+        EXTERNAL_I2
+    };
 
     uSEQ::CLOCK_SOURCES getClockSource() { return useq_clock_source; }
-    
+
     // Output management system
     OutputManager& get_output_manager() { return *m_output_manager; }
-    
+
     // Output AST arrays - made public for OutputManager access
     std::vector<Value> m_continuous_ASTs;
     std::vector<SERIAL_OUTPUT_VALUE_TYPE> m_continuous_vals;
@@ -165,32 +200,32 @@ class uSEQ {
     std::vector<Value> m_serial_ASTs;
     std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
 
-  private:
+private:
     ErrorManager m_error_manager;
     Environment m_environment;
     uLispParser m_parser;
     ModuLispInterpreter m_interpreter;
-    
+
     uint m_num_continuous_outs = NUM_CONTINUOUS_OUTS;
-    uint m_num_binary_outs = NUM_BINARY_OUTS;
-    uint m_num_serial_outs = NUM_SERIAL_OUTS;
-    uint m_num_serial_ins = NUM_SERIAL_INS;
+    uint m_num_binary_outs     = NUM_BINARY_OUTS;
+    uint m_num_serial_outs     = NUM_SERIAL_OUTS;
+    uint m_num_serial_ins      = NUM_SERIAL_INS;
 
     // Flags
-    bool m_initialised = false;
-    bool m_should_quit = false;
-    bool m_current_expr_sound = true;
+    bool m_initialised              = false;
+    bool m_should_quit              = false;
+    bool m_current_expr_sound       = true;
     bool m_waiting_for_sync_trigger = false;
-    bool m_is_playing = true;
+    bool m_is_playing               = true;
 
     OutputManager* m_output_manager;
-    
-    
+
     IOManager* m_io_manager;
 
-    // Optional I/O adapter for desktop tests/hardware abstraction (now managed by IOManager)
+    // Optional I/O adapter for desktop tests/hardware abstraction (now managed by
+    // IOManager)
     IIo* io = nullptr;
-    
+
     // Optional I2C and Storage adapters for desktop tests/hardware abstraction
 #ifdef ENABLE_I2C_NETWORKING
     II2CBus* i2c = nullptr;
@@ -232,19 +267,22 @@ class uSEQ {
     void update_serial_outs();
 
     CLOCK_SOURCES useq_clock_source = CLOCK_SOURCES::INTERNAL;
-    struct ext_clock_tracking {
+    struct ext_clock_tracking
+    {
         size_t beat_count = 0;
-        size_t bar_count = 0;
-        size_t count = 0;
-        size_t div = 1;
+        size_t bar_count  = 0;
+        size_t count      = 0;
+        size_t div        = 1;
     } ext_clock_tracker;
 
-    void reset_ext_tracking() {
+    void reset_ext_tracking()
+    {
         ext_clock_tracker.beat_count = ext_clock_tracker.bar_count =
-            ext_clock_tracker.count = 0;
+            ext_clock_tracker.count  = 0;
     }
 
-    void set_ext_clock_div(size_t val) {
+    void set_ext_clock_div(size_t val)
+    {
         ext_clock_tracker.div = val;
         reset_ext_tracking();
     }
@@ -252,21 +290,20 @@ class uSEQ {
     unsigned long serial_out_timestamp = 0;
 
     Value default_continuous_expr = Value::nil();
-    Value default_binary_expr = Value::nil();
-    Value default_serial_expr = Value::nil();
+    Value default_binary_expr     = Value::nil();
+    Value default_serial_expr     = Value::nil();
 
     String m_last_received_code = "";
 
     // Function declarations are now organized in module-specific headers:
     // - I/O functions: uSEQ_io.h
-    // - DSP functions: uSEQ_dsp.h  
+    // - DSP functions: uSEQ_dsp.h
     // - LISP integration: uSEQ_lisp.h
     // - Hardware-specific: uSEQ_hardware.h
 
-#include "uSEQ_io.h"
-#include "uSEQ_lisp.h" 
 #include "uSEQ_hardware.h"
-
+#include "uSEQ_io.h"
+#include "uSEQ_lisp.h"
 
     void clear_all_outputs();
 #ifdef ARDUINO
@@ -274,7 +311,7 @@ class uSEQ {
 #endif
 
     void set_my_id(int num);
-    
+
     // IO operations now delegated to IOManager
     void analog_write_with_led(int output, CONTINUOUS_OUTPUT_VALUE_TYPE val);
     void digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val);
@@ -283,20 +320,20 @@ class uSEQ {
     void digital_write_led_direct(int pin, BINARY_OUTPUT_VALUE_TYPE val);
 
 #ifndef ARDUINO
-  public:
+public:
     // Test hook to exercise write paths without exposing internals
     void __test_call_writes(double a0, int d0, double s0);
-    
+
     // Test hooks for I2C functions
 #ifdef ENABLE_I2C_NETWORKING
     Value __test_send_sync_trigger_i2c();
     Value __test_i2c_send_to(int addr, const String& expr_str);
 #endif
-    
+
     // Test accessors for environment
     ValueMap& __test_get_defs() { return m_environment.__test_get_defs(); }
     ValueMap& __test_get_def_exprs() { return m_environment.__test_get_def_exprs(); }
-    
+
     // Public wrappers for storage functions (for testing)
 #ifndef ARDUINO
 #ifdef ENABLE_FLASH_STORAGE
@@ -318,28 +355,27 @@ class uSEQ {
     void eval_lisp_library();
     void led_animation(); // Delegates to IOManager
     static constexpr u_int8_t m_serial_stream_begin_marker = 31;
-    static constexpr char m_execute_now_marker = '@';
+    static constexpr char m_execute_now_marker             = '@';
 
 #ifdef ARDUINO
     void load_flash_info();
     void write_flash_info();
     void reset_flash_env_var_info();
 
-    int m_my_id = -1;
+    int m_my_id          = -1;
     bool m_is_env_stored = false;
 
-    uintptr_t m_FLASH_ENV_SECTOR_SIZE = 0;
-    uintptr_t m_FLASH_ENV_DEFS_SIZE = 0;
-    uintptr_t m_FLASH_ENV_EXPRS_SIZE = 0;
+    uintptr_t m_FLASH_ENV_SECTOR_SIZE         = 0;
+    uintptr_t m_FLASH_ENV_DEFS_SIZE           = 0;
+    uintptr_t m_FLASH_ENV_EXPRS_SIZE          = 0;
     uintptr_t m_FLASH_ENV_SECTOR_OFFSET_START = 0;
-    uintptr_t m_FLASH_ENV_SECTOR_OFFSET_END = 0;
-    uintptr_t m_FLASH_ENV_STRING_BUFFER_SIZE = 0;
+    uintptr_t m_FLASH_ENV_SECTOR_OFFSET_END   = 0;
+    uintptr_t m_FLASH_ENV_STRING_BUFFER_SIZE  = 0;
 
     void reboot();
 
-    static constexpr const char *m_flash_stamp_str = "uSEQ";
-    static constexpr uint m_flash_stamp_size_bytes =
-        strlen(m_flash_stamp_str) + 1;
+    static constexpr const char* m_flash_stamp_str = "uSEQ";
+    static constexpr uint m_flash_stamp_size_bytes = strlen(m_flash_stamp_str) + 1;
 
     bool flash_has_been_written_before();
     void autoload_flash();
@@ -347,9 +383,10 @@ class uSEQ {
 
     // Functions needed for desktop storage (declared for all builds)
     std::pair<size_t, size_t> num_bytes_def_strs() const;
-    void copy_def_strings_to_buffer(char *);
+    void copy_def_strings_to_buffer(char*);
 
-    // Desktop storage wrappers (declared for all builds, implemented only for desktop)
+    // Desktop storage wrappers (declared for all builds, implemented only for
+    // desktop)
 #ifdef ENABLE_FLASH_STORAGE
     bool save_env_to_storage(IStorage& s);
     bool load_env_from_storage(IStorage& s);

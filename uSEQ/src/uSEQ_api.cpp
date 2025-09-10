@@ -136,7 +136,6 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ppp-msg", useq_dsp_message);
     INSERT_BUILTINDEF("ppp-qlist", useq_dsp_listqueues);
 #endif
-
 }
 
 ////////////////////
@@ -170,48 +169,30 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_q0, get_environment()->set("q-expr", args[0]);
                           ret = Value::atom("q0");, 1)
 
 // Playback/transport control implementations (0-arg)
-BUILTINFUNC_MEMBER(
-    useq_play,
-    m_is_playing = true;
-    return Value::nil();,
-    0)
+BUILTINFUNC_MEMBER(useq_play, m_is_playing = true; return Value::nil();, 0)
 
-BUILTINFUNC_MEMBER(
-    useq_pause,
-    m_is_playing = false;
-    return Value::nil();,
-    0)
+BUILTINFUNC_MEMBER(useq_pause, m_is_playing = false; return Value::nil();, 0)
 
-BUILTINFUNC_MEMBER(
-    useq_stop,
-    m_is_playing = false;
-    reset_logical_time();
-    return Value::nil();,
-    0)
+BUILTINFUNC_MEMBER(useq_stop, m_is_playing = false; reset_logical_time();
+                   return Value::nil();, 0)
 
-BUILTINFUNC_MEMBER(
-    useq_rewind,
-    reset_logical_time();
-    return Value::nil();,
-    0)
+BUILTINFUNC_MEMBER(useq_rewind, reset_logical_time(); return Value::nil();, 0)
 
 // Set output expressions to defaults (0.5 for continuous, 0 for binary)
 BUILTINFUNC_MEMBER(
     useq_clear,
     for (int i = 0; i < m_num_continuous_outs; i++) {
         String name = "a" + String(i + 1);
-        Value v = Value(0.5);
+        Value v     = Value(0.5);
         get_environment()->set_expr(name, v);
         m_continuous_ASTs[i] = v;
-    }
-    for (int i = 0; i < m_num_binary_outs; i++) {
+    } for (int i = 0; i < m_num_binary_outs; i++) {
         String name = "d" + String(i + 1);
-        Value v = Value(0);
+        Value v     = Value(0);
         get_environment()->set_expr(name, v);
         m_binary_ASTs[i] = v;
-    }
-    return Value::nil();,
-    0)
+    } return Value::nil();
+    , 0)
 
 // TODO: there is potentially a lot of duplicated/wasted memory by storing
 // the exprs in both the environment and the class member vectors
@@ -732,20 +713,23 @@ BUILTINFUNC_NOEVAL_MEMBER(
     useq_list_samples,
 #ifdef ARDUINO
     // Read pointers from memory based on flash address
-    const uint8_t* binary_data = (const uint8_t*)AUDIO_FLASH_ADDRESS;
-    const audio_header_t* header = (const audio_header_t*)binary_data;
-    const audio_file_entry_t* file_table = (const audio_file_entry_t*)(binary_data + 16);
-    
+    const uint8_t* binary_data           = (const uint8_t*)AUDIO_FLASH_ADDRESS;
+    const audio_header_t* header         = (const audio_header_t*)binary_data;
+    const audio_file_entry_t* file_table = (const audio_file_entry_t*)(binary_data +
+                                                                       16);
+
     // Verify binary is valid
     if (header->magic != AUDIO_MAGIC) {
-        println("Error: Invalid audio binary at 0x" + String(AUDIO_FLASH_ADDRESS, 16));
+        println("Error: Invalid audio binary at 0x" +
+                String(AUDIO_FLASH_ADDRESS, 16));
         ret = Value::error();
     } else if (header->file_count == 0) {
         println("No samples found.");
         ret = Value::nil();
     } else {
         // Print each sample name on a new line
-        for (uint32_t i = 0; i < header->file_count; i++) {
+        for (uint32_t i = 0; i < header->file_count; i++)
+        {
             println(String(file_table[i].name));
         }
         ret = Value::nil();
@@ -754,4 +738,5 @@ BUILTINFUNC_NOEVAL_MEMBER(
     println("Sample listing not available on desktop build.");
     ret = Value::nil();
 #endif
-    , 0)
+    ,
+    0)

@@ -12,7 +12,8 @@
 //   return os << "}";
 // }
 
-BuiltinMap& Environment::builtindefs() {
+BuiltinMap& Environment::builtindefs()
+{
     static BuiltinMap builtin_map;
     return builtin_map;
 }

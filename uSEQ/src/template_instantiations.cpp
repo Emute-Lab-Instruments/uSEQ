@@ -2,15 +2,15 @@
 // This file reduces compile-time template processing by pre-instantiating
 // frequently used template specializations
 
-#include "modulisp/lisp/value.h"
 #include "modulisp/lisp/environment.h"
+#include "modulisp/lisp/value.h"
 #include "utils/string.h"
-#include <vector>
-#include <optional>
-#include <memory>
 #include <functional>
+#include <memory>
+#include <optional>
 #include <set>
 #include <utility>
+#include <vector>
 
 // Explicitly instantiate std::vector<Value>
 // This is the most commonly used template in the codebase
