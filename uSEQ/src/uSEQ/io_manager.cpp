@@ -531,12 +531,19 @@ void IOManager::digital_write_with_led(int output, BINARY_OUTPUT_VALUE_TYPE val)
     }
 
 #ifdef ARDUINO
-    uint8_t v = static_cast<uint8_t>(val > 0.5);
+    uint8_t v = static_cast<uint8_t>(val > 0);
 #ifdef DIGI_OUT_INVERTED
     v = 1 - v;
 #endif
     HardwareOutput::digital(static_cast<uint8_t>(pin), v);
-    HardwareOutput::digital(static_cast<uint8_t>(led_pin), v);
+    
+    // Use analog output for LED to bypass val > 0 comparison
+    constexpr int maxpwm_i = 2047;
+    int led_val = static_cast<int>(val * maxpwm_i);
+#ifdef DIGI_OUT_INVERTED
+    // led_val = maxpwm_i - led_val;
+#endif
+    HardwareOutput::analog(static_cast<uint8_t>(led_pin), static_cast<uint16_t>(led_val));
 #else
     (void)pin; (void)led_pin; (void)val;
 #endif // ARDUINO
@@ -602,7 +609,7 @@ void IOManager::analog_write_led_direct(int pin, CONTINUOUS_OUTPUT_VALUE_TYPE va
     }
 
 #ifdef ARDUINO
-    HardwareOutput::analog(static_cast<uint8_t>(pin), static_cast<uint16_t>(ledsigval));
+    analogWrite(pin, static_cast<int>(ledsigval));
 #else
     (void)pin; (void)ledsigval;
 #endif

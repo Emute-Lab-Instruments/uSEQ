@@ -53,11 +53,11 @@ void flash_builtin(int sleep, int times = 10)
 {
     for (int i = 0; i < times; i++)
     {
-    HardwareOutput::digital(LED_BUILTIN, HIGH);
+        HardwareOutput::digital(LED_BUILTIN, HIGH);
         // turn the LED on (HIGH is the voltage level)
         delay(sleep);
         // wait for a second
-    HardwareOutput::digital(LED_BUILTIN, LOW);
+        HardwareOutput::digital(LED_BUILTIN, LOW);
         // turn the LED off by making the voltage LOW
         delay(sleep);
     }

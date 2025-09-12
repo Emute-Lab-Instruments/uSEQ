@@ -65,6 +65,7 @@
 #ifdef MUSICTHING
 #define DIGI_OUT_INVERTED
 #define ANALOG_OUT_INVERTED
+#define AUDIO_OUT_INVERTED
 #endif
 
 // NOTE: this needs to be included after the above define
