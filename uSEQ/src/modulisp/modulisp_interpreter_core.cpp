@@ -474,4 +474,11 @@ void ModuLispInterpreter::loadBuiltinDefs()
     Environment::builtindefs()["delayus"] =
         Value("delayus", builtin::ard_delaymicros);
     Environment::builtindefs()["zeros"] = Value("zeros", builtin::zeros);
+
+    // Previously unregistered functions
+    Environment::builtindefs()["define"] = Value("define", builtin::define);
+    Environment::builtindefs()["push"]   = Value("push", builtin::push);
+    Environment::builtindefs()["scope"]  = Value("scope", builtin::scope);
+    Environment::builtindefs()["pulse"]  = Value("pulse", builtin::useq_pulse);
+    Environment::builtindefs()["sqr"]    = Value("sqr", builtin::useq_sqr);
 }
