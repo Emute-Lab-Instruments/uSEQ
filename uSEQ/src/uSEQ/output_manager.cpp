@@ -28,14 +28,14 @@ const std::vector<OutputManager::OutputConfig> OutputManager::s_output_configs =
     { 8, OutputType::BINARY, 7, "d8", "get-d8" },
 
     // Serial Outputs (s1-s8)
-    { 1, OutputType::SERIAL_OUT, 0, "s1", "get-s1" },
-    { 2, OutputType::SERIAL_OUT, 1, "s2", "get-s2" },
-    { 3, OutputType::SERIAL_OUT, 2, "s3", "get-s3" },
-    { 4, OutputType::SERIAL_OUT, 3, "s4", "get-s4" },
-    { 5, OutputType::SERIAL_OUT, 4, "s5", "get-s5" },
-    { 6, OutputType::SERIAL_OUT, 5, "s6", "get-s6" },
-    { 7, OutputType::SERIAL_OUT, 6, "s7", "get-s7" },
-    { 8, OutputType::SERIAL_OUT, 7, "s8", "get-s8" }
+    { 1, OutputType::SERIAL_OUT, 1, "s1", "get-s1" },
+    { 2, OutputType::SERIAL_OUT, 2, "s2", "get-s2" },
+    { 3, OutputType::SERIAL_OUT, 3, "s3", "get-s3" },
+    { 4, OutputType::SERIAL_OUT, 4, "s4", "get-s4" },
+    { 5, OutputType::SERIAL_OUT, 5, "s5", "get-s5" },
+    { 6, OutputType::SERIAL_OUT, 6, "s6", "get-s6" },
+    { 7, OutputType::SERIAL_OUT, 7, "s7", "get-s7" },
+    { 8, OutputType::SERIAL_OUT, 8, "s8", "get-s8" }
 };
 
 OutputManager::OutputManager(uSEQ* useq_instance) : m_useq(useq_instance) {}
@@ -68,7 +68,8 @@ bool OutputManager::is_output_available(int output_id, OutputType type)
     case OutputType::BINARY:
         return output_id >= 1 && static_cast<size_t>(output_id) <= NUM_BINARY_OUTS;
     case OutputType::SERIAL_OUT:
-        return output_id >= 1 && static_cast<size_t>(output_id) <= NUM_SERIAL_OUTS;
+        return output_id >= 1 &&
+               static_cast<size_t>(output_id) <= (NUM_SERIAL_OUTS - 1);
     }
     return false;
 }

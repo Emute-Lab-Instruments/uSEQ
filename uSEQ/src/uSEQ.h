@@ -41,6 +41,7 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <sys/types.h>
 
 #ifdef ARDUINO
@@ -294,6 +295,8 @@ private:
     Value default_serial_expr     = Value::nil();
 
     String m_last_received_code = "";
+    bool try_handle_json_message(int first_byte);
+    bool handle_json_serial_request(const String& payload);
 
     // Function declarations are now organized in module-specific headers:
     // - I/O functions: uSEQ_io.h

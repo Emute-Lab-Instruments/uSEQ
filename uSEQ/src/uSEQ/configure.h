@@ -74,7 +74,7 @@
 #endif
 
 #define NUM_SERIAL_INS 32
-#define NUM_SERIAL_OUTS 8
+#define NUM_SERIAL_OUTS 9
 
 // #if defined(MUSICTHING) || defined(USEQHARDWARE_1_0)
 #define ANALOG_INPUTS

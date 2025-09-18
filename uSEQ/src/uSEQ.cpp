@@ -11,8 +11,10 @@
 #include "utils/logger_bridge.h"
 #include "utils/serial_message.h"
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <sys/types.h>
 // #include "dsp/dsp-queues.hpp"
 #include "dsp/dsp-q-data.hpp"
@@ -114,6 +116,127 @@ uSEQ::~uSEQ()
 #endif
 
 String exit_command = "@@exit";
+
+namespace
+{
+struct JsonRequest
+{
+    String type;
+    String code;
+    String request_id;
+};
+
+std::optional<String> extract_json_string_field(const String& json,
+                                                const char* field_name)
+{
+    String key = "\"";
+    key += field_name;
+    key += "\"";
+
+    int key_pos = json.indexOf(key);
+    if (key_pos < 0)
+    {
+        return std::nullopt;
+    }
+
+    int colon_pos = json.indexOf(':', key_pos + key.length());
+    if (colon_pos < 0)
+    {
+        return std::nullopt;
+    }
+
+    int value_start = colon_pos + 1;
+    while (value_start < json.length() &&
+           isspace(static_cast<unsigned char>(json[value_start])))
+    {
+        ++value_start;
+    }
+
+    if (value_start >= json.length() || json[value_start] != '"')
+    {
+        return std::nullopt;
+    }
+
+    ++value_start;
+
+    String value = "";
+    bool escape  = false;
+    for (int i = value_start; i < json.length(); ++i)
+    {
+        char c = json[i];
+        if (escape)
+        {
+            switch (c)
+            {
+            case '"':
+                value += '"';
+                break;
+            case '\\':
+                value += '\\';
+                break;
+            case '/':
+                value += '/';
+                break;
+            case 'b':
+                value += '\b';
+                break;
+            case 'f':
+                value += '\f';
+                break;
+            case 'n':
+                value += '\n';
+                break;
+            case 'r':
+                value += '\r';
+                break;
+            case 't':
+                value += '\t';
+                break;
+            default:
+                value += c;
+                break;
+            }
+            escape = false;
+            continue;
+        }
+
+        if (c == '\\')
+        {
+            escape = true;
+            continue;
+        }
+
+        if (c == '"')
+        {
+            return value;
+        }
+
+        value += c;
+    }
+
+    return std::nullopt;
+}
+
+std::optional<JsonRequest> parse_json_request(const String& payload)
+{
+    auto code = extract_json_string_field(payload, "code");
+    if (!code)
+    {
+        return std::nullopt;
+    }
+
+    JsonRequest request;
+    request.code = *code;
+
+    auto type = extract_json_string_field(payload, "type");
+    request.type = type ? *type : String("eval");
+
+    auto request_id = extract_json_string_field(payload, "requestId");
+    request.request_id = request_id ? *request_id : String("");
+
+    return request;
+}
+} // namespace
 
 void uSEQ::run()
 {
@@ -244,6 +367,8 @@ void uSEQ::init()
     {
         return;
     }
+
+    Protocol::disable_json_mode();
 
 #ifdef ARDUINO
     init_dsp_queues();
@@ -385,6 +510,84 @@ String get_code_waiting()
 String get_code_waiting() { return String(""); }
 #endif
 
+bool uSEQ::try_handle_json_message(int first_byte)
+{
+#ifdef ARDUINO
+    if (first_byte != '{')
+    {
+        return false;
+    }
+
+    String payload = String(static_cast<char>(first_byte)) + get_code_waiting();
+    payload.trim();
+
+    handle_json_serial_request(payload);
+    return true;
+#else
+    (void)first_byte;
+    return false;
+#endif
+}
+
+bool uSEQ::handle_json_serial_request(const String& payload)
+{
+    auto parsed_request = parse_json_request(payload);
+    const String request_id = parsed_request ? parsed_request->request_id : String("");
+
+    Protocol::begin_request(request_id);
+
+    if (!parsed_request)
+    {
+        Protocol::send_json_error(request_id, "Malformed JSON request");
+        Protocol::finish_request();
+        return true;
+    }
+
+    if (parsed_request->type.length() > 0 && parsed_request->type != "eval")
+    {
+        Protocol::consume_request_text();
+        Protocol::send_json_error(parsed_request->request_id,
+                                  String("Unsupported request type: ") +
+                                      parsed_request->type);
+        Protocol::finish_request();
+        return true;
+    }
+
+    error_msg_q.clear();
+    String eval_result = eval(parsed_request->code);
+    String console_out = Protocol::consume_request_text();
+
+    if (eval_result.length() > 0)
+    {
+        if (console_out.length() > 0)
+        {
+            console_out += "\n";
+        }
+        console_out += eval_result;
+    }
+
+    bool success = error_msg_q.empty();
+
+    if (!error_msg_q.empty())
+    {
+        for (const auto& err : error_msg_q)
+        {
+            if (console_out.length() > 0)
+            {
+                console_out += "\n";
+            }
+            console_out += err;
+        }
+    }
+
+    Protocol::send_json_response(success, console_out, std::nullopt,
+                                 parsed_request->request_id);
+    Protocol::finish_request();
+    error_msg_q.clear();
+
+    return true;
+}
+
 void uSEQ::check_and_handle_user_input()
 {
     DBG("uSEQ::check_and_handle_user_input");
@@ -438,6 +641,13 @@ void uSEQ::check_and_handle_user_input()
         }
         else
         {
+#ifdef ARDUINO
+            if (!bNewI2CMessage && try_handle_json_message(first_byte))
+            {
+                set_manual_evaluation(false);
+                return;
+            }
+#endif
             // Read code
             m_last_received_code = get_code_waiting();
 

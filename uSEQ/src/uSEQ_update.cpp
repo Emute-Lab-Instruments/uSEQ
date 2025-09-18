@@ -122,11 +122,21 @@ void uSEQ::update_serial_signals()
 {
     DBG("uSEQ::update_serial_signals");
 
-    for (int i = 0; i < m_num_serial_outs; i++)
+    if (!m_serial_vals.empty())
+    {
+        double time_seconds = 0.0;
+        if (auto* time_manager = m_interpreter.get_time_manager())
+        {
+            time_seconds = time_manager->get_time_since_boot() / 1e6;
+        }
+        m_serial_vals[0] = time_seconds;
+    }
+
+    for (int i = 1; i < m_num_serial_outs; i++)
     {
         // Clear error queue
         error_msg_q.clear();
-        String expr_name = String("s") + String(i + 1);
+        String expr_name = String("s") + String(i);
         set_atom_currently_being_evaluated(expr_name);
 
         Value expr = m_serial_ASTs[i];
@@ -146,7 +156,7 @@ void uSEQ::update_serial_signals()
             if (!result.is_number())
             {
                 println("**Warning**: Clearing the expression for **s" +
-                        String(i + 1) +
+                        String(i) +
                         "** because it doesn't evaluate to a number:\n    " +
                         expr.display());
 

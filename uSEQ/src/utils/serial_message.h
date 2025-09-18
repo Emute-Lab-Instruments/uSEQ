@@ -15,6 +15,7 @@ enum serial_message_types
 {
     TEXT          = 32,
     MSG_TO_EDITOR = 100,
+    JSON          = 101,
     STREAM        = 0
 };
 constexpr unsigned long serial_message_rate_limit = 1000000 / 100 /*Hz*/;

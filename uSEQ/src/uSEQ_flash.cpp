@@ -446,9 +446,14 @@ void uSEQ::load_flash_env()
         }
     }
 
-    for (int i = 0; static_cast<size_t>(i) < m_serial_ASTs.size(); i++)
+    if (!m_serial_ASTs.empty())
     {
-        String name               = "s" + String(i + 1);
+        m_serial_ASTs[0] = default_serial_expr;
+    }
+
+    for (int i = 1; static_cast<size_t>(i) < m_serial_ASTs.size(); i++)
+    {
+        String name               = "s" + String(i);
         std::optional<Value> expr = get_environment()->get_expr(name);
         if (expr)
         {

@@ -1,11 +1,185 @@
 #include "log.h"
 #include "logger_bridge.h"
 
+#include <cstdio>
 #include <iostream>
+
+namespace
+{
+struct JsonProtocolState
+{
+    bool json_mode_enabled = false;
+    bool request_active    = false;
+    String request_id      = "";
+    String text_buffer     = "";
+};
+
+JsonProtocolState& state()
+{
+    static JsonProtocolState s;
+    return s;
+}
+
+String escape_json_string(const String& input)
+{
+    String escaped = "";
+    escaped.reserve(input.length());
+
+    for (size_t i = 0; i < input.length(); ++i)
+    {
+        const char c = input[i];
+        switch (c)
+        {
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            if (static_cast<unsigned char>(c) < 0x20)
+            {
+                char buffer[7];
+                snprintf(buffer, sizeof(buffer), "\\u%04X",
+                         static_cast<unsigned char>(c));
+                escaped += buffer;
+            }
+            else
+            {
+                escaped += c;
+            }
+            break;
+        }
+    }
+
+    return escaped;
+}
+
+#ifdef ARDUINO
+void write_serial_json(const String& payload)
+{
+    if (!Serial.availableForWrite())
+    {
+        return;
+    }
+
+    Serial.write(SerialMsg::message_begin_marker);
+    Serial.write((u_int8_t)SerialMsg::serial_message_types::JSON);
+    Serial.println(payload);
+}
+#else
+void write_serial_json(const String&)
+{
+    // Desktop build has no serial transport; JSON responses are ignored.
+}
+#endif
+} // namespace
+
+namespace Protocol
+{
+void enable_json_mode() { state().json_mode_enabled = true; }
+
+void disable_json_mode()
+{
+    state().json_mode_enabled = false;
+    state().request_active    = false;
+    state().text_buffer       = "";
+    state().request_id        = "";
+}
+
+bool json_mode_enabled() { return state().json_mode_enabled; }
+
+void begin_request(const String& request_id)
+{
+    state().request_active = true;
+    state().request_id     = request_id;
+    state().text_buffer    = "";
+}
+
+void finish_request()
+{
+    state().request_active = false;
+    state().request_id     = "";
+    state().text_buffer    = "";
+}
+
+bool request_active() { return state().request_active; }
+
+void append_request_text(const String& line)
+{
+    auto& json_state = state();
+    if (!json_state.request_active)
+    {
+        return;
+    }
+
+    if (json_state.text_buffer.length() > 0)
+    {
+        json_state.text_buffer += "\n";
+    }
+    json_state.text_buffer += line;
+}
+
+String consume_request_text()
+{
+    String copy = state().text_buffer;
+    state().text_buffer = "";
+    return copy;
+}
+
+void send_json_response(bool success, const String& text,
+                        const std::optional<String>& meta,
+                        const String& request_id)
+{
+    String payload = "{";
+    payload += "\"type\":\"response\",";
+    payload += "\"success\":";
+    payload += success ? "true" : "false";
+    payload += ",\"text\":\"" + escape_json_string(text) + "\",";
+    payload += "\"meta\":";
+    if (meta && meta->length() > 0)
+    {
+        payload += *meta;
+    }
+    else
+    {
+        payload += "null";
+    }
+    payload += ",\"requestId\":\"" + escape_json_string(request_id) + "\"}";
+
+    write_serial_json(payload);
+}
+
+void send_json_error(const String& request_id, const String& message)
+{
+    send_json_response(false, message, std::nullopt, request_id);
+}
+} // namespace Protocol
 
 void message_editor(const String& s)
 {
 #ifdef ARDUINO
+    if (Protocol::request_active())
+    {
+        Protocol::append_request_text(s);
+        return;
+    }
+
+    if (Protocol::json_mode_enabled())
+    {
+        Protocol::send_json_response(true, s, std::nullopt, String());
+        return;
+    }
+
     if (Serial.availableForWrite())
     {
         Serial.write(SerialMsg::message_begin_marker);
@@ -24,7 +198,20 @@ void println(const String& s)
     {
         L->info(s);
     }
+
 #ifdef ARDUINO
+    if (Protocol::request_active())
+    {
+        Protocol::append_request_text(s);
+        return;
+    }
+
+    if (Protocol::json_mode_enabled())
+    {
+        Protocol::send_json_response(true, s, std::nullopt, String());
+        return;
+    }
+
     if (Serial.availableForWrite())
     {
         Serial.write(SerialMsg::message_begin_marker);
@@ -39,14 +226,7 @@ void println(const String& s)
 
 // ERRORS
 std::vector<String> error_msg_q = {};
-void report_error(const String& s)
-{
-    error_msg_q.push_back(s);
-    if (auto L = get_global_logger())
-    {
-        L->error(s);
-    }
-}
+void report_error(const String& s) { error_msg_q.push_back(s); }
 
 void report_generic_error(const String& s)
 {
@@ -55,19 +235,10 @@ void report_generic_error(const String& s)
 
 void report_runtime_error(const String& s)
 {
-    String msg = (String) "**Runtime Error**: " + s;
-    report_error(msg);
+    report_error((String) "**Runtime Error**: " + s);
 }
 
-void report_user_warning(const String& s)
-{
-    String msg = "**Warning**: " + s;
-    if (auto L = get_global_logger())
-    {
-        L->warn(msg);
-    }
-    report_error(msg);
-}
+void report_user_warning(const String& s) { report_error("**Warning**: " + s); }
 
 void report_evaluation_error(const String& error_msg, String atom)
 {
@@ -169,14 +340,7 @@ void report_custom_function_error(const String& function_name, const String& msg
     report_error("(`" + function_name + "`) " + msg);
 }
 
-int free_heap()
-{
-#ifdef ARDUINO
-    return rp2040.getFreeHeap() / 1024;
-#else
-    return 0; // Stub for desktop build
-#endif
-}
+int free_heap() { return rp2040.getFreeHeap() / 1024; }
 
 // DebugLogger
 

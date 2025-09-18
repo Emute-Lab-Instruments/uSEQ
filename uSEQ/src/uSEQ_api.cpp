@@ -2,6 +2,7 @@
 #include "uSEQ/io_manager.h"
 #include "uSEQ/output_manager.h"
 #include "utils.h"
+#include "utils/log.h"
 #ifdef ARDUINO
 #include "dsp/uSeqGens/uSeqGen_Sampler.h"
 #endif
@@ -96,6 +97,7 @@ void uSEQ::init_builtinfuncs()
 
     INSERT_BUILTINDEF("useq-report-firmware-info", useq_report_firmware_info);
     INSERT_BUILTINDEF("useq-firmware-info", useq_firmware_info);
+    INSERT_BUILTINDEF("useq-talk-in-json", useq_talk_in_json);
 
     // Playback/transport control
     INSERT_BUILTINDEF("useq-play", useq_play);
@@ -163,6 +165,9 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_report_firmware_info, //
                           // msg += "\"}";                                 //
                           // println(msg);
                           , 0)
+
+BUILTINFUNC_NOEVAL_MEMBER(useq_talk_in_json, Protocol::enable_json_mode();
+                          ret = Value::string("json-mode-enabled");, 0)
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_q0, get_environment()->set("q-expr", args[0]);
                           get_scheduler()->set_q0_ast(args[0]);
@@ -342,10 +347,23 @@ void uSEQ::clear_all_outputs()
         get_environment()->get_def_exprs().erase(name);
     }
 
-    for (int i = 0; static_cast<size_t>(i) < m_serial_ASTs.size(); i++)
+    if (!m_serial_ASTs.empty())
     {
-        String name      = "s" + String(i + 1);
+        m_serial_ASTs[0] = default_serial_expr;
+        if (!m_serial_vals.empty())
+        {
+            m_serial_vals[0] = std::nullopt;
+        }
+    }
+
+    for (int i = 1; static_cast<size_t>(i) < m_serial_ASTs.size(); i++)
+    {
+        String name      = "s" + String(i);
         m_serial_ASTs[i] = default_serial_expr;
+        if (static_cast<size_t>(i) < m_serial_vals.size())
+        {
+            m_serial_vals[i] = std::nullopt;
+        }
         get_environment()->get_def_exprs().erase(name);
     }
 }

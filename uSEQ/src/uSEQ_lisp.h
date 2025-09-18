@@ -11,6 +11,7 @@
 LISP_FUNC_DECL(useq_stop_all);
 LISP_FUNC_DECL(useq_firmware_info);
 LISP_FUNC_DECL(useq_report_firmware_info);
+LISP_FUNC_DECL(useq_talk_in_json);
 // Playback/transport control
 LISP_FUNC_DECL(useq_play);
 LISP_FUNC_DECL(useq_pause);

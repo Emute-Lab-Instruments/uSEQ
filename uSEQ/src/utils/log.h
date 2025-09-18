@@ -64,6 +64,24 @@ void message_editor(const String& s);
 // void print(const String& s);
 void println(const String& s);
 
+namespace Protocol
+{
+void enable_json_mode();
+void disable_json_mode();
+bool json_mode_enabled();
+
+void begin_request(const String& request_id);
+void finish_request();
+bool request_active();
+void append_request_text(const String& line);
+String consume_request_text();
+
+void send_json_response(bool success, const String& text,
+                        const std::optional<String>& meta,
+                        const String& request_id);
+void send_json_error(const String& request_id, const String& message);
+} // namespace Protocol
+
 // void serve_message(const uSEQ_Message& msg);
 
 // void execute_print_q_index(size_t index);
