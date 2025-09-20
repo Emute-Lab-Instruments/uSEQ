@@ -45,16 +45,18 @@ enum class UGEN_TYPE
 
 struct response_data_queue
 {
-    size_t key = 0;
+    // NOTE: Members must be initialized explicitly - no default initializers
+    // due to union usage which deletes default constructors
+    size_t key;
     // pointer to queue
 #ifdef ARDUINO
-    queue_t* queueptr = nullptr;
+    queue_t* queueptr;
 #else
-    void* queueptr = nullptr; // Generic pointer for desktop builds
+    void* queueptr; // Generic pointer for desktop builds
 #endif
-    size_t index     = 0;
-    size_t queueSize = 0;
-    UGEN_TYPE type   = UGEN_TYPE::OTHER;
+    size_t index;
+    size_t queueSize;
+    UGEN_TYPE type;
 };
 
 union response_data
