@@ -60,7 +60,8 @@ public:
     std::vector<uSeqGen_Base::queue_spec> outputQueues;
     std::vector<uSeqGen_Base::queue_spec> inputQueues;
 
-    void createInputQueue(size_t index, queue_t& q_input)
+    void createInputQueue(size_t index, queue_t& q_input,
+                          DSPQ::UGEN_TYPE type = DSPQ::UGEN_TYPE::OTHER)
     {
         queue_init(&q_input, sizeof(float), 1);
         queue_spec q;
@@ -73,11 +74,13 @@ public:
         resp.data.queueInfo.queueptr  = &q_input;
         resp.data.queueInfo.index     = 0;
         resp.data.queueInfo.queueSize = 1;
+        resp.data.queueInfo.type      = type;
         queue_try_add(q_message, &resp);
         inputQueues.push_back(q);
     }
 
-    void createOutputQueue(size_t index, queue_t& q_output)
+    void createOutputQueue(size_t index, queue_t& q_output,
+                           DSPQ::UGEN_TYPE type = DSPQ::UGEN_TYPE::OTHER)
     {
         queue_init(&q_output, sizeof(float), 1);
         queue_spec q;
@@ -90,6 +93,7 @@ public:
         resp.data.queueInfo.queueptr  = &q_output;
         resp.data.queueInfo.index     = 0;
         resp.data.queueInfo.queueSize = 1;
+        resp.data.queueInfo.type      = type;
         queue_try_add(q_message, &resp);
         outputQueues.push_back(q);
     }

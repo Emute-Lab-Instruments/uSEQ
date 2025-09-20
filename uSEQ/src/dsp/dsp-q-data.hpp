@@ -37,17 +37,24 @@ struct response_data_message
     char msg[64];
 };
 
+enum class UGEN_TYPE
+{
+    DAC,
+    OTHER
+};
+
 struct response_data_queue
 {
-    size_t key;
+    size_t key = 0;
     // pointer to queue
 #ifdef ARDUINO
-    queue_t* queueptr;
+    queue_t* queueptr = nullptr;
 #else
-    void* queueptr; // Generic pointer for desktop builds
+    void* queueptr = nullptr; // Generic pointer for desktop builds
 #endif
-    size_t index;
-    size_t queueSize;
+    size_t index     = 0;
+    size_t queueSize = 0;
+    UGEN_TYPE type   = UGEN_TYPE::OTHER;
 };
 
 union response_data
