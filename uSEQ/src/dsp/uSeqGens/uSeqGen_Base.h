@@ -72,7 +72,7 @@ public:
         resp.response                 = DSPQ::RESPONSES::ADD_INPUT_QUEUE;
         resp.data.queueInfo.key       = key;
         resp.data.queueInfo.queueptr  = &q_input;
-        resp.data.queueInfo.index     = 0;
+        resp.data.queueInfo.index     = index;
         resp.data.queueInfo.queueSize = 1;
         resp.data.queueInfo.type      = type;
         queue_try_add(q_message, &resp);
@@ -91,7 +91,7 @@ public:
         resp.response                 = DSPQ::RESPONSES::ADD_OUTPUT_QUEUE;
         resp.data.queueInfo.key       = key;
         resp.data.queueInfo.queueptr  = &q_output;
-        resp.data.queueInfo.index     = 0;
+        resp.data.queueInfo.index     = index;
         resp.data.queueInfo.queueSize = 1;
         resp.data.queueInfo.type      = type;
         queue_try_add(q_message, &resp);
