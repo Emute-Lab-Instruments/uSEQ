@@ -485,7 +485,9 @@ void FAST_FUNC(uSEQ::tick())
 
 // return true if either serial or I2C has new code
 #ifdef ARDUINO
-bool is_new_code_waiting() { return Serial.available() || bNewI2CMessage; }
+bool is_new_code_waiting() { 
+    return (Serial && Serial.available()) || bNewI2CMessage; 
+}
 #else
 bool is_new_code_waiting() { return false; }
 #endif
