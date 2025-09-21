@@ -334,8 +334,6 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)()
         }
         case DSPQ::RESPONSES::ADD_INPUT_QUEUE:
         {
-            // println("queue received from " +
-            // String(response.data.queueInfo.key));
             ugenInputQueue newq;
             newq.q                            = response.data.queueInfo.queueptr;
             newq.index                        = response.data.queueInfo.index;
@@ -345,10 +343,25 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)()
             dspEngine.ugenInputQueues[qIndex] = newq;
 
             String ugenName = dspEngine.ugenInstances[response.data.queueInfo.key];
-            // println("UGEN name: " + ugenName);
             String queueName = ugenName + "-in" + String(newq.index);
             println("Created input queue: " + queueName);
             get_environment()->set(queueName, Value(static_cast<int>(qIndex)));
+#ifdef MUSICTHING
+            // Capture DAC queue pointers for main core writes
+            if (response.data.queueInfo.type == DSPQ::UGEN_TYPE::DAC)
+            {
+                if (newq.index == 0 && m_q_dac_output_left_ptr == nullptr)
+                {
+                    m_q_dac_output_left_ptr = response.data.queueInfo.queueptr;
+                    println("Captured DAC left input queue pointer");
+                }
+                else if (newq.index == 1 && m_q_dac_output_right_ptr == nullptr)
+                {
+                    m_q_dac_output_right_ptr = response.data.queueInfo.queueptr;
+                    println("Captured DAC right input queue pointer");
+                }
+            }
+#endif
             break;
         }
         default:

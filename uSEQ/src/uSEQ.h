@@ -245,6 +245,12 @@ private:
     // queue and dsp
     std::array<String, N_OUTPUT_QUEUES> dsp_output_names;
     void check_dsp_output_queues();
+#ifdef MUSICTHING
+    // Pointers to DAC input queues created by uSeqGen_MT_DAC (on DSP core)
+    // Set when we receive ADD_INPUT_QUEUE responses with type UGEN_TYPE::DAC
+    queue_t* m_q_dac_output_left_ptr = nullptr;   // Index 0 - left channel
+    queue_t* m_q_dac_output_right_ptr = nullptr;  // Index 1 - right channel
+#endif
 #endif
 
     //// UPDATE methods
@@ -258,9 +264,6 @@ private:
     void update_continuous_signals();
     void update_binary_signals();
     void update_serial_signals();
-#ifdef MUSICTHING
-    void update_dac_leds();
-#endif
     // updating (i.e. writing to) the actual outputs
     void update_outs();
     void update_continuous_outs();

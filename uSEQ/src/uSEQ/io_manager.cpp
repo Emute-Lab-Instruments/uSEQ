@@ -793,19 +793,11 @@ int IOManager::get_analog_out_pin(int out) const
 
 int IOManager::get_analog_out_led_pin(int out) const
 {
-#if defined(ARDUINO) && !defined(MUSICTHING)
+#if defined(ARDUINO)
     if (out > 0 && out <= NUM_CONTINUOUS_OUTS)
     {
         return useq_output_led_pins[out - 1];
     }
-#elif defined(MUSICTHING)
-    // FIXME
-    if (out == 1)
-        return USEQ_LED_PIN_A1;
-    else if (out == 2)
-        return USEQ_LED_PIN_A2;
-    else
-        return -1;
 #else
     (void)out;
 #endif

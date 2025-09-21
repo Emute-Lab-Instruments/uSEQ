@@ -1,9 +1,6 @@
 #include "uSEQ.h"
 #include "uSEQ/hardware_output.h"
 #include "utils.h"
-#ifdef MUSICTHING
-#include "dsp/uSeqGens/uSeqGen_MT_DAC.h"
-#endif
 
 /// UPDATE methods
 #if defined(USE_NOT_IN_FLASH)
@@ -34,7 +31,7 @@ void uSEQ::update_continuous_signals()
         Value expr = m_continuous_ASTs[i];
         if (expr.is_nil())
         {
-            m_continuous_vals[i] = 0.0;
+            m_continuous_vals[i] = 0.5;
         }
         else
         {
@@ -63,10 +60,6 @@ void uSEQ::update_continuous_signals()
             }
         }
     }
-
-#ifdef MUSICTHING
-    update_dac_leds();
-#endif
 }
 
 #if defined(USE_NOT_IN_FLASH)
@@ -221,8 +214,33 @@ void uSEQ::update_continuous_outs()
 
     for (size_t i = 0; i < m_num_continuous_outs; i++)
     {
+        float val = m_continuous_vals[i];
+
         dbg(String(i));
-        analog_write_with_led(i, m_continuous_vals[i]);
+        #if defined(MUSICTHING)
+        if (i == 0)
+        {
+            // Left channel: scale from [0,1] to [-1,+1] for CV modulation
+            float scaled_val = (val * 2.0f) - 1.0f;
+            if (m_q_dac_output_left_ptr)
+            {
+                queue_try_add(m_q_dac_output_left_ptr, &scaled_val);
+            }
+            continue;
+        }else if (i == 1)
+        {
+            // Right channel: scale from [0,1] to [-1,+1] for CV modulation
+            float scaled_val = (val * 2.0f) - 1.0f;
+            if (m_q_dac_output_right_ptr)
+            {
+                queue_try_add(m_q_dac_output_right_ptr, &scaled_val);
+            }
+            continue;
+        }
+
+        #else
+        analog_write_with_led(i, val);
+        #endif
     }
 }
 
@@ -262,62 +280,5 @@ void uSEQ::update_serial_outs()
     }
 }
 
-#ifdef MUSICTHING
-void uSEQ::update_dac_leds()
-{
-    DBG("uSEQ::update_dac_leds");
-
-    // Static circular buffers for running average
-    static constexpr size_t BUFFER_SIZE       = 32;
-    static uint16_t left_buffer[BUFFER_SIZE]  = { 0 };
-    static uint16_t right_buffer[BUFFER_SIZE] = { 0 };
-    static size_t buffer_index                = 0;
-
-    // Read latest DAC values from DSP thread (thread-safe volatile read)
-    uint16_t dac_left  = uSeqGen_MT_DAC::latest_dac_left;
-    uint16_t dac_right = uSeqGen_MT_DAC::latest_dac_right;
-
-    // Convert from 12-bit DAC range (0-4095 with 2048 center) to absolute values
-    // DAC center is 2048 (0V), so we calculate distance from center
-    int left_signed  = static_cast<int>(dac_left) - 2048;
-    int right_signed = static_cast<int>(dac_right) - 2048;
-
-    // Store absolute values in circular buffer
-    left_buffer[buffer_index]  = static_cast<uint16_t>(abs(left_signed));
-    right_buffer[buffer_index] = static_cast<uint16_t>(abs(right_signed));
-
-    // Calculate running average of absolute values
-    uint32_t left_sum  = 0;
-    uint32_t right_sum = 0;
-    for (size_t i = 0; i < BUFFER_SIZE; i++)
-    {
-        left_sum += left_buffer[i];
-        right_sum += right_buffer[i];
-    }
-
-    // Average and scale to 0-2047 range (matching existing LED scaling)
-    // Max absolute value is 2048, so average can be at most 2048
-    int led_val_left  = static_cast<int>(left_sum / BUFFER_SIZE);
-    int led_val_right = static_cast<int>(right_sum / BUFFER_SIZE);
-
-    // Apply exponential curve for visual response (same as analog_write_with_led)
-    led_val_left  = (led_val_left * led_val_left) >> 11;
-    led_val_right = (led_val_right * led_val_right) >> 11;
-
-#ifndef AUDIO_OUT_INVERTED
-    // Invert the values so low average = high LED brightness
-    led_val_left  = 2047 - led_val_left;
-    led_val_right = 2047 - led_val_right;
-#endif
-
-    // Update circular buffer index
-    buffer_index = (buffer_index + 1) % BUFFER_SIZE;
-
-#ifdef ARDUINO
-    HardwareOutput::analog(static_cast<uint8_t>(USEQ_LED_PIN_AUDIO_L), static_cast<uint16_t>(led_val_left));
-    HardwareOutput::analog(static_cast<uint8_t>(USEQ_LED_PIN_AUDIO_R), static_cast<uint16_t>(led_val_right));
-#endif
-}
-#endif // MUSICTHING
 
 #endif // HAS_OUTPUTS

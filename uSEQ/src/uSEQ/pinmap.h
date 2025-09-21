@@ -37,14 +37,14 @@ Gizmo or other products you make using this      | | source. |
 // #define USEQ_PIN_LED_I2 15
 #define USEQ_LED_PIN_AUDIO_L 10
 #define USEQ_LED_PIN_AUDIO_R 11
-#define USEQ_LED_PIN_A1 12
-#define USEQ_LED_PIN_A2 13
+#define USEQ_LED_PIN_A3 12
+#define USEQ_LED_PIN_A4 13
 #define USEQ_LED_PIN_D1 14
 #define USEQ_LED_PIN_D2 15
-
-const int useq_output_pins[]     = { 23, 22, 8, 9 };
+///////////////////////////////////// aL, aR, a2, a3, d1, d2
+const int useq_output_pins[]     = { -1, -1, 23, 22, 8, 9 };
 const int useq_output_led_pins[] = { USEQ_LED_PIN_AUDIO_L, USEQ_LED_PIN_AUDIO_R,
-                                     USEQ_LED_PIN_A1,      USEQ_LED_PIN_A2,
+                                     USEQ_LED_PIN_A3,      USEQ_LED_PIN_A4,
                                      USEQ_LED_PIN_D1,      USEQ_LED_PIN_D2 };
 
 #define MUX_IN_1 28
@@ -60,7 +60,7 @@ const int useq_output_led_pins[] = { USEQ_LED_PIN_AUDIO_L, USEQ_LED_PIN_AUDIO_R,
 #define DAC_SDI 19
 #define DAC_CS 21
 
-#define NUM_CONTINUOUS_OUTS 2
+#define NUM_CONTINUOUS_OUTS 4
 #define NUM_BINARY_OUTS 2
 
 // FIXME: Define proper hardware type ID for MUSICTHING
