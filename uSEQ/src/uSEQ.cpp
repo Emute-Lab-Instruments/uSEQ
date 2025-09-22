@@ -832,7 +832,7 @@ Value uSEQ::useq_dsp_create(std::vector<Value>& args, Environment& env)
     queue_try_add(&DSPQ::q_engine_commands, &cmd);
 
     String name = args[0].display();
-    env.set(name, Value(static_cast<int>(cmd.data.create.key)));
+    get_environment()->set(name, Value(static_cast<int>(cmd.data.create.key)));
     dspEngine.ugenInstances[cmd.data.create.key] = name;
     return Value::string("Ugen mounting...");
 }
