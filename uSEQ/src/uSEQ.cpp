@@ -228,10 +228,10 @@ std::optional<JsonRequest> parse_json_request(const String& payload)
     JsonRequest request;
     request.code = *code;
 
-    auto type = extract_json_string_field(payload, "type");
+    auto type    = extract_json_string_field(payload, "type");
     request.type = type ? *type : String("eval");
 
-    auto request_id = extract_json_string_field(payload, "requestId");
+    auto request_id    = extract_json_string_field(payload, "requestId");
     request.request_id = request_id ? *request_id : String("");
 
     return request;
@@ -342,7 +342,7 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)()
             size_t qIndex                     = dspEngine.nextKey++;
             dspEngine.ugenInputQueues[qIndex] = newq;
 
-            String ugenName = dspEngine.ugenInstances[response.data.queueInfo.key];
+            String ugenName  = dspEngine.ugenInstances[response.data.queueInfo.key];
             String queueName = ugenName + "-in" + String(newq.index);
             // println("Created input queue: " + queueName);
             get_environment()->set(queueName, Value(static_cast<int>(qIndex)));
@@ -411,7 +411,6 @@ void uSEQ::init()
 
     // eval_lisp_library();
 
-    m_io_manager->led_animation();
 #ifdef USEQHARDWARE_1_0
     start_pdm();
 #endif
@@ -425,7 +424,19 @@ void uSEQ::init()
 
 #ifdef ARDUINO
     autoload_flash();
+    delay(500);
 #endif
+
+#ifdef ARDUINO
+    // delay(100);
+    // check_dsp_output_queues();
+    // // Start DSP engine and mount the DAC ugen
+    // eval("(ppp-go 22050)");
+    // eval("(ppp-mount dac ugen-dac)");
+    // delay(100);
+#endif
+
+    m_io_manager->led_animation();
 
     m_initialised = true;
 }
@@ -439,6 +450,8 @@ void uSEQ::start_loop_blocking()
 
     println("Exiting REPL.");
 }
+
+bool dsp_init = false;
 
 // TODO does order matter?
 // e.g. when user code is evaluated, does it make
@@ -491,6 +504,47 @@ void FAST_FUNC(uSEQ::tick())
 
     // tiny delay to allow for interrupts etc
     delayMicroseconds(100);
+
+#ifdef MUSICTHING
+    if (!dsp_init)
+    {
+#ifdef ARDUINO
+        // Ensure any queued DSP responses populate the environment before evals
+        check_dsp_output_queues();
+#endif
+
+        auto ugen_dac = get_environment()->get("ugen-dac");
+        if (ugen_dac)
+        {
+            auto eval_startup_form = [this](const String& code) -> bool
+            {
+                set_manual_evaluation(true);
+                error_msg_q.clear();
+                String result = eval(code);
+
+                bool success = error_msg_q.empty();
+                if (!success)
+                {
+                    println(error_msg_q[0]);
+                    error_msg_q.clear();
+                }
+                else if (result.length() > 0)
+                {
+                    println(result);
+                }
+
+                set_manual_evaluation(false);
+                return success;
+            };
+
+            if (eval_startup_form("(ppp-go 22050)") &&
+                eval_startup_form("(ppp-mount dac ugen-dac)"))
+            {
+                dsp_init = true;
+            }
+        }
+    }
+#endif
 }
 
 ///////////////////////////////////////////////////////////
@@ -498,8 +552,9 @@ void FAST_FUNC(uSEQ::tick())
 
 // return true if either serial or I2C has new code
 #ifdef ARDUINO
-bool is_new_code_waiting() { 
-    return (Serial && Serial.available()) || bNewI2CMessage; 
+bool is_new_code_waiting()
+{
+    return (Serial && Serial.available()) || bNewI2CMessage;
 }
 #else
 bool is_new_code_waiting() { return false; }
@@ -547,7 +602,8 @@ bool uSEQ::try_handle_json_message(int first_byte)
 bool uSEQ::handle_json_serial_request(const String& payload)
 {
     auto parsed_request = parse_json_request(payload);
-    const String request_id = parsed_request ? parsed_request->request_id : String("");
+    const String request_id =
+        parsed_request ? parsed_request->request_id : String("");
 
     Protocol::begin_request(request_id);
 
