@@ -57,7 +57,7 @@ protected:
         const size_t _offset = GET_INPUT_SAFE(inputs, float, INPUT_OFFSET, offset);
         const float _pw =
             GET_INPUT_SAFE(inputs, float, INPUT_PULSE_WIDTH, pulseWidth);
-        const bool output = euclidean(_phase, _n, _k, 0, 0.5f);
+        const bool output = euclidean(_phase, _n, _k, _offset, _pw);
         outputs.SetValue(0, output ? 1.0f : 0.0f);
     }
 

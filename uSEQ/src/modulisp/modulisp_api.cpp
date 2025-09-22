@@ -707,20 +707,35 @@ Value ModuLispInterpreter::useq_euclidean(std::vector<Value>& args, Environment&
     Value result = Value::nil();
 
     // NOTE: Phasor is the last arg
-    const double phasor    = args.back().as_float();
-    const int n            = args[0].as_int();
-    const int k            = args[1].as_int();
-    const int offset       = (args.size() >= 4) ? args[2].as_int() : 0;
-    const float pulseWidth = (args.size() == 5) ? args[3].as_float() : 0.5;
-    const float fi         = phasor * n;
-    int i                  = static_cast<int>(fi);
-    const float rem        = fi - i;
+    const double phasor = args.back().as_float();
+    const int n         = args[0].as_int();
+    const int k         = args[1].as_int();
+
+    // Parse arguments based on count:
+    // 3 args: n, k, phasor (pulseWidth=0.5, offset=0)
+    // 4 args: n, k, pulseWidth, phasor (offset=0)
+    // 5 args: n, k, pulseWidth, offset, phasor
+    float pulseWidth = 0.5f;
+    int offset = 0;
+
+    if (args.size() == 4) {
+        pulseWidth = args[2].as_float();
+    } else if (args.size() == 5) {
+        pulseWidth = args[2].as_float();
+        offset = args[3].as_int();
+    }
+
+    const float fi = phasor * n;
+    int i = static_cast<int>(fi);
+    const float rem = fi - i;
     if (i == n)
     {
         i--;
     }
+
+    // Include offset in euclidean calculation
     const int idx = ((i + n - offset) * k) % n;
-    result        = Value(idx < k && rem < pulseWidth ? 1 : 0);
+    result = Value(idx < k && rem < pulseWidth ? 1 : 0);
 
     return result;
 }
@@ -733,7 +748,7 @@ Value ModuLispInterpreter::useq_eu(std::vector<Value>& args, Environment& env)
     if (!(3 <= args.size() <= 5))
     {
         report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::Between, 3, 4);
+                                    NumArgsComparison::Between, 3, 5);
         return Value::error();
     }
 
@@ -762,25 +777,36 @@ Value ModuLispInterpreter::useq_eu(std::vector<Value>& args, Environment& env)
     Value result = Value::nil();
 
     // NOTE: Phasor is the last arg
-    const double phasor    = args.back().as_float();
-    const int n            = args[0].as_int();
-    const int k            = args[1].as_int();
-    const float pulseWidth = (args.size() == 4) ? args[2].as_float() : 0.5;
-    const float fi         = phasor * n;
-    int i                  = static_cast<int>(fi);
-    const float rem        = fi - i;
+    const double phasor = args.back().as_float();
+    const int n         = args[0].as_int();
+    const int k         = args[1].as_int();
+
+    // Parse arguments based on count:
+    // 3 args: n, k, phasor (pulseWidth=0.5, offset=0)
+    // 4 args: n, k, pulseWidth, phasor (offset=0)
+    // 5 args: n, k, pulseWidth, offset, phasor
+    float pulseWidth = 0.5f;
+    int offset = 0;
+
+    if (args.size() == 4) {
+        pulseWidth = args[2].as_float();
+    } else if (args.size() == 5) {
+        pulseWidth = args[2].as_float();
+        offset = args[3].as_int();
+    }
+
+    const float fi = phasor * n;
+    int i = static_cast<int>(fi);
+    const float rem = fi - i;
     if (i == n)
     {
         i--;
     }
-    // NOTE: original, testing
-    const int idx = ((i + n) * k) % n;
-    result        = Value(idx < k && rem < pulseWidth ? 1 : 0);
 
-    // NOTE: working one
-    // const int idx             = ((i + n) * k) % n;
-    // float effectivePulseWidth = (idx < k) ? pulseWidth : 0;
-    // result                    = Value(rem < effectivePulseWidth ? 1 : 0);
+    // Include offset in euclidean calculation
+    const int idx = ((i + n - offset) * k) % n;
+    result = Value(idx < k && rem < pulseWidth ? 1 : 0);
+
 
     return result;
 }
