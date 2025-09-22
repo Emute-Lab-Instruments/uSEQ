@@ -328,7 +328,7 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)()
             String ugenName = dspEngine.ugenInstances[response.data.queueInfo.key];
             // println("UGEN name: " + ugenName);
             String queueName = ugenName + "-out" + String(newq.index);
-            println("Created output queue: " + queueName);
+            // println("Created output queue: " + queueName);
             get_environment()->set(queueName, Value(static_cast<int>(qIndex)));
             break;
         }
@@ -344,7 +344,7 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)()
 
             String ugenName = dspEngine.ugenInstances[response.data.queueInfo.key];
             String queueName = ugenName + "-in" + String(newq.index);
-            println("Created input queue: " + queueName);
+            // println("Created input queue: " + queueName);
             get_environment()->set(queueName, Value(static_cast<int>(qIndex)));
 #ifdef MUSICTHING
             // Capture DAC queue pointers for main core writes
@@ -353,12 +353,12 @@ void __not_in_flash_func(uSEQ::check_dsp_output_queues)()
                 if (newq.index == 0 && m_q_dac_output_left_ptr == nullptr)
                 {
                     m_q_dac_output_left_ptr = response.data.queueInfo.queueptr;
-                    println("Captured DAC left input queue pointer");
+                    // println("Captured DAC left input queue pointer");
                 }
                 else if (newq.index == 1 && m_q_dac_output_right_ptr == nullptr)
                 {
                     m_q_dac_output_right_ptr = response.data.queueInfo.queueptr;
-                    println("Captured DAC right input queue pointer");
+                    // println("Captured DAC right input queue pointer");
                 }
             }
 #endif

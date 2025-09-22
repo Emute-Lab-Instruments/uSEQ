@@ -185,7 +185,7 @@ protected:
      */
     bool get_sample_info(const char* filename, sample_info_t* info)
     {
-        println("get_sample_info called with filename: " + String(filename));
+        // println("get_sample_info called with filename: " + String(filename));
         if (!filename || !info)
         {
             return false;

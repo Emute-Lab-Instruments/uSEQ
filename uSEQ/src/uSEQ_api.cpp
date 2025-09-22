@@ -115,6 +115,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("aw", ard_aw);
     INSERT_BUILTINDEF("dw", ard_dw);
     INSERT_BUILTINDEF("useq-enter-bootloader-mode", useq_enter_bootloader_mode);
+    INSERT_BUILTINDEF("useq-reboot", useq_reboot);
 #else
     // Desktop build versions
     INSERT_BUILTINDEF("useqaw", ard_useqaw);

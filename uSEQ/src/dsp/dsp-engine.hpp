@@ -267,8 +267,8 @@ public:
             componentPtr newProcessor = uGenFactories[processor].create(key);
             circuit->AddComponent(newProcessor);
             components[key] = newProcessor;
-            println("Created processor: " + String(key) + " " +
-                    uGenFactories[processor].name);
+            println("Created UGEN '" +
+                    uGenFactories[processor].name + "' (id = " + String(key) + ")");
         }
         else
         {
