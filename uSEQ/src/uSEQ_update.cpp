@@ -237,7 +237,8 @@ void uSEQ::update_continuous_outs()
             }
             continue;
         }
-
+        // For remaining outputs (a3, a4), use normal analog output
+        analog_write_with_led(i, val);
         #else
         analog_write_with_led(i, val);
         #endif
