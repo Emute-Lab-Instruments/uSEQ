@@ -134,9 +134,33 @@ protected:
                     lastTrigValue = phaseInput;
                 }
 
-                // cast phase with rounding
-                outputs.SetValue(
-                    0, sample_info.samples[static_cast<size_t>(phase + 0.5f)]);
+                // Linear interpolation for smooth playback
+                const float float_index = phase;
+                const size_t index0 = static_cast<size_t>(float_index);
+
+                // Bounds checking for safety
+                if (index0 >= sample_info.sample_count) {
+                    outputs.SetValue(0, 0.f);
+                } else {
+                    const float frac = float_index - static_cast<float>(index0);
+
+                    // Get current and next sample with boundary handling
+                    const float sample0 = sample_info.samples[index0];
+
+                    size_t index1;
+                    if (looping) {
+                        // Wrap around for looping
+                        index1 = (index0 + 1) % sample_info.sample_count;
+                    } else {
+                        // Clamp to last sample for non-looping
+                        index1 = (index0 + 1 < sample_info.sample_count) ? index0 + 1 : index0;
+                    }
+                    const float sample1 = sample_info.samples[index1];
+
+                    // Linear interpolation: sample0 * (1 - frac) + sample1 * frac
+                    const float interpolated_sample = sample0 + frac * (sample1 - sample0);
+                    outputs.SetValue(0, interpolated_sample);
+                }
 
                 phase += rateInput;
                 if (rateInput >= 0.f)
