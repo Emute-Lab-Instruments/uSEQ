@@ -190,9 +190,17 @@ void IOManager::setup_analog_inputs()
 
     for (int i = 0; i < 8; i++)
     {
-        m_responsive_inputs[i] = new ResponsiveAnalogRead(0, true, 0.1);
-        m_responsive_inputs[i]->setActivityThreshold(16);
+        // Use much smaller snap multiplier for smoother response (was 0.1, now 0.005)
+        // Disable sleep for knobs (channels 0-2) to ensure continuous smooth updates
+        bool enableSleep = (i == 3); // Only enable sleep for switch (channel 3)
+        m_responsive_inputs[i] = new ResponsiveAnalogRead(0, enableSleep, 0.005);
+
+        // Lower activity threshold for better small movement detection (was 16, now 4)
+        m_responsive_inputs[i]->setActivityThreshold(4);
         m_responsive_inputs[i]->setAnalogResolution(4096); // 12-bit ADC
+
+        // Disable edge snap for smoother operation across full range
+        m_responsive_inputs[i]->disableEdgeSnap();
     }
 #endif
 #endif // ARDUINO
@@ -307,8 +315,9 @@ void IOManager::update_inputs()
 #ifdef MUSICTHING
 void IOManager::read_musicthing_inputs()
 {
-    const double recp4096 = 0.000244141;
-    const size_t muxdelay = 8; // FIXME increase this for stability
+    // Use higher precision reciprocal and maintain precision longer
+    constexpr double recp4096 = 1.0 / 4096.0; // More precise than 0.000244141
+    constexpr size_t muxdelay = 8; // FIXME increase this for stability
 
     // Read audio inputs directly (always available)
     m_responsive_inputs[6]->update(analogRead(AUDIO_IN_L));
@@ -318,27 +327,27 @@ void IOManager::read_musicthing_inputs()
     HardwareOutput::digital(MUX_LOGIC_A, 0);
     HardwareOutput::digital(MUX_LOGIC_B, 0);
     delayMicroseconds(muxdelay);
-    m_responsive_inputs[0]->update(analogRead(MUX_IN_1));
-    m_responsive_inputs[4]->update(4095 - analogRead(MUX_IN_2)); // Inverted
+    m_responsive_inputs[0]->update(oversample_adc(MUX_IN_1));
+    m_responsive_inputs[4]->update(4095 - oversample_adc(MUX_IN_2)); // Inverted
 
     // Mux channel 1: Y knob
     HardwareOutput::digital(MUX_LOGIC_A, 0);
     HardwareOutput::digital(MUX_LOGIC_B, 1);
     delayMicroseconds(muxdelay);
-    m_responsive_inputs[1]->update(analogRead(MUX_IN_1));
+    m_responsive_inputs[1]->update(oversample_adc(MUX_IN_1));
 
     // Mux channel 2: X knob + CV2
     HardwareOutput::digital(MUX_LOGIC_A, 1);
     HardwareOutput::digital(MUX_LOGIC_B, 0);
     delayMicroseconds(muxdelay);
-    m_responsive_inputs[2]->update(analogRead(MUX_IN_1));
-    m_responsive_inputs[5]->update(4095 - analogRead(MUX_IN_2)); // Inverted
+    m_responsive_inputs[2]->update(oversample_adc(MUX_IN_1));
+    m_responsive_inputs[5]->update(4095 - oversample_adc(MUX_IN_2)); // Inverted
 
     // Mux channel 3: Switch
     HardwareOutput::digital(MUX_LOGIC_A, 1);
     HardwareOutput::digital(MUX_LOGIC_B, 1);
     delayMicroseconds(muxdelay);
-    m_responsive_inputs[3]->update(analogRead(MUX_IN_1));
+    m_responsive_inputs[3]->update(oversample_adc(MUX_IN_1));
 
     // Extract values after filtering
     m_input_vals[MTMAINKNOB] = m_responsive_inputs[0]->getValue() * recp4096;
@@ -984,3 +993,21 @@ double maxiFilter::lopass(double input, double cutoff)
     z = z + (input - z) * cutoff;
     return z;
 }
+
+// === Oversampling Implementation ===
+
+#ifdef MUSICTHING
+int IOManager::oversample_adc(int pin)
+{
+    // Read ADC multiple times and average for improved resolution/noise reduction
+    int sum = 0;
+    for (int i = 0; i < OVERSAMPLE_COUNT; i++)
+    {
+        sum += analogRead(pin);
+        // Small delay between reads to allow ADC to settle
+        delayMicroseconds(1);
+    }
+    // Return the averaged result
+    return sum / OVERSAMPLE_COUNT;
+}
+#endif

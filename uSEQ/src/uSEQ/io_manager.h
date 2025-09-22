@@ -127,6 +127,10 @@ private:
 #ifdef MUSICTHING
     // ResponsiveAnalogRead for noise reduction on MusicThing hardware
     ResponsiveAnalogRead* m_responsive_inputs[8]; // All MusicThing analog inputs
+
+    // Oversampling for improved resolution/noise reduction
+    static constexpr int OVERSAMPLE_COUNT = 4; // Read ADC 4x and average
+    int oversample_adc(int pin);
 #endif
 
     // === Setup functions ===
