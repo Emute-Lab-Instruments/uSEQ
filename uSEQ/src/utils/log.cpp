@@ -340,7 +340,13 @@ void report_custom_function_error(const String& function_name, const String& msg
     report_error("(`" + function_name + "`) " + msg);
 }
 
-int free_heap() { return rp2040.getFreeHeap() / 1024; }
+int free_heap() { 
+    #ifdef ARDUINO
+    return rp2040.getFreeHeap() / 1024; 
+    #else
+    return 1000000; // Dummy value for non-Arduino environments
+    #endif
+}
 
 // DebugLogger
 
