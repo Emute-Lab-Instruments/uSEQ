@@ -75,7 +75,7 @@ FLAGS=(
 
 # Emscripten-specific flags
 EM_FLAGS=(
-    "-s EXPORTED_FUNCTIONS=[\"_useq_init\",\"_useq_eval\",\"_free\"]"
+    "-s EXPORTED_FUNCTIONS=[\"_useq_init\",\"_useq_eval\",\"_useq_update_time\",\"_useq_eval_output\",\"_free\"]"
     "-s EXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\",\"UTF8ToString\"]"
     "-s ALLOW_MEMORY_GROWTH=1"
     "-s MODULARIZE=1"

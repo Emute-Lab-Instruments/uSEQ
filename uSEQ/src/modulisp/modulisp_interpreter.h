@@ -12,6 +12,10 @@
 #include "time_manager.h"
 #include <cmath>
 #include <memory>
+#ifdef WASM_BUILD
+#include <array>
+#include <limits>
+#endif
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
 #define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
@@ -212,6 +216,67 @@ public:
     LISP_FUNC_DECL(useq_rewind_logical_time);
     LISP_FUNC_DECL(useq_q0);
 
+#ifdef WASM_BUILD
+    LISP_FUNC_DECL(useq_a1);
+    LISP_FUNC_DECL(useq_a2);
+    LISP_FUNC_DECL(useq_a3);
+    LISP_FUNC_DECL(useq_a4);
+    LISP_FUNC_DECL(useq_a5);
+    LISP_FUNC_DECL(useq_a6);
+    LISP_FUNC_DECL(useq_a7);
+    LISP_FUNC_DECL(useq_a8);
+
+    LISP_FUNC_DECL(useq_d1);
+    LISP_FUNC_DECL(useq_d2);
+    LISP_FUNC_DECL(useq_d3);
+    LISP_FUNC_DECL(useq_d4);
+    LISP_FUNC_DECL(useq_d5);
+    LISP_FUNC_DECL(useq_d6);
+    LISP_FUNC_DECL(useq_d7);
+    LISP_FUNC_DECL(useq_d8);
+
+    LISP_FUNC_DECL(useq_s1);
+    LISP_FUNC_DECL(useq_s2);
+    LISP_FUNC_DECL(useq_s3);
+    LISP_FUNC_DECL(useq_s4);
+    LISP_FUNC_DECL(useq_s5);
+    LISP_FUNC_DECL(useq_s6);
+    LISP_FUNC_DECL(useq_s7);
+    LISP_FUNC_DECL(useq_s8);
+
+    void set_time_from_external_source(TimeValue actual_time);
+    double eval_output_at_time(const char* name, double time_seconds,
+                               bool* ok = nullptr);
+
+    enum class WasmOutputType
+    {
+        CONTINUOUS,
+        BINARY,
+        SERIAL
+    };
+
+    struct WasmStoredOutput
+    {
+        Value expr;
+        double lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
+        double lastValue       = 0.0;
+        bool hasExpr           = false;
+    };
+
+    static constexpr size_t kWasmContinuousOutputs = 8;
+    static constexpr size_t kWasmBinaryOutputs     = 8;
+    static constexpr size_t kWasmSerialOutputs     = 8;
+
+    Value wasm_handle_output_assignment(const char* name, size_t index,
+                                        WasmOutputType type,
+                                        std::vector<Value>& args,
+                                        Environment& env);
+    bool wasm_resolve_output(const char* name, WasmOutputType& type,
+                             size_t& index) const;
+    double wasm_eval_output_at_time(WasmOutputType type, size_t index,
+                                    double time_seconds, bool* ok);
+#endif
+
     // Performance monitoring
     int ts          = 0;
     int updateSpeed = 0;
@@ -236,6 +301,12 @@ protected:
     double m_phrases_per_section = 4.0;
     double m_meter_numerator     = 4.0; // Time signature numerator (default 4/4)
     double m_meter_denominator   = 4.0; // Time signature denominator (default 4/4)
+
+#ifdef WASM_BUILD
+    std::array<WasmStoredOutput, kWasmContinuousOutputs> m_wasm_continuous_outputs;
+    std::array<WasmStoredOutput, kWasmBinaryOutputs> m_wasm_binary_outputs;
+    std::array<WasmStoredOutput, kWasmSerialOutputs> m_wasm_serial_outputs;
+#endif
 
 private:
     // Absorbed Interpreter state

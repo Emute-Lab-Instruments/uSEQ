@@ -47,3 +47,13 @@ void TimeManager::update_transport_time(TimeValue actual_time)
     m_transport_time =
         actual_time - m_last_transport_reset_time + m_transport_time_offset;
 }
+
+void TimeManager::set_external_time(TimeValue actual_time)
+{
+    // Drive internal bookkeeping directly from supplied time source.
+    m_last_known_time_since_boot = m_time_since_boot;
+    m_time_since_boot            = actual_time;
+    m_micros_raw_last            = m_micros_raw;
+    m_micros_raw                 = static_cast<size_t>(actual_time);
+    update_transport_time(actual_time);
+}

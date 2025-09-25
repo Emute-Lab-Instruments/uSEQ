@@ -83,6 +83,22 @@ ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* e
     {
         m_scheduler->set_cqp_ast(Value::atom("bar"));
     }
+
+#ifdef WASM_BUILD
+    auto resetWasmOutputs = [](auto& container) {
+        for (auto& slot : container)
+        {
+            slot.expr             = Value::nil();
+            slot.lastTimeSeconds  = std::numeric_limits<double>::quiet_NaN();
+            slot.lastValue        = 0.0;
+            slot.hasExpr          = false;
+        }
+    };
+
+    resetWasmOutputs(m_wasm_continuous_outputs);
+    resetWasmOutputs(m_wasm_binary_outputs);
+    resetWasmOutputs(m_wasm_serial_outputs);
+#endif
 }
 
 // Destructor

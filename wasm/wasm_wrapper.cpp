@@ -1,6 +1,8 @@
 #include "../uSEQ/src/modulisp/modulisp_interpreter.h"
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
+#include <limits>
 
 // Static instance of ModuLisp interpreter (simpler than full uSEQ)
 static ModuLispInterpreter* useq_instance = nullptr;
@@ -54,5 +56,34 @@ extern "C"
             strcpy(result, error_msg);
             return result;
         }
+    }
+
+    void useq_update_time(double time_seconds)
+    {
+        if (!useq_instance)
+        {
+            return;
+        }
+
+        const double micros = time_seconds * 1e6;
+        useq_instance->set_time_from_external_source(micros);
+    }
+
+    double useq_eval_output(const char* name, double time_seconds)
+    {
+        if (!useq_instance)
+        {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+
+        bool ok      = false;
+        double value = useq_instance->eval_output_at_time(name, time_seconds, &ok);
+
+        if (!ok && !std::isfinite(value))
+        {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+
+        return value;
     }
 }

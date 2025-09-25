@@ -136,6 +136,18 @@ void ModuLispInterpreter::set_time_sig(double numerator, double denominator)
 }
 
 // Environment creation for time-based evaluation
+#ifdef WASM_BUILD
+void ModuLispInterpreter::set_time_from_external_source(TimeValue actual_time)
+{
+    if (m_time_manager)
+    {
+        m_time_manager->set_external_time(actual_time);
+    }
+    update_logical_time(actual_time);
+}
+#endif
+
+// Environment creation for time-based evaluation
 Environment ModuLispInterpreter::make_env_for_time(TimeValue t_micros)
 {
     Environment env;

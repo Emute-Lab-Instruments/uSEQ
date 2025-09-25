@@ -32,6 +32,9 @@ public:
     TimeValue get_time_seconds() const { return m_time_since_boot / 1000000.0; }
     TimeValue get_transport_seconds() const { return m_transport_time / 1000000.0; }
 
+    // Allow external sources (e.g. WASM host) to drive time directly
+    void set_external_time(TimeValue actual_time);
+
 private:
     // Clock interface for dependency injection
     IClock* clock = nullptr;
