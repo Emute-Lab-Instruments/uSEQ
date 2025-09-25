@@ -1,4 +1,4 @@
-#include "../uSEQ/src/modulisp/modulisp.h"
+#include "../uSEQ/src/modulisp/modulisp_interpreter.h"
 #include <cstdlib>
 #include <cstring>
 
@@ -12,7 +12,8 @@ extern "C"
     {
         if (!useq_instance)
         {
-            useq_instance = new ModuLispInterpreter();
+            // Create with nullptr for ErrorManager - let the constructor handle defaults
+            useq_instance = new ModuLispInterpreter(nullptr);
             useq_instance->init();
         }
     }

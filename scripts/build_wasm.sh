@@ -27,17 +27,23 @@ SOURCES=(
     "uSEQ/src/modulisp/lisp/parser.cpp"
     "uSEQ/src/modulisp/lisp/value.cpp"
     "uSEQ/src/modulisp/lisp/environment.cpp"
-    "uSEQ/src/modulisp/lisp/interpreter.cpp"
     "uSEQ/src/modulisp/lisp/signal_metadata.cpp"
-    # "uSEQ/src/modulisp/lisp/value_signal_processing.cpp"
+    "uSEQ/src/modulisp/lisp/error_context.cpp"
     "uSEQ/src/modulisp/lisp/builtins.cpp"
     "uSEQ/src/template_instantiations.cpp"
-    
-    # ModuLisp library (essential for timing)
+
+    # ModuLisp library (essential for timing and interpreter)
     "uSEQ/src/modulisp/modulisp.cpp"
     "uSEQ/src/modulisp/modulisp_time.cpp"
     "uSEQ/src/modulisp/modulisp_api.cpp"
     "uSEQ/src/modulisp/modulisp_eval.cpp"
+    "uSEQ/src/modulisp/modulisp_interpreter.cpp"
+    "uSEQ/src/modulisp/modulisp_interpreter_core.cpp"
+    "uSEQ/src/modulisp/function_registry.cpp"
+    "uSEQ/src/modulisp/phasor_manager.cpp"
+    "uSEQ/src/modulisp/random_generator.cpp"
+    "uSEQ/src/modulisp/scheduler.cpp"
+    "uSEQ/src/modulisp/time_manager.cpp"
     
     # Skip uSEQ.cpp entirely - use ModuLisp directly for WASM
     # "uSEQ/src/uSEQ.cpp"
