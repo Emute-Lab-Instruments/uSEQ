@@ -10,6 +10,8 @@
 
 #define DAC_config_chan_A_gain 0b0001000000000000
 #define DAC_config_chan_B_gain 0b1001000000000000
+#define DAC_config_chan_A_nogain 0b0011000000000000
+#define DAC_config_chan_B_nogain 0b1011000000000000
 #define PIN_CS 21
 
 class uSeqGen_MT_DAC final : public uSeqGen_Base
@@ -87,8 +89,8 @@ protected:
 
         // assuming SPI already set up, so no need for begin/end transaction
         // CS is hardware controlled
-        const uint16_t DAC_dataL = DAC_config_chan_A_gain | (sigL & 0xFFF);
-        const uint16_t DAC_dataR = DAC_config_chan_B_gain | (sigR & 0xFFF);
+        const uint16_t DAC_dataL = DAC_config_chan_A_nogain | (sigL & 0xFFF);
+        const uint16_t DAC_dataR = DAC_config_chan_B_nogain | (sigR & 0xFFF);
         uint16_t ret;
         hw_write_masked(&spi_get_hw(spi0)->cr0, (16 - 1) << SPI_SSPCR0_DSS_LSB,
                         SPI_SSPCR0_DSS_BITS); // Fast set to 16-bits
