@@ -7,6 +7,8 @@ scripts/.nrepl-port
 *.log
 tmp/
 
+interfaces/serialVis/node_modules/
+
 .cache/
 build/
 out/

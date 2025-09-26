@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SerialVis (Two.js)</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: transparent;
+      --panel: rgba(15, 23, 42, 0.85);
+      --panel-border: rgba(148, 163, 184, 0.25);
+      --accent: #22d3ee;
+      --accent-strong: #0ea5e9;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.95));
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 32px 16px;
+      box-sizing: border-box;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(320px, 720px) minmax(240px, 320px);
+      gap: 24px;
+      width: min(1100px, 100%);
+      backdrop-filter: blur(18px);
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.35);
+    }
+
+    #serial-vis {
+      position: relative;
+      width: 100%;
+      height: 320px;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 26px;
+      letter-spacing: 0.03em;
+    }
+
+    h2 {
+      margin: 24px 0 12px;
+      font-size: 17px;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+    }
+
+    .settings {
+      display: grid;
+      gap: 16px;
+    }
+
+    .settings label {
+      display: flex;
+      flex-direction: column;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      gap: 8px;
+    }
+
+    .settings input[type="range"],
+    .settings select,
+    .settings input[type="number"],
+    .settings input[type="color"] {
+      padding: 8px 10px;
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .settings input[type="color"] {
+      padding: 0;
+      height: 40px;
+    }
+
+    .settings .row {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .switch {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .demo-controls {
+      display: grid;
+      gap: 16px;
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px dashed rgba(148, 163, 184, 0.25);
+    }
+
+    .demo-controls label {
+      text-transform: none;
+      letter-spacing: 0.02em;
+      color: var(--text);
+    }
+
+    small {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 960px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="panel">
+      <h1>SerialVis</h1>
+      <p class="muted">Two.js powered streaming graph with smoothing + progress overlay.</p>
+      <div id="serial-vis"></div>
+      <div class="demo-controls">
+        <h2>Demo Feed</h2>
+        <label>
+          Signal Speed
+          <input id="speed-amount" type="range" min="0.0005" max="0.008" step="0.0005" value="0.0025" />
+        </label>
+        <label>
+          Noise Amount
+          <input id="noise-amount" type="range" min="0" max="0.5" step="0.01" value="0.08" />
+        </label>
+        <small>Replace the demo loop in <code>src/index.ts</code> with real serial data.</small>
+      </div>
+    </div>
+
+    <div class="panel settings">
+      <h2>Smoothing</h2>
+      <label>
+        Mode
+        <select id="smoothing-select">
+          <option value="none">None</option>
+          <option value="moving-average" selected>Moving average</option>
+          <option value="exponential">Exponential</option>
+          <option value="iir-lowpass">IIR low-pass</option>
+        </select>
+      </label>
+      <label class="" id="window-wrapper">
+        Window Size
+        <input id="smoothing-window" type="number" min="1" max="256" step="1" value="12" />
+      </label>
+      <label class="hidden" id="alpha-wrapper">
+        Alpha
+        <input id="smoothing-alpha" type="number" min="0.01" max="1" step="0.01" value="0.25" />
+      </label>
+      <label class="hidden" id="cutoff-wrapper">
+        Cutoff
+        <input id="smoothing-cutoff" type="number" min="0.001" max="0.5" step="0.01" value="0.15" />
+      </label>
+
+      <h2>Line Style</h2>
+      <label>
+        Colour
+        <input id="line-color" type="color" value="#38f2ff" />
+      </label>
+      <label>
+        Width
+        <input id="line-width" type="range" min="1" max="6" step="0.5" value="2.5" />
+      </label>
+      <label>
+        Style
+        <select id="line-style">
+          <option value="solid" selected>Solid</option>
+          <option value="dashed">Dashed</option>
+          <option value="dotted">Dotted</option>
+        </select>
+      </label>
+
+      <h2>Future Segment</h2>
+      <label>
+        Mask Style
+        <select id="mask-style">
+          <option value="none">None</option>
+          <option value="dim" selected>Dim</option>
+          <option value="solid">Solid</option>
+        </select>
+      </label>
+      <label>
+        Mask Opacity
+        <input id="mask-opacity" type="range" min="0" max="1" step="0.05" value="0.35" />
+      </label>
+
+      <h2>Progress Bar</h2>
+      <div class="switch">
+        <input id="progress-toggle" type="checkbox" checked />
+        <span>Show progress bar</span>
+      </div>
+      <label>
+        Colour
+        <input id="progress-color" type="color" value="#22d3ee" />
+      </label>
+      <label>
+        Height
+        <input id="progress-height" type="range" min="2" max="16" step="1" value="8" />
+      </label>
+    </div>
+  </div>
+
+  <script type="module" src="./dist/index.js"></script>
+</body>
+</html>
