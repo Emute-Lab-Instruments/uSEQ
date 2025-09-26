@@ -9,6 +9,7 @@
 #include "../../utils/log.h"
 #include "../../utils/logger_bridge.h"
 #include "environment.h"
+#include "symbol_intern.h"
 #include <cmath>
 #include <limits>
 
@@ -635,6 +636,7 @@ Value Value::atom(String s)
     Value result;
     result.type = ATOM;
     result.str  = s;
+    result.symbol_id = SymbolIntern::getInstance().intern(s);
     return result;
 }
 
@@ -976,10 +978,10 @@ bool Value::operator==(Value other) const
         // thing?
         return str == other.str;
     case STRING:
-    case ATOM:
-        // Both atoms and strings store their
-        // data in the str member.
         return str == other.str;
+    case ATOM:
+        // Use interned symbol IDs for fast comparison
+        return symbol_id == other.symbol_id;
     case LAMBDA:
     case LIST:
     case VECTOR:

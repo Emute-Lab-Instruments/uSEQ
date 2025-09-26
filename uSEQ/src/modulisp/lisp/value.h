@@ -5,6 +5,7 @@
 #include "../../utils/flags.h"
 #include "../../utils/log.h"
 #include "../../utils/string.h"
+#include "symbol_intern.h"
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -356,6 +357,7 @@ public:
     } stack_data;
 
     String str;
+    SymbolIntern::SymbolID symbol_id = SymbolIntern::INVALID_ID;  // For fast ATOM comparison
     std::vector<Value> list;
 
     std::shared_ptr<Environment> lambda_scope;

@@ -123,10 +123,11 @@ output_manager_test_src = [
   'test_output_manager.cpp'
 ]
 
-# IOManager tests
-io_manager_test_src = [
-  'test_io_manager.cpp'
-]
+# IOManager tests - COMMENTED OUT: test_io_manager.cpp doesn't exist
+# io_manager_test_src = [
+#   'test_io_manager.cpp'
+# ]
+io_manager_test_src = []
 
 # Dependencies from parent build are available here
 # No need to duplicate source files - use the static libraries instead!
@@ -341,19 +342,19 @@ output_manager_exe = executable(
 
 test('output_manager_test', output_manager_exe)
 
-# IOManager test executable - standalone with minimal dependencies
-io_manager_exe = executable(
-  'test_io_manager',
-  sources : io_manager_test_src + [
-    '../uSEQ/src/uSEQ/io_manager.cpp'
-  ],
-  include_directories : test_inc,
-  cpp_args : test_args,
-  cpp_pch : test_pch_file,
-  dependencies : [math_dep]
-)
-
-test('io_manager_test', io_manager_exe)
+# IOManager test executable - COMMENTED OUT: test file doesn't exist
+# io_manager_exe = executable(
+#   'test_io_manager',
+#   sources : io_manager_test_src + [
+#     '../uSEQ/src/uSEQ/io_manager.cpp'
+#   ],
+#   include_directories : test_inc,
+#   cpp_args : test_args,
+#   cpp_pch : test_pch_file,
+#   dependencies : [math_dep]
+# )
+#
+# test('io_manager_test', io_manager_exe)
 
 # Test with minimal interfaces/helpers - demonstrates faster compilation
 test_with_helpers_src = [

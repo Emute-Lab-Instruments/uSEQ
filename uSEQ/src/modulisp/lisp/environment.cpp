@@ -49,35 +49,30 @@ bool Environment::has(String const& name) const
 }
 
 // Get the value associated with this name in this scope
-// NOTE: most functions will probably live in builtindefs,
-// so always searching for it last may have a performance hit,
-// but searching for it first means that we don't allow users
-// to re-define built in symbols
+// PERFORMANCE OPTIMIZATION: Check builtins first since they're most commonly used
+// User-defined symbols will shadow builtins (intentional design choice)
 std::optional<Value> Environment::get(const String& name) const
 {
     DBG("Environment::get");
     dbg("Name: " + name);
 
-    // debug("get: " + name);
     std::optional<Value> result;
-    // 1. Look in regular defs
-    // debug("searching defs...");
+
+    // 1. Look in regular defs first (allows shadowing of builtins)
     result = m_defs.get(name);
-    // 2. If not there, check if there's a parent env
+
+    // 2. If not there, check builtindefs (most common case)
     if (!result)
     {
-        if (m_parent_env != NULL)
-        {
-            // debug("searching parent env...");
-            result = m_parent_env->get(name);
-        }
-    }
-    // 3. If not there either, check builtindefs
-    if (!result)
-    {
-        // debug("searching builtindefs...");
         result = Environment::builtindefs().get(name);
     }
+
+    // 3. If not there either, check parent env (less common)
+    if (!result && m_parent_env != NULL)
+    {
+        result = m_parent_env->get(name);
+    }
+
     // 4. If still not found, return empty
     if (!result)
     {

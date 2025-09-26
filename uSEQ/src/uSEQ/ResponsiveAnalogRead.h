@@ -27,7 +27,9 @@
 #ifndef RESPONSIVE_ANALOG_READ_H
 #define RESPONSIVE_ANALOG_READ_H
 
+#ifdef ARDUINO
 #include <Arduino.h>
+#endif
 
 class ResponsiveAnalogRead
 {
