@@ -138,6 +138,7 @@ lisp_core_lib = static_library('useq_lisp_core',
   'uSEQ/src/modulisp/lisp/parser.cpp',
   'uSEQ/src/modulisp/lisp/value.cpp',
   'uSEQ/src/modulisp/lisp/environment.cpp',
+  'uSEQ/src/modulisp/lisp/symbol_interner.cpp',
   # interpreter merged into ModuLispInterpreter
   'uSEQ/src/modulisp/lisp/signal_metadata.cpp',
   # 'uSEQ/src/modulisp/lisp/value_signal_processing.cpp',

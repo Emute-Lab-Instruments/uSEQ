@@ -5,6 +5,7 @@
 #include "../../utils/flags.h"
 #include "../../utils/log.h"
 #include "../../utils/string.h"
+#include "symbol_interner.h"
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -102,6 +103,7 @@ public:
     static Value error();
     static Value quote(Value quoted);
     static Value atom(String s);
+    static Value atom(modulisp::SymbolId id);
     static Value string(String s);
     // static Value list(std::vector<Value> lst);
     static Value vector(std::vector<Value> vec);
@@ -191,6 +193,9 @@ public:
     double as_float() const;
     String as_string() const;
     String as_atom() const;
+    const char* atom_c_str() const;
+    String atom_to_string() const;
+    modulisp::SymbolId get_symbol_id() const { return m_symbol_id; }
     std::vector<Value> as_list() const;
     std::vector<Value> as_vector() const;
     std::vector<Value> as_sequential() const;
@@ -356,6 +361,7 @@ public:
     } stack_data;
 
     String str;
+    modulisp::SymbolId m_symbol_id{ modulisp::kInvalidSymbolId };
     std::vector<Value> list;
 
     std::shared_ptr<Environment> lambda_scope;

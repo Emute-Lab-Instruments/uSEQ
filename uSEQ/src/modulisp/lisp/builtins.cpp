@@ -10,6 +10,8 @@
 namespace builtin
 {
 
+using modulisp::SymbolId;
+
 Value tail(std::vector<Value>& args, Environment& env)
 {
     constexpr const char* user_facing_name = "tail";
@@ -522,7 +524,8 @@ Value let_block(std::vector<Value>& args, Environment& env)
     // iterate bindings by twos and insert defs in local env
     for (size_t i = 0; static_cast<size_t>(i) < bindings_vec.size() - 1; i += 2)
     {
-        String name       = bindings_vec[i].str;
+        String name       = bindings_vec[i].atom_to_string();
+        SymbolId symbol_id = bindings_vec[i].get_symbol_id();
         Value body        = bindings_vec[i + 1];
         Value evaled_body = body.eval(local_env);
         if (evaled_body.is_error())
@@ -533,7 +536,7 @@ Value let_block(std::vector<Value>& args, Environment& env)
                     " evaluates to an error: " + body.to_lisp_src());
             // println("- " + body.display());
         }
-        local_env.set(name, evaled_body);
+        local_env.set(symbol_id, evaled_body);
     }
 
     // Eval the remaining body exprs in that env

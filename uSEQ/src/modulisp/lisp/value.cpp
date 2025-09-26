@@ -14,6 +14,9 @@
 
 #include "configure.h"
 
+using modulisp::SymbolId;
+using modulisp::SymbolInterner;
+
 // TODO do we care to support this some_value.apply() and .eval()
 // syntax and, if so, is there a better way?
 class Interpreter;
@@ -633,8 +636,18 @@ Value Value::quote(Value quoted)
 Value Value::atom(String s)
 {
     Value result;
-    result.type = ATOM;
-    result.str  = s;
+    result.type        = ATOM;
+    result.m_symbol_id = SymbolInterner::instance().intern(s);
+    result.str         = s;
+    return result;
+}
+
+Value Value::atom(SymbolId id)
+{
+    Value result;
+    result.type        = ATOM;
+    result.m_symbol_id = id;
+    result.str         = SymbolInterner::instance().to_string(id);
     return result;
 }
 
@@ -853,7 +866,27 @@ String Value::as_atom() const
         println("atom: " + BAD_CAST);
         return "std::nullopt";
     }
-    return str;
+    return atom_to_string();
+}
+
+const char* Value::atom_c_str() const
+{
+    if (type != ATOM)
+    {
+        println("atom: " + BAD_CAST);
+        return "";
+    }
+    return SymbolInterner::instance().c_str(m_symbol_id);
+}
+
+String Value::atom_to_string() const
+{
+    if (type != ATOM)
+    {
+        println("atom: " + BAD_CAST);
+        return "std::nullopt";
+    }
+    return SymbolInterner::instance().to_string(m_symbol_id);
 }
 
 std::vector<Value> Value::as_list() const
@@ -951,7 +984,19 @@ Value Value::cast_to_float() const
     }
 }
 
-bool Value::operator==(const String& other) const { return str == other; }
+bool Value::operator==(const String& other) const
+{
+    if (type == ATOM)
+    {
+        auto maybe_id = SymbolInterner::instance().lookup(other);
+        if (!maybe_id.has_value())
+        {
+            return false;
+        }
+        return m_symbol_id == *maybe_id;
+    }
+    return str == other;
+}
 
 bool Value::operator==(Value other) const
 {
@@ -976,10 +1021,9 @@ bool Value::operator==(Value other) const
         // thing?
         return str == other.str;
     case STRING:
-    case ATOM:
-        // Both atoms and strings store their
-        // data in the str member.
         return str == other.str;
+    case ATOM:
+        return m_symbol_id == other.m_symbol_id;
     case LAMBDA:
     case LIST:
     case VECTOR:
@@ -1447,7 +1491,7 @@ String Value::to_lisp_src() const
     case QUOTE:
         return "'" + list[0].to_lisp_src();
     case ATOM:
-        return str;
+        return atom_to_string();
     case INT:
         return String(stack_data.i);
     case FLOAT:

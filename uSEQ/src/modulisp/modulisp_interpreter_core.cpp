@@ -158,14 +158,15 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
         break;
     case Value::ATOM:
     {
-        auto tmp = env.get(v.str);
+        auto tmp = env.get(v.get_symbol_id());
         if (tmp.has_value())
         {
             result = tmp.value();
         }
         else
         {
-            report_generic_error("Variable '" + v.str + "' is not defined");
+            report_generic_error("Variable '" + v.atom_to_string() +
+                                 "' is not defined");
             result = Value::error();
         }
         break;
@@ -291,7 +292,7 @@ Value ModuLispInterpreter::apply(Value& f, LispFuncArgsVec& args, Environment& e
             }
             else
             {
-                e.set((*params)[i].str, args[i]);
+                e.set((*params)[i].get_symbol_id(), args[i]);
             }
         }
         auto result = eval_in(f.list[1], e);
