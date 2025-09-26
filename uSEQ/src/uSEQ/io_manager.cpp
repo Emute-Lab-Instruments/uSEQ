@@ -4,12 +4,13 @@
 #include "../utils/serial_message.h"
 #include "hardware_output.h"
 
+#include "pinmap.h"
+
 #ifndef ARDUINO
 #include "../hardware_includes.h"
 #endif
 
 #ifdef ARDUINO
-#include "pinmap.h"
 #include "piopwm.h"
 #ifdef USEQHARDWARE_1_0
 #include "hardware/timer.h"

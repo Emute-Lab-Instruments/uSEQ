@@ -5,6 +5,7 @@
 #include "lisp/environment.h"
 #include "lisp/macros.h"
 #include "lisp/value.h"
+#include "lisp/symbol_intern.h"
 #include "modulisp_interpreter.h"
 #include <cmath>
 #include <cstdlib>
@@ -111,6 +112,9 @@ void ModuLispInterpreter::init_builtin_functions()
     static bool initialized = false;
     if (!initialized)
     {
+        // Pre-intern common symbols for better performance
+        SymbolIntern::getInstance().preinternCommonSymbols();
+
         ModuLispInterpreter temp(nullptr);
         temp.loadBuiltinDefs();
         initialized = true;

@@ -285,15 +285,29 @@ Value uLispParser::parse(String s, int& ptr) const
     else if (is_symbol(s, ptr))
     {
         // println("is symbol");
-        //  If this is a string
-        int n = 0;
-        while (is_symbol(s, ptr + n))
-        {
-            n++;
-        }
+        // Optimized symbol parsing - avoid repeated is_symbol calls
+        int start = ptr;
+        const int len = s.length();
 
-        String x = s.substring(ptr, ptr + n);
-        ptr += n;
+        // Fast inner loop with bounds check
+        while (ptr < len) {
+            char ch = s[ptr];
+            // Inline symbol check for speed
+            switch (ch) {
+                case '(': case ')': case '[': case ']': case '{': case '}':
+                case '"': case '\'': case ';': case ',': case ' ': case '\t': case '\n':
+                    goto symbol_done;
+                default:
+                    if (ch >= '!' && ch <= '~') {
+                        ptr++;
+                    } else {
+                        goto symbol_done;
+                    }
+            }
+        }
+        symbol_done:
+
+        String x = s.substring(start, ptr);
         skip_whitespace(s, ptr);
         return Value::atom(x);
     }
