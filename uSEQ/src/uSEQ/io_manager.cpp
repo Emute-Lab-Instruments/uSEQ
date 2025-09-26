@@ -836,11 +836,11 @@ int IOManager::get_digital_out_led_pin(int out) const
         return useq_output_led_pins[pindex - 1];
     }
 #elif defined(MUSICTHING)
-    // FIXME
+    // FIXME - hardcoded pin numbers for MUSICTHING
     if (out == 1)
-        return USEQ_LED_PIN_D1;
+        return 14; // USEQ_LED_PIN_D1
     else if (out == 2)
-        return USEQ_LED_PIN_D2;
+        return 15; // USEQ_LED_PIN_D2
     else
         return -1;
 #else

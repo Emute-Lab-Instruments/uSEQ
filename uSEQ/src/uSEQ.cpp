@@ -453,6 +453,9 @@ void uSEQ::start_loop_blocking()
 
 bool dsp_init = false;
 
+// Forward declaration for optimization
+bool is_new_code_waiting();
+
 // TODO does order matter?
 // e.g. when user code is evaluated, does it make
 // a difference if the inputs have been updated already?
@@ -460,10 +463,19 @@ void FAST_FUNC(uSEQ::tick())
 {
     DBG("uSEQ::tick");
 
-    get_update_speed() = micros() - get_ts();
-    get_environment()->set("fps", Value(1000000.0 / get_update_speed()));
-    get_environment()->set("qt", Value(get_update_speed() * 0.001));
-    get_ts() = micros();
+    // Cache micros() call - avoid calling it twice
+    unsigned long current_time = micros();
+    get_update_speed() = current_time - get_ts();
+
+    // Only update FPS/qt every 16 ticks (roughly 60Hz update rate for UI)
+    // This reduces environment set() overhead significantly
+    static uint8_t fps_update_counter = 0;
+    if ((++fps_update_counter & 0x0F) == 0) {
+        get_environment()->set("fps", Value(1000000.0 / get_update_speed()));
+        get_environment()->set("qt", Value(get_update_speed() * 0.001));
+    }
+
+    get_ts() = current_time;
 
     // Don't run the rest of the update loop if we're in sync mode
     if (m_waiting_for_sync_trigger)
@@ -491,16 +503,22 @@ void FAST_FUNC(uSEQ::tick())
     m_interpreter.check_code_quant_phasor();
     run_scheduled_items();
     update_Q0();
-    // Re-run & cache output signal forms
-    update_signals();
+
+    // Re-run & cache output signal forms with optimized evaluation
+    update_signals_optimized();
 
     // Write cached output signals to hardware and/or software outputs
 #if HAS_OUTPUTS
-    update_outs();
+    update_outs_optimized();
 #endif
 
-    // Check for new code and eval (or schedule it)
-    check_and_handle_user_input();
+    // Check for new code only when likely (reduces Serial.available() calls)
+    // Check every 4 ticks unless we know there's data
+    static uint8_t input_check_counter = 0;
+    if ((++input_check_counter & 0x03) == 0 || is_new_code_waiting()) {
+        check_and_handle_user_input();
+        input_check_counter = 0; // Reset if we found something
+    }
 
     // tiny delay to allow for interrupts etc
     delayMicroseconds(100);

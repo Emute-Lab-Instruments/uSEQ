@@ -264,11 +264,20 @@ private:
     void update_continuous_signals();
     void update_binary_signals();
     void update_serial_signals();
+    // Optimized versions
+    void update_signals_optimized();
+    void update_continuous_signals_optimized();
+    void update_binary_signals_optimized();
+    void update_serial_signals_optimized();
     // updating (i.e. writing to) the actual outputs
     void update_outs();
     void update_continuous_outs();
     void update_binary_outs();
     void update_serial_outs();
+    // Optimized versions
+    void update_outs_optimized();
+    void update_continuous_outs_optimized();
+    void update_binary_outs_optimized();
 
     CLOCK_SOURCES useq_clock_source = CLOCK_SOURCES::INTERNAL;
     struct ext_clock_tracking

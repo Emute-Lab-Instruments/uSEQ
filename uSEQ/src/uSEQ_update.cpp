@@ -283,3 +283,289 @@ void uSEQ::update_serial_outs()
 
 
 #endif // HAS_OUTPUTS
+
+///////////////////////////////////////////////////////////
+// OPTIMIZED VERSIONS FOR HIGHER FRAME RATE
+///////////////////////////////////////////////////////////
+
+// Pre-computed output names to avoid string construction in hot path
+#ifdef WASM_BUILD
+static const String continuous_output_names[16] = {
+    "a1",  "a2",  "a3",  "a4",  "a5",  "a6",
+    "a7",  "a8",  "a9",  "a10", "a11", "a12",
+    "a13", "a14", "a15", "a16"
+};
+#else
+static __not_in_flash("mem") const String continuous_output_names[16] = {
+    "a1",  "a2",  "a3",  "a4",  "a5",  "a6",
+    "a7",  "a8",  "a9",  "a10", "a11", "a12",
+    "a13", "a14", "a15", "a16"
+};
+#endif
+
+// Pre-computed binary output names
+static const String binary_output_names[8] = {
+    "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8"
+};
+
+// Pre-computed serial output names
+static const String serial_output_names[8] = {
+    "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7"
+};
+
+#if defined(USE_NOT_IN_FLASH)
+void __not_in_flash_func(uSEQ::update_continuous_signals_optimized)()
+#else
+void uSEQ::update_continuous_signals_optimized()
+#endif
+{
+    DBG("uSEQ::update_continuous_signals_optimized");
+
+    // Clear error queue once for all outputs
+    error_msg_q.clear();
+
+    // Process all continuous outputs in a single loop
+    for (int i = 0; i < m_num_continuous_outs; i++)
+    {
+        Value& expr = m_continuous_ASTs[i];
+
+        // Fast path for nil expressions
+        if (expr.is_nil())
+        {
+            m_continuous_vals[i] = 0.5f;
+            continue;
+        }
+
+        // Set evaluation context
+        set_atom_currently_being_evaluated(continuous_output_names[i]);
+
+        // Evaluate expression
+        Value result = eval(expr);
+
+        // Fast type check and value extraction
+        if (result.is_number())
+        {
+            m_continuous_vals[i] = result.as_float();
+        }
+        else
+        {
+            // Only print warnings if debugging enabled
+            #ifdef DEBUG_OUTPUT
+            println("**Warning**: Clearing the expression for **" +
+                    continuous_output_names[i] +
+                    "** because it doesn't evaluate to a number");
+            #endif
+
+            m_continuous_ASTs[i] = default_continuous_expr;
+            m_continuous_vals[i] = 0.5f;
+        }
+
+        // Clear errors for next iteration
+        error_msg_q.clear();
+    }
+}
+
+#if defined(USE_NOT_IN_FLASH)
+void __not_in_flash_func(uSEQ::update_binary_signals_optimized)()
+#else
+void uSEQ::update_binary_signals_optimized()
+#endif
+{
+    DBG("uSEQ::update_binary_signals_optimized");
+
+    // Clear error queue once
+    error_msg_q.clear();
+
+    for (int i = 0; i < m_num_binary_outs; i++)
+    {
+        Value& expr = m_binary_ASTs[i];
+
+        // Fast path for nil
+        if (expr.is_nil())
+        {
+            m_binary_vals[i] = 0.0f;
+            continue;
+        }
+
+        set_atom_currently_being_evaluated(binary_output_names[i]);
+        Value result = eval(expr);
+
+        if (result.is_number())
+        {
+            m_binary_vals[i] = result.as_float();
+        }
+        else
+        {
+            #ifdef DEBUG_OUTPUT
+            println("**Warning**: Clearing the expression for **" +
+                    binary_output_names[i] +
+                    "** because it doesn't evaluate to a number");
+            #endif
+
+            m_binary_ASTs[i] = default_binary_expr;
+            m_binary_vals[i] = 0.0f;
+        }
+
+        error_msg_q.clear();
+    }
+}
+
+void uSEQ::update_serial_signals_optimized()
+{
+    DBG("uSEQ::update_serial_signals_optimized");
+
+    // Fast path for time value at index 0
+    if (!m_serial_vals.empty())
+    {
+        if (auto* time_manager = m_interpreter.get_time_manager())
+        {
+            m_serial_vals[0] = time_manager->get_time_since_boot() * 1e-6;
+        }
+    }
+
+    // Clear error queue once
+    error_msg_q.clear();
+
+    // Start from index 1 since 0 is time
+    for (int i = 1; i < m_num_serial_outs; i++)
+    {
+        Value& expr = m_serial_ASTs[i];
+
+        if (expr.is_nil())
+        {
+            m_serial_vals[i] = std::nullopt;
+            continue;
+        }
+
+        set_atom_currently_being_evaluated(serial_output_names[i]);
+        Value result = eval(expr);
+
+        if (result.is_number())
+        {
+            m_serial_vals[i] = result.as_float();
+        }
+        else
+        {
+            #ifdef DEBUG_OUTPUT
+            println("**Warning**: Clearing the expression for **" +
+                    serial_output_names[i] +
+                    "** because it doesn't evaluate to a number");
+            #endif
+
+            m_serial_ASTs[i] = default_serial_expr;
+            m_serial_vals[i] = std::nullopt;
+        }
+
+        error_msg_q.clear();
+    }
+}
+
+#if defined(USE_NOT_IN_FLASH)
+void __not_in_flash_func(uSEQ::update_signals_optimized)()
+#else
+void uSEQ::update_signals_optimized()
+#endif
+{
+    DBG("uSEQ::update_signals_optimized");
+
+    // Set evaluation flags once
+    set_attempt_expr_eval_first(true);
+    set_update_loop_evaluation(true);
+
+    // Call optimized versions
+    update_continuous_signals_optimized();
+    update_binary_signals_optimized();
+    update_serial_signals_optimized();
+
+    // Reset flags once
+    set_attempt_expr_eval_first(false);
+    set_update_loop_evaluation(false);
+}
+
+#if HAS_OUTPUTS
+void uSEQ::update_outs_optimized()
+{
+    DBG("uSEQ::update_outs_optimized");
+
+    // Process outputs in optimal order for cache efficiency
+    update_binary_outs_optimized();
+    update_continuous_outs_optimized();
+
+    // Serial outputs have rate limiting, keep original implementation
+    update_serial_outs();
+
+#ifdef MIDIOUT
+    update_midi_out();
+#endif
+}
+
+void uSEQ::update_continuous_outs_optimized()
+{
+    DBG("uSEQ::update_continuous_outs_optimized");
+
+    // Unroll common cases for better performance
+    #if defined(MUSICTHING)
+    // Handle DAC outputs specially
+    if (m_num_continuous_outs > 0)
+    {
+        float scaled_val = (m_continuous_vals[0] * 2.0f) - 1.0f;
+        if (m_q_dac_output_left_ptr)
+        {
+            queue_try_add(m_q_dac_output_left_ptr, &scaled_val);
+        }
+    }
+
+    if (m_num_continuous_outs > 1)
+    {
+        float scaled_val = (m_continuous_vals[1] * 2.0f) - 1.0f;
+        if (m_q_dac_output_right_ptr)
+        {
+            queue_try_add(m_q_dac_output_right_ptr, &scaled_val);
+        }
+    }
+
+    // Handle remaining analog outputs
+    for (size_t i = 2; i < m_num_continuous_outs; i++)
+    {
+        analog_write_with_led(i, m_continuous_vals[i]);
+    }
+    #else
+    // Standard analog output handling - partially unrolled
+    size_t i = 0;
+
+    // Process pairs for better pipeline efficiency
+    for (; i + 1 < m_num_continuous_outs; i += 2)
+    {
+        analog_write_with_led(i, m_continuous_vals[i]);
+        analog_write_with_led(i + 1, m_continuous_vals[i + 1]);
+    }
+
+    // Handle remaining single output if odd number
+    if (i < m_num_continuous_outs)
+    {
+        analog_write_with_led(i, m_continuous_vals[i]);
+    }
+    #endif
+}
+
+void uSEQ::update_binary_outs_optimized()
+{
+    DBG("uSEQ::update_binary_outs_optimized");
+
+    // Unroll pairs for better performance
+    size_t i = 0;
+
+    for (; i + 1 < m_num_binary_outs; i += 2)
+    {
+        digital_write_with_led(i, m_binary_vals[i]);
+        digital_write_with_led(i + 1, m_binary_vals[i + 1]);
+    }
+
+    // Handle remaining single output if odd number
+    if (i < m_num_binary_outs)
+    {
+        digital_write_with_led(i, m_binary_vals[i]);
+    }
+}
+
+#endif // HAS_OUTPUTS
