@@ -148,11 +148,11 @@ void uSEQ::update_inputs()
         // 'swz' instead of requiring function calls like '(knob)'
         get_environment()->set("knob",
                                Value(m_io_manager->get_input_value(MTMAINKNOB)));
-        get_environment()->set("knobx",
+        get_environment()->set("knob-x",
                                Value(m_io_manager->get_input_value(MTXKNOB)));
-        get_environment()->set("knoby",
+        get_environment()->set("knob-y",
                                Value(m_io_manager->get_input_value(MTYKNOB)));
-        get_environment()->set("swz",
+        get_environment()->set("switch",
                                Value(m_io_manager->get_input_value(MTZSWITCH)));
 #endif
     }

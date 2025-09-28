@@ -6,8 +6,11 @@
 #include "lisp/macros.h"
 #include "lisp/value.h"
 #include "modulisp_interpreter.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <optional>
+#include <vector>
 
 #ifdef ARDUINO
 #define INTERP_MEM __not_in_flash("interp")
@@ -158,16 +161,63 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
         break;
     case Value::ATOM:
     {
-        auto tmp = env.get(v.str);
-        if (tmp.has_value())
+        const String& symbol_name = v.str;
+
+        auto try_eval_expr_binding = [&](const String& name) -> std::optional<Value> {
+            std::optional<Value> binding_expr = env.get_expr(name);
+            if (!binding_expr)
+            {
+                return std::nullopt;
+            }
+
+            static std::vector<String> recursion_guard;
+            if (std::find(recursion_guard.begin(), recursion_guard.end(), name) !=
+                recursion_guard.end())
+            {
+                report_runtime_error("Expression for '" + name +
+                                     "' references itself");
+                return Value::error();
+            }
+
+            recursion_guard.push_back(name);
+            Value evaluated = eval_in(*binding_expr, env);
+            recursion_guard.pop_back();
+
+            return evaluated;
+        };
+
+        if (m_attempt_expr_eval_first)
         {
-            result = tmp.value();
+            if (auto evaluated = try_eval_expr_binding(symbol_name))
+            {
+                result = *evaluated;
+                break;
+            }
         }
-        else
+
+        bool has_binding = env.has(symbol_name) ||
+                           Environment::builtindefs().has(symbol_name);
+        if (has_binding)
         {
-            report_generic_error("Variable '" + v.str + "' is not defined");
-            result = Value::error();
+            auto tmp = env.get(symbol_name);
+            if (tmp.has_value())
+            {
+                result = tmp.value();
+                break;
+            }
         }
+
+        if (!m_attempt_expr_eval_first && m_eval_expr_if_def_not_found)
+        {
+            if (auto evaluated = try_eval_expr_binding(symbol_name))
+            {
+                result = *evaluated;
+                break;
+            }
+        }
+
+        report_generic_error("Variable '" + symbol_name + "' is not defined");
+        result = Value::error();
         break;
     }
     case Value::INT:
