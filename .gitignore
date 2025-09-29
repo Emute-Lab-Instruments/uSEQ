@@ -56,3 +56,4 @@ samples/headers.c
 samples/ixilang_audio.bin
 samples/ixilangRedux_audio.bin
 samples/load.sh
+.emscripten_cache
