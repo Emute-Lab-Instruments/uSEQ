@@ -20,7 +20,37 @@ ninja -C build
 ./build/standalone
 ```
 
-### Arduino Firmware Build (For Hardware)
+### PlatformIO Firmware Build (RECOMMENDED for Hardware)
+```bash
+# Enter PlatformIO environment (NixOS)
+nix-shell platformio.nix
+# Or with direnv: edit .envrc to use platformio.nix
+
+# Build firmware for Raspberry Pi Pico (default: Music Thing variant)
+./scripts/build_pio.sh                  # Build for musicthing
+./scripts/build_pio.sh hardware_v0_2    # Build for hardware v0.2
+./scripts/build_pio.sh hardware_v1_0    # Build for hardware v1.0
+
+# Flash to Pico
+./scripts/flash_pio.sh                  # Flash default variant
+./scripts/flash_pio.sh musicthing /dev/ttyACM0  # Flash to specific device
+
+# Convenience wrapper (recommended)
+./scripts/pio.sh build                  # Build
+./scripts/pio.sh flash                  # Flash
+./scripts/pio.sh clean                  # Clean builds
+./scripts/pio.sh monitor                # Open serial monitor
+./scripts/pio.sh size                   # Show firmware size
+./scripts/pio.sh list                   # List all environments
+
+# Direct PlatformIO commands
+pio run -e musicthing                   # Build
+pio run -e musicthing -t upload         # Flash
+pio run -e musicthing -t clean          # Clean
+pio device monitor                      # Serial monitor
+```
+
+### Arduino CLI Build (Legacy - Use PlatformIO Instead)
 ```bash
 # Build firmware for Raspberry Pi Pico
 ./scripts/build_arduino_cli.sh
@@ -129,7 +159,29 @@ python interfaces/useqedit/useqedit.py
 
 ## Important Configuration
 
-### Arduino Build Settings
+### Hardware Variants
+
+The firmware supports multiple hardware configurations:
+
+- **musicthing** (default) - Music Thing Modular variant
+  - All features enabled (DSP, I2C, tempo estimation, RGB LED)
+  - Inverted outputs for Music Thing hardware
+
+- **hardware_v0_2** - uSEQ Hardware v0.2
+  - DSP, I2C networking, rotary encoder
+
+- **hardware_v1_0** - uSEQ Hardware v1.0
+  - DSP, I2C, tempo estimation, no encoder
+
+- **minimal** - Minimal build for testing
+  - Core features only, reduced binary size
+
+- **musicthing-debug** - Debug build with symbols
+  - Reduced optimization, debug output
+
+- **musicthing-verbose** - Extra verbose serial output
+
+### Arduino/PlatformIO Build Settings
 - **Board**: Generic RP2040 (Earle Philhower Pico core)
 - **CPU Speed**: 250MHz (Overclock)
 - **Flash**: 8MB (Sketch 1MB, FS: 7MB)

@@ -57,3 +57,9 @@ samples/ixilang_audio.bin
 samples/ixilangRedux_audio.bin
 samples/load.sh
 .emscripten_cache
+# PlatformIO build system
+.pio/
+.platformio/
+.vscode/
+.clang_complete
+.gcc-flags.json
