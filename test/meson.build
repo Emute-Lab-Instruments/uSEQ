@@ -40,50 +40,46 @@ test_inc = include_directories('../uSEQ', '../uSEQ/src')
 # Math library dependency
 math_dep = declare_dependency(link_args : ['-lm'])
 
-# Test source files
+# ===== ModuLisp Core Tests (LISP interpreter) =====
 test_src = [
-  'test_builtins.cpp'
+  'modulisp/core/test_builtins.cpp'
 ]
 
-# Parser test source files
 parser_test_src = [
-  'test_parser.cpp'
+  'modulisp/core/test_parser.cpp'
 ]
 
-# API test source files
 value_api_test_src = [
-  'test_value_api.cpp'
+  'modulisp/core/test_value_api.cpp'
 ]
 
 environment_api_test_src = [
-  'test_environment_api.cpp'
+  'modulisp/core/test_environment_api.cpp'
 ]
 
 parser_api_test_src = [
-  'test_parser_api.cpp'
+  'modulisp/core/test_parser_api.cpp'
 ]
 
-# Parser error reporting test source files
 parser_error_reporting_test_src = [
-  'test_parser_error_reporting.cpp'
+  'modulisp/core/test_parser_error_reporting.cpp'
 ]
 
 interpreter_api_test_src = [
-  'test_interpreter_api.cpp'
+  'modulisp/core/test_interpreter_api.cpp'
 ]
 
-modulisp_api_test_src = [
-  'test_modulisp_api.cpp'
-]
-
-# Error handling tests
 error_handling_test_src = [
-  'test_error_handling.cpp'
+  'modulisp/core/test_error_handling.cpp'
 ]
 
-# Time/DI tests
+# ===== ModuLisp API Tests (module-specific) =====
+modulisp_api_test_src = [
+  'modulisp/api/test_modulisp_api.cpp'
+]
+
 time_injection_test_src = [
-  'test_time_injection.cpp'
+  'modulisp/api/test_time_injection.cpp'
 ]
 
 signals_test_src = [
@@ -98,29 +94,25 @@ smoothness_test_src = [
   'test_just_smoothness.cpp'
 ]
 
-# IO bridge tests
+# ===== Hardware/Integration Tests =====
 io_bridge_test_src = [
-  'test_io_bridge.cpp'
+  'hardware/test_io_bridge.cpp'
 ]
 
-# Logging bridge tests
 logging_bridge_test_src = [
-  'test_logging_bridge.cpp'
+  'hardware/test_logging_bridge.cpp'
 ]
 
-# I2C bus integration tests
 i2c_bus_test_src = [
-  'test_i2c_bus.cpp'
+  'hardware/test_i2c_bus.cpp'
 ]
 
-# Storage environment tests
 storage_env_test_src = [
-  'test_storage_env.cpp'
+  'hardware/test_storage_env.cpp'
 ]
 
-# OutputManager tests
 output_manager_test_src = [
-  'test_output_manager.cpp'
+  'hardware/test_output_manager.cpp'
 ]
 
 # IOManager tests - COMMENTED OUT: test_io_manager.cpp doesn't exist
