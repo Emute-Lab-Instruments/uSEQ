@@ -25,12 +25,16 @@
  */
 
 #include "ResponsiveAnalogRead.h"
+#ifdef ARDUINO
 #include <Arduino.h>
+#endif
 
 void ResponsiveAnalogRead::begin(int pin, bool sleepEnable, float snapMultiplier)
 {
+#ifdef ARDUINO
     pinMode(pin, INPUT);    // ensure button pin is an input
     digitalWrite(pin, LOW); // ensure pullup is off on button pin
+#endif
 
     this->pin         = pin;
     this->sleepEnable = sleepEnable;
@@ -39,8 +43,13 @@ void ResponsiveAnalogRead::begin(int pin, bool sleepEnable, float snapMultiplier
 
 void ResponsiveAnalogRead::update()
 {
+#ifdef ARDUINO
     rawValue = analogRead(pin);
     this->update(rawValue);
+#else
+    // Desktop build: no-op or use stub value
+    this->update(0);
+#endif
 }
 
 void ResponsiveAnalogRead::update(int rawValueRead)
