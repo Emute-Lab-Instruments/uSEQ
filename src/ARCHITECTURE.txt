@@ -1,0 +1,393 @@
+uSEQ REFACTORED ARCHITECTURE
+============================
+
+Overview: Composition + Templates + Platform Abstraction
+---------------------------------------------------------
+
+                    ┌─────────────────────────────────────────┐
+                    │     ModuLispInterpreter (unchanged)     │
+                    │     - Core LISP evaluation engine       │
+                    │     - Parser, Environment, Value types  │
+                    └─────────────────────────────────────────┘
+                                      ↑
+                                      │ contained in
+                                      │
+    ┌─────────────────────────────────┴──────────────────────────────────┐
+    │                                                                     │
+    │  USEQState (src/core/useq_state.h)                                 │
+    │  ════════════════════════════════════                              │
+    │                                                                     │
+    │  Pure data structure - no methods, no inheritance                  │
+    │                                                                     │
+    │  ┌──────────────────────────────────────────────────────────────┐ │
+    │  │ Core Components:                                             │ │
+    │  │  • ModuLispInterpreter interpreter  ← composition!           │ │
+    │  │  • Environment environment                                   │ │
+    │  │  • uLispParser parser                                        │ │
+    │  │  • ErrorManager error_manager                                │ │
+    │  └──────────────────────────────────────────────────────────────┘ │
+    │                                                                     │
+    │  ┌──────────────────────────────────────────────────────────────┐ │
+    │  │ Output Signals:                                              │ │
+    │  │  • vector<Value> continuous_ASTs      ← expressions          │ │
+    │  │  • vector<float> continuous_vals      ← cached results       │ │
+    │  │  • vector<Value> binary_ASTs                                 │ │
+    │  │  • vector<float> binary_vals                                 │ │
+    │  │  • vector<Value> serial_ASTs                                 │ │
+    │  │  • vector<optional<float>> serial_vals                       │ │
+    │  └──────────────────────────────────────────────────────────────┘ │
+    │                                                                     │
+    │  ┌──────────────────────────────────────────────────────────────┐ │
+    │  │ State Flags & Timing:                                        │ │
+    │  │  • bool is_playing                                           │ │
+    │  │  • bool waiting_for_sync_trigger                             │ │
+    │  │  • int ts, update_speed                                      │ │
+    │  │  • ClockSource clock_source                                  │ │
+    │  └──────────────────────────────────────────────────────────────┘ │
+    │                                                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ operated on by
+                                      ↓
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                                                                     │
+    │  Core Update Functions (src/core/useq_update.h)                    │
+    │  ══════════════════════════════════════════════                    │
+    │                                                                     │
+    │  Template-based functions - platform-agnostic                      │
+    │                                                                     │
+    │  template<typename HardwareConfig>                                 │
+    │  void useq_tick(USEQState& state, const HardwareConfig& hw) {      │
+    │      useq_update_inputs(state, hw);      ← read hardware           │
+    │      state.interpreter.update_time();    ← update timing           │
+    │      useq_update_signals(state, hw);     ← eval expressions        │
+    │      useq_update_outs(state, hw);        ← write hardware          │
+    │  }                                                                  │
+    │                                                                     │
+    │  No #ifdef, no virtual functions, no platform-specific code!       │
+    │                                                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ uses interface
+                                      ↓
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                                                                     │
+    │  HardwareConfig Interface (src/core/hardware_config.h)             │
+    │  ═════════════════════════════════════════════════                 │
+    │                                                                     │
+    │  Defines what every platform must provide:                         │
+    │                                                                     │
+    │  ┌──────────────────────────────────────────────────────────────┐ │
+    │  │ Compile-time Configuration (constexpr):                      │ │
+    │  │  • NUM_INPUTS, NUM_CONTINUOUS_OUTS, NUM_BINARY_OUTS          │ │
+    │  │  • HAS_TEMPO_DETECTION, HAS_I2C, HAS_DSP_ENGINE              │ │
+    │  │  • SUPPORTS_DYNAMIC_IO                                        │ │
+    │  └──────────────────────────────────────────────────────────────┘ │
+    │                                                                     │
+    │  ┌──────────────────────────────────────────────────────────────┐ │
+    │  │ I/O Functions:                                               │ │
+    │  │  • float read_input(size_t index)                            │ │
+    │  │  • void write_continuous_output(size_t index, float value)   │ │
+    │  │  • void write_binary_output(size_t index, float value)       │ │
+    │  │  • void write_serial_output(size_t index, float value)       │ │
+    │  └──────────────────────────────────────────────────────────────┘ │
+    │                                                                     │
+    │  ┌──────────────────────────────────────────────────────────────┐ │
+    │  │ Timing Functions:                                            │ │
+    │  │  • unsigned long micros()                                    │ │
+    │  │  • void delay_microseconds(unsigned int us)                  │ │
+    │  └──────────────────────────────────────────────────────────────┘ │
+    │                                                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+                                      ↑
+                                      │ implemented by
+                                      │
+            ┌─────────────────────────┼─────────────────────────┐
+            │                         │                         │
+            ↓                         ↓                         ↓
+    ┌───────────────┐       ┌─────────────────┐      ┌──────────────────┐
+    │ MockHardware  │       │ HardwareV1_0    │      │ WASM / VST       │
+    │ (testing)     │       │ (eurorack)      │      │ (future)         │
+    └───────────────┘       └─────────────────┘      └──────────────────┘
+
+
+Data Flow During One Tick
+--------------------------
+
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ useq_tick(state, hw)                                             │
+    └──────────────────────────────────────────────────────────────────┘
+              │
+              ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 1. Update timing                                                 │
+    │    state.update_speed = hw.micros() - state.ts                   │
+    │    state.ts = hw.micros()                                        │
+    └──────────────────────────────────────────────────────────────────┘
+              │
+              ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 2. Check early exits                                             │
+    │    if (state.waiting_for_sync_trigger) return                    │
+    │    if (!state.is_playing) return                                 │
+    └──────────────────────────────────────────────────────────────────┘
+              │
+              ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 3. Read inputs (if HW::NUM_INPUTS > 0)                           │
+    │    for (i = 0; i < NUM_INPUTS; i++)                              │
+    │        state.input_vals[i] = hw.read_input(i)                    │
+    └──────────────────────────────────────────────────────────────────┘
+              │
+              ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 4. Update interpreter time & scheduler                           │
+    │    state.interpreter.update_time()                               │
+    │    state.interpreter.check_code_quant_phasor()                   │
+    │    state.interpreter.run_scheduled_items()                       │
+    │    state.interpreter.update_Q0()                                 │
+    └──────────────────────────────────────────────────────────────────┘
+              │
+              ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 5. Update signals (evaluate expressions)                         │
+    │    useq_update_signals(state, hw)                                │
+    │      → useq_update_continuous_signals()                          │
+    │          for each continuous_AST:                                │
+    │              result = state.interpreter.eval(AST)                │
+    │              continuous_vals[i] = result.as_float()              │
+    │      → useq_update_binary_signals()                              │
+    │      → useq_update_serial_signals()                              │
+    └──────────────────────────────────────────────────────────────────┘
+              │
+              ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 6. Write outputs (if HW has outputs)                             │
+    │    useq_update_outs(state, hw)                                   │
+    │      → useq_update_binary_outs()                                 │
+    │          for each binary_val:                                    │
+    │              hw.write_binary_output(i, binary_vals[i])           │
+    │      → useq_update_continuous_outs()                             │
+    │          for each continuous_val:                                │
+    │              hw.write_continuous_output(i, continuous_vals[i])   │
+    │      → useq_update_serial_outs()                                 │
+    └──────────────────────────────────────────────────────────────────┘
+              │
+              ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 7. Handle user input (REPL) - TODO                               │
+    │    check_and_handle_user_input(state, hw)                        │
+    └──────────────────────────────────────────────────────────────────┘
+              │
+              ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 8. Small delay for interrupts                                    │
+    │    hw.delay_microseconds(100)                                    │
+    └──────────────────────────────────────────────────────────────────┘
+
+
+Comparison: Legacy vs Refactored
+---------------------------------
+
+LEGACY (uSEQ/src/):
+    class uSEQ : public ModuLisp {
+        private:
+            ModuLispInterpreter m_interpreter;  ← confusing: composition + inheritance!
+            std::vector<Value> m_continuous_ASTs;
+            bool m_is_playing;
+
+        public:
+            void tick() {
+                #ifdef ARDUINO
+                    update_inputs();
+                #endif
+                update_signals();
+                #ifdef HAS_OUTPUTS
+                    update_outs();
+                #endif
+            }
+    };
+
+    Problems:
+    ✗ Inheritance + composition is confusing
+    ✗ State hidden in member variables
+    ✗ Preprocessor conditionals everywhere
+    ✗ Virtual functions (overhead)
+    ✗ Hard to test without mocking class hierarchy
+
+
+REFACTORED (src/):
+    struct USEQState {
+        ModuLispInterpreter interpreter;  ← clear composition
+        std::vector<Value> continuous_ASTs;
+        bool is_playing;
+    };
+
+    template<typename HW>
+    void useq_tick(USEQState& state, const HW& hw) {
+        if constexpr (HW::NUM_INPUTS > 0) {
+            useq_update_inputs(state, hw);
+        }
+        useq_update_signals(state, hw);
+        if constexpr (HW::NUM_CONTINUOUS_OUTS > 0) {
+            useq_update_outs(state, hw);
+        }
+    }
+
+    Benefits:
+    ✓ Clear composition (no inheritance)
+    ✓ Explicit state (pass as parameter)
+    ✓ Compile-time conditionals (if constexpr)
+    ✓ Templates (zero overhead)
+    ✓ Easy to test (just pass mock hardware)
+
+
+Platform Abstraction Pattern
+-----------------------------
+
+The key insight: Hardware differences should be DATA, not preprocessor!
+
+WRONG (legacy approach):
+    void write_output(int index, float value) {
+        #ifdef ARDUINO
+            analogWrite(pins[index], value * 4095);
+        #elif defined(WASM_BUILD)
+            js_write_output(index, value);
+        #else
+            printf("Output[%d] = %.3f\n", index, value);
+        #endif
+    }
+
+    Problem: Platform-specific code scattered throughout
+
+RIGHT (refactored approach):
+    // Core (platform-agnostic):
+    template<typename HW>
+    void useq_update_outs(USEQState& state, const HW& hw) {
+        for (size_t i = 0; i < HW::NUM_CONTINUOUS_OUTS; i++) {
+            hw.write_continuous_output(i, state.continuous_vals[i]);
+        }
+    }
+
+    // Platform config (hardware-specific):
+    struct HardwareV1_0_Config {
+        static constexpr size_t NUM_CONTINUOUS_OUTS = 3;
+
+        void write_continuous_output(size_t index, float value) const {
+            #ifdef ARDUINO  // Only here, not in core!
+                analogWrite(OUTPUT_PINS[index], value * 4095);
+            #endif
+        }
+    };
+
+    Benefit: All platform-specific code in one place!
+
+
+File Organization
+-----------------
+
+src/
+├── core/                          # NO platform-specific code
+│   ├── useq_state.h              # Pure data structure
+│   ├── useq_update.h             # Pure functions (templates)
+│   └── hardware_config.h         # Interface definition
+│
+├── platforms/                     # ALL platform-specific code
+│   ├── mock/
+│   │   └── mock_hardware.h       # Testing platform
+│   ├── hardware_v1_0/
+│   │   └── hardware_v1_0_config.h # uSEQ v1.0
+│   ├── musicthing/               # Music Thing Modular
+│   └── wasm/                     # WebAssembly
+│
+├── api/                           # TODO: Phase 2
+│   ├── api_timing.cpp
+│   ├── api_lists.cpp
+│   └── api_math.cpp
+│
+└── examples/
+    └── simple_mock_test.cpp      # Complete example
+
+
+Key Design Decisions
+--------------------
+
+1. COMPOSITION OVER INHERITANCE
+   Why: Simpler, more flexible, easier to test
+   How: USEQState contains ModuLispInterpreter
+
+2. TEMPLATES OVER VIRTUAL FUNCTIONS
+   Why: Zero runtime overhead (critical for embedded)
+   How: useq_tick<HardwareConfig>(...) instead of virtual methods
+
+3. EXPLICIT STATE OVER MEMBER VARIABLES
+   Why: Easier to test, debug, and understand
+   How: Pass USEQState& as parameter, not hidden in this
+
+4. COMPILE-TIME OVER PREPROCESSOR
+   Why: Type-safe, better errors, easier to read
+   How: if constexpr (HW::HAS_FEATURE) instead of #ifdef
+
+5. DATA OVER CODE FOR CONFIGURATION
+   Why: Easier to understand, modify, and extend
+   How: constexpr members instead of #define constants
+
+6. PLATFORM ISOLATION OVER SCATTERED CODE
+   Why: Maintainability, testability
+   How: All platform code in platforms/ directory
+
+
+Testing Strategy
+----------------
+
+    ┌─────────────────────────────────────────────────────────┐
+    │ Unit Tests (with MockHardwareConfig)                    │
+    │ ═══════════════════════════════════════                 │
+    │                                                         │
+    │ TEST_CASE("Signal evaluation") {                        │
+    │     USEQState state;                                    │
+    │     MockHardwareConfig hw;                              │
+    │                                                         │
+    │     state.continuous_ASTs[0] = Value(0.5);              │
+    │     useq_update_signals(state, hw);                     │
+    │                                                         │
+    │     REQUIRE(state.continuous_vals[0] == 0.5f);          │
+    │ }                                                       │
+    │                                                         │
+    │ Benefits:                                               │
+    │ ✓ Fast (no hardware needed)                             │
+    │ ✓ Deterministic (no timing issues)                      │
+    │ ✓ Isolated (test one function at a time)               │
+    └─────────────────────────────────────────────────────────┘
+                            │
+                            ↓
+    ┌─────────────────────────────────────────────────────────┐
+    │ Integration Tests (with real HardwareConfig)            │
+    │ ════════════════════════════════════════════            │
+    │                                                         │
+    │ Run on actual hardware or desktop simulation            │
+    │ Verify end-to-end behavior                              │
+    └─────────────────────────────────────────────────────────┘
+
+
+Summary: The Big Picture
+------------------------
+
+PHILOSOPHY:
+  • Composition over inheritance
+  • Data over code
+  • Explicit over implicit
+  • Compile-time over runtime
+  • Templates over virtuals
+  • Pure functions over methods
+
+RESULT:
+  • Simpler to understand
+  • Easier to test
+  • Safer to modify
+  • Faster to compile
+  • No performance loss
+  • Easy to extend
+
+The refactored architecture is not just "different" - it's fundamentally
+SIMPLER, CLEARER, and MORE MAINTAINABLE while being just as performant.
