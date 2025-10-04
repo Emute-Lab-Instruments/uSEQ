@@ -2,6 +2,7 @@
 #define USEQ_CORE_UPDATE_H
 
 #include "useq_state.h"
+#include "useq_config.h"
 #include "../../uSEQ/src/utils/log.h"
 #include <cstddef>
 
@@ -110,24 +111,26 @@ void useq_update_binary_signals(USEQState& state, const HardwareConfig& hw) {
 /**
  * Update serial output signals (s0, s1, s2, ...)
  *
- * s0 is special - it outputs time_since_boot
- * Other serial outputs evaluate their ASTs
+ * IMPORTANT: s0 is RESERVED for time output
+ * - s0 always outputs time_since_boot in seconds
+ * - User code cannot reassign s0
+ * - User-assignable outputs start at s1 (index 1)
  */
 template<typename HardwareConfig>
 void useq_update_serial_signals(USEQState& state, const HardwareConfig& hw) {
     constexpr size_t num_outs = HardwareConfig::NUM_SERIAL_OUTS;
 
-    // s0 is always time
-    if (!state.serial_vals.empty()) {
+    // s0 is RESERVED: always outputs time in seconds
+    if (num_outs > useq::SERIAL_OUT_TIME_INDEX && !state.serial_vals.empty()) {
         double time_seconds = 0.0;
         if (auto* time_manager = state.interpreter.get_time_manager()) {
             time_seconds = time_manager->get_time_since_boot() / 1e6;
         }
-        state.serial_vals[0] = time_seconds;
+        state.serial_vals[useq::SERIAL_OUT_TIME_INDEX] = time_seconds;
     }
 
-    // s1, s2, ... are user-defined
-    for (size_t i = 1; i < num_outs; i++) {
+    // s1, s2, s3, ... are user-assignable
+    for (size_t i = useq::SERIAL_OUT_FIRST_USER; i < num_outs; i++) {
         error_msg_q.clear();
 
         String expr_name = String("s") + String(i);
@@ -223,6 +226,9 @@ void useq_update_binary_outs(USEQState& state, const HardwareConfig& hw) {
 
 /**
  * Write serial outputs to hardware (with rate limiting)
+ *
+ * Rate limiting prevents flooding the serial port with too many messages.
+ * Messages are throttled to no more than once per SERIAL_MESSAGE_RATE_LIMIT_US.
  */
 template<typename HardwareConfig>
 void useq_update_serial_outs(USEQState& state, const HardwareConfig& hw) {
@@ -231,10 +237,7 @@ void useq_update_serial_outs(USEQState& state, const HardwareConfig& hw) {
     unsigned long serial_now = hw.micros();
     unsigned long serial_time_elapsed = serial_now - state.serial_out_timestamp;
 
-    // Rate limiting (from SerialMsg::serial_message_rate_limit)
-    constexpr unsigned long RATE_LIMIT = 100000; // 100ms in microseconds
-
-    if (serial_time_elapsed > RATE_LIMIT) {
+    if (serial_time_elapsed > useq::SERIAL_MESSAGE_RATE_LIMIT_US) {
         constexpr size_t num_outs = HardwareConfig::NUM_SERIAL_OUTS;
 
         for (size_t i = 0; i < num_outs; i++) {
@@ -248,7 +251,7 @@ void useq_update_serial_outs(USEQState& state, const HardwareConfig& hw) {
             }
         }
 
-        state.serial_out_timestamp = serial_now - (serial_time_elapsed - RATE_LIMIT);
+        state.serial_out_timestamp = serial_now - (serial_time_elapsed - useq::SERIAL_MESSAGE_RATE_LIMIT_US);
     }
 }
 
@@ -298,14 +301,14 @@ void useq_tick(USEQState& state, const HardwareConfig& hw) {
 
     // Early exit if waiting for sync trigger
     if (state.waiting_for_sync_trigger) {
-        hw.delay_microseconds(100);
+        hw.delay_microseconds(useq::UPDATE_LOOP_DELAY_US);
         return;
     }
 
     // Early exit if paused
     if (!state.is_playing) {
         // check_and_handle_user_input(state, hw);  // TODO: implement REPL
-        hw.delay_microseconds(100);
+        hw.delay_microseconds(useq::UPDATE_LOOP_DELAY_US);
         return;
     }
 
@@ -333,8 +336,8 @@ void useq_tick(USEQState& state, const HardwareConfig& hw) {
     // Check for new code from REPL
     // check_and_handle_user_input(state, hw);  // TODO: implement
 
-    // Small delay for interrupts
-    hw.delay_microseconds(100);
+    // Small delay for interrupts and system tasks
+    hw.delay_microseconds(useq::UPDATE_LOOP_DELAY_US);
 }
 
 #endif // USEQ_CORE_UPDATE_H
