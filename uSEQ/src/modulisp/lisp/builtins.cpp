@@ -2412,8 +2412,16 @@ Value def(std::vector<Value>& args, Environment& env)
     String name  = args[0].display();
     // NOTE: body is unevalled still
     Value body = args[1];
+
+    // Analyze if the expression is time-varying
+    bool is_varying = ModuLispInterpreter::is_expression_time_varying(body, env);
+    body.is_time_varying = is_varying;
+
     env.set_expr(name, body);
-    env.set(name, body.eval(env));
+    Value evaluated = body.eval(env);
+    evaluated.is_time_varying = is_varying;  // Propagate flag to evaluated value
+    env.set(name, evaluated);
+
     result = Value::atom(name);
     return result;
 }

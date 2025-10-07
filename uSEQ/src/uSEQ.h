@@ -146,6 +146,24 @@ public:
         return m_interpreter.eval_in(v, *m_interpreter.get_environment());
     }
 
+    /**
+     * Evaluate an expression at the current top-level time.
+     *
+     * This is the primary method uSEQ should use for evaluating output expressions.
+     * It automatically:
+     * - Determines if expressions are time-varying
+     * - Uses cached values for static expressions
+     * - Re-evaluates time-dependent expressions with current time
+     *
+     * @param v The expression to evaluate
+     * @return The evaluated result
+     */
+    Value eval_at_current_time(const Value& v)
+    {
+        TimeValue current_time = m_interpreter.get_transport_time();
+        return m_interpreter.eval_at_time(v, current_time);
+    }
+
     Environment* get_environment() { return m_interpreter.get_environment(); }
     const Environment* get_environment() const
     {

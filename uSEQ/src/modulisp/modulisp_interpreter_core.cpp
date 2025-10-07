@@ -552,3 +552,182 @@ void ModuLispInterpreter::loadBuiltinDefs()
     Environment::builtindefs()["pulse"]  = Value("pulse", builtin::useq_pulse);
     Environment::builtindefs()["sqr"]    = Value("sqr", builtin::useq_sqr);
 }
+
+// ============================================================================
+// TIME-VARYING EXPRESSION ANALYSIS
+// ============================================================================
+
+bool ModuLispInterpreter::is_expression_time_varying(const Value& expr, Environment& env,
+                                                     std::set<String>& visited)
+{
+    switch (expr.type)
+    {
+    case Value::ATOM:
+    {
+        const String& symbol_name = expr.str;
+
+        // Check if it's a core time variable
+        if (symbol_name == "t" || symbol_name == "time" ||
+            symbol_name == "beat" || symbol_name == "bar" ||
+            symbol_name == "phrase" || symbol_name == "section")
+        {
+            return true;
+        }
+
+        // Prevent infinite recursion for circular definitions
+        if (visited.find(symbol_name) != visited.end())
+        {
+            return false;
+        }
+        visited.insert(symbol_name);
+
+        // Check if this symbol is defined in terms of time-varying expressions
+        std::optional<Value> def_expr = env.get_expr(symbol_name);
+        if (!def_expr)
+        {
+            // Check builtins too
+            def_expr = Environment::builtindefs().get(symbol_name);
+        }
+
+        if (def_expr)
+        {
+            bool is_varying = is_expression_time_varying(*def_expr, env, visited);
+            visited.erase(symbol_name);
+            return is_varying;
+        }
+
+        visited.erase(symbol_name);
+        return false;
+    }
+
+    case Value::LIST:
+    {
+        // Check all elements of the list
+        for (const auto& elem : expr.list)
+        {
+            if (is_expression_time_varying(elem, env, visited))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    case Value::LAMBDA:
+    {
+        // Lambda body might contain time variables
+        // The body is typically the second element after parameters
+        if (expr.list.size() > 1)
+        {
+            return is_expression_time_varying(expr.list[1], env, visited);
+        }
+        return false;
+    }
+
+    case Value::QUOTE:
+    {
+        // Quoted expressions don't evaluate, so not time-varying
+        return false;
+    }
+
+    // Numbers, strings, builtins, etc. are never time-varying
+    case Value::INT:
+    case Value::FLOAT:
+    case Value::STRING:
+    case Value::BUILTIN:
+    case Value::BUILTIN_METHOD:
+    case Value::BUILTIN_MODULISP_METHOD:
+    case Value::UNIT:
+    case Value::NIL:
+    case Value::ERROR:
+    case Value::SIGNAL:
+    case Value::VECTOR:
+    default:
+        return false;
+    }
+}
+
+// ============================================================================
+// EVAL AT TIME
+// ============================================================================
+
+Value ModuLispInterpreter::eval_at_time(const Value& v, TimeValue time_seconds)
+{
+    // Update time variables to the specified time
+    TimeValue old_time = m_time_manager->get_transport_time();
+    update_logical_time(time_seconds);
+    update_lisp_time_variables();
+
+    Value result;
+
+    // Check if this is an atom (symbol lookup)
+    if (v.type == Value::ATOM)
+    {
+        const String& symbol_name = v.str;
+
+        // Check if we have a cached time-varying flag
+        // First try to get the expression
+        std::optional<Value> def_expr = m_environment->get_expr(symbol_name);
+        if (def_expr && def_expr->is_time_varying)
+        {
+            // Re-evaluate the expression
+            result = eval_in(*def_expr, *m_environment);
+        }
+        else if (def_expr)
+        {
+            // Expression exists but is not marked as time-varying
+            // Check if we've analyzed it yet
+            std::set<String> visited;
+            bool is_varying = is_expression_time_varying(*def_expr, *m_environment, visited);
+
+            if (is_varying)
+            {
+                // Mark it for future use and re-evaluate
+                def_expr->is_time_varying = true;
+                result = eval_in(*def_expr, *m_environment);
+            }
+            else
+            {
+                // Use cached value
+                auto cached_value = m_environment->get(symbol_name);
+                result = cached_value ? *cached_value : Value::error();
+            }
+        }
+        else
+        {
+            // No expression found, just evaluate normally
+            result = eval_in(const_cast<Value&>(v), *m_environment);
+        }
+    }
+    else
+    {
+        // For non-atoms, check if the expression itself is time-varying
+        if (v.is_time_varying)
+        {
+            result = eval_in(const_cast<Value&>(v), *m_environment);
+        }
+        else
+        {
+            // Check if we need to analyze it
+            std::set<String> visited;
+            bool is_varying = is_expression_time_varying(v, *m_environment, visited);
+
+            if (is_varying)
+            {
+                const_cast<Value&>(v).is_time_varying = true;
+                result = eval_in(const_cast<Value&>(v), *m_environment);
+            }
+            else
+            {
+                // For static expressions, we can just evaluate once
+                result = eval_in(const_cast<Value&>(v), *m_environment);
+            }
+        }
+    }
+
+    // Restore old time
+    update_logical_time(old_time);
+    update_lisp_time_variables();
+
+    return result;
+}

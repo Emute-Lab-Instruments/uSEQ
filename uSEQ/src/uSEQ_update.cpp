@@ -38,7 +38,7 @@ void uSEQ::update_continuous_signals()
         {
             dbg("Evalling: " + expr.display());
 
-            Value result = eval(expr);
+            Value result = eval_at_current_time(expr);
             if (!result.is_number())
             {
                 println("**Warning**: Clearing the expression for **a" +
@@ -86,7 +86,7 @@ void uSEQ::update_binary_signals()
         else
         {
             dbg("Evalling: " + expr.display());
-            Value result = eval(expr);
+            Value result = eval_at_current_time(expr);
             if (!result.is_number())
             {
 
@@ -145,7 +145,7 @@ void uSEQ::update_serial_signals()
         {
             dbg("Expr: " + expr.display());
             // Eval
-            Value result = eval(expr);
+            Value result = eval_at_current_time(expr);
 
             if (!result.is_number())
             {
@@ -180,20 +180,18 @@ void uSEQ::update_signals()
 {
     DBG("uSEQ::update_signals");
 
-    // Use RAII scope to automatically enable/disable re-evaluation
-    // of time-dependent expressions. This ensures that symbols defined
-    // in terms of time variables (t, beat, bar, etc.) are freshly
-    // evaluated with current time values during output updates.
-    ReevaluateScope reevaluate_scope;
+    // Set flag to indicate we're in update loop (for diagnostics/logging)
     set_update_loop_evaluation(true);
 
-    // BODY
+    // Evaluate output expressions at current time
+    // The eval_at_current_time method automatically handles time-varying analysis:
+    // - Time-varying expressions (depending on t, beat, bar, etc.) are re-evaluated
+    // - Static expressions use cached values for efficiency
     update_continuous_signals();
     update_binary_signals();
     update_serial_signals();
 
     set_update_loop_evaluation(false);
-    // ReevaluateScope automatically restores previous state on scope exit
 }
 
 #if HAS_OUTPUTS

@@ -148,6 +148,45 @@ public:
     static void init_builtin_functions();
     void loadBuiltinDefs();
 
+    /**
+     * Evaluate an expression at a specific time, using time-varying analysis.
+     *
+     * This method automatically determines whether an expression depends on time
+     * variables (t, time, beat, bar) and evaluates it accordingly:
+     * - Time-varying expressions: Re-evaluated with the given time
+     * - Static expressions: Retrieved from cached values
+     *
+     * @param v The expression to evaluate
+     * @param time_seconds The time value to use for evaluation
+     * @return The evaluated result
+     */
+    Value eval_at_time(const Value& v, TimeValue time_seconds);
+
+    /**
+     * Recursively analyze whether an expression depends on time variables.
+     *
+     * Checks if an expression (or any sub-expressions it depends on) references:
+     * - t (normalized time phasor)
+     * - time (absolute time in seconds)
+     * - beat, bar, phrase, section (derived from t)
+     *
+     * @param expr The expression to analyze
+     * @param env The environment containing symbol definitions
+     * @param visited Set of symbols already visited (prevents infinite recursion)
+     * @return true if expression is time-varying, false otherwise
+     */
+    static bool is_expression_time_varying(const Value& expr, Environment& env,
+                                          std::set<String>& visited);
+
+    /**
+     * Overload without visited set for external callers.
+     */
+    static bool is_expression_time_varying(const Value& expr, Environment& env)
+    {
+        std::set<String> visited;
+        return is_expression_time_varying(expr, env, visited);
+    }
+
     // Factory for tests
     static std::unique_ptr<ModuLispInterpreter> create_fresh_interpreter();
 

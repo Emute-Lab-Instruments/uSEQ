@@ -364,6 +364,11 @@ public:
 
     // Signal metadata (only present for SIGNAL type values)
     std::optional<SignalMetadata> signal_metadata;
+
+    // Time-varying flag: true if this value depends on time variables (t, time, beat, bar)
+    // This is used to optimize evaluation - time-varying expressions must be re-evaluated
+    // each time, while static expressions can use cached values.
+    bool is_time_varying = false;
 };
 
 // end of class Value
