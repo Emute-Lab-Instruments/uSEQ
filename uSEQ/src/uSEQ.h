@@ -127,6 +127,25 @@ public:
     // ModuLispInterpreter delegation methods
     Value eval(Value v) { return m_interpreter.eval(v); }
     String eval(const String& code) { return m_interpreter.eval(code); }
+
+    /**
+     * Convenience method to evaluate code in the top-level environment.
+     * This is a shorthand for: eval_in(code, *get_environment())
+     */
+    String eval_in_top_level_env(const String& code)
+    {
+        return m_interpreter.eval_in(code, *m_interpreter.get_environment());
+    }
+
+    /**
+     * Convenience method to evaluate a Value in the top-level environment.
+     * This is a shorthand for: eval_in(v, *get_environment())
+     */
+    Value eval_in_top_level_env(Value& v)
+    {
+        return m_interpreter.eval_in(v, *m_interpreter.get_environment());
+    }
+
     Environment* get_environment() { return m_interpreter.get_environment(); }
     const Environment* get_environment() const
     {
