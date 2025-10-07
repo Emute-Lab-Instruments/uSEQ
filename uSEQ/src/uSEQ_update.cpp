@@ -1,6 +1,7 @@
 #include "uSEQ.h"
 #include "uSEQ/hardware_output.h"
 #include "utils.h"
+#include "modulisp/reevaluate_scope.h"
 
 /// UPDATE methods
 #if defined(USE_NOT_IN_FLASH)
@@ -179,9 +180,11 @@ void uSEQ::update_signals()
 {
     DBG("uSEQ::update_signals");
 
-    // Flip flag on only for evals that happen
-    // for output signals
-    set_attempt_expr_eval_first(true);
+    // Use RAII scope to automatically enable/disable re-evaluation
+    // of time-dependent expressions. This ensures that symbols defined
+    // in terms of time variables (t, beat, bar, etc.) are freshly
+    // evaluated with current time values during output updates.
+    ReevaluateScope reevaluate_scope;
     set_update_loop_evaluation(true);
 
     // BODY
@@ -189,8 +192,8 @@ void uSEQ::update_signals()
     update_binary_signals();
     update_serial_signals();
 
-    set_attempt_expr_eval_first(false);
     set_update_loop_evaluation(false);
+    // ReevaluateScope automatically restores previous state on scope exit
 }
 
 #if HAS_OUTPUTS
