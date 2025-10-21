@@ -349,7 +349,7 @@ ModuLisp::create_response_from_error_context(const ErrorContext& error_ctx,
     }
 
     // Set suggestion
-    if (!error_ctx.suggestion.length() == 0)
+    if (error_ctx.suggestion.length() != 0)
     {
         response.set_suggestion(std::string(error_ctx.suggestion.c_str()));
     }
@@ -367,7 +367,7 @@ ModuLisp::create_response_from_error_context(const ErrorContext& error_ctx,
     }
 
     // Set code snippet
-    if (!error_ctx.code_snippet.length() == 0)
+    if (error_ctx.code_snippet.length() != 0)
     {
         response.set_context_snippet(std::string(error_ctx.code_snippet.c_str()));
     }

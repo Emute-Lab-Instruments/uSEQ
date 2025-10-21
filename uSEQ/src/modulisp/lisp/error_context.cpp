@@ -17,7 +17,7 @@ void ErrorManager::report_undefined_symbol(const String& symbol_name,
     ctx.line   = line;
     ctx.column = column;
 
-    if (!code.length() == 0)
+    if (code.length() != 0)
     {
         ctx.code_snippet = code;
     }
@@ -39,7 +39,7 @@ void ErrorManager::report_undefined_function(const String& function_name,
     ctx.line   = line;
     ctx.column = column;
 
-    if (!code.length() == 0)
+    if (code.length() != 0)
     {
         ctx.code_snippet = code;
     }
@@ -148,7 +148,7 @@ void ErrorManager::report_syntax_error(const String& message, const String& code
     ctx.line          = line;
     ctx.column        = column;
 
-    if (!code.length() == 0)
+    if (code.length() != 0)
     {
         ctx.code_snippet = code;
     }
