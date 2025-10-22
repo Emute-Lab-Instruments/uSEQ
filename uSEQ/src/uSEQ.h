@@ -256,6 +256,13 @@ private:
     //// UPDATE methods
     // main user interaction logic
     void check_and_handle_user_input();
+
+    // Transport layer helpers (extracted from check_and_handle_user_input)
+    int read_first_byte_from_transport();
+    std::pair<size_t, double> read_serial_stream_update();
+    void route_execution_result_to_transport(const ExecutionResult& result);
+    void clear_transport_flags();
+
     void update_inputs();
     // timing-related stuff
 

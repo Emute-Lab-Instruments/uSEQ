@@ -659,128 +659,167 @@ bool uSEQ::handle_json_serial_request(const String& payload)
     return true;
 }
 
+// ===== Transport Layer Helpers (Extracted from check_and_handle_user_input) =====
+
+/**
+ * @brief Read first byte from active transport (I2C or Serial)
+ *
+ * Handles differences between Arduino (hardware Serial) and desktop builds.
+ * Extracted from check_and_handle_user_input lines 679-695.
+ *
+ * @return First byte from transport, or 0 for desktop builds without serial hardware
+ */
+int uSEQ::read_first_byte_from_transport()
+{
+    if (bNewI2CMessage)
+    {
+        return i2cInBuff[0];
+    }
+#ifdef ARDUINO
+    else
+    {
+        return Serial.read();
+    }
+#else
+    // Desktop build: no serial hardware
+    return 0;
+#endif
+}
+
+/**
+ * @brief Read serial stream update (channel and value)
+ *
+ * Reads 1 byte for channel number followed by 8 bytes for double value.
+ * Extracted from check_and_handle_user_input lines 702-710.
+ *
+ * Note: Assumes buffer[8] is sufficient for double (platform-specific).
+ *
+ * @return Pair of (channel, value), or (0, 0.0) for desktop builds
+ */
+std::pair<size_t, double> uSEQ::read_serial_stream_update()
+{
+#ifdef ARDUINO
+    size_t channel = Serial.read();
+    char buffer[8];
+    Serial.readBytes(buffer, 8);
+    double value = 0;
+    memcpy(&value, buffer, 8);
+    return {channel, value};
+#else
+    // Desktop build: no serial hardware
+    return {0, 0.0};
+#endif
+}
+
+/**
+ * @brief Route execution result to appropriate transport
+ *
+ * Sends result text and errors to either I2C or Serial, depending on which
+ * transport received the input. Consolidates error handling and output routing.
+ * Extracted from check_and_handle_user_input lines 743-755, 764-767.
+ *
+ * Note: For immediate execution, errors are appended to result.
+ * For scheduled execution, result_text contains the echoed code.
+ *
+ * @param result ExecutionResult containing text, errors, and metadata
+ */
+void uSEQ::route_execution_result_to_transport(const ExecutionResult& result)
+{
+    // Start with result text (either evaluation result or echoed code)
+    String output = result.result_text;
+
+    // For immediate execution with errors, append error messages
+    if (result.had_errors && !result.errors.empty())
+    {
+        // Note: Only append errors for execute_now, not for scheduled code
+        // (determined by the ExecutionResult.errors being populated)
+        output = result.errors[0]; // Use first error as primary output
+    }
+
+    // Send to appropriate transport
+    if (bNewI2CMessage)
+    {
+        i2cPrintStr += output;
+    }
+    else
+    {
+        println(output);
+    }
+}
+
+/**
+ * @brief Clear transport-specific flags after handling input
+ *
+ * Resets I2C message flag and byte counter after processing input.
+ * Called at end of check_and_handle_user_input() to prepare for next message.
+ * Extracted from check_and_handle_user_input lines 778-782.
+ */
+void uSEQ::clear_transport_flags()
+{
+    if (bNewI2CMessage)
+    {
+        bNewI2CMessage = false;
+        nI2CBytesRead  = 0;
+    }
+}
+
 void uSEQ::check_and_handle_user_input()
 {
     DBG("uSEQ::check_and_handle_user_input");
-    // m_repl.check_and_handle_input();
 
-    if (is_new_code_waiting())
+    if (!is_new_code_waiting())
     {
-
-        // Debug: Show what type of input we have
-        if (bNewI2CMessage)
-        {
-        }
-        else
-        {
-        }
-        set_manual_evaluation(true);
-
-        int first_byte;
-        // Incomming serial stream isn't implemented on I2C
-        // but sending I2C host should add the correct run now or later
-        // firstByte
-        if (bNewI2CMessage)
-        {
-            first_byte = i2cInBuff[0];
-        }
-#ifdef ARDUINO
-        else
-        {
-            first_byte = Serial.read();
-        }
-#else
-        else
-            first_byte = 0;
-#endif
-
-        // SERIAL
-        if (first_byte == SerialMsg::message_begin_marker /*31*/)
-        {
-#ifdef ARDUINO
-            // incoming serial stream
-            size_t channel = Serial.read();
-            char buffer[8];
-            Serial.readBytes(buffer, 8);
-            if (channel > 0 && channel <= m_num_serial_ins)
-            {
-                double v = 0;
-                memcpy(&v, buffer, 8);
-                m_serial_input_streams[(channel - 1)] = v;
-            }
-#endif
-        }
-        else
-        {
-#ifdef ARDUINO
-            if (!bNewI2CMessage && try_handle_json_message(first_byte))
-            {
-                set_manual_evaluation(false);
-                return;
-            }
-#endif
-            // Read code
-            m_last_received_code = get_code_waiting();
-
-            if (m_last_received_code == exit_command)
-            {
-                m_should_quit = true;
-            }
-
-            // I2C specific routing could be filtered here - note the first_byte
-            // gets passed to preserve execution time if (first_byte == '$')
-            // i2cParse(first_byte+m_last_received_code); //in i2cHost.h else if
-            // ... EXECUTE NOW
-            if (first_byte == SerialMsg::execute_now_marker /*'@'*/)
-            {
-
-                // Clear error queue
-                error_msg_q.clear();
-
-                String result = eval(m_last_received_code);
-
-                if (error_msg_q.size() > 0)
-                {
-                    if (bNewI2CMessage)
-                        i2cPrintStr +=
-                            error_msg_q[0]; // maybe move this routing to within
-                                            // println? //TODO add i2c ID
-                    else
-                        println(error_msg_q[0]);
-                }
-
-                if (bNewI2CMessage)
-                    i2cPrintStr += result;
-                else
-                    println(result);
-            }
-            // SCHEDULE FOR LATER
-            else
-            {
-
-                m_last_received_code =
-                    String((char)first_byte) + m_last_received_code;
-
-                if (bNewI2CMessage)
-                    i2cPrintStr += m_last_received_code;
-                else
-                    println(m_last_received_code);
-
-                Value expr = get_parser()->parse(m_last_received_code);
-                get_scheduler()->add_to_run_queue(expr);
-            }
-        }
-
-        set_manual_evaluation(false);
-        // flush_print_jobs();
-
-        // clear new i2c message flags if required
-        if (bNewI2CMessage)
-        {
-            bNewI2CMessage = false;
-            nI2CBytesRead  = 0;
-        }
+        return;
     }
+
+    // ===== TRANSPORT LAYER =====
+    int first_byte = read_first_byte_from_transport();
+
+    // Handle serial stream updates (NOT code execution)
+    if (first_byte == SerialMsg::message_begin_marker)
+    {
+        auto [channel, value] = read_serial_stream_update();
+        m_interpreter.update_stream_value(channel, value);
+        return;
+    }
+
+    // Handle JSON protocol requests
+#ifdef ARDUINO
+    if (!bNewI2CMessage && try_handle_json_message(first_byte))
+    {
+        return;
+    }
+#endif
+
+    // ===== CODE EXECUTION =====
+    String code = get_code_waiting();
+
+    if (code == exit_command)
+    {
+        m_should_quit = true;
+        return;
+    }
+
+    // Delegate to interpreter based on execution marker
+    ExecutionResult result;
+    if (first_byte == SerialMsg::execute_now_marker)
+    {
+        result = m_interpreter.execute_now(code);
+    }
+    else
+    {
+        // Prepend first byte to code (it's part of the expression)
+        code = String((char)first_byte) + code;
+        result = m_interpreter.schedule_code(code);
+    }
+
+    // ===== OUTPUT ROUTING =====
+    if (result.printed)
+    {
+        route_execution_result_to_transport(result);
+    }
+
+    clear_transport_flags();
 }
 
 void uSEQ::init_ASTs()
