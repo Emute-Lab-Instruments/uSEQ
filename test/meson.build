@@ -274,6 +274,22 @@ time_injection_exe = executable(
 
 test('time_injection_test', time_injection_exe)
 
+# Execution semantics characterization test executable
+execution_semantics_test_src = [
+  'modulisp/test_execution_semantics.cpp'
+]
+
+execution_semantics_exe = executable(
+  'test_execution_semantics',
+  sources : execution_semantics_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
+test('execution_semantics_test', execution_semantics_exe)
+
 # IO bridge test executable - needs full hardware dependency
 io_bridge_exe = executable(
   'test_io_bridge',
