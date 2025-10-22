@@ -26,6 +26,27 @@
 using TimeValue  = double;
 using PhaseValue = double;
 
+/**
+ * @brief Result of code execution - platform-agnostic execution semantics
+ *
+ * This struct encapsulates the result of executing ModuLisp code, allowing
+ * the transport layer (Serial, I2C, WASM, etc.) to handle output routing
+ * without being coupled to execution logic.
+ *
+ * Design rationale:
+ * - result_text: Contains either the evaluation result OR the echoed input
+ * - had_errors: Quick boolean check for error state
+ * - errors: Full error messages for detailed reporting
+ * - printed: Controls whether output should be shown to user (vs silent execution)
+ */
+struct ExecutionResult
+{
+    String result_text;              ///< Evaluation result or echo of scheduled code
+    bool had_errors = false;         ///< True if error_msg_q was non-empty after execution
+    std::vector<String> errors;      ///< Copy of error_msg_q (empty if no errors)
+    bool printed = true;             ///< True if result should be output to user
+};
+
 class ModuLispInterpreter
 {
 public:
@@ -133,6 +154,75 @@ public:
     TimeManager* get_time_manager() { return m_time_manager.get(); }
     Scheduler* get_scheduler() { return m_scheduler.get(); }
     IRandomGenerator* get_random_generator() { return m_random_generator.get(); }
+
+    // --- Execution API: Platform-agnostic code execution ---
+    /**
+     * @brief Execute code immediately with manual evaluation semantics
+     *
+     * This method provides immediate execution similar to the '@' marker in serial input.
+     * It temporarily sets manual_evaluation mode, evaluates the code, captures any errors,
+     * and returns a structured result for the transport layer to route.
+     *
+     * Execution semantics:
+     * - Sets manual_evaluation = true (distinguishes user input from automated eval)
+     * - Clears error queue before evaluation
+     * - Evaluates code synchronously
+     * - Captures errors if any occur
+     * - Restores manual_evaluation = false
+     * - Always marks result as printed (user expects immediate feedback)
+     *
+     * @param code ModuLisp code to execute immediately
+     * @return ExecutionResult containing result text, errors, and output flags
+     *
+     * @note This is the platform-agnostic implementation of immediate execution
+     *       that was previously embedded in uSEQ::check_and_handle_user_input()
+     */
+    ExecutionResult execute_now(const String& code);
+
+    /**
+     * @brief Schedule code for deferred execution at next quantum boundary
+     *
+     * This method queues code for later execution, typically at the next bar/beat boundary.
+     * It parses the code, adds it to the scheduler's run queue, and echoes the input back.
+     *
+     * Execution semantics:
+     * - Sets manual_evaluation = true
+     * - Parses code into AST
+     * - Adds to scheduler run queue (executed during check_code_quant_phasor)
+     * - Echoes the scheduled code as confirmation
+     * - Restores manual_evaluation = false
+     * - Marks result as printed (echo confirms scheduling)
+     *
+     * @param code ModuLisp code to schedule for later execution
+     * @return ExecutionResult containing echoed code and status
+     *
+     * @note This is the platform-agnostic implementation of scheduled execution
+     *       that was previously embedded in uSEQ::check_and_handle_user_input()
+     */
+    ExecutionResult schedule_code(const String& code);
+
+    /**
+     * @brief Update a serial input stream value
+     *
+     * This method updates one of the serial input stream channels with a new value.
+     * Serial streams (sin1, sin2, etc.) are exposed as LISP variables that can be
+     * referenced in expressions. This allows external controllers to inject values.
+     *
+     * Channel numbering:
+     * - Channels are 1-indexed externally (1-32)
+     * - Stored as 0-indexed internally (0-31)
+     * - Invalid channels are silently ignored (matches current behavior)
+     *
+     * @param channel Serial input channel (1-indexed, range 1-32)
+     * @param value New value for the channel
+     *
+     * @note Currently a no-op stub - serial stream storage remains in uSEQ layer.
+     *       This method exists to complete the execution API contract. Full implementation
+     *       will be added when serial stream ownership migrates to interpreter (Phase 2).
+     *
+     * @todo Move serial input stream storage to ModuLispInterpreter (Phase 2)
+     */
+    void update_stream_value(size_t channel, double value);
 
     // --- Absorbed Interpreter API ---
     // Evaluation API

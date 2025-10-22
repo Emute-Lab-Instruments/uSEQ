@@ -290,6 +290,22 @@ execution_semantics_exe = executable(
 
 test('execution_semantics_test', execution_semantics_exe)
 
+# Execution API test executable (Commit 2)
+execution_api_test_src = [
+  'modulisp/test_execution_api.cpp'
+]
+
+execution_api_exe = executable(
+  'test_execution_api',
+  sources : execution_api_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
+test('execution_api_test', execution_api_exe)
+
 # IO bridge test executable - needs full hardware dependency
 io_bridge_exe = executable(
   'test_io_bridge',
