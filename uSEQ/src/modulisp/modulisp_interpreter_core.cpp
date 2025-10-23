@@ -32,8 +32,14 @@ ModuLispInterpreter* INTERP_MEM ModuLispInterpreter::modulisp_instance_ptr;
 // Constructors
 ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* env,
                                          uLispParser* parser, IClock* clk,
-                                         ILogger* log, IRandomGenerator* rng)
-    : clock(clk), logger(log)
+                                         ILogger* log, IRandomGenerator* rng,
+                                         size_t num_analog_outs,
+                                         size_t num_digital_outs,
+                                         size_t num_serial_outs)
+    : clock(clk), logger(log),
+      m_num_analog_outs(num_analog_outs),
+      m_num_digital_outs(num_digital_outs),
+      m_num_serial_outs(num_serial_outs)
 {
     if (env == nullptr)
     {
@@ -87,8 +93,12 @@ ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* e
         m_scheduler->set_cqp_ast(Value::atom("bar"));
     }
 
-#ifdef WASM_BUILD
-    auto resetWasmOutputs = [](auto& container) {
+    // Initialize output storage
+    m_analog_outputs.resize(num_analog_outs);
+    m_digital_outputs.resize(num_digital_outs);
+    m_serial_outputs.resize(num_serial_outs);
+
+    auto resetOutputs = [](auto& container) {
         for (auto& slot : container)
         {
             slot.expr             = Value::nil();
@@ -98,10 +108,18 @@ ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* e
         }
     };
 
-    resetWasmOutputs(m_wasm_continuous_outputs);
-    resetWasmOutputs(m_wasm_binary_outputs);
-    resetWasmOutputs(m_wasm_serial_outputs);
-#endif
+    resetOutputs(m_analog_outputs);
+    resetOutputs(m_digital_outputs);
+    resetOutputs(m_serial_outputs);
+
+    // Initialize time variables with default values (0.0)
+    // This ensures they always exist in the environment
+    m_environment->set("t", Value(0.0));
+    m_environment->set("time", Value(0.0));
+    m_environment->set("beat", Value(0.0));
+    m_environment->set("bar", Value(0.0));
+    m_environment->set("phrase", Value(0.0));
+    m_environment->set("section", Value(0.0));
 }
 
 // Destructor
@@ -189,7 +207,14 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
             return evaluated;
         };
 
-        if (m_attempt_expr_eval_first)
+        // Check if this symbol is a signal - if so, always evaluate its expression
+        bool is_signal_var = false;
+        if (modulisp_instance_ptr)
+        {
+            is_signal_var = modulisp_instance_ptr->is_signal(symbol_name);
+        }
+
+        if (m_attempt_expr_eval_first || is_signal_var)
         {
             if (auto evaluated = try_eval_expr_binding(symbol_name))
             {
@@ -198,6 +223,7 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
             }
         }
 
+        // For non-signals, use the cached value
         bool has_binding = env.has(symbol_name) ||
                            Environment::builtindefs().has(symbol_name);
         if (has_binding)
@@ -210,7 +236,7 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
             }
         }
 
-        if (!m_attempt_expr_eval_first && m_eval_expr_if_def_not_found)
+        if (!m_attempt_expr_eval_first && !is_signal_var && m_eval_expr_if_def_not_found)
         {
             if (auto evaluated = try_eval_expr_binding(symbol_name))
             {
@@ -550,4 +576,93 @@ void ModuLispInterpreter::loadBuiltinDefs()
     Environment::builtindefs()["scope"]  = Value("scope", builtin::scope);
     Environment::builtindefs()["pulse"]  = Value("pulse", builtin::useq_pulse);
     Environment::builtindefs()["sqr"]    = Value("sqr", builtin::useq_sqr);
+}
+
+// ===== Signal tracking implementation =====
+
+bool ModuLispInterpreter::is_time_variable(const String& name) const
+{
+    return name == "t" || name == "time" || name == "beat" || name == "bar" ||
+           name == "phrase" || name == "section";
+}
+
+bool ModuLispInterpreter::contains_time_variable(const Value& expr) const
+{
+    if (expr.is_symbol())
+    {
+        const String& name = expr.as_atom();
+        // Check if it's a time variable
+        if (is_time_variable(name))
+        {
+            return true;
+        }
+        // Check if this symbol references a signal
+        if (is_signal(name))
+        {
+            return true;
+        }
+        return false;
+    }
+    else if (expr.is_list())
+    {
+        // Recursively check all elements in the list
+        for (const Value& elem : expr.list)
+        {
+            if (contains_time_variable(elem))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    // Numbers, strings, nil, etc. are not signals
+    return false;
+}
+
+bool ModuLispInterpreter::is_signal(const String& name) const
+{
+    auto it = m_signal_map.find(name);
+    if (it != m_signal_map.end())
+    {
+        return it->second;
+    }
+    return false;
+}
+
+void ModuLispInterpreter::mark_as_signal(const String& name)
+{
+    m_signal_map[name] = true;
+}
+
+void ModuLispInterpreter::propagate_signal_status(const String& newly_marked_signal)
+{
+    // Find all defined symbols that reference the newly marked signal
+    // and recursively mark them as signals too
+
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+
+        // Iterate through all expression bindings in the environment
+        const ValueMap& expr_map = m_environment->get_def_exprs();
+        for (const auto& pair : expr_map)
+        {
+            const String& symbol_name = pair.first;
+            const Value& symbol_expr = pair.second;
+
+            // Skip if already marked as signal
+            if (is_signal(symbol_name))
+            {
+                continue;
+            }
+
+            // Check if this expression contains any signals
+            if (contains_time_variable(symbol_expr))
+            {
+                mark_as_signal(symbol_name);
+                changed = true;
+            }
+        }
+    }
 }

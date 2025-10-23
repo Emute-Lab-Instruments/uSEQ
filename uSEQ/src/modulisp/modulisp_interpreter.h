@@ -10,12 +10,12 @@
 #include "random_generator.h"
 #include "scheduler.h"
 #include "time_manager.h"
-#include <cmath>
-#include <memory>
-#ifdef WASM_BUILD
 #include <array>
+#include <cmath>
 #include <limits>
-#endif
+#include <map>
+#include <memory>
+#include <vector>
 
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
 #define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
@@ -55,7 +55,10 @@ public:
     explicit ModuLispInterpreter(ErrorManager* error_mgr, Environment* env = nullptr,
                                  uLispParser* parser = nullptr,
                                  IClock* clk = nullptr, ILogger* log = nullptr,
-                                 IRandomGenerator* rng = nullptr);
+                                 IRandomGenerator* rng = nullptr,
+                                 size_t num_analog_outs = 8,
+                                 size_t num_digital_outs = 8,
+                                 size_t num_serial_outs = 8);
 
     void init()
     {
@@ -304,7 +307,7 @@ public:
     LISP_FUNC_DECL(useq_rewind_logical_time);
     LISP_FUNC_DECL(useq_q0);
 
-#ifdef WASM_BUILD
+    // Output assignment functions (a1-a8 for analog, d1-d8 for digital, s1-s8 for serial)
     LISP_FUNC_DECL(useq_a1);
     LISP_FUNC_DECL(useq_a2);
     LISP_FUNC_DECL(useq_a3);
@@ -332,38 +335,48 @@ public:
     LISP_FUNC_DECL(useq_s7);
     LISP_FUNC_DECL(useq_s8);
 
-    void set_time_from_external_source(TimeValue actual_time);
+    // Output evaluation API - core interpreter functionality
+    // Evaluate outputs at specific or current time
+    std::map<String, double> eval_outputs();                                    // current time, all outputs
+    std::map<String, double> eval_outputs(double time_seconds);                 // specific time, all outputs
+    std::map<String, double> eval_outputs(const std::vector<String>& outputs);  // current time, subset
+    std::map<String, double> eval_outputs(const std::vector<String>& outputs,
+                                         double time_seconds);                  // specific time, subset
+
+    // Sample outputs across a time window at specified resolution
+    // Returns a map of output names to their time-series vectors
+    // Each vector contains num_samples values uniformly distributed from start to end time
+    // If outputs vector is empty, samples all outputs (a1-a8, d1-d8, s1-s8)
+    // Format: {a1: [0.5, 0.6, ...], a2: [0.3, 0.4, ...]}
+    std::map<String, std::vector<double>> eval_outputs(
+        double start_time_seconds,
+        double end_time_seconds,
+        size_t num_samples,
+        const std::vector<String>& outputs = {});
+
+    // Convenience method for single output evaluation (backward compatibility)
     double eval_output_at_time(const char* name, double time_seconds,
                                bool* ok = nullptr);
 
-    enum class WasmOutputType
+    // Time control
+    void set_time_from_external_source(TimeValue actual_time);
+
+    // Output type enumeration
+    enum class OutputType
     {
-        CONTINUOUS,
-        BINARY,
+        ANALOG,
+        DIGITAL,
         SERIAL
     };
 
-    struct WasmStoredOutput
+    // Stored output structure
+    struct StoredOutput
     {
         Value expr;
         double lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
         double lastValue       = 0.0;
         bool hasExpr           = false;
     };
-
-    static constexpr size_t kWasmContinuousOutputs = 8;
-    static constexpr size_t kWasmBinaryOutputs     = 8;
-    static constexpr size_t kWasmSerialOutputs     = 8;
-
-    Value wasm_handle_output_assignment(const char* name, size_t index,
-                                        WasmOutputType type,
-                                        std::vector<Value>& args,
-                                        Environment& env);
-    bool wasm_resolve_output(const char* name, WasmOutputType& type,
-                             size_t& index) const;
-    double wasm_eval_output_at_time(WasmOutputType type, size_t index,
-                                    double time_seconds, bool* ok);
-#endif
 
     // Performance monitoring
     int ts          = 0;
@@ -390,11 +403,34 @@ protected:
     double m_meter_numerator     = 4.0; // Time signature numerator (default 4/4)
     double m_meter_denominator   = 4.0; // Time signature denominator (default 4/4)
 
-#ifdef WASM_BUILD
-    std::array<WasmStoredOutput, kWasmContinuousOutputs> m_wasm_continuous_outputs;
-    std::array<WasmStoredOutput, kWasmBinaryOutputs> m_wasm_binary_outputs;
-    std::array<WasmStoredOutput, kWasmSerialOutputs> m_wasm_serial_outputs;
-#endif
+    // Output storage and configuration
+    size_t m_num_analog_outs;
+    size_t m_num_digital_outs;
+    size_t m_num_serial_outs;
+
+    std::vector<StoredOutput> m_analog_outputs;
+    std::vector<StoredOutput> m_digital_outputs;
+    std::vector<StoredOutput> m_serial_outputs;
+
+    // Signal tracking: map symbol names to whether they are time-dependent signals
+    std::map<String, bool> m_signal_map;
+
+public:
+    // Helper methods for signal detection and propagation (public for builtin access)
+    bool is_time_variable(const String& name) const;
+    bool contains_time_variable(const Value& expr) const;
+    bool is_signal(const String& name) const;
+    void mark_as_signal(const String& name);
+    void propagate_signal_status(const String& newly_marked_signal);
+
+protected:
+
+    // Helper methods for output handling
+    Value handle_output_assignment(const char* name, size_t index, OutputType type,
+                                  std::vector<Value>& args, Environment& env);
+    bool resolve_output(const char* name, OutputType& type, size_t& index) const;
+    double eval_output_internal(OutputType type, size_t index, double time_seconds, bool* ok);
+    double default_output_value(OutputType type) const;
 
 private:
     // Absorbed Interpreter state
@@ -415,6 +451,9 @@ private:
     static String m_atom_currently_being_evaluated;
 
     static uSEQ* useq_instance_ptr;
+
+public:
+    // Make instance pointer public for builtin access
     static ModuLispInterpreter* modulisp_instance_ptr;
 };
 

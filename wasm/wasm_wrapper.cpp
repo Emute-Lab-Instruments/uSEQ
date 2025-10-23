@@ -1,3 +1,15 @@
+/**
+ * @file wasm_wrapper.cpp
+ * @brief WASM bindings for the ModuLisp interpreter
+ *
+ * Provides JavaScript-callable functions for:
+ * - Initializing the interpreter
+ * - Evaluating LISP expressions
+ * - Updating transport time
+ * - Evaluating individual outputs at specific times
+ * - Batch evaluating multiple outputs across time windows (NEW)
+ */
+
 #include "../uSEQ/src/modulisp/modulisp_interpreter.h"
 #include <cstdlib>
 #include <cstring>
@@ -136,5 +148,109 @@ extern "C"
         }
 
         return value;
+    }
+
+    // Evaluate multiple outputs across a time window
+    // Returns a JSON string containing channel-indexed samples
+    // Format: {"a1": [0.5, 0.6, ...], "a2": [0.3, 0.4, ...]}
+    char* useq_eval_outputs_time_window(const char* outputs_json, double start_time, double end_time, int num_samples)
+    {
+        if (!useq_instance)
+        {
+            const char* error_msg = "{\"error\": \"uSEQ not initialized\"}";
+            char* result = (char*)malloc(strlen(error_msg) + 1);
+            strcpy(result, error_msg);
+            return result;
+        }
+
+        if (num_samples < 1)
+        {
+            const char* error_msg = "{\"error\": \"num_samples must be >= 1\"}";
+            char* result = (char*)malloc(strlen(error_msg) + 1);
+            strcpy(result, error_msg);
+            return result;
+        }
+
+        try
+        {
+            // Parse outputs array from JSON string (simple format: ["a1", "a2", "d1"])
+            std::vector<String> outputs;
+            String json_str(outputs_json);
+
+            // Simple JSON array parser - assumes format ["a1","a2","d1"]
+            int start_pos = json_str.indexOf('[');
+            int end_pos = json_str.indexOf(']');
+            if (start_pos >= 0 && end_pos >= 0 && end_pos > start_pos)
+            {
+                String contents = json_str.substring(start_pos + 1, end_pos);
+                int pos = 0;
+                while (pos < (int)contents.length())
+                {
+                    int quote1 = contents.indexOf('"', pos);
+                    if (quote1 < 0) break;
+                    int quote2 = contents.indexOf('"', quote1 + 1);
+                    if (quote2 < 0) break;
+
+                    String output_name = contents.substring(quote1 + 1, quote2);
+                    outputs.push_back(output_name);
+                    pos = quote2 + 1;
+                }
+            }
+
+            // Call the batch evaluation API - now returns map<String, vector<double>>
+            auto results = useq_instance->eval_outputs(start_time, end_time, num_samples, outputs);
+
+            // Build JSON response - object with arrays
+            // Format: {"a1": [0.5, 0.6], "a2": [0.3, 0.4]}
+            String json_result = "{";
+            bool first_channel = true;
+
+            for (const auto& channel_pair : results)
+            {
+                if (!first_channel) json_result += ",";
+                first_channel = false;
+
+                // Output name as key
+                json_result += "\"";
+                json_result += channel_pair.first;
+                json_result += "\":[";
+
+                // Array of time samples for this channel
+                const auto& samples = channel_pair.second;
+                for (size_t i = 0; i < samples.size(); ++i)
+                {
+                    if (i > 0) json_result += ",";
+
+                    // Convert double to string
+                    char val_buf[32];
+                    snprintf(val_buf, sizeof(val_buf), "%.15g", samples[i]);
+                    json_result += val_buf;
+                }
+
+                json_result += "]";
+            }
+            json_result += "}";
+
+            // Allocate and return result
+            char* result = (char*)malloc(json_result.length() + 1);
+            strcpy(result, json_result.c_str());
+            return result;
+        }
+        catch (const std::exception& e)
+        {
+            String error_msg = "{\"error\": \"";
+            error_msg += e.what();
+            error_msg += "\"}";
+            char* result = (char*)malloc(error_msg.length() + 1);
+            strcpy(result, error_msg.c_str());
+            return result;
+        }
+        catch (...)
+        {
+            const char* error_msg = "{\"error\": \"Unknown error during batch evaluation\"}";
+            char* result = (char*)malloc(strlen(error_msg) + 1);
+            strcpy(result, error_msg);
+            return result;
+        }
     }
 }

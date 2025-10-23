@@ -82,6 +82,18 @@ time_injection_test_src = [
   'modulisp/api/test_time_injection.cpp'
 ]
 
+output_sync_test_src = [
+  'modulisp/api/test_output_sync.cpp'
+]
+
+output_sampling_test_src = [
+  'modulisp/api/test_output_sampling.cpp'
+]
+
+signal_semantics_test_src = [
+  'modulisp/api/test_signal_semantics.cpp'
+]
+
 signals_test_src = [
   'test_signals.cpp'
 ]
@@ -273,6 +285,42 @@ time_injection_exe = executable(
 )
 
 test('time_injection_test', time_injection_exe)
+
+# Output synchronization test executable
+output_sync_exe = executable(
+  'test_output_sync',
+  sources : output_sync_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
+test('output_sync_test', output_sync_exe)
+
+# Output sampling test executable
+output_sampling_exe = executable(
+  'test_output_sampling',
+  sources : output_sampling_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
+test('output_sampling_test', output_sampling_exe)
+
+# Signal semantics test executable
+signal_semantics_exe = executable(
+  'test_signal_semantics',
+  sources : signal_semantics_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
+test('signal_semantics_test', signal_semantics_exe)
 
 # Execution semantics characterization test executable
 execution_semantics_test_src = [

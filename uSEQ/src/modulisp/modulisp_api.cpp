@@ -6,10 +6,8 @@
 
 #include "../utils.h"
 #include "modulisp_interpreter.h"
-#ifdef WASM_BUILD
 #include <cctype>
 #include <cmath>
-#endif
 
 // Creates a Lisp Value of type BUILTIN_METHOD,
 // which requires
@@ -21,7 +19,7 @@ void ModuLispInterpreter::init_builtinfuncs()
 {
     DBG("ModuLispInterpreter::init_builtinfuncs");
 
-#ifdef WASM_BUILD
+    // Output assignment functions (always available)
     INSERT_BUILTINDEF("a1", useq_a1);
     INSERT_BUILTINDEF("a2", useq_a2);
     INSERT_BUILTINDEF("a3", useq_a3);
@@ -48,7 +46,6 @@ void ModuLispInterpreter::init_builtinfuncs()
     INSERT_BUILTINDEF("s6", useq_s6);
     INSERT_BUILTINDEF("s7", useq_s7);
     INSERT_BUILTINDEF("s8", useq_s8);
-#endif
 
     INSERT_BUILTINDEF("eval-at-time", useq_eval_at_time);
     INSERT_BUILTINDEF("useq-rewind", useq_rewind_logical_time);
@@ -192,25 +189,25 @@ Value ModuLispInterpreter::useq_nudge_time(std::vector<Value>& args,
 ////////////////////
 // USEQ API
 
-#ifdef WASM_BUILD
-static double wasm_default_output_value(ModuLispInterpreter::WasmOutputType type)
+// Helper function: get default value for output type
+double ModuLispInterpreter::default_output_value(OutputType type) const
 {
     switch (type)
     {
-    case ModuLispInterpreter::WasmOutputType::CONTINUOUS:
+    case OutputType::ANALOG:
         return 0.5;
-    case ModuLispInterpreter::WasmOutputType::BINARY:
-    case ModuLispInterpreter::WasmOutputType::SERIAL:
+    case OutputType::DIGITAL:
+    case OutputType::SERIAL:
     default:
         return 0.0;
     }
 }
 
-Value ModuLispInterpreter::wasm_handle_output_assignment(const char* name,
-                                                         size_t index,
-                                                         WasmOutputType type,
-                                                         std::vector<Value>& args,
-                                                         Environment& env)
+Value ModuLispInterpreter::handle_output_assignment(const char* name,
+                                                    size_t index,
+                                                    OutputType type,
+                                                    std::vector<Value>& args,
+                                                    Environment& env)
 {
     if (args.empty())
     {
@@ -230,20 +227,20 @@ Value ModuLispInterpreter::wasm_handle_output_assignment(const char* name,
     get_environment()->set_expr(lispName, expr);
     (void)env;
 
-    WasmStoredOutput* slot = nullptr;
+    StoredOutput* slot = nullptr;
     switch (type)
     {
-    case WasmOutputType::CONTINUOUS:
-        if (index < m_wasm_continuous_outputs.size())
-            slot = &m_wasm_continuous_outputs[index];
+    case OutputType::ANALOG:
+        if (index < m_analog_outputs.size())
+            slot = &m_analog_outputs[index];
         break;
-    case WasmOutputType::BINARY:
-        if (index < m_wasm_binary_outputs.size())
-            slot = &m_wasm_binary_outputs[index];
+    case OutputType::DIGITAL:
+        if (index < m_digital_outputs.size())
+            slot = &m_digital_outputs[index];
         break;
-    case WasmOutputType::SERIAL:
-        if (index < m_wasm_serial_outputs.size())
-            slot = &m_wasm_serial_outputs[index];
+    case OutputType::SERIAL:
+        if (index < m_serial_outputs.size())
+            slot = &m_serial_outputs[index];
         break;
     }
 
@@ -255,14 +252,14 @@ Value ModuLispInterpreter::wasm_handle_output_assignment(const char* name,
     slot->expr            = expr;
     slot->hasExpr         = !expr.is_nil();
     slot->lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
-    slot->lastValue       = wasm_default_output_value(type);
+    slot->lastValue       = default_output_value(type);
 
     return Value::atom(lispName);
 }
 
-bool ModuLispInterpreter::wasm_resolve_output(const char* name,
-                                              WasmOutputType& type,
-                                              size_t& index) const
+bool ModuLispInterpreter::resolve_output(const char* name,
+                                         OutputType& type,
+                                         size_t& index) const
 {
     if (!name || !name[0])
     {
@@ -281,7 +278,7 @@ bool ModuLispInterpreter::wasm_resolve_output(const char* name,
         numeric = numeric * 10 + (c - '0');
     }
 
-    if (numeric < 1 || numeric > 8)
+    if (numeric < 1)
     {
         return false;
     }
@@ -292,16 +289,16 @@ bool ModuLispInterpreter::wasm_resolve_output(const char* name,
     {
     case 'a':
     case 'A':
-        type = WasmOutputType::CONTINUOUS;
-        return index < m_wasm_continuous_outputs.size();
+        type = OutputType::ANALOG;
+        return index < m_analog_outputs.size();
     case 'd':
     case 'D':
-        type = WasmOutputType::BINARY;
-        return index < m_wasm_binary_outputs.size();
+        type = OutputType::DIGITAL;
+        return index < m_digital_outputs.size();
     case 's':
     case 'S':
-        type = WasmOutputType::SERIAL;
-        return index < m_wasm_serial_outputs.size();
+        type = OutputType::SERIAL;
+        return index < m_serial_outputs.size();
     default:
         break;
     }
@@ -309,12 +306,12 @@ bool ModuLispInterpreter::wasm_resolve_output(const char* name,
     return false;
 }
 
-double ModuLispInterpreter::wasm_eval_output_at_time(WasmOutputType type,
-                                                     size_t index,
-                                                     double time_seconds,
-                                                     bool* ok)
+double ModuLispInterpreter::eval_output_internal(OutputType type,
+                                                 size_t index,
+                                                 double time_seconds,
+                                                 bool* ok)
 {
-    const double defaultValue = wasm_default_output_value(type);
+    const double defaultValue = default_output_value(type);
     if (ok)
     {
         *ok = false;
@@ -325,20 +322,20 @@ double ModuLispInterpreter::wasm_eval_output_at_time(WasmOutputType type,
         return defaultValue;
     }
 
-    WasmStoredOutput* slot = nullptr;
+    StoredOutput* slot = nullptr;
     switch (type)
     {
-    case WasmOutputType::CONTINUOUS:
-        if (index < m_wasm_continuous_outputs.size())
-            slot = &m_wasm_continuous_outputs[index];
+    case OutputType::ANALOG:
+        if (index < m_analog_outputs.size())
+            slot = &m_analog_outputs[index];
         break;
-    case WasmOutputType::BINARY:
-        if (index < m_wasm_binary_outputs.size())
-            slot = &m_wasm_binary_outputs[index];
+    case OutputType::DIGITAL:
+        if (index < m_digital_outputs.size())
+            slot = &m_digital_outputs[index];
         break;
-    case WasmOutputType::SERIAL:
-        if (index < m_wasm_serial_outputs.size())
-            slot = &m_wasm_serial_outputs[index];
+    case OutputType::SERIAL:
+        if (index < m_serial_outputs.size())
+            slot = &m_serial_outputs[index];
         break;
     }
 
@@ -374,13 +371,13 @@ double ModuLispInterpreter::wasm_eval_output_at_time(WasmOutputType type,
     char prefixChar = 'a';
     switch (type)
     {
-    case WasmOutputType::CONTINUOUS:
+    case OutputType::ANALOG:
         prefixChar = 'a';
         break;
-    case WasmOutputType::BINARY:
+    case OutputType::DIGITAL:
         prefixChar = 'd';
         break;
-    case WasmOutputType::SERIAL:
+    case OutputType::SERIAL:
         prefixChar = 's';
         break;
     }
@@ -437,9 +434,9 @@ double ModuLispInterpreter::eval_output_at_time(const char* name,
                                                  double time_seconds,
                                                  bool* ok)
 {
-    WasmOutputType type;
+    OutputType type;
     size_t index = 0;
-    if (!wasm_resolve_output(name, type, index))
+    if (!resolve_output(name, type, index))
     {
         if (ok)
         {
@@ -448,45 +445,189 @@ double ModuLispInterpreter::eval_output_at_time(const char* name,
         return std::numeric_limits<double>::quiet_NaN();
     }
 
-    return wasm_eval_output_at_time(type, index, time_seconds, ok);
+    return eval_output_internal(type, index, time_seconds, ok);
 }
 
-#define DEFINE_WASM_OUTPUT_FUNCTION(suffix, index, enumValue)                                   \
-    Value ModuLispInterpreter::useq_##suffix(std::vector<Value>& args, Environment& env)        \
-    {                                                                                           \
-        return wasm_handle_output_assignment("" #suffix "", index, WasmOutputType::enumValue, \
-                                            args, env);                                        \
+// Evaluate all outputs at current time
+std::map<String, double> ModuLispInterpreter::eval_outputs()
+{
+    double current_time_seconds = get_time_manager()->get_transport_time() / 1e6;
+    return eval_outputs(current_time_seconds);
+}
+
+// Evaluate all outputs at specific time
+std::map<String, double> ModuLispInterpreter::eval_outputs(double time_seconds)
+{
+    std::vector<String> all_outputs;
+
+    // Build list of all active outputs
+    for (size_t i = 0; i < m_num_analog_outs; ++i)
+    {
+        all_outputs.push_back(String("a") + String(static_cast<int>(i + 1)));
+    }
+    for (size_t i = 0; i < m_num_digital_outs; ++i)
+    {
+        all_outputs.push_back(String("d") + String(static_cast<int>(i + 1)));
+    }
+    for (size_t i = 0; i < m_num_serial_outs; ++i)
+    {
+        all_outputs.push_back(String("s") + String(static_cast<int>(i + 1)));
     }
 
-DEFINE_WASM_OUTPUT_FUNCTION(a1, 0, CONTINUOUS)
-DEFINE_WASM_OUTPUT_FUNCTION(a2, 1, CONTINUOUS)
-DEFINE_WASM_OUTPUT_FUNCTION(a3, 2, CONTINUOUS)
-DEFINE_WASM_OUTPUT_FUNCTION(a4, 3, CONTINUOUS)
-DEFINE_WASM_OUTPUT_FUNCTION(a5, 4, CONTINUOUS)
-DEFINE_WASM_OUTPUT_FUNCTION(a6, 5, CONTINUOUS)
-DEFINE_WASM_OUTPUT_FUNCTION(a7, 6, CONTINUOUS)
-DEFINE_WASM_OUTPUT_FUNCTION(a8, 7, CONTINUOUS)
+    return eval_outputs(all_outputs, time_seconds);
+}
 
-DEFINE_WASM_OUTPUT_FUNCTION(d1, 0, BINARY)
-DEFINE_WASM_OUTPUT_FUNCTION(d2, 1, BINARY)
-DEFINE_WASM_OUTPUT_FUNCTION(d3, 2, BINARY)
-DEFINE_WASM_OUTPUT_FUNCTION(d4, 3, BINARY)
-DEFINE_WASM_OUTPUT_FUNCTION(d5, 4, BINARY)
-DEFINE_WASM_OUTPUT_FUNCTION(d6, 5, BINARY)
-DEFINE_WASM_OUTPUT_FUNCTION(d7, 6, BINARY)
-DEFINE_WASM_OUTPUT_FUNCTION(d8, 7, BINARY)
+// Evaluate subset of outputs at current time
+std::map<String, double> ModuLispInterpreter::eval_outputs(const std::vector<String>& outputs)
+{
+    double current_time_seconds = get_time_manager()->get_transport_time() / 1e6;
+    return eval_outputs(outputs, current_time_seconds);
+}
 
-DEFINE_WASM_OUTPUT_FUNCTION(s1, 0, SERIAL)
-DEFINE_WASM_OUTPUT_FUNCTION(s2, 1, SERIAL)
-DEFINE_WASM_OUTPUT_FUNCTION(s3, 2, SERIAL)
-DEFINE_WASM_OUTPUT_FUNCTION(s4, 3, SERIAL)
-DEFINE_WASM_OUTPUT_FUNCTION(s5, 4, SERIAL)
-DEFINE_WASM_OUTPUT_FUNCTION(s6, 5, SERIAL)
-DEFINE_WASM_OUTPUT_FUNCTION(s7, 6, SERIAL)
-DEFINE_WASM_OUTPUT_FUNCTION(s8, 7, SERIAL)
+// Evaluate subset of outputs at specific time
+std::map<String, double> ModuLispInterpreter::eval_outputs(
+    const std::vector<String>& outputs,
+    double time_seconds)
+{
+    std::map<String, double> results;
 
-#undef DEFINE_WASM_OUTPUT_FUNCTION
-#endif // WASM_BUILD
+    for (const String& name : outputs)
+    {
+        OutputType type;
+        size_t index;
+
+        if (resolve_output(name.c_str(), type, index))
+        {
+            bool ok = false;
+            double value = eval_output_internal(type, index, time_seconds, &ok);
+            if (ok)
+            {
+                results[name] = value;
+            }
+        }
+    }
+
+    return results;
+}
+
+// Sample outputs across a time window with specified resolution
+// Returns channel-series format: map of output names to vectors of time samples
+std::map<String, std::vector<double>> ModuLispInterpreter::eval_outputs(
+    double start_time_seconds,
+    double end_time_seconds,
+    size_t num_samples,
+    const std::vector<String>& outputs)
+{
+    std::map<String, std::vector<double>> results;
+
+    // Handle edge case: no samples requested
+    if (num_samples == 0)
+    {
+        return results;
+    }
+
+    // Determine which outputs to evaluate
+    std::vector<String> outputs_to_eval = outputs;
+    if (outputs_to_eval.empty())
+    {
+        // Build list of all active outputs
+        for (size_t i = 0; i < m_num_analog_outs; ++i)
+        {
+            outputs_to_eval.push_back(String("a") + String(static_cast<int>(i + 1)));
+        }
+        for (size_t i = 0; i < m_num_digital_outs; ++i)
+        {
+            outputs_to_eval.push_back(String("d") + String(static_cast<int>(i + 1)));
+        }
+        for (size_t i = 0; i < m_num_serial_outs; ++i)
+        {
+            outputs_to_eval.push_back(String("s") + String(static_cast<int>(i + 1)));
+        }
+    }
+
+    // Initialize result vectors for each output
+    for (const auto& output_name : outputs_to_eval)
+    {
+        results[output_name] = std::vector<double>();
+        results[output_name].reserve(num_samples);
+    }
+
+    // Generate time points linearly spaced from start to end
+    double time_step = (num_samples == 1) ? 0.0 : (end_time_seconds - start_time_seconds) / (num_samples - 1);
+
+    // Sample each time point and populate channel vectors
+    for (size_t i = 0; i < num_samples; ++i)
+    {
+        double sample_time = start_time_seconds + (i * time_step);
+
+        // Evaluate all outputs at this time point
+        auto time_point_values = eval_outputs(outputs_to_eval, sample_time);
+
+        // Distribute values to their respective channel vectors
+        for (const auto& output_name : outputs_to_eval)
+        {
+            auto it = time_point_values.find(output_name);
+            if (it != time_point_values.end())
+            {
+                results[output_name].push_back(it->second);
+            }
+            else
+            {
+                // If output not found, push default value
+                results[output_name].push_back(0.0);
+            }
+        }
+    }
+
+    return results;
+}
+
+// Output assignment functions with bounds checking
+#define DEFINE_OUTPUT_FUNCTION(suffix, index, outputType, enumValue)                            \
+    Value ModuLispInterpreter::useq_##suffix(std::vector<Value>& args, Environment& env)        \
+    {                                                                                            \
+        if (index >= m_num_##outputType##_outs)                                                 \
+        {                                                                                        \
+            if (logger)                                                                          \
+            {                                                                                    \
+                logger->warn("Warning: " #suffix " called but only " +                          \
+                           String(static_cast<int>(m_num_##outputType##_outs)) +                \
+                           " " #outputType " outputs available");                               \
+            }                                                                                    \
+            return Value::nil();                                                                 \
+        }                                                                                        \
+        return handle_output_assignment("" #suffix "", index, OutputType::enumValue,            \
+                                       args, env);                                               \
+    }
+
+DEFINE_OUTPUT_FUNCTION(a1, 0, analog, ANALOG)
+DEFINE_OUTPUT_FUNCTION(a2, 1, analog, ANALOG)
+DEFINE_OUTPUT_FUNCTION(a3, 2, analog, ANALOG)
+DEFINE_OUTPUT_FUNCTION(a4, 3, analog, ANALOG)
+DEFINE_OUTPUT_FUNCTION(a5, 4, analog, ANALOG)
+DEFINE_OUTPUT_FUNCTION(a6, 5, analog, ANALOG)
+DEFINE_OUTPUT_FUNCTION(a7, 6, analog, ANALOG)
+DEFINE_OUTPUT_FUNCTION(a8, 7, analog, ANALOG)
+
+DEFINE_OUTPUT_FUNCTION(d1, 0, digital, DIGITAL)
+DEFINE_OUTPUT_FUNCTION(d2, 1, digital, DIGITAL)
+DEFINE_OUTPUT_FUNCTION(d3, 2, digital, DIGITAL)
+DEFINE_OUTPUT_FUNCTION(d4, 3, digital, DIGITAL)
+DEFINE_OUTPUT_FUNCTION(d5, 4, digital, DIGITAL)
+DEFINE_OUTPUT_FUNCTION(d6, 5, digital, DIGITAL)
+DEFINE_OUTPUT_FUNCTION(d7, 6, digital, DIGITAL)
+DEFINE_OUTPUT_FUNCTION(d8, 7, digital, DIGITAL)
+
+DEFINE_OUTPUT_FUNCTION(s1, 0, serial, SERIAL)
+DEFINE_OUTPUT_FUNCTION(s2, 1, serial, SERIAL)
+DEFINE_OUTPUT_FUNCTION(s3, 2, serial, SERIAL)
+DEFINE_OUTPUT_FUNCTION(s4, 3, serial, SERIAL)
+DEFINE_OUTPUT_FUNCTION(s5, 4, serial, SERIAL)
+DEFINE_OUTPUT_FUNCTION(s6, 5, serial, SERIAL)
+DEFINE_OUTPUT_FUNCTION(s7, 6, serial, SERIAL)
+DEFINE_OUTPUT_FUNCTION(s8, 7, serial, SERIAL)
+
+#undef DEFINE_OUTPUT_FUNCTION
 
 Value ModuLispInterpreter::useq_fast(std::vector<Value>& args, Environment& env)
 {
