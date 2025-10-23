@@ -217,7 +217,13 @@ Value ModuLispInterpreter::wasm_handle_output_assignment(const char* name,
         return Value::error();
     }
 
+    // Store the expression as-is (even if it's an atom/symbol).
+    // We'll look up expression bindings dynamically during evaluation,
+    // so that redefined variables update the output.
+    // Example: (define foo (usin bar)) (a1 foo) (define foo (usin beat))
+    // The second define will update a1's output.
     Value expr = args[0];
+
     String lispName(name);
 
     // Persist expression without evaluating it so it can be replayed later.
@@ -382,8 +388,28 @@ double ModuLispInterpreter::wasm_eval_output_at_time(WasmOutputType type,
     String exprName(prefixChar);
     exprName += String(static_cast<int>(index) + 1);
 
+    // If the stored expression is an atom/symbol, look up its current expression binding.
+    // This allows variables to be redefined and have the output update dynamically.
+    // Example: (define foo (usin bar)) (a1 foo) (define foo (usin beat))
+    // Without this lookup, a1 would still output (usin bar) after the redefinition.
+    Value expr_to_eval = slot->expr;
+    if (expr_to_eval.is_symbol())
+    {
+        std::optional<Value> expr_binding = get_environment()->get_expr(expr_to_eval.as_atom());
+        if (expr_binding)
+        {
+            expr_to_eval = *expr_binding;
+        }
+        // If no expression binding found, keep the atom - it will be evaluated as a value
+    }
+
     set_atom_currently_being_evaluated(exprName);
-    Value result = eval_at_time(slot->expr, *get_environment(), time_micros);
+    // Enable expression-first evaluation (like hardware does in update_signals)
+    // This makes atom evaluation look up expression bindings first, allowing
+    // redefined variables to update outputs dynamically.
+    set_attempt_expr_eval_first(true);
+    Value result = eval_at_time(expr_to_eval, *get_environment(), time_micros);
+    set_attempt_expr_eval_first(false);
     set_atom_currently_being_evaluated(String(""));
 
     if (!result.is_number())

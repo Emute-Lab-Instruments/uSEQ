@@ -264,8 +264,6 @@ public:
     {
         m_update_loop_evaluation = value;
     }
-    static bool get_manual_evaluation() { return m_manual_evaluation; }
-    static void set_manual_evaluation(bool value) { m_manual_evaluation = value; }
 
     // Instance pointer helper for uSEQ integration
     static void set_useq_instance_ptr(uSEQ* ptr) { useq_instance_ptr = ptr; }
@@ -413,7 +411,6 @@ private:
     // Static flags and shared state
     static bool m_attempt_expr_eval_first;
     static bool m_eval_expr_if_def_not_found;
-    static bool m_manual_evaluation;
     static bool m_update_loop_evaluation;
     static String m_atom_currently_being_evaluated;
 

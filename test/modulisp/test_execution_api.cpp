@@ -131,46 +131,6 @@ TEST_CASE("execute_now() - error code populates error fields", "[execution][api]
     }
 }
 
-TEST_CASE("execute_now() - manual_evaluation flag handling", "[execution][api][flags]")
-{
-    ModuLispInterpreter interp(nullptr);
-
-    // Verify flag starts as false
-    REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
-
-    SECTION("Flag is set during execution and restored after")
-    {
-        // Note: We can't directly observe the flag DURING execution,
-        // but we can verify it's restored after
-        ExecutionResult result = interp.execute_now("(+ 1 1)");
-
-        // After execution, flag should be restored to false
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
-        REQUIRE(result.result_text == "2");
-    }
-
-    SECTION("Flag is restored even after error")
-    {
-        ExecutionResult result = interp.execute_now("undefined-symbol-causes-error");
-
-        // Flag should be restored even when errors occur
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
-        REQUIRE(result.had_errors == true);
-    }
-
-    SECTION("Multiple consecutive calls each toggle flag correctly")
-    {
-        interp.execute_now("1");
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
-
-        interp.execute_now("2");
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
-
-        interp.execute_now("3");
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
-    }
-}
-
 TEST_CASE("execute_now() - error queue is cleared before execution",
           "[execution][api][errors]")
 {
@@ -283,30 +243,6 @@ TEST_CASE("schedule_code() - echoes scheduled code as confirmation",
         REQUIRE(result.result_text.indexOf("def") >= 0);
         REQUIRE(result.result_text.indexOf("my-func") >= 0);
         REQUIRE(result.result_text.indexOf("lambda") >= 0);
-    }
-}
-
-TEST_CASE("schedule_code() - manual_evaluation flag handling",
-          "[execution][api][scheduling][flags]")
-{
-    ModuLispInterpreter interp(nullptr);
-
-    REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
-
-    SECTION("Flag is restored after scheduling")
-    {
-        interp.schedule_code("(a1 0.5)");
-
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
-    }
-
-    SECTION("Flag handling is consistent across multiple calls")
-    {
-        interp.schedule_code("1");
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
-
-        interp.schedule_code("2");
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
     }
 }
 

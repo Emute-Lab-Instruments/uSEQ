@@ -9,10 +9,6 @@
 
 ExecutionResult ModuLispInterpreter::execute_now(const String& code)
 {
-    // Set manual evaluation mode to distinguish user input from automated eval
-    // This flag affects how certain operations behave (e.g., error reporting)
-    set_manual_evaluation(true);
-
     // Clear any previous errors before execution
     // This ensures we only capture errors from THIS execution
     error_msg_q.clear();
@@ -27,17 +23,11 @@ ExecutionResult ModuLispInterpreter::execute_now(const String& code)
     exec_result.errors = error_msg_q;  // Copy error queue to result
     exec_result.printed = true;         // Immediate execution always prints
 
-    // Restore manual evaluation flag
-    set_manual_evaluation(false);
-
     return exec_result;
 }
 
 ExecutionResult ModuLispInterpreter::schedule_code(const String& code)
 {
-    // Set manual evaluation mode (same rationale as execute_now)
-    set_manual_evaluation(true);
-
     // Parse the code into an AST Value
     // NOTE: Parsing errors would be captured in error_msg_q, but current
     // implementation doesn't check them here (matches original behavior)
@@ -53,9 +43,6 @@ ExecutionResult ModuLispInterpreter::schedule_code(const String& code)
     exec_result.had_errors = false;     // Scheduling itself doesn't produce errors
     exec_result.errors.clear();         // No errors
     exec_result.printed = true;         // Echo confirms scheduling
-
-    // Restore manual evaluation flag
-    set_manual_evaluation(false);
 
     return exec_result;
 }

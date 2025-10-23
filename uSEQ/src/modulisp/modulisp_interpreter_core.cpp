@@ -23,7 +23,6 @@ bool INTERP_MEM user_interaction = false;
 
 bool INTERP_MEM ModuLispInterpreter::m_attempt_expr_eval_first          = false;
 bool INTERP_MEM ModuLispInterpreter::m_eval_expr_if_def_not_found       = true;
-bool INTERP_MEM ModuLispInterpreter::m_manual_evaluation                = false;
 bool INTERP_MEM ModuLispInterpreter::m_update_loop_evaluation           = false;
 String INTERP_MEM ModuLispInterpreter::m_atom_currently_being_evaluated = "";
 

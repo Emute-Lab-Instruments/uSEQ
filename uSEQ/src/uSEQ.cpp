@@ -518,7 +518,6 @@ void FAST_FUNC(uSEQ::tick())
         {
             auto eval_startup_form = [this](const String& code) -> bool
             {
-                set_manual_evaluation(true);
                 error_msg_q.clear();
                 String result = eval(code);
 
@@ -533,7 +532,6 @@ void FAST_FUNC(uSEQ::tick())
                     println(result);
                 }
 
-                set_manual_evaluation(false);
                 return success;
             };
 

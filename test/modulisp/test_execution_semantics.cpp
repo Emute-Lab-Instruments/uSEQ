@@ -93,9 +93,7 @@ TEST_CASE("CHARACTERIZATION: execute immediate code with @ marker",
         //   - result = eval(code)
         //   - check errors
         //   - print result
-        //   - set_manual_evaluation(false)
 
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         String result = interp.eval("(+ 1 2)");
@@ -103,14 +101,10 @@ TEST_CASE("CHARACTERIZATION: execute immediate code with @ marker",
         // EXPECTED: Result is "3", no errors
         REQUIRE(result.indexOf("3") >= 0);
         REQUIRE(error_msg_q.empty());
-
-        ModuLispInterpreter::set_manual_evaluation(false);
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
     }
 
     SECTION("Variable definition and access")
     {
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         // Define variable
@@ -124,34 +118,26 @@ TEST_CASE("CHARACTERIZATION: execute immediate code with @ marker",
         String result2 = interp.eval("x");
         REQUIRE(result2.indexOf("42") >= 0);
         REQUIRE(error_msg_q.empty());
-
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 
     SECTION("Function call evaluation")
     {
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         String result = interp.eval("(* 6 7)");
 
         REQUIRE(result.indexOf("42") >= 0);
         REQUIRE(error_msg_q.empty());
-
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 
     SECTION("String return values")
     {
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         String result = interp.eval("\"hello world\"");
 
         REQUIRE(result.indexOf("hello world") >= 0);
         REQUIRE(error_msg_q.empty());
-
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 }
 
@@ -168,15 +154,11 @@ TEST_CASE("CHARACTERIZATION: schedule code for later execution",
     SECTION("Schedule simple expression")
     {
         // CHARACTERIZATION: Simulates the scheduled execution path
-        // Current behavior (lines 758-771):
-        //   - set_manual_evaluation(true)
+        // Current behavior:
         //   - prepend first_byte to code (if not @ marker)
         //   - echo the code (println)
         //   - parse -> Value
         //   - add to scheduler run queue
-        //   - set_manual_evaluation(false)
-
-        ModuLispInterpreter::set_manual_evaluation(true);
 
         // Simulate code that would be scheduled (first byte is part of expression)
         String code = "(+ 1 2)";
@@ -192,14 +174,10 @@ TEST_CASE("CHARACTERIZATION: schedule code for later execution",
 
         // EXPECTED: Code added to run queue
         REQUIRE(interp.get_scheduler()->get_run_queue().size() == initial_queue_size + 1);
-
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 
     SECTION("Schedule multiple expressions")
     {
-        ModuLispInterpreter::set_manual_evaluation(true);
-
         Value expr1 = interp.get_parser()->parse("(define a 1)");
         Value expr2 = interp.get_parser()->parse("(define b 2)");
 
@@ -210,8 +188,6 @@ TEST_CASE("CHARACTERIZATION: schedule code for later execution",
 
         // EXPECTED: Both expressions added
         REQUIRE(interp.get_scheduler()->get_run_queue().size() == initial_size + 2);
-
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 
     SECTION("First byte prepending behavior")
@@ -219,8 +195,6 @@ TEST_CASE("CHARACTERIZATION: schedule code for later execution",
         // CHARACTERIZATION: In actual usage, first_byte is prepended to code
         // This simulates lines 761-762:
         //   m_last_received_code = String((char)first_byte) + m_last_received_code;
-
-        ModuLispInterpreter::set_manual_evaluation(true);
 
         // Simulate first_byte = '('
         char first_byte   = '(';
@@ -233,8 +207,6 @@ TEST_CASE("CHARACTERIZATION: schedule code for later execution",
         // EXPECTED: Successfully parsed
         REQUIRE(expr.get_type_enum() != 12); // Not NIL
         REQUIRE(expr.get_type_enum() != 14); // Not ERROR
-
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 }
 
@@ -310,7 +282,6 @@ TEST_CASE("CHARACTERIZATION: handle execution errors",
         //   - check error_msg_q.size() > 0
         //   - print error_msg_q[0]
 
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         String result = interp.eval("(undefined-func 1 2)");
@@ -329,12 +300,10 @@ TEST_CASE("CHARACTERIZATION: handle execution errors",
         }
         REQUIRE(has_error_info);
 
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 
     SECTION("Undefined variable error")
     {
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         String result = interp.eval("nonexistent-var");
@@ -342,12 +311,10 @@ TEST_CASE("CHARACTERIZATION: handle execution errors",
         // EXPECTED: error_msg_q has error about undefined variable
         REQUIRE(error_msg_q.size() > 0);
 
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 
     SECTION("Syntax error")
     {
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         // Malformed expression (extra closing paren)
@@ -359,12 +326,10 @@ TEST_CASE("CHARACTERIZATION: handle execution errors",
         bool is_error = error_msg_q.size() > 0 || result.indexOf("3") < 0;
         REQUIRE(is_error);
 
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 
     SECTION("Type error")
     {
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         // Try to add incompatible types
@@ -373,12 +338,10 @@ TEST_CASE("CHARACTERIZATION: handle execution errors",
         // EXPECTED: error_msg_q populated
         REQUIRE(error_msg_q.size() > 0);
 
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 
     SECTION("Division by zero")
     {
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         // Try to divide by zero
@@ -389,7 +352,6 @@ TEST_CASE("CHARACTERIZATION: handle execution errors",
         // At minimum, we shouldn't crash
         REQUIRE(true);
 
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 }
 
@@ -408,19 +370,13 @@ TEST_CASE("CHARACTERIZATION: manual_evaluation flag behavior",
         // Lines 677, 774
 
         // Initially should be false (or we set it)
-        ModuLispInterpreter::set_manual_evaluation(false);
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
 
         // Simulate execution path
-        ModuLispInterpreter::set_manual_evaluation(true);
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == true);
 
         // ... eval happens here ...
         String result = interp.eval("(+ 1 2)");
 
         // Reset at end
-        ModuLispInterpreter::set_manual_evaluation(false);
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
     }
 
     SECTION("Flag distinguishes manual from automated eval")
@@ -430,12 +386,8 @@ TEST_CASE("CHARACTERIZATION: manual_evaluation flag behavior",
         // evaluation during update loops
 
         // Manual evaluation (user input)
-        ModuLispInterpreter::set_manual_evaluation(true);
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == true);
-        ModuLispInterpreter::set_manual_evaluation(false);
 
         // Automated evaluation (update loop)
-        REQUIRE(ModuLispInterpreter::get_manual_evaluation() == false);
     }
 }
 
@@ -502,7 +454,6 @@ TEST_CASE("CHARACTERIZATION: full execution flow simulation",
     SECTION("Immediate execution full flow")
     {
         // Simulate complete immediate execution flow
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         String code   = "(+ 1 2)";
@@ -513,13 +464,11 @@ TEST_CASE("CHARACTERIZATION: full execution flow simulation",
         REQUIRE(result.indexOf("3") >= 0);
 
         // Result would be printed here in actual system
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 
     SECTION("Scheduled execution full flow")
     {
         // Simulate complete scheduled execution flow
-        ModuLispInterpreter::set_manual_evaluation(true);
 
         String code = "(define test-var 123)";
         Value expr  = interp.get_parser()->parse(code);
@@ -531,13 +480,11 @@ TEST_CASE("CHARACTERIZATION: full execution flow simulation",
         REQUIRE(after == before + 1);
 
         // Code would be echoed here in actual system
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 
     SECTION("Error execution full flow")
     {
         // Simulate complete error handling flow
-        ModuLispInterpreter::set_manual_evaluation(true);
         error_msg_q.clear();
 
         String code   = "(bad-function)";
@@ -547,6 +494,5 @@ TEST_CASE("CHARACTERIZATION: full execution flow simulation",
         REQUIRE(had_errors);
 
         // Error would be printed here in actual system
-        ModuLispInterpreter::set_manual_evaluation(false);
     }
 }

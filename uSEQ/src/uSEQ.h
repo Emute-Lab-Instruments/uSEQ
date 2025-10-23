@@ -154,14 +154,6 @@ public:
     {
         ModuLispInterpreter::set_update_loop_evaluation(value);
     }
-    bool get_manual_evaluation()
-    {
-        return ModuLispInterpreter::get_manual_evaluation();
-    }
-    void set_manual_evaluation(bool value)
-    {
-        ModuLispInterpreter::set_manual_evaluation(value);
-    }
     void init_interpreter() { m_interpreter.init(); }
     void set_bpm(double newBpm, double changeThreshold)
     {
