@@ -537,6 +537,17 @@ void uSEQ::update_inputs()
     }
     m_input_vals[MTZSWITCH] = switchVal;
 
+    // Log toggle switch change (MUSICTHING hardware)
+    if (m_input_vals[MTZSWITCH] != m_prev_toggle_val)
+    {
+        log_switch_event(SwitchEvent::TOGGLE, m_input_vals[MTZSWITCH]);
+        if (m_toggle_switch_callback)
+        {
+            (*m_toggle_switch_callback)(m_switch_event_log[(m_switch_event_log_write_pos + SWITCH_EVENT_LOG_SIZE - 1) % SWITCH_EVENT_LOG_SIZE]);
+        }
+        m_prev_toggle_val = m_input_vals[MTZSWITCH];
+    }
+
     // Serial.print(m_input_vals[MTMAINKNOB]);
     // Serial.print("\t");
     // Serial.print(m_input_vals[MTXKNOB]);
@@ -557,6 +568,17 @@ void uSEQ::update_inputs()
     // #ifdef USEQHARDWARE_1_0
     // #else
     m_input_vals[USEQT1] = 1 - digitalRead(USEQ_PIN_SWITCH_T1);
+
+    // Log toggle switch change (non-MUSICTHING, simple toggle)
+    if (m_input_vals[USEQT1] != m_prev_toggle_val)
+    {
+        log_switch_event(SwitchEvent::TOGGLE, m_input_vals[USEQT1]);
+        if (m_toggle_switch_callback)
+        {
+            (*m_toggle_switch_callback)(m_switch_event_log[(m_switch_event_log_write_pos + SWITCH_EVENT_LOG_SIZE - 1) % SWITCH_EVENT_LOG_SIZE]);
+        }
+        m_prev_toggle_val = m_input_vals[USEQT1];
+    }
 #endif // MUSICTHING
 
 #ifdef USEQHARDWARE_0_2
@@ -586,8 +608,30 @@ void uSEQ::update_inputs()
         }
     }
 
+    // Log toggle switch change
+    if (m_input_vals[USEQT1] != m_prev_toggle_val)
+    {
+        log_switch_event(SwitchEvent::TOGGLE, m_input_vals[USEQT1]);
+        if (m_toggle_switch_callback)
+        {
+            (*m_toggle_switch_callback)(m_switch_event_log[(m_switch_event_log_write_pos + SWITCH_EVENT_LOG_SIZE - 1) % SWITCH_EVENT_LOG_SIZE]);
+        }
+        m_prev_toggle_val = m_input_vals[USEQT1];
+    }
+
     // MOMENTARY
     m_input_vals[USEQM1] = 1 - digitalRead(USEQ_PIN_SWITCH_M1);
+
+    // Log momentary switch change
+    if (m_input_vals[USEQM1] != m_prev_momentary_val)
+    {
+        log_switch_event(SwitchEvent::MOMENTARY, m_input_vals[USEQM1]);
+        if (m_momentary_switch_callback)
+        {
+            (*m_momentary_switch_callback)(m_switch_event_log[(m_switch_event_log_write_pos + SWITCH_EVENT_LOG_SIZE - 1) % SWITCH_EVENT_LOG_SIZE]);
+        }
+        m_prev_momentary_val = m_input_vals[USEQM1];
+    }
 
     // switch off LED while making measurements
     //  digitalWrite(USEQ_PIN_LED_AI1, 0);
@@ -2269,6 +2313,65 @@ Value uSEQ::useq_swt(std::vector<Value>& args, Environment& env)
     Value result = Value::nil();
     result       = Value(m_input_vals[USEQT1]);
     return result;
+}
+
+// Switch event logging implementation
+void uSEQ::log_switch_event(SwitchEvent::Type type, double value)
+{
+    m_switch_event_log[m_switch_event_log_write_pos] = {type, value, m_time_since_boot};
+    m_switch_event_log_write_pos = (m_switch_event_log_write_pos + 1) % SWITCH_EVENT_LOG_SIZE;
+    if (m_switch_event_log_count < SWITCH_EVENT_LOG_SIZE)
+    {
+        m_switch_event_log_count++;
+    }
+}
+
+void uSEQ::setMomentarySwitchCallback(SwitchCallback callback)
+{
+    m_momentary_switch_callback = callback;
+}
+
+void uSEQ::setToggleSwitchCallback(SwitchCallback callback)
+{
+    m_toggle_switch_callback = callback;
+}
+
+void uSEQ::clearMomentarySwitchCallback()
+{
+    m_momentary_switch_callback.reset();
+}
+
+void uSEQ::clearToggleSwitchCallback()
+{
+    m_toggle_switch_callback.reset();
+}
+
+std::vector<SwitchEvent> uSEQ::getSwitchEventLog(size_t count) const
+{
+    std::vector<SwitchEvent> result;
+
+    if (count == 0 || count > m_switch_event_log_count)
+    {
+        count = m_switch_event_log_count;
+    }
+
+    result.reserve(count);
+
+    // Calculate starting position for requested count
+    size_t start_pos = (m_switch_event_log_write_pos + SWITCH_EVENT_LOG_SIZE - count) % SWITCH_EVENT_LOG_SIZE;
+
+    for (size_t i = 0; i < count; i++)
+    {
+        result.push_back(m_switch_event_log[(start_pos + i) % SWITCH_EVENT_LOG_SIZE]);
+    }
+
+    return result;
+}
+
+void uSEQ::clearSwitchEventLog()
+{
+    m_switch_event_log_write_pos = 0;
+    m_switch_event_log_count = 0;
 }
 
 // NOTE: doesn't eval its arguments until they're selected by the phasor

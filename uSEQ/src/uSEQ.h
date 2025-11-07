@@ -10,9 +10,12 @@
 #include "lisp/macros.h"
 #include "lisp/value.h"
 #include "uSEQ/configure.h"
+#include <array>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <sys/types.h>
 // #include "utils/serial_message.h"
 
@@ -35,6 +38,15 @@ private:
 public:
     maxiFilter() {}
     double lopass(double input, double cutoff);
+};
+
+// Switch event structure for logging
+struct SwitchEvent
+{
+    enum Type { MOMENTARY, TOGGLE };
+    Type type;
+    double value;
+    TimeValue timestamp;
 };
 
 class uSEQ : public Interpreter
@@ -75,6 +87,16 @@ public:
 
     uSEQ::CLOCK_SOURCES getClockSource() { return useq_clock_source; }
 
+    // Switch event logging and callbacks
+    using SwitchCallback = std::function<void(const SwitchEvent&)>;
+
+    void setMomentarySwitchCallback(SwitchCallback callback);
+    void setToggleSwitchCallback(SwitchCallback callback);
+    void clearMomentarySwitchCallback();
+    void clearToggleSwitchCallback();
+    std::vector<SwitchEvent> getSwitchEventLog(size_t count = 0) const;
+    void clearSwitchEventLog();
+
 private:
     // IO m_io;
 
@@ -112,6 +134,17 @@ private:
     double m_input_vals[14];
     // NOTE this was a std vector before, init with 0
     double m_serial_input_streams[NUM_SERIAL_INS];
+
+    // Switch event logging
+    static constexpr size_t SWITCH_EVENT_LOG_SIZE = 100;
+    std::array<SwitchEvent, SWITCH_EVENT_LOG_SIZE> m_switch_event_log;
+    size_t m_switch_event_log_write_pos = 0;
+    size_t m_switch_event_log_count = 0;
+    std::optional<SwitchCallback> m_momentary_switch_callback;
+    std::optional<SwitchCallback> m_toggle_switch_callback;
+    double m_prev_momentary_val = -1;
+    double m_prev_toggle_val = -1;
+    void log_switch_event(SwitchEvent::Type type, double value);
 
     // Timing (NOTE: in micros)
     // actual time that module has been running for
