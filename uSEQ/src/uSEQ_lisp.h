@@ -18,6 +18,7 @@ LISP_FUNC_DECL(useq_pause);
 LISP_FUNC_DECL(useq_stop);
 LISP_FUNC_DECL(useq_rewind);
 LISP_FUNC_DECL(useq_clear);
+LISP_FUNC_DECL(useq_get_transport_state);
 
 #ifdef ARDUINO
 // Flash memory and storage functions

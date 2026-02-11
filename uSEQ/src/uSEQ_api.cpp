@@ -105,6 +105,7 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("useq-stop", useq_stop);
     INSERT_BUILTINDEF("useq-rewind", useq_rewind);
     INSERT_BUILTINDEF("useq-clear", useq_clear);
+    INSERT_BUILTINDEF("useq-get-transport-state", useq_get_transport_state);
 
     // Sample management functions
     INSERT_BUILTINDEF("list-samples", useq_list_samples);
@@ -175,14 +176,38 @@ BUILTINFUNC_NOEVAL_MEMBER(useq_q0, get_environment()->set("q-expr", args[0]);
                           ret = Value::atom("q0");, 1)
 
 // Playback/transport control implementations (0-arg)
-BUILTINFUNC_MEMBER(useq_play, m_is_playing = true; return Value::nil();, 0)
+BUILTINFUNC_MEMBER(useq_play,
+    m_is_playing = true;
+    m_pending_transport_meta = "{\"transport\":\"playing\"}";
+    return Value::nil();
+, 0)
 
-BUILTINFUNC_MEMBER(useq_pause, m_is_playing = false; return Value::nil();, 0)
+BUILTINFUNC_MEMBER(useq_pause,
+    m_is_playing = false;
+    m_pending_transport_meta = "{\"transport\":\"paused\"}";
+    return Value::nil();
+, 0)
 
-BUILTINFUNC_MEMBER(useq_stop, m_is_playing = false; reset_logical_time();
-                   return Value::nil();, 0)
+BUILTINFUNC_MEMBER(useq_stop,
+    m_is_playing = false;
+    reset_logical_time();
+    m_pending_transport_meta = "{\"transport\":\"stopped\"}";
+    return Value::nil();
+, 0)
 
-BUILTINFUNC_MEMBER(useq_rewind, reset_logical_time(); return Value::nil();, 0)
+BUILTINFUNC_MEMBER(useq_rewind,
+    reset_logical_time();
+    m_pending_transport_meta = "{\"transport\":\"stopped\"}";
+    return Value::nil();
+, 0)
+
+// Transport state query
+BUILTINFUNC_MEMBER(useq_get_transport_state,
+    if (m_is_playing) return Value::string("playing");
+    if (m_interpreter.get_time_manager()->get_transport_time() == 0.0)
+        return Value::string("stopped");
+    return Value::string("paused");
+, 0)
 
 // Set output expressions to defaults (0.5 for continuous, 0 for binary)
 BUILTINFUNC_MEMBER(

@@ -7,6 +7,7 @@
 #endif
 #include "utils.h"
 #include "utils/default_logger.h"
+#include "utils/json_builder.h"
 #include "utils/log.h"
 #include "utils/logger_bridge.h"
 #include "utils/serial_message.h"
@@ -612,17 +613,66 @@ bool uSEQ::handle_json_serial_request(const String& payload)
         return true;
     }
 
-    if (parsed_request->type.length() > 0 && parsed_request->type != "eval")
+    const String& type = parsed_request->type;
+
+    // ===== HELLO: protocol negotiation =====
+    if (type == "hello")
     {
-        Protocol::consume_request_text();
-        Protocol::send_json_error(parsed_request->request_id,
-                                  String("Unsupported request type: ") +
-                                      parsed_request->type);
+        Protocol::enable_json_mode();
+
+        // Build ioConfig with input channel list
+        JsonBuilder inputs_arr;
+        inputs_arr.array_begin_unkeyed();
+        for (int i = 1; i <= (int)m_num_serial_ins; ++i)
+        {
+            inputs_arr.object_begin()
+                .field("index", i)
+                .field("name", String("ssin") + String(i))
+                .object_end();
+        }
+        inputs_arr.array_end();
+
+        JsonBuilder config;
+        config.object_begin()
+            .field_raw("inputs", inputs_arr.build())
+            .object_end();
+
+        JsonBuilder response;
+        response.object_begin()
+            .field("success", true)
+            .field("mode", "json")
+            .field("fw", (const char*)USEQ_FIRMWARE_VERSION)
+            .field_raw("config", config.build())
+            .field("requestId", parsed_request->request_id)
+            .object_end();
+
+        Protocol::send_raw_json(response.build());
         Protocol::finish_request();
         return true;
     }
 
+    // ===== PING: heartbeat =====
+    if (type == "ping")
+    {
+        Protocol::send_json_response(true, String(""), std::nullopt,
+                                     parsed_request->request_id);
+        Protocol::finish_request();
+        return true;
+    }
+
+    // ===== STREAM-CONFIG: acknowledge channel configuration =====
+    if (type == "stream-config")
+    {
+        Protocol::send_json_response(true, String(""), std::nullopt,
+                                     parsed_request->request_id);
+        Protocol::finish_request();
+        return true;
+    }
+
+    // ===== EVAL (default): evaluate code =====
     error_msg_q.clear();
+    m_pending_transport_meta = "";
+
     String eval_result = eval(parsed_request->code);
     String console_out = Protocol::consume_request_text();
 
@@ -649,7 +699,15 @@ bool uSEQ::handle_json_serial_request(const String& payload)
         }
     }
 
-    Protocol::send_json_response(success, console_out, std::nullopt,
+    // Pass transport meta if a transport builtin set it during eval
+    std::optional<String> meta = std::nullopt;
+    if (m_pending_transport_meta.length() > 0)
+    {
+        meta = m_pending_transport_meta;
+        m_pending_transport_meta = "";
+    }
+
+    Protocol::send_json_response(success, console_out, meta,
                                  parsed_request->request_id);
     Protocol::finish_request();
     error_msg_q.clear();

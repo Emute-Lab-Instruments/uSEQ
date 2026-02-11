@@ -1,4 +1,5 @@
 #include "log.h"
+#include "json_builder.h"
 #include "logger_bridge.h"
 
 #include <cstdio>
@@ -140,29 +141,34 @@ void send_json_response(bool success, const String& text,
                         const std::optional<String>& meta,
                         const String& request_id)
 {
-    String payload = "{";
-    payload += "\"type\":\"response\",";
-    payload += "\"success\":";
-    payload += success ? "true" : "false";
-    payload += ",\"text\":\"" + escape_json_string(text) + "\",";
-    payload += "\"meta\":";
+    JsonBuilder b;
+    b.object_begin()
+        .field("type", "response")
+        .field("success", success)
+        .field("console", text)
+        .field("text", text);
+
     if (meta && meta->length() > 0)
     {
-        payload += *meta;
+        b.field_raw("meta", *meta);
     }
     else
     {
-        payload += "null";
+        b.field_null("meta");
     }
-    payload += ",\"requestId\":\"" + escape_json_string(request_id) + "\"}";
 
-    write_serial_json(payload);
+    b.field("requestId", request_id)
+        .object_end();
+
+    write_serial_json(b.build());
 }
 
 void send_json_error(const String& request_id, const String& message)
 {
     send_json_response(false, message, std::nullopt, request_id);
 }
+
+void send_raw_json(const String& payload) { write_serial_json(payload); }
 } // namespace Protocol
 
 void message_editor(const String& s)

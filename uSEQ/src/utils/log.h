@@ -80,6 +80,7 @@ void send_json_response(bool success, const String& text,
                         const std::optional<String>& meta,
                         const String& request_id);
 void send_json_error(const String& request_id, const String& message);
+void send_raw_json(const String& payload);
 } // namespace Protocol
 
 // void serve_message(const uSEQ_Message& msg);

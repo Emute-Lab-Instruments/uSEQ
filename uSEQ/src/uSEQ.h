@@ -210,6 +210,7 @@ private:
     bool m_current_expr_sound       = true;
     bool m_waiting_for_sync_trigger = false;
     bool m_is_playing               = true;
+    String m_pending_transport_meta  = "";
 
     OutputManager* m_output_manager;
 
