@@ -18,3 +18,9 @@
 - `uSEQ/src/dsp`: DSP (e.g. sampling and some basic synthesis) to run on the second core.
 - `uSEQ/src/io`: Functionality relating to hardware and/or software IO (NOTE: not currently used).
 - `uSEQ/src/ml`: Functionality for Machine Learning, e.g. input analysis or pattern generation.
+
+## Refactor Contracts
+
+- `docs/architecture/adr-0001-modular-refactor-boundaries.md`: Baseline boundary and dependency-direction contract for epic `useq-tp1`.
+- `docs/architecture/useq-tp1-checklist.md`: Checklist and completion gates for all `useq-tp1.*` subtasks.
+- `docs/architecture/useq-tp1-baseline-metrics.csv`: Baseline hotspot metrics for before/after comparisons.
