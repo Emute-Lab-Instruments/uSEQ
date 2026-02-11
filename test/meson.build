@@ -73,6 +73,10 @@ error_handling_test_src = [
   'modulisp/core/test_error_handling.cpp'
 ]
 
+builtin_validation_matrix_test_src = [
+  'modulisp/core/test_builtin_validation_matrix.cpp'
+]
+
 # ===== ModuLisp API Tests (module-specific) =====
 modulisp_api_test_src = [
   'modulisp/api/test_modulisp_api.cpp'
@@ -125,6 +129,10 @@ storage_env_test_src = [
 
 output_manager_test_src = [
   'hardware/test_output_manager.cpp'
+]
+
+json_protocol_routing_test_src = [
+  'hardware/test_json_protocol_routing.cpp'
 ]
 
 # IOManager tests - COMMENTED OUT: test_io_manager.cpp doesn't exist
@@ -226,6 +234,16 @@ test_error_handling_exe = executable(
   dependencies : [modulisp_dep, math_dep]
 )
 
+# Builtin validation matrix executable
+test_builtin_validation_matrix_exe = executable(
+  'test_builtin_validation_matrix',
+  sources : builtin_validation_matrix_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
 # Signals test executable - DISABLED - uses removed DSP methods
 # test_signals_exe = executable(
 #   'test_signals',
@@ -270,6 +288,7 @@ test('parser_error_reporting_test', test_parser_error_reporting_exe)
 test('interpreter_api_test', test_interpreter_api_exe)
 test('modulisp_api_test', test_modulisp_api_exe)
 test('error_handling_test', test_error_handling_exe)
+test('builtin_validation_matrix_test', test_builtin_validation_matrix_exe)
 # test('signals_test', test_signals_exe)  # Temporarily disabled - uses removed DSP methods
 # test('automation_analysis_test', test_automation_analysis_exe)
 # test('smoothness_test', test_smoothness_exe)  # Temporarily disabled - uses removed DSP methods
@@ -413,6 +432,18 @@ output_manager_exe = executable(
 )
 
 test('output_manager_test', output_manager_exe)
+
+# JSON protocol routing test executable - needs full hardware dependency
+json_protocol_routing_exe = executable(
+  'test_json_protocol_routing',
+  sources : json_protocol_routing_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [useq_hw_dep, math_dep]
+)
+
+test('json_protocol_routing_test', json_protocol_routing_exe)
 
 # IOManager test executable - COMMENTED OUT: test file doesn't exist
 # io_manager_exe = executable(

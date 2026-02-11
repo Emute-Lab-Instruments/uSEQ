@@ -328,6 +328,10 @@ private:
 public:
     // Test hook to exercise write paths without exposing internals
     void __test_call_writes(double a0, int d0, double s0);
+    bool __test_handle_json_serial_request(const String& payload)
+    {
+        return handle_json_serial_request(payload);
+    }
 
     // Test hooks for I2C functions
 #ifdef ENABLE_I2C_NETWORKING

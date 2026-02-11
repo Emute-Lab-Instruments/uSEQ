@@ -3,6 +3,7 @@
 - Epic: `useq-tp1`
 - Contract ADR: `docs/architecture/adr-0001-modular-refactor-boundaries.md`
 - Baseline metrics: `docs/architecture/useq-tp1-baseline-metrics.csv`
+- TP1.2 test matrix: `docs/architecture/useq-tp1.2-test-matrix.md`
 - Last updated: 2026-02-11
 
 ## Epic-Level Gates
@@ -16,7 +17,7 @@
 ## Subtask Tracking
 
 - [x] `useq-tp1.1` Create baseline architecture map and dependency contract.
-- [ ] `useq-tp1.2` Expand refactor safety test harnesses before major extraction.
+- [x] `useq-tp1.2` Expand refactor safety test harnesses before major extraction.
 - [ ] `useq-tp1.3` Introduce runtime interfaces and delegation seams (no behavior change).
 - [ ] `useq-tp1.4` Extract CommandRouter from `uSEQ.cpp` (serial/JSON dispatch isolation).
 - [ ] `useq-tp1.5` Extract output evaluation service from `uSEQ_update.cpp`.
