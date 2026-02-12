@@ -540,6 +540,58 @@ MIDI Drum Out
 
 
 
+# Transport Control
+
+These functions control the playback state of the uSEQ module.
+
+## `useq-play`
+
+Start playback. The module resumes evaluating output expressions and advancing transport time.
+
+```
+@(useq-play)
+```
+
+## `useq-pause`
+
+Pause playback. Transport time freezes at its current position; outputs hold their last values.
+
+```
+@(useq-pause)
+```
+
+## `useq-stop`
+
+Stop playback and reset transport time to zero.
+
+```
+@(useq-stop)
+```
+
+## `useq-rewind`
+
+Reset transport time to zero without changing the playing/paused state.
+
+```
+@(useq-rewind)
+```
+
+## `useq-clear`
+
+Reset all output expressions to their defaults (0.5 for continuous outputs, 0 for binary outputs).
+
+```
+@(useq-clear)
+```
+
+## `useq-get-transport-state`
+
+Query the current transport state. Returns one of the strings `"playing"`, `"paused"`, or `"stopped"`.
+
+```
+@(useq-get-transport-state)
+```
+
 # System Functions
 
 ## `perf`

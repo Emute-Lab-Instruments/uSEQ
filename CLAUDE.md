@@ -128,9 +128,17 @@ python scripts/serve_wasm.py
 2. **uSEQ** (`/uSEQ/src/`)
    - Hardware interface class that extends `ModuLisp`
    - Manages I/O, I2C communication, LED control, flash storage
-   - Key files: `uSEQ.h/cpp`, `uSEQ_io.cpp`, `uSEQ_i2c.cpp`, `uSEQ_update.cpp`
+   - Handles JSON serial protocol (hello, ping, stream-config, eval dispatch)
+   - Key files: `uSEQ.h/cpp`, `uSEQ_api.cpp`, `uSEQ_io.cpp`, `uSEQ_i2c.cpp`, `uSEQ_update.cpp`
 
-3. **LISP Interpreter** (`/uSEQ/src/modulisp/lisp/`)
+3. **JSON Protocol** (`/uSEQ/src/utils/`)
+   - `log.cpp` / `log.h`: `Protocol` namespace — JSON mode toggle, request tracking, response sending
+   - `json_builder.h`: Lightweight fluent `JsonBuilder` for constructing JSON without external libraries
+   - `serial_message.h`: Wire-level constants (start marker `0x1F`, message type bytes)
+   - Protocol is negotiated via `hello` handshake; supports `ping`, `stream-config`, and `eval` requests
+   - Transport builtins push state changes via the `meta` field in eval responses
+
+4. **LISP Interpreter** (`/uSEQ/src/modulisp/lisp/`)
    - Complete LISP implementation with parser, evaluator, environment
    - Supports lists, symbols, numbers, strings, lambdas, macros
    - Generated builtins from EDN specifications
