@@ -1726,8 +1726,8 @@ Value slice(std::vector<Value>& args, Environment& env)
     }
     if (!(args[2].is_number()))
     {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].to_lisp_src());
+        report_error_wrong_specific_pred(user_facing_name, 3, "a number",
+                                         args[2].to_lisp_src());
         return Value::error();
     }
 
@@ -2235,10 +2235,10 @@ Value ard_lerp(std::vector<Value>& args, Environment& env)
     constexpr const char* user_facing_name = "lerp";
 
     // Checking number of args
-    if (!(args.size() == 5))
+    if (!(args.size() == 3))
     {
         report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 5, -1);
+                                    NumArgsComparison::EqualTo, 3, -1);
         return Value::error();
     }
 
@@ -2256,9 +2256,19 @@ Value ard_lerp(std::vector<Value>& args, Environment& env)
         }
     }
 
+    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
+    {
+        if (!(args[i].is_number()))
+        {
+            report_error_wrong_specific_pred(user_facing_name, i + 1, "a number",
+                                             args[i].to_lisp_src());
+            return Value::error();
+        }
+    }
+
     // BODY
     Value result = Value::nil();
-    result = Value(lerp(args[0].as_float(), args[1].as_float(), args[0].as_float()));
+    result = Value(lerp(args[0].as_float(), args[1].as_float(), args[2].as_float()));
     return result;
 }
 

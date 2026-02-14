@@ -1095,6 +1095,23 @@ TEST_CASE("Arduino-style map function", "[builtins][utility]")
     REQUIRE(result4.as_float() == Approx(15.0).epsilon(0.001));
 }
 
+TEST_CASE("Lerp function", "[builtins][utility]")
+{
+    Environment env;
+
+    std::vector<Value> args1 = { Value(10.0), Value(20.0), Value(0.5) };
+    Value result1            = builtin::ard_lerp(args1, env);
+    REQUIRE(result1.as_float() == Approx(15.0).epsilon(0.001));
+
+    std::vector<Value> args2 = { Value(10.0), Value(20.0), Value(0.0) };
+    Value result2            = builtin::ard_lerp(args2, env);
+    REQUIRE(result2.as_float() == Approx(10.0).epsilon(0.001));
+
+    std::vector<Value> args3 = { Value(10.0), Value(20.0), Value(1.0) };
+    Value result3            = builtin::ard_lerp(args3, env);
+    REQUIRE(result3.as_float() == Approx(20.0).epsilon(0.001));
+}
+
 // Test cases for control flow (testing basic structure only since they modify
 // execution flow)
 

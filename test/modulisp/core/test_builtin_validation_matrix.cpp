@@ -26,6 +26,12 @@ TEST_CASE("Builtin validation matrix for arity/type diagnostics",
          "expects exactly 2 arguments"},
         {"(sin \"hello\")", ModuLisp::ErrorType::TYPE_ERROR,
          "expects argument 1 to be a number"},
+        {"(lerp 0.0 1.0)", ModuLisp::ErrorType::ARITY_ERROR,
+         "expects exactly 3 arguments"},
+        {"(lerp 0.0 \"oops\" 0.5)", ModuLisp::ErrorType::TYPE_ERROR,
+         "expects argument 2 to be a number"},
+        {"(slice [1 2 3] 0 \"oops\")", ModuLisp::ErrorType::TYPE_ERROR,
+         "expects argument 3 to be a number"},
     };
 
     for (const auto& c : cases)
