@@ -98,19 +98,18 @@ ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* e
     m_digital_outputs.resize(num_digital_outs);
     m_serial_outputs.resize(num_serial_outs);
 
-    auto resetOutputs = [](auto& container) {
-        for (auto& slot : container)
-        {
-            slot.expr             = Value::nil();
-            slot.lastTimeSeconds  = std::numeric_limits<double>::quiet_NaN();
-            slot.lastValue        = 0.0;
-            slot.hasExpr          = false;
-        }
-    };
-
-    resetOutputs(m_analog_outputs);
-    resetOutputs(m_digital_outputs);
-    resetOutputs(m_serial_outputs);
+    for (auto& slot : m_analog_outputs)
+    {
+        reset_output_slot(slot, OutputType::ANALOG);
+    }
+    for (auto& slot : m_digital_outputs)
+    {
+        reset_output_slot(slot, OutputType::DIGITAL);
+    }
+    for (auto& slot : m_serial_outputs)
+    {
+        reset_output_slot(slot, OutputType::SERIAL);
+    }
 
     // Initialize time variables with default values (0.0)
     // This ensures they always exist in the environment

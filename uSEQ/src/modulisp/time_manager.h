@@ -19,6 +19,10 @@ public:
     // Reset transport time to current time
     void reset_transport();
 
+    // Transport playback control
+    void play_transport();
+    void pause_transport();
+
     // Set transport time offset for nudging
     void set_transport_offset(TimeValue offset) { m_transport_time_offset = offset; }
 
@@ -51,6 +55,9 @@ private:
     TimeValue m_transport_time             = 0.0;
     TimeValue m_transport_time_offset      = 0.0;
     TimeValue m_last_transport_time        = 0.0;
+    TimeValue m_total_paused_duration      = 0.0;
+    TimeValue m_transport_paused_at        = 0.0;
+    bool m_transport_playing               = true;
 
     // Helper to update transport time based on current time
     void update_transport_time(TimeValue actual_time);

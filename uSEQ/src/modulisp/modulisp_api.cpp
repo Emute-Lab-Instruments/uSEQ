@@ -48,7 +48,12 @@ void ModuLispInterpreter::init_builtinfuncs()
     INSERT_BUILTINDEF("s8", useq_s8);
 
     INSERT_BUILTINDEF("eval-at-time", useq_eval_at_time);
+    INSERT_BUILTINDEF("useq-play", useq_play);
+    INSERT_BUILTINDEF("useq-pause", useq_pause);
+    INSERT_BUILTINDEF("useq-stop", useq_stop);
     INSERT_BUILTINDEF("useq-rewind", useq_rewind_logical_time);
+    INSERT_BUILTINDEF("useq-clear", useq_clear);
+    INSERT_BUILTINDEF("useq-get-transport-state", useq_get_transport_state);
 
     // These are not class methods, so they can be inserted normally
 
@@ -201,6 +206,56 @@ double ModuLispInterpreter::default_output_value(OutputType type) const
     default:
         return 0.0;
     }
+}
+
+void ModuLispInterpreter::reset_output_slot(StoredOutput& slot, OutputType type)
+{
+    slot.expr            = Value::nil();
+    slot.lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
+    slot.lastValue       = default_output_value(type);
+    slot.hasExpr         = false;
+}
+
+void ModuLispInterpreter::clear_all_outputs()
+{
+    const auto clearOutputs = [this](auto& outputs, OutputType type, const char prefix) {
+        const double defaultValue = default_output_value(type);
+        for (size_t index = 0; index < outputs.size(); ++index)
+        {
+            String outputName(prefix);
+            outputName += String(static_cast<int>(index) + 1);
+
+            Value defaultExpr(defaultValue);
+            get_environment()->set(outputName, defaultExpr);
+            get_environment()->set_expr(outputName, defaultExpr);
+
+            outputs[index].expr            = defaultExpr;
+            outputs[index].lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
+            outputs[index].lastValue       = defaultValue;
+            outputs[index].hasExpr         = true;
+        }
+    };
+
+    clearOutputs(m_analog_outputs, OutputType::ANALOG, 'a');
+    clearOutputs(m_digital_outputs, OutputType::DIGITAL, 'd');
+    clearOutputs(m_serial_outputs, OutputType::SERIAL, 's');
+}
+
+String ModuLispInterpreter::get_transport_state_string() const
+{
+    if (m_is_playing)
+    {
+        return "playing";
+    }
+
+    constexpr TimeValue stopped_epsilon = 1e-9;
+    if (m_time_manager &&
+        std::fabs(m_time_manager->get_transport_time()) <= stopped_epsilon)
+    {
+        return "stopped";
+    }
+
+    return "paused";
 }
 
 Value ModuLispInterpreter::handle_output_assignment(const char* name,
@@ -628,6 +683,96 @@ DEFINE_OUTPUT_FUNCTION(s7, 6, serial, SERIAL)
 DEFINE_OUTPUT_FUNCTION(s8, 7, serial, SERIAL)
 
 #undef DEFINE_OUTPUT_FUNCTION
+
+Value ModuLispInterpreter::useq_play(std::vector<Value>& args, Environment& env)
+{
+    (void)env;
+    constexpr const char* user_facing_name = "useq-play";
+    if (!args.empty())
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
+
+    m_is_playing = true;
+    if (m_time_manager)
+    {
+        m_time_manager->play_transport();
+    }
+
+    return Value::string(get_transport_state_string());
+}
+
+Value ModuLispInterpreter::useq_pause(std::vector<Value>& args, Environment& env)
+{
+    (void)env;
+    constexpr const char* user_facing_name = "useq-pause";
+    if (!args.empty())
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
+
+    m_is_playing = false;
+    if (m_time_manager)
+    {
+        m_time_manager->pause_transport();
+    }
+
+    return Value::string(get_transport_state_string());
+}
+
+Value ModuLispInterpreter::useq_stop(std::vector<Value>& args, Environment& env)
+{
+    (void)env;
+    constexpr const char* user_facing_name = "useq-stop";
+    if (!args.empty())
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
+
+    m_is_playing = false;
+    if (m_time_manager)
+    {
+        m_time_manager->pause_transport();
+    }
+    reset_logical_time();
+
+    return Value::string(get_transport_state_string());
+}
+
+Value ModuLispInterpreter::useq_clear(std::vector<Value>& args, Environment& env)
+{
+    (void)env;
+    constexpr const char* user_facing_name = "useq-clear";
+    if (!args.empty())
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
+
+    clear_all_outputs();
+    return Value::string("cleared");
+}
+
+Value ModuLispInterpreter::useq_get_transport_state(std::vector<Value>& args,
+                                                    Environment& env)
+{
+    (void)env;
+    constexpr const char* user_facing_name = "useq-get-transport-state";
+    if (!args.empty())
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
+    return Value::string(get_transport_state_string());
+}
 
 Value ModuLispInterpreter::useq_fast(std::vector<Value>& args, Environment& env)
 {
@@ -2207,12 +2352,17 @@ Value ModuLispInterpreter::useq_step(std::vector<Value>& args, Environment& env)
 Value ModuLispInterpreter::useq_rewind_logical_time(std::vector<Value>& args,
                                                     Environment& env)
 {
-    constexpr const char* user_facing_name = "step";
+    (void)env;
+    constexpr const char* user_facing_name = "useq-rewind";
+    if (!args.empty())
+    {
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 0, -1);
+        return Value::error();
+    }
 
-    // BODY
     reset_logical_time();
-    Value result = Value::nil();
-    return result;
+    return Value::string(get_transport_state_string());
 }
 
 // (schedule <name> <period> <expr>)

@@ -38,14 +38,46 @@ void TimeManager::update()
 void TimeManager::reset_transport()
 {
     m_last_transport_reset_time = m_time_since_boot;
+    m_total_paused_duration     = 0.0;
+    m_transport_paused_at       = m_time_since_boot;
+    m_last_transport_time       = m_transport_time;
+    m_transport_time            = m_transport_time_offset;
+}
+
+void TimeManager::play_transport()
+{
+    if (m_transport_playing)
+    {
+        return;
+    }
+
+    m_total_paused_duration += (m_time_since_boot - m_transport_paused_at);
+    m_transport_playing = true;
     update_transport_time(m_time_since_boot);
+}
+
+void TimeManager::pause_transport()
+{
+    if (!m_transport_playing)
+    {
+        return;
+    }
+
+    m_transport_playing = false;
+    m_transport_paused_at = m_time_since_boot;
+    m_last_transport_time = m_transport_time;
 }
 
 void TimeManager::update_transport_time(TimeValue actual_time)
 {
     m_last_transport_time = m_transport_time;
-    m_transport_time =
-        actual_time - m_last_transport_reset_time + m_transport_time_offset;
+    if (!m_transport_playing)
+    {
+        return;
+    }
+
+    m_transport_time = actual_time - m_last_transport_reset_time -
+                       m_total_paused_duration + m_transport_time_offset;
 }
 
 void TimeManager::set_external_time(TimeValue actual_time)

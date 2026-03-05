@@ -6,6 +6,7 @@
 #include "../uSEQ/src/modulisp/lisp/error_context.h"
 #include "../uSEQ/src/modulisp/lisp/value.h"
 #include "../uSEQ/src/modulisp/modulisp_interpreter.h"
+#include "../uSEQ/src/ports/mocks/MockClock.h"
 #include <cmath>
 
 // Test cases for ModuLisp-specific functions
@@ -162,6 +163,84 @@ TEST_CASE("Nudge time function", "[modulisp][api][useq_nudge_time]")
     REQUIRE(result1.as_float() == Approx(0.1).epsilon(0.001));
     REQUIRE(interp.get_time_manager()->get_transport_offset() ==
             Approx(0.3).epsilon(0.001));
+}
+
+TEST_CASE("Transport builtins freeze and resume transport time",
+          "[modulisp][api][transport]")
+{
+    MockClock clk;
+    clk.set_micros(1000000ULL);
+
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr, nullptr, nullptr, &clk);
+    interp.init();
+
+    interp.update_time();
+    REQUIRE(interp.eval_v("(useq-get-transport-state)").as_string() == "playing");
+
+    auto initialTransport = interp.get_environment()->get("t");
+    REQUIRE(initialTransport.has_value());
+    REQUIRE(initialTransport->as_float() == Approx(1.0).epsilon(1e-6));
+
+    REQUIRE(interp.eval_v("(useq-pause)").as_string() == "paused");
+
+    clk.set_micros(3000000ULL);
+    interp.update_time();
+
+    auto pausedTransport = interp.get_environment()->get("t");
+    REQUIRE(pausedTransport.has_value());
+    REQUIRE(pausedTransport->as_float() == Approx(1.0).epsilon(1e-6));
+    REQUIRE(interp.eval_v("(useq-get-transport-state)").as_string() == "paused");
+
+    REQUIRE(interp.eval_v("(useq-play)").as_string() == "playing");
+
+    clk.set_micros(4000000ULL);
+    interp.update_time();
+
+    auto resumedTransport = interp.get_environment()->get("t");
+    REQUIRE(resumedTransport.has_value());
+    REQUIRE(resumedTransport->as_float() == Approx(2.0).epsilon(1e-6));
+    REQUIRE(interp.eval_v("(useq-get-transport-state)").as_string() == "playing");
+
+    REQUIRE(interp.eval_v("(useq-stop)").as_string() == "stopped");
+    auto stoppedTransport = interp.get_environment()->get("t");
+    REQUIRE(stoppedTransport.has_value());
+    REQUIRE(stoppedTransport->as_float() == Approx(0.0).epsilon(1e-6));
+}
+
+TEST_CASE("useq-clear resets outputs to interpreter defaults",
+          "[modulisp][api][transport]")
+{
+    ErrorManager error_mgr;
+    ModuLispInterpreter interp(&error_mgr);
+    interp.init();
+
+    interp.eval("(a1 0.9)");
+    interp.eval("(d1 1)");
+    interp.eval("(s1 0.25)");
+
+    bool ok = false;
+    REQUIRE(interp.eval_output_at_time("a1", 0.0, &ok) ==
+            Approx(0.9).epsilon(1e-6));
+    REQUIRE(ok);
+    REQUIRE(interp.eval_output_at_time("d1", 0.0, &ok) ==
+            Approx(1.0).epsilon(1e-6));
+    REQUIRE(ok);
+    REQUIRE(interp.eval_output_at_time("s1", 0.0, &ok) ==
+            Approx(0.25).epsilon(1e-6));
+    REQUIRE(ok);
+
+    REQUIRE(interp.eval_v("(useq-clear)").as_string() == "cleared");
+
+    REQUIRE(interp.eval_output_at_time("a1", 0.0, &ok) ==
+            Approx(0.5).epsilon(1e-6));
+    REQUIRE(ok);
+    REQUIRE(interp.eval_output_at_time("d1", 0.0, &ok) ==
+            Approx(0.0).epsilon(1e-6));
+    REQUIRE(ok);
+    REQUIRE(interp.eval_output_at_time("s1", 0.0, &ok) ==
+            Approx(0.0).epsilon(1e-6));
+    REQUIRE(ok);
 }
 
 // NOTE: Test for useq_flatten is commented out as it requires more complex setup

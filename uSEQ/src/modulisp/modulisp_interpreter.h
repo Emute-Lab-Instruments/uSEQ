@@ -282,6 +282,9 @@ public:
     LISP_FUNC_DECL(useq_unschedule);
     LISP_FUNC_DECL(useq_setbpm);
     LISP_FUNC_DECL(useq_set_time_sig);
+    LISP_FUNC_DECL(useq_play);
+    LISP_FUNC_DECL(useq_pause);
+    LISP_FUNC_DECL(useq_stop);
     LISP_FUNC_DECL(useq_tri);
     LISP_FUNC_DECL(useq_random);
     LISP_FUNC_DECL(useq_index_rand);
@@ -305,6 +308,8 @@ public:
     LISP_FUNC_DECL(useq_flatseq);
     LISP_FUNC_DECL(useq_interpolate);
     LISP_FUNC_DECL(useq_rewind_logical_time);
+    LISP_FUNC_DECL(useq_clear);
+    LISP_FUNC_DECL(useq_get_transport_state);
     LISP_FUNC_DECL(useq_q0);
 
     // Output assignment functions (a1-a8 for analog, d1-d8 for digital, s1-s8 for serial)
@@ -411,6 +416,7 @@ protected:
     std::vector<StoredOutput> m_analog_outputs;
     std::vector<StoredOutput> m_digital_outputs;
     std::vector<StoredOutput> m_serial_outputs;
+    bool m_is_playing = true;
 
     // Signal tracking: map symbol names to whether they are time-dependent signals
     std::map<String, bool> m_signal_map;
@@ -431,6 +437,9 @@ protected:
     bool resolve_output(const char* name, OutputType& type, size_t& index) const;
     double eval_output_internal(OutputType type, size_t index, double time_seconds, bool* ok);
     double default_output_value(OutputType type) const;
+    void reset_output_slot(StoredOutput& slot, OutputType type);
+    void clear_all_outputs();
+    String get_transport_state_string() const;
 
 private:
     // Absorbed Interpreter state
