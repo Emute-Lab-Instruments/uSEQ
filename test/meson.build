@@ -127,6 +127,10 @@ output_manager_test_src = [
   'hardware/test_output_manager.cpp'
 ]
 
+json_protocol_test_src = [
+  'hardware/test_json_protocol.cpp'
+]
+
 # IOManager tests - COMMENTED OUT: test_io_manager.cpp doesn't exist
 # io_manager_test_src = [
 #   'test_io_manager.cpp'
@@ -413,6 +417,18 @@ output_manager_exe = executable(
 )
 
 test('output_manager_test', output_manager_exe)
+
+# JSON protocol parsing test executable - needs full hardware dependency
+json_protocol_exe = executable(
+  'test_json_protocol',
+  sources : json_protocol_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [useq_hw_dep, math_dep]
+)
+
+test('json_protocol_test', json_protocol_exe)
 
 # IOManager test executable - COMMENTED OUT: test file doesn't exist
 # io_manager_exe = executable(

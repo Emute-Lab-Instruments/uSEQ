@@ -120,13 +120,6 @@ String exit_command = "@@exit";
 
 namespace
 {
-struct JsonRequest
-{
-    String type;
-    String code;
-    String request_id;
-};
-
 std::optional<String> extract_json_string_field(const String& json,
                                                 const char* field_name)
 {
@@ -218,26 +211,32 @@ std::optional<String> extract_json_string_field(const String& json,
     return std::nullopt;
 }
 
-std::optional<JsonRequest> parse_json_request(const String& payload)
+bool is_non_eval_json_request_type(const String& type)
 {
+    return type == "hello" || type == "ping" || type == "stream-config";
+}
+} // namespace
+
+std::optional<useq::protocol::JsonRequest>
+useq::protocol::parse_json_request(const String& payload)
+{
+    auto type = extract_json_string_field(payload, "type");
     auto code = extract_json_string_field(payload, "code");
-    if (!code)
-    {
-        return std::nullopt;
-    }
 
     JsonRequest request;
-    request.code = *code;
-
-    auto type    = extract_json_string_field(payload, "type");
     request.type = type ? *type : String("eval");
+    request.code = code ? *code : String("");
 
     auto request_id    = extract_json_string_field(payload, "requestId");
     request.request_id = request_id ? *request_id : String("");
 
+    if (!is_non_eval_json_request_type(request.type) && !code)
+    {
+        return std::nullopt;
+    }
+
     return request;
 }
-} // namespace
 
 void uSEQ::run()
 {
@@ -600,7 +599,7 @@ bool uSEQ::try_handle_json_message(int first_byte)
 
 bool uSEQ::handle_json_serial_request(const String& payload)
 {
-    auto parsed_request = parse_json_request(payload);
+    auto parsed_request = useq::protocol::parse_json_request(payload);
     const String request_id =
         parsed_request ? parsed_request->request_id : String("");
 

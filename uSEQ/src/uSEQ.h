@@ -55,6 +55,18 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #define NUM_BINARY_OUTS (6 - NUM_CONTINUOUS_OUTS)
 #endif
 
+namespace useq::protocol
+{
+struct JsonRequest
+{
+    String type;
+    String code;
+    String request_id;
+};
+
+std::optional<JsonRequest> parse_json_request(const String& payload);
+} // namespace useq::protocol
+
 // Forward declarations
 class OutputManager;
 class IOManager;
