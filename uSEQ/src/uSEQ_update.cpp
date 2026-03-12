@@ -263,10 +263,16 @@ void uSEQ::update_serial_outs()
     unsigned long serial_now = micros();
     // rate limiting of serial messages
     unsigned long serial_time_elapsed = serial_now - serial_out_timestamp;
-    if (serial_time_elapsed > SerialMsg::serial_message_rate_limit)
+    if (serial_time_elapsed >= m_serial_output_rate_limit_micros)
     {
         for (size_t i = 0; i < m_num_serial_outs; i++)
         {
+            if (i < m_serial_output_stream_enabled.size() &&
+                !m_serial_output_stream_enabled[i])
+            {
+                continue;
+            }
+
             dbg(String(i));
             std::optional<SERIAL_OUTPUT_VALUE_TYPE> v = m_serial_vals[i];
             // only write if there is a value
@@ -277,7 +283,7 @@ void uSEQ::update_serial_outs()
             }
         }
         serial_out_timestamp = serial_now - (serial_time_elapsed -
-                                             SerialMsg::serial_message_rate_limit);
+                                             m_serial_output_rate_limit_micros);
     }
 }
 

@@ -47,12 +47,14 @@ Requests are JSON objects sent from the editor, terminated by newline. Each incl
 |------|---------|------------|
 | `hello` | Negotiate JSON mode | `client`, `version` |
 | `ping` | Heartbeat keep-alive | (none) |
-| `stream-config` | Configure input streaming rates | `channels`, `maxRateHz` |
+| `stream-config` | Configure streamed channel directions, enablement, and cadence | `channels`, `maxRateHz` |
 | `eval` | Evaluate a LISP expression | `code`, optional `exec` |
 
 ### JSON Responses
 
 Responses include `requestId`, `success` (bool), `console` and `text` (both contain output text), and an optional `meta` object. The `console` field is preferred by the editor over `text`.
+
+`hello` returns `config.inputs` for host-to-device `(ssin N)` channels and `config.outputs` for device-to-host stream channels. The current firmware advertises `time` as output index `1`, followed by `s1..s8` as indices `2..9`.
 
 ### Transport State via Meta
 

@@ -211,6 +211,221 @@ std::optional<String> extract_json_string_field(const String& json,
     return std::nullopt;
 }
 
+std::optional<int> find_json_field_value_start(const String& json,
+                                               const char* field_name)
+{
+    String key = "\"";
+    key += field_name;
+    key += "\"";
+
+    int key_pos = json.indexOf(key);
+    if (key_pos < 0)
+    {
+        return std::nullopt;
+    }
+
+    int colon_pos = json.indexOf(':', key_pos + key.length());
+    if (colon_pos < 0)
+    {
+        return std::nullopt;
+    }
+
+    int value_start = colon_pos + 1;
+    while (value_start < json.length() &&
+           isspace(static_cast<unsigned char>(json[value_start])))
+    {
+        ++value_start;
+    }
+
+    if (value_start >= json.length())
+    {
+        return std::nullopt;
+    }
+
+    return value_start;
+}
+
+std::optional<int> extract_json_int_field(const String& json,
+                                          const char* field_name)
+{
+    auto value_start = find_json_field_value_start(json, field_name);
+    if (!value_start)
+    {
+        return std::nullopt;
+    }
+
+    int end = *value_start;
+    if (json[end] == '-')
+    {
+        ++end;
+    }
+
+    int digits_start = end;
+    while (end < json.length() &&
+           isdigit(static_cast<unsigned char>(json[end])))
+    {
+        ++end;
+    }
+
+    if (digits_start == end)
+    {
+        return std::nullopt;
+    }
+
+    return atoi(json.substring(*value_start, end).c_str());
+}
+
+std::optional<bool> extract_json_bool_field(const String& json,
+                                            const char* field_name)
+{
+    auto value_start = find_json_field_value_start(json, field_name);
+    if (!value_start)
+    {
+        return std::nullopt;
+    }
+
+    if (json.startsWith("true", *value_start))
+    {
+        return true;
+    }
+    if (json.startsWith("false", *value_start))
+    {
+        return false;
+    }
+
+    return std::nullopt;
+}
+
+std::optional<String> extract_json_array_field(const String& json,
+                                               const char* field_name)
+{
+    auto value_start = find_json_field_value_start(json, field_name);
+    if (!value_start || json[*value_start] != '[')
+    {
+        return std::nullopt;
+    }
+
+    bool in_string = false;
+    bool escape    = false;
+    int depth      = 0;
+
+    for (int i = *value_start; i < json.length(); ++i)
+    {
+        const char c = json[i];
+
+        if (in_string)
+        {
+            if (escape)
+            {
+                escape = false;
+            }
+            else if (c == '\\')
+            {
+                escape = true;
+            }
+            else if (c == '"')
+            {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if (c == '"')
+        {
+            in_string = true;
+            continue;
+        }
+        if (c == '[')
+        {
+            ++depth;
+            continue;
+        }
+        if (c == ']')
+        {
+            --depth;
+            if (depth == 0)
+            {
+                return json.substring(*value_start, i + 1);
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::vector<String> extract_json_objects_from_array(const String& array_json)
+{
+    std::vector<String> objects;
+    if (!array_json.startsWith("["))
+    {
+        return objects;
+    }
+
+    bool in_string = false;
+    bool escape    = false;
+    int depth      = 0;
+    int object_start = -1;
+
+    for (int i = 0; i < array_json.length(); ++i)
+    {
+        const char c = array_json[i];
+
+        if (in_string)
+        {
+            if (escape)
+            {
+                escape = false;
+            }
+            else if (c == '\\')
+            {
+                escape = true;
+            }
+            else if (c == '"')
+            {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if (c == '"')
+        {
+            in_string = true;
+            continue;
+        }
+        if (c == '{')
+        {
+            if (depth == 0)
+            {
+                object_start = i;
+            }
+            ++depth;
+            continue;
+        }
+        if (c == '}')
+        {
+            --depth;
+            if (depth == 0 && object_start >= 0)
+            {
+                objects.push_back(array_json.substring(object_start, i + 1));
+                object_start = -1;
+            }
+        }
+    }
+
+    return objects;
+}
+
+bool looks_like_output_channel_name(const String& name)
+{
+    if (name == "time")
+    {
+        return true;
+    }
+
+    return name.length() >= 2 && name[0] == 's' &&
+           isdigit(static_cast<unsigned char>(name[1]));
+}
+
 bool is_non_eval_json_request_type(const String& type)
 {
     return type == "hello" || type == "ping" || type == "stream-config";
@@ -233,6 +448,80 @@ useq::protocol::parse_json_request(const String& payload)
     if (!is_non_eval_json_request_type(request.type) && !code)
     {
         return std::nullopt;
+    }
+
+    return request;
+}
+
+String useq::protocol::build_hello_io_config_json(size_t num_serial_ins,
+                                                  size_t num_serial_outs)
+{
+    JsonBuilder inputs_arr;
+    inputs_arr.array_begin_unkeyed();
+    for (size_t i = 0; i < num_serial_ins; ++i)
+    {
+        inputs_arr.object_begin()
+            .field("index", static_cast<int>(i + 1))
+            .field("name", String("ssin") + String(static_cast<int>(i + 1)))
+            .object_end();
+    }
+    inputs_arr.array_end();
+
+    JsonBuilder outputs_arr;
+    outputs_arr.array_begin_unkeyed();
+    for (size_t i = 0; i < num_serial_outs; ++i)
+    {
+        const String name =
+            i == 0 ? String("time")
+                   : String("s") + String(static_cast<int>(i));
+        outputs_arr.object_begin()
+            .field("index", static_cast<int>(i + 1))
+            .field("name", name)
+            .object_end();
+    }
+    outputs_arr.array_end();
+
+    JsonBuilder config;
+    config.object_begin()
+        .field_raw("inputs", inputs_arr.build())
+        .field_raw("outputs", outputs_arr.build())
+        .object_end();
+
+    return config.build();
+}
+
+std::optional<useq::protocol::StreamConfigRequest>
+useq::protocol::parse_stream_config_request(const String& payload)
+{
+    StreamConfigRequest request;
+    request.max_rate_hz = extract_json_int_field(payload, "maxRateHz").value_or(0);
+
+    auto channels_json = extract_json_array_field(payload, "channels");
+    if (!channels_json)
+    {
+        return request;
+    }
+
+    for (const auto& channel_json : extract_json_objects_from_array(*channels_json))
+    {
+        auto id = extract_json_int_field(channel_json, "id");
+        if (!id)
+        {
+            continue;
+        }
+
+        StreamChannelConfig channel;
+        channel.id = *id;
+        channel.name =
+            extract_json_string_field(channel_json, "name").value_or(String(""));
+        channel.direction =
+            extract_json_string_field(channel_json, "direction").value_or(String(""));
+        channel.enabled =
+            extract_json_bool_field(channel_json, "enabled").value_or(true);
+        channel.max_rate_hz =
+            extract_json_int_field(channel_json, "maxRateHz")
+                .value_or(request.max_rate_hz);
+        request.channels.push_back(channel);
     }
 
     return request;
@@ -618,30 +907,15 @@ bool uSEQ::handle_json_serial_request(const String& payload)
     if (type == "hello")
     {
         Protocol::enable_json_mode();
-
-        // Build ioConfig with input channel list
-        JsonBuilder inputs_arr;
-        inputs_arr.array_begin_unkeyed();
-        for (int i = 1; i <= (int)m_num_serial_ins; ++i)
-        {
-            inputs_arr.object_begin()
-                .field("index", i)
-                .field("name", String("ssin") + String(i))
-                .object_end();
-        }
-        inputs_arr.array_end();
-
-        JsonBuilder config;
-        config.object_begin()
-            .field_raw("inputs", inputs_arr.build())
-            .object_end();
+        const String config_json = useq::protocol::build_hello_io_config_json(
+            m_num_serial_ins, m_num_serial_outs);
 
         JsonBuilder response;
         response.object_begin()
             .field("success", true)
             .field("mode", "json")
             .field("fw", (const char*)USEQ_FIRMWARE_VERSION)
-            .field_raw("config", config.build())
+            .field_raw("config", config_json)
             .field("requestId", parsed_request->request_id)
             .object_end();
 
@@ -662,6 +936,48 @@ bool uSEQ::handle_json_serial_request(const String& payload)
     // ===== STREAM-CONFIG: acknowledge channel configuration =====
     if (type == "stream-config")
     {
+        auto stream_config = useq::protocol::parse_stream_config_request(payload);
+
+        if (stream_config && stream_config->max_rate_hz > 0)
+        {
+            const auto rate_hz =
+                static_cast<unsigned long>(stream_config->max_rate_hz);
+            m_serial_output_rate_limit_micros =
+                std::max<unsigned long>(1, 1000000UL / rate_hz);
+        }
+
+        if (stream_config)
+        {
+            bool saw_output_config = false;
+            std::vector<bool> requested_outputs(
+                static_cast<size_t>(m_num_serial_outs), false);
+
+            for (const auto& channel : stream_config->channels)
+            {
+                if (channel.direction != "output" &&
+                    !looks_like_output_channel_name(channel.name))
+                {
+                    continue;
+                }
+
+                const int output_slot = channel.id - 1;
+                if (output_slot < 0 ||
+                    output_slot >= static_cast<int>(m_num_serial_outs))
+                {
+                    continue;
+                }
+
+                requested_outputs[static_cast<size_t>(output_slot)] =
+                    channel.enabled;
+                saw_output_config = true;
+            }
+
+            if (saw_output_config)
+            {
+                m_serial_output_stream_enabled = requested_outputs;
+            }
+        }
+
         Protocol::send_json_response(true, String(""), std::nullopt,
                                      parsed_request->request_id);
         Protocol::finish_request();
@@ -897,6 +1213,7 @@ void uSEQ::init_ASTs()
     {
         m_serial_ASTs.push_back(default_serial_expr);
         m_serial_vals.push_back(std::nullopt);
+        m_serial_output_stream_enabled.push_back(true);
     }
 }
 

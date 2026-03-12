@@ -43,6 +43,7 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #include <memory>
 #include <optional>
 #include <sys/types.h>
+#include <vector>
 
 #ifdef ARDUINO
 #ifdef ENABLE_DSP_ENGINE
@@ -64,7 +65,25 @@ struct JsonRequest
     String request_id;
 };
 
+struct StreamChannelConfig
+{
+    int id            = 0;
+    String name       = "";
+    String direction  = "";
+    bool enabled      = true;
+    int max_rate_hz   = 0;
+};
+
+struct StreamConfigRequest
+{
+    int max_rate_hz = 0;
+    std::vector<StreamChannelConfig> channels;
+};
+
 std::optional<JsonRequest> parse_json_request(const String& payload);
+String build_hello_io_config_json(size_t num_serial_ins, size_t num_serial_outs);
+std::optional<StreamConfigRequest> parse_stream_config_request(
+    const String& payload);
 } // namespace useq::protocol
 
 // Forward declarations
@@ -204,6 +223,7 @@ public:
 
     std::vector<Value> m_serial_ASTs;
     std::vector<std::optional<SERIAL_OUTPUT_VALUE_TYPE>> m_serial_vals;
+    std::vector<bool> m_serial_output_stream_enabled;
 
 private:
     ErrorManager m_error_manager;
@@ -304,6 +324,7 @@ private:
     }
 
     unsigned long serial_out_timestamp = 0;
+    unsigned long m_serial_output_rate_limit_micros = 1000000 / 100;
 
     Value default_continuous_expr = Value::nil();
     Value default_binary_expr     = Value::nil();
@@ -359,6 +380,28 @@ public:
     bool __test_load_env_from_storage(IStorage& s);
 #endif
 #endif
+    String __test_build_hello_io_config_json() const
+    {
+        return useq::protocol::build_hello_io_config_json(m_num_serial_ins,
+                                                          m_num_serial_outs);
+    }
+    bool __test_apply_stream_config(const String& payload)
+    {
+        return handle_json_serial_request(payload);
+    }
+    bool __test_is_serial_output_enabled(int channel_id) const
+    {
+        if (channel_id < 1 ||
+            static_cast<size_t>(channel_id) > m_serial_output_stream_enabled.size())
+        {
+            return false;
+        }
+        return m_serial_output_stream_enabled[static_cast<size_t>(channel_id) - 1];
+    }
+    unsigned long __test_get_serial_output_rate_limit_micros() const
+    {
+        return m_serial_output_rate_limit_micros;
+    }
 #endif
 
 #ifdef MIDIOUT
