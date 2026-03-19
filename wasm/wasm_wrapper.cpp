@@ -150,6 +150,47 @@ extern "C"
         return value;
     }
 
+    // ---------------------------------------------------------------
+    // Last-error reporting
+    // ---------------------------------------------------------------
+    static String s_last_error;
+
+    // Return the last error string (empty if no error)
+    char* useq_last_error()
+    {
+        char* result = (char*)malloc(s_last_error.length() + 1);
+        strcpy(result, s_last_error.c_str());
+        return result;
+    }
+
+    // ---------------------------------------------------------------
+    // Batch evaluation helpers
+    // ---------------------------------------------------------------
+
+    // Parse a JSON array of output names (e.g. ["a1","a2","d1"])
+    // Returns the parsed names in `out`. Returns false on parse error.
+    static bool parse_output_names(const char* json, std::vector<String>& out)
+    {
+        String json_str(json);
+        int start_pos = json_str.indexOf('[');
+        int end_pos   = json_str.indexOf(']');
+        if (start_pos < 0 || end_pos < 0 || end_pos <= start_pos)
+            return false;
+
+        String contents = json_str.substring(start_pos + 1, end_pos);
+        int pos = 0;
+        while (pos < (int)contents.length())
+        {
+            int quote1 = contents.indexOf('"', pos);
+            if (quote1 < 0) break;
+            int quote2 = contents.indexOf('"', quote1 + 1);
+            if (quote2 < 0) break;
+            out.push_back(contents.substring(quote1 + 1, quote2));
+            pos = quote2 + 1;
+        }
+        return true;
+    }
+
     // Evaluate multiple outputs across a time window
     // Returns a JSON string containing channel-indexed samples
     // Format: {"a1": [0.5, 0.6, ...], "a2": [0.3, 0.4, ...]}
@@ -175,26 +216,13 @@ extern "C"
         {
             // Parse outputs array from JSON string (simple format: ["a1", "a2", "d1"])
             std::vector<String> outputs;
-            String json_str(outputs_json);
-
-            // Simple JSON array parser - assumes format ["a1","a2","d1"]
-            int start_pos = json_str.indexOf('[');
-            int end_pos = json_str.indexOf(']');
-            if (start_pos >= 0 && end_pos >= 0 && end_pos > start_pos)
+            if (!parse_output_names(outputs_json, outputs))
             {
-                String contents = json_str.substring(start_pos + 1, end_pos);
-                int pos = 0;
-                while (pos < (int)contents.length())
-                {
-                    int quote1 = contents.indexOf('"', pos);
-                    if (quote1 < 0) break;
-                    int quote2 = contents.indexOf('"', quote1 + 1);
-                    if (quote2 < 0) break;
-
-                    String output_name = contents.substring(quote1 + 1, quote2);
-                    outputs.push_back(output_name);
-                    pos = quote2 + 1;
-                }
+                s_last_error = "Failed to parse outputs JSON array";
+                const char* error_msg = "{\"error\": \"Failed to parse outputs JSON\"}";
+                char* result = (char*)malloc(strlen(error_msg) + 1);
+                strcpy(result, error_msg);
+                return result;
             }
 
             // Call the batch evaluation API - now returns map<String, vector<double>>
@@ -238,6 +266,7 @@ extern "C"
         }
         catch (const std::exception& e)
         {
+            s_last_error = e.what();
             String error_msg = "{\"error\": \"";
             error_msg += e.what();
             error_msg += "\"}";
@@ -247,10 +276,117 @@ extern "C"
         }
         catch (...)
         {
+            s_last_error = "Unknown error during batch evaluation";
             const char* error_msg = "{\"error\": \"Unknown error during batch evaluation\"}";
             char* result = (char*)malloc(strlen(error_msg) + 1);
             strcpy(result, error_msg);
             return result;
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Batch evaluation into a caller-provided Float64 buffer
+    // ---------------------------------------------------------------
+    // Writes results into `buffer` in row-major order: channels × samples.
+    // Returns the number of channels written, or -1 on error.
+    //
+    // ABI (from wasmAbi.ts):
+    //   symbol: "useq_eval_outputs_time_window_into"
+    //   returnType: "number"
+    //   argTypes: ["string", "number", "number", "number", "number", "number"]
+    //
+    // Parameters:
+    //   outputs_json  - JSON array of output names, e.g. '["a1","a2"]'
+    //   start_time    - window start (seconds)
+    //   end_time      - window end (seconds)
+    //   num_samples   - number of time samples per channel
+    //   buffer_ptr    - byte offset into the Emscripten HEAPF64 (from _malloc)
+    //   buffer_length - total number of Float64 slots available in buffer
+    int useq_eval_outputs_time_window_into(
+        const char* outputs_json,
+        double start_time,
+        double end_time,
+        int num_samples,
+        int buffer_ptr,
+        int buffer_length)
+    {
+        if (!useq_instance)
+        {
+            s_last_error = "uSEQ not initialized";
+            return -1;
+        }
+        if (num_samples < 1)
+        {
+            s_last_error = "num_samples must be >= 1";
+            return -1;
+        }
+
+        try
+        {
+            std::vector<String> outputs;
+            if (!parse_output_names(outputs_json, outputs))
+            {
+                s_last_error = "Failed to parse outputs JSON array";
+                return -1;
+            }
+
+            int num_channels = (int)outputs.size();
+            int required_slots = num_channels * num_samples;
+            if (required_slots > buffer_length)
+            {
+                s_last_error = "Buffer too small: need " +
+                    String(std::to_string(required_slots).c_str()) +
+                    " slots, got " +
+                    String(std::to_string(buffer_length).c_str());
+                return -1;
+            }
+
+            // Interpret buffer_ptr as a byte offset into the Emscripten heap.
+            // Emscripten HEAPF64 views the same memory; buffer_ptr is the
+            // byte address returned by _malloc. Convert to double* pointer.
+            double* buf = reinterpret_cast<double*>(buffer_ptr);
+
+            // Use the interpreter's batch API
+            auto results = useq_instance->eval_outputs(start_time, end_time, num_samples, outputs);
+
+            // Write into the buffer in row-major order: channel 0 samples, channel 1 samples, ...
+            int channel_idx = 0;
+            for (const auto& name : outputs)
+            {
+                auto it = results.find(name);
+                double* row = buf + (channel_idx * num_samples);
+
+                if (it != results.end())
+                {
+                    const auto& samples = it->second;
+                    int count = std::min((int)samples.size(), num_samples);
+                    for (int i = 0; i < count; ++i)
+                        row[i] = samples[i];
+                    // Zero-fill if fewer samples than requested
+                    for (int i = count; i < num_samples; ++i)
+                        row[i] = 0.0;
+                }
+                else
+                {
+                    // Channel not found — fill with NaN
+                    for (int i = 0; i < num_samples; ++i)
+                        row[i] = std::numeric_limits<double>::quiet_NaN();
+                }
+                ++channel_idx;
+            }
+
+            s_last_error = "";
+            return num_channels;
+        }
+        catch (const std::exception& e)
+        {
+            s_last_error = e.what();
+            return -1;
+        }
+        catch (...)
+        {
+            s_last_error = "Unknown error during batch evaluation";
+            return -1;
         }
     }
 }
