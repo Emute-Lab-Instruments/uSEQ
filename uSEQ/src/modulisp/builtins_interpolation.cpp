@@ -71,7 +71,7 @@ Value ModuLispInterpreter::useq_fromList(std::vector<Value>& args, Environment& 
     constexpr const char* user_facing_name = "from-list";
 
     BUILTIN_CHECK_ARITY("from-list", 2)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
     BUILTIN_CHECK_ARG_SEQ("from-list", 0)
     BUILTIN_CHECK_ARG_NUM("from-list", 1)
 
@@ -98,7 +98,7 @@ Value ModuLispInterpreter::useq_fromFlattenedList(std::vector<Value>& args,
     constexpr const char* user_facing_name = "from-flat-list";
 
     BUILTIN_CHECK_ARITY("from-flat-list", 2)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
     BUILTIN_CHECK_ARG_SEQ("from-flat-list", 0)
     BUILTIN_CHECK_ARG_NUM("from-flat-list", 1)
 
@@ -114,7 +114,7 @@ Value ModuLispInterpreter::useq_interpolate(std::vector<Value>& args,
     constexpr const char* user_facing_name = "interp";
 
     BUILTIN_CHECK_ARITY("interp", 2)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
 
     if (!(args[0].is_sequential()))
     {

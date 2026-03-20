@@ -55,7 +55,7 @@ Value ModuLispInterpreter::useq_gates(std::vector<Value>& args, Environment& env
     constexpr const char* user_facing_name = "gates";
 
     BUILTIN_CHECK_ARITY_RANGE("gates", 2, 3)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
     BUILTIN_CHECK_ARG_SEQ("gates", 0)
 
     // Remaining args must be numbers
@@ -92,7 +92,7 @@ Value ModuLispInterpreter::useq_gatesw(std::vector<Value>& args, Environment& en
     constexpr const char* user_facing_name = "gatesw";
 
     BUILTIN_CHECK_ARITY("gatesw", 2)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
     BUILTIN_CHECK_ARG_SEQ("gatesw", 0)
     BUILTIN_CHECK_ARG_NUM("gatesw", 1)
 
@@ -112,7 +112,7 @@ Value ModuLispInterpreter::useq_trigs(std::vector<Value>& args, Environment& env
     constexpr const char* user_facing_name = "trigs";
 
     BUILTIN_CHECK_ARITY_RANGE("trigs", 2, 3)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
     BUILTIN_CHECK_ARG_SEQ("trigs", 0)
 
     if (!(args.back().is_number()))
@@ -191,7 +191,7 @@ Value ModuLispInterpreter::useq_ratiotrig(std::vector<Value>& args, Environment&
     constexpr const char* user_facing_name = "rpulse";
 
     BUILTIN_CHECK_ARITY("rpulse", 3)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
     BUILTIN_CHECK_ARG_SEQ("rpulse", 0)
     BUILTIN_CHECK_ARG_NUM("rpulse", 1)
     BUILTIN_CHECK_ARG_NUM("rpulse", 2)
@@ -230,7 +230,7 @@ Value ModuLispInterpreter::useq_ratiostep(std::vector<Value>& args, Environment&
     constexpr const char* user_facing_name = "rstep";
 
     BUILTIN_CHECK_ARITY("rstep", 2)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
     BUILTIN_CHECK_ARG_SEQ("rstep", 0)
     BUILTIN_CHECK_ARG_NUM("rstep", 1)
 
@@ -265,7 +265,7 @@ Value ModuLispInterpreter::useq_ratioindex(std::vector<Value>& args, Environment
     constexpr const char* user_facing_name = "ridx";
 
     BUILTIN_CHECK_ARITY("ridx", 2)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
     BUILTIN_CHECK_ARG_SEQ("ridx", 0)
     BUILTIN_CHECK_ARG_NUM("ridx", 1)
 
@@ -299,7 +299,7 @@ Value ModuLispInterpreter::useq_ratiowarp(std::vector<Value>& args, Environment&
     constexpr const char* user_facing_name = "rwarp";
 
     BUILTIN_CHECK_ARITY("rwarp", 2)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
     BUILTIN_CHECK_ARG_SEQ("rwarp", 0)
     BUILTIN_CHECK_ARG_NUM("rwarp", 1)
 

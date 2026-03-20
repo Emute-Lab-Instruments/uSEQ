@@ -33,36 +33,23 @@ void ModuLispInterpreter::update_lisp_time_variables()
 {
     DBG("ModuLispInterpreter::update_lisp_time_variables");
 
-    // These should appear as seconds in Lisp-land
     TimeValue time_s = m_time_manager->get_time_seconds();
     TimeValue t_s    = m_time_manager->get_transport_seconds();
-    get_environment()->set("time", Value(time_s));
-    get_environment()->set("t", Value(t_s));
-
-    // Calculate phasor values directly using transport time in microseconds
     TimeValue transport_micros = m_time_manager->get_transport_time();
-    get_environment()->set("beat", Value(beat_at_time(transport_micros)));
-    get_environment()->set("bar", Value(bar_at_time(transport_micros)));
-    get_environment()->set("phrase", Value(phrase_at_time(transport_micros)));
-    get_environment()->set("section", Value(section_at_time(transport_micros)));
 
-    // Update beat/bar numbers
-    get_environment()->set(
-        "beatNum", Value(static_cast<int>(beat_num_at_time(transport_micros))));
-    get_environment()->set(
-        "barNum", Value(static_cast<int>(bar_num_at_time(transport_micros))));
-
-    // Update duration variables (in seconds)
-    get_environment()->set("beat-dur", Value(m_beat_length / 1000000.0));
-    get_environment()->set("bar-dur", Value(m_bar_length / 1000000.0));
-    get_environment()->set("phrase-dur", Value(m_phrase_length / 1000000.0));
-    get_environment()->set("section-dur", Value(m_section_length / 1000000.0));
-
-    // Aliases
-    get_environment()->set("beatDur", Value(m_beat_length / 1000000.0));
-    get_environment()->set("barDur", Value(m_bar_length / 1000000.0));
-    get_environment()->set("phraseDur", Value(m_phrase_length / 1000000.0));
-    get_environment()->set("sectionDur", Value(m_section_length / 1000000.0));
+    // Write directly to the temporal context struct — no map operations
+    m_global_temporal_ctx.time_since_boot = time_s;
+    m_global_temporal_ctx.t = t_s;
+    m_global_temporal_ctx.beat = beat_at_time(transport_micros);
+    m_global_temporal_ctx.bar = bar_at_time(transport_micros);
+    m_global_temporal_ctx.phrase = phrase_at_time(transport_micros);
+    m_global_temporal_ctx.section = section_at_time(transport_micros);
+    m_global_temporal_ctx.beatNum = static_cast<int>(beat_num_at_time(transport_micros));
+    m_global_temporal_ctx.barNum = static_cast<int>(bar_num_at_time(transport_micros));
+    m_global_temporal_ctx.beatDur = m_beat_length / 1000000.0;
+    m_global_temporal_ctx.barDur = m_bar_length / 1000000.0;
+    m_global_temporal_ctx.phraseDur = m_phrase_length / 1000000.0;
+    m_global_temporal_ctx.sectionDur = m_section_length / 1000000.0;
 }
 
 void ModuLispInterpreter::update_logical_time_variables(TimeValue t)
@@ -147,35 +134,3 @@ void ModuLispInterpreter::set_time_from_external_source(TimeValue actual_time)
 }
 #endif
 
-// Environment creation for time-based evaluation
-Environment ModuLispInterpreter::make_env_for_time(TimeValue t_micros)
-{
-    Environment env;
-
-    // TimeValue time_s = m_time_since_boot * 1e-6;
-    TimeValue t_s = t_micros * 1e-6;
-
-    // env.set("time", Value(time_s));
-    env.set("t", Value(t_s));
-    env.set("beat", Value(beat_at_time(t_micros)));
-    env.set("bar", Value(bar_at_time(t_micros)));
-    env.set("phrase", Value(phrase_at_time(t_micros)));
-    env.set("section", Value(section_at_time(t_micros)));
-
-    return env;
-}
-
-Environment
-ModuLispInterpreter::make_env_with_updated_time_durs(const Environment& env,
-                                                     TimeValue time)
-{
-    Environment new_env(env);
-
-    // Update duration variables based on current tempo settings
-    new_env.set("beatDur", Value(m_beat_length / 1000000.0));
-    new_env.set("barDur", Value(m_bar_length / 1000000.0));
-    new_env.set("phraseDur", Value(m_phrase_length / 1000000.0));
-    new_env.set("sectionDur", Value(m_section_length / 1000000.0));
-
-    return new_env;
-}

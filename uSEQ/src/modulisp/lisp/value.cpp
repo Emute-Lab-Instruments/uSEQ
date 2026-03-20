@@ -357,6 +357,7 @@ bool Value::operator==(Value other) const
     case INT:
         return stack_data.i == other.stack_data.i;
     case BUILTIN:
+    case BUILTIN_PLUGIN:
         // FIXME how do we compare functions? compare if they point to the same
         // thing?
         return str == other.str;

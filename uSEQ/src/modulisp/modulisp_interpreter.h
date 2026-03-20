@@ -9,6 +9,7 @@
 #include "lisp/value.h"
 #include "random_generator.h"
 #include "scheduler.h"
+#include "temporal_context.h"
 #include "time_manager.h"
 #include <array>
 #include <cmath>
@@ -139,10 +140,6 @@ public:
     void run_scheduled_items();
     void check_code_quant_phasor();
     void update_Q0();
-
-    // Environment creation
-    Environment make_env_for_time(TimeValue);
-    Environment make_env_with_updated_time_durs(const Environment&, TimeValue);
 
     // Special evaluation
     Value eval_at_time(Value&, Environment&, double);
@@ -440,6 +437,9 @@ private:
     std::unique_ptr<Environment> m_fallback_environment;
     std::unique_ptr<uLispParser> m_fallback_parser;
     std::unique_ptr<ErrorManager> m_fallback_error_manager;
+
+    // Global temporal context — pointed to by the global environment
+    TemporalContext m_global_temporal_ctx;
 
     // Static flags and shared state
     static bool m_attempt_expr_eval_first;

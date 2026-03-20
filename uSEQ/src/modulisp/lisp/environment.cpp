@@ -1,6 +1,8 @@
 #include "environment.h"
+#include "../temporal_context.h"
 #include "../../utils.h"
 #include "../../utils/log.h"
+#include "symbol_intern.h"
 #include "value.h"
 #include <optional>
 // std::ostream &operator<<(std::ostream &os, Environment const &e) {
@@ -55,6 +57,16 @@ std::optional<Value> Environment::get(const String& name) const
 {
     DBG("Environment::get");
     dbg("Name: " + name);
+
+    // Fast path: check temporal context before any map lookups
+    if (m_temporal_ctx)
+    {
+        Value val;
+        if (m_temporal_ctx->tryGet(SymbolIntern::getInstance().intern(name), val))
+        {
+            return val;
+        }
+    }
 
     std::optional<Value> result;
 

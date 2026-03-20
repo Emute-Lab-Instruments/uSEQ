@@ -158,9 +158,13 @@ lisp_core_dep = declare_dependency(
 # ModuLisp library - depends on lisp_core
 modulisp_lib = static_library('useq_modulisp',
   'uSEQ/src/modulisp/modulisp.cpp',
+  'uSEQ/src/modulisp/temporal_context.cpp',
   'uSEQ/src/modulisp/modulisp_interpreter_core.cpp',
   'uSEQ/src/modulisp/modulisp_time.cpp',
   'uSEQ/src/modulisp/modulisp_api.cpp',
+  'uSEQ/src/modulisp/builtins_timing.cpp',
+  'uSEQ/src/modulisp/builtins_sequencing.cpp',
+  'uSEQ/src/modulisp/builtins_interpolation.cpp',
   'uSEQ/src/modulisp/time_manager.cpp',
   'uSEQ/src/modulisp/scheduler.cpp',
   'uSEQ/src/modulisp/random_generator.cpp',

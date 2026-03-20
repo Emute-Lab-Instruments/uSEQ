@@ -6,6 +6,7 @@
 
 #include "../utils.h"
 #include "modulisp_interpreter.h"
+#include "temporal_context.h"
 #include "lisp/macros.h"
 #include <cmath>
 
@@ -79,15 +80,28 @@ Value ModuLispInterpreter::useq_fast(std::vector<Value>& args, Environment& env)
     BUILTIN_CHECK_ARG_NUM("fast", 0)
 
     // BODY
-    double current_time_s  = env.get("t").value().as_float();
-    double factor          = args[0].as_float();
-    double new_time_micros = (current_time_s * factor) * 1e+6;
+    double current_t = 0;
+    auto t_val = env.get("t");
+    if (t_val) current_t = t_val->as_float();
 
-    Environment env_with_updated_durs =
-        make_env_with_updated_time_durs(env, 1.0 / factor);
-    env_with_updated_durs.set_parent_scope(&env);
+    double factor = args[0].as_float();
+    double new_time_micros = (current_t * factor) * 1e+6;
 
-    return eval_at_time(args[1], env_with_updated_durs, new_time_micros);
+    TemporalContext ctx;
+    ctx.t = new_time_micros * 1e-6;
+    ctx.beat = beat_at_time(new_time_micros);
+    ctx.bar = bar_at_time(new_time_micros);
+    ctx.phrase = phrase_at_time(new_time_micros);
+    ctx.section = section_at_time(new_time_micros);
+    ctx.beatDur = m_beat_length / 1000000.0 / factor;
+    ctx.barDur = m_bar_length / 1000000.0 / factor;
+    ctx.phraseDur = m_phrase_length / 1000000.0 / factor;
+    ctx.sectionDur = m_section_length / 1000000.0 / factor;
+
+    Environment new_env;
+    new_env.set_temporal_context(&ctx);
+    new_env.set_parent_scope(&env);
+    return eval_in(args[1], new_env);
 }
 
 Value ModuLispInterpreter::useq_slow(std::vector<Value>& args, Environment& env)
@@ -100,14 +114,28 @@ Value ModuLispInterpreter::useq_slow(std::vector<Value>& args, Environment& env)
     BUILTIN_CHECK_ARG_NUM("slow", 0)
 
     // BODY
-    double current_time_s  = env.get("t").value().as_float();
-    double factor          = args[0].as_float();
-    double new_time_micros = (current_time_s / factor) * 1e+6;
+    double current_t = 0;
+    auto t_val = env.get("t");
+    if (t_val) current_t = t_val->as_float();
 
-    Environment env_with_updated_durs = make_env_with_updated_time_durs(env, factor);
-    env_with_updated_durs.set_parent_scope(&env);
+    double factor = args[0].as_float();
+    double new_time_micros = (current_t / factor) * 1e+6;
 
-    return eval_at_time(args[1], env_with_updated_durs, new_time_micros);
+    TemporalContext ctx;
+    ctx.t = new_time_micros * 1e-6;
+    ctx.beat = beat_at_time(new_time_micros);
+    ctx.bar = bar_at_time(new_time_micros);
+    ctx.phrase = phrase_at_time(new_time_micros);
+    ctx.section = section_at_time(new_time_micros);
+    ctx.beatDur = m_beat_length / 1000000.0 * factor;
+    ctx.barDur = m_bar_length / 1000000.0 * factor;
+    ctx.phraseDur = m_phrase_length / 1000000.0 * factor;
+    ctx.sectionDur = m_section_length / 1000000.0 * factor;
+
+    Environment new_env;
+    new_env.set_temporal_context(&ctx);
+    new_env.set_parent_scope(&env);
+    return eval_in(args[1], new_env);
 }
 
 Value ModuLispInterpreter::useq_offset_time(std::vector<Value>& args,
@@ -121,9 +149,12 @@ Value ModuLispInterpreter::useq_offset_time(std::vector<Value>& args,
     BUILTIN_CHECK_ARG_NUM("offset", 0)
 
     // BODY
-    double current_time_s  = env.get("t").value().as_float();
+    double current_t = 0;
+    auto t_val = env.get("t");
+    if (t_val) current_t = t_val->as_float();
+
     double amt             = args[0].as_float();
-    double new_time_micros = (current_time_s + amt) * 1e+6;
+    double new_time_micros = (current_t + amt) * 1e+6;
     return eval_at_time(args[1], env, new_time_micros);
 }
 
@@ -133,7 +164,7 @@ Value ModuLispInterpreter::useq_setbpm(std::vector<Value>& args, Environment& en
     constexpr const char* user_facing_name = "set-bpm";
 
     BUILTIN_CHECK_ARITY_RANGE("set-bpm", 1, 2)
-    BUILTIN_EVAL_ARGS()
+    BUILTIN_EVAL_ARGS();
     BUILTIN_CHECK_ARG_NUM("set-bpm", 0)
 
     double thresh = 0.0;

@@ -6,6 +6,8 @@
 #include <map>
 #include <optional>
 
+struct TemporalContext;
+
 #ifdef ARDUINO
 #define FAST_MEM_ENV __not_in_flash("ENVIRONMENTDATA")
 #else
@@ -82,6 +84,9 @@ public:
 
     void set_parent_scope(Environment* parent) { m_parent_env = parent; }
 
+    void set_temporal_context(TemporalContext* ctx) { m_temporal_ctx = ctx; }
+    TemporalContext* get_temporal_context() const { return m_temporal_ctx; }
+
     // Output this scope in readable form to a stream.
     friend std::ostream& operator<<(std::ostream& os, Environment const& v);
 
@@ -103,6 +108,7 @@ protected:
 
     // The definitions in the scope.
     Environment* m_parent_env;
+    TemporalContext* m_temporal_ctx = nullptr;
     // Environment* m_child_env;
 };
 

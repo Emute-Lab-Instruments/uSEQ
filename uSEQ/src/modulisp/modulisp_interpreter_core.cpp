@@ -7,6 +7,7 @@
 #include "lisp/value.h"
 #include "lisp/symbol_intern.h"
 #include "modulisp_interpreter.h"
+#include "temporal_context.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -110,6 +111,12 @@ ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* e
         reset_output_slot(slot, OutputType::SERIAL);
     }
 
+    // Ensure temporal lookup table is initialized (idempotent)
+    TemporalContext::initLookupTable();
+
+    // Point the global environment at our temporal context struct
+    m_environment->set_temporal_context(&m_global_temporal_ctx);
+
     // Initialize time variables with default values (0.0)
     // This ensures they always exist in the environment
     m_environment->set("t", Value(0.0));
@@ -132,6 +139,9 @@ void ModuLispInterpreter::init_builtin_functions()
     {
         // Pre-intern common symbols for better performance
         SymbolIntern::getInstance().preinternCommonSymbols();
+
+        // Initialize temporal context lookup table (must happen after SymbolIntern)
+        TemporalContext::initLookupTable();
 
         ModuLispInterpreter temp(nullptr);
         temp.loadBuiltinDefs();
@@ -602,16 +612,24 @@ Value ModuLispInterpreter::useq_eval_at_time(std::vector<Value>& args,
 Value ModuLispInterpreter::eval_at_time(Value& expr, Environment& env,
                                         TimeValue time_micros)
 {
+    TemporalContext ctx;
+    ctx.t = time_micros * 1e-6;
+    ctx.time_since_boot = m_time_manager ? m_time_manager->get_time_seconds() : 0;
+    ctx.beat = beat_at_time(time_micros);
+    ctx.bar = bar_at_time(time_micros);
+    ctx.phrase = phrase_at_time(time_micros);
+    ctx.section = section_at_time(time_micros);
+    ctx.beatNum = static_cast<int>(beat_num_at_time(time_micros));
+    ctx.barNum = static_cast<int>(bar_num_at_time(time_micros));
+    ctx.beatDur = m_beat_length / 1000000.0;
+    ctx.barDur = m_bar_length / 1000000.0;
+    ctx.phraseDur = m_phrase_length / 1000000.0;
+    ctx.sectionDur = m_section_length / 1000000.0;
 
-    // Prepare new env with appropriate time vars
-    // and current env as parent
-
-    Environment new_env = this->make_env_for_time(time_micros);
-
+    Environment new_env;  // empty, no map allocations
+    new_env.set_temporal_context(&ctx);
     new_env.set_parent_scope(&env);
-    // Eval in new env
-    Value result = ModuLispInterpreter::eval_in(expr, new_env);
-    return result;
+    return eval_in(expr, new_env);
 }
 
 // make_env_for_time and make_env_with_updated_time_durs are now defined in
