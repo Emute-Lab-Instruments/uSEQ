@@ -6,6 +6,7 @@
 
 #include "../utils.h"
 #include "modulisp_interpreter.h"
+#include "lisp/macros.h"
 #include <cctype>
 #include <cmath>
 
@@ -119,88 +120,18 @@ void ModuLispInterpreter::init_builtinfuncs()
 
 ////////////////////
 // USEQ API
-Value ModuLispInterpreter::useq_set_time_offset(std::vector<Value>& args,
-                                                Environment& env)
-{
-    constexpr const char* user_facing_name = "useq-set-time-offset";
-
-    if (!(args.size() == 1))
-    {
-        // error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-        //                      NumArgsComparison::Between, 2, 3);
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 1, -1);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-
-        if (!(args[i].is_number()))
-        {
-            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
-            return Value::error();
-        }
-    }
-
-    // BODY
+BUILTIN_NUMS(useq_set_time_offset, "useq-set-time-offset", 1,
     m_time_manager->set_transport_offset(args[0].as_float());
     get_environment()->set("useq-time-offset", args[0].as_float());
-
     return args[0];
-}
+)
 
-Value ModuLispInterpreter::useq_nudge_time(std::vector<Value>& args,
-                                           Environment& env)
-{
-    constexpr const char* user_facing_name = "useq-nudge-time";
-
-    if (!(args.size() == 1))
-    {
-        // error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-        //                      NumArgsComparison::Between, 2, 3);
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 1, -1);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-
-        if (!(args[i].is_number()))
-        {
-            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
-            return Value::error();
-        }
-    }
-
-    // BODY
+BUILTIN_NUMS(useq_nudge_time, "useq-nudge-time", 1,
     double new_offset = m_time_manager->get_transport_offset() + args[0].as_float();
     m_time_manager->set_transport_offset(new_offset);
     get_environment()->set("useq-time-offset", new_offset);
-
     return args[0];
-}
+)
 
 ////////////////////
 // USEQ API
@@ -695,127 +626,47 @@ DEFINE_OUTPUT_FUNCTION(s8, 7, serial, SERIAL)
 
 #undef DEFINE_OUTPUT_FUNCTION
 
-Value ModuLispInterpreter::useq_play(std::vector<Value>& args, Environment& env)
-{
-    (void)env;
-    constexpr const char* user_facing_name = "useq-play";
-    if (!args.empty())
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 0, -1);
-        return Value::error();
-    }
-
+BUILTIN_ZEROARG(useq_play, "useq-play",
     m_is_playing = true;
     if (m_time_manager)
     {
         m_time_manager->play_transport();
     }
-
     return Value::string(get_transport_state_string());
-}
+)
 
-Value ModuLispInterpreter::useq_pause(std::vector<Value>& args, Environment& env)
-{
-    (void)env;
-    constexpr const char* user_facing_name = "useq-pause";
-    if (!args.empty())
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 0, -1);
-        return Value::error();
-    }
-
+BUILTIN_ZEROARG(useq_pause, "useq-pause",
     m_is_playing = false;
     if (m_time_manager)
     {
         m_time_manager->pause_transport();
     }
-
     return Value::string(get_transport_state_string());
-}
+)
 
-Value ModuLispInterpreter::useq_stop(std::vector<Value>& args, Environment& env)
-{
-    (void)env;
-    constexpr const char* user_facing_name = "useq-stop";
-    if (!args.empty())
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 0, -1);
-        return Value::error();
-    }
-
+BUILTIN_ZEROARG(useq_stop, "useq-stop",
     m_is_playing = false;
     if (m_time_manager)
     {
         m_time_manager->pause_transport();
     }
     reset_logical_time();
-
     return Value::string(get_transport_state_string());
-}
+)
 
-Value ModuLispInterpreter::useq_clear(std::vector<Value>& args, Environment& env)
-{
-    (void)env;
-    constexpr const char* user_facing_name = "useq-clear";
-    if (!args.empty())
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 0, -1);
-        return Value::error();
-    }
-
+BUILTIN_ZEROARG(useq_clear, "useq-clear",
     clear_all_outputs();
     return Value::string("cleared");
-}
+)
 
-Value ModuLispInterpreter::useq_get_transport_state(std::vector<Value>& args,
-                                                    Environment& env)
-{
-    (void)env;
-    constexpr const char* user_facing_name = "useq-get-transport-state";
-    if (!args.empty())
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 0, -1);
-        return Value::error();
-    }
+BUILTIN_ZEROARG(useq_get_transport_state, "useq-get-transport-state",
     return Value::string(get_transport_state_string());
-}
+)
 
-Value ModuLispInterpreter::useq_fast(std::vector<Value>& args, Environment& env)
-{
+BUILTIN_PARTIAL(useq_fast, "fast", 2, 1,
     DBG("ModuLispInterpreter::fast");
-    constexpr const char* user_facing_name = "fast";
+    BUILTIN_CHECK_ARG_NUM("fast", 0)
 
-    // Checking number of args
-    if (!(args.size() == 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, 0);
-        return Value::error();
-    }
-
-    // Eval first arg
-    Value pre_eval = args[0];
-    args[0]        = args[0].eval(env);
-    if (args[0].is_error())
-    {
-        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
-        return Value::error();
-    }
-    // Checking first arg
-    if (!(args[0].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result           = Value::nil();
     double current_time_s  = env.get("t").value().as_float();
     double factor          = args[0].as_float();
     double new_time_micros = (current_time_s * factor) * 1e+6;
@@ -825,41 +676,13 @@ Value ModuLispInterpreter::useq_fast(std::vector<Value>& args, Environment& env)
         make_env_with_updated_time_durs(env, 1.0 / factor);
     env_with_updated_durs.set_parent_scope(&env);
 
-    result = eval_at_time(args[1], env_with_updated_durs, new_time_micros);
-    return result;
-}
+    return eval_at_time(args[1], env_with_updated_durs, new_time_micros);
+)
 
-Value ModuLispInterpreter::useq_slow(std::vector<Value>& args, Environment& env)
-{
+BUILTIN_PARTIAL(useq_slow, "slow", 2, 1,
     DBG("ModuLispInterpreter::useq_slow");
-    constexpr const char* user_facing_name = "slow";
+    BUILTIN_CHECK_ARG_NUM("slow", 0)
 
-    // Checking number of args
-    if (!(args.size() == 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, 0);
-        return Value::error();
-    }
-
-    // Eval first arg only
-    Value pre_eval = args[0];
-    args[0]        = args[0].eval(env);
-    if (args[0].is_error())
-    {
-        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
-        return Value::error();
-    }
-    // Checking first arg
-    if (!(args[0].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result           = Value::nil();
     double current_time_s  = env.get("t").value().as_float();
     double factor          = args[0].as_float();
     double new_time_micros = (current_time_s / factor) * 1e+6;
@@ -868,168 +691,42 @@ Value ModuLispInterpreter::useq_slow(std::vector<Value>& args, Environment& env)
     Environment env_with_updated_durs = make_env_with_updated_time_durs(env, factor);
     env_with_updated_durs.set_parent_scope(&env);
 
-    result = eval_at_time(args[1], env_with_updated_durs, new_time_micros);
-    return result;
-}
+    return eval_at_time(args[1], env_with_updated_durs, new_time_micros);
+)
 
-Value ModuLispInterpreter::useq_offset_time(std::vector<Value>& args,
-                                            Environment& env)
-{
+BUILTIN_PARTIAL(useq_offset_time, "offset", 2, 1,
     DBG("ModuLispInterpreter::offset");
-    constexpr const char* user_facing_name = "offset";
+    BUILTIN_CHECK_ARG_NUM("offset", 0)
 
-    // Checking number of args
-    if (!(args.size() == 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, 0);
-        return Value::error();
-    }
-
-    // Eval first arg
-    Value pre_eval = args[0];
-    args[0]        = args[0].eval(env);
-    if (args[0].is_error())
-    {
-        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
-        return Value::error();
-    }
-    // Checking first arg
-    if (!(args[0].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result           = Value::nil();
     double current_time_s  = env.get("t").value().as_float();
     double amt             = args[0].as_float();
     double new_time_micros = (current_time_s + amt) * 1e+6;
-    result                 = eval_at_time(args[1], env, new_time_micros);
-    return result;
-}
+    return eval_at_time(args[1], env, new_time_micros);
+)
 
-Value ModuLispInterpreter::useq_setbpm(std::vector<Value>& args, Environment& env)
-{
+BUILTIN_VARGS_NUMS(useq_setbpm, "set-bpm", 1, 2,
     DBG("ModuLispInterpreter::useq_setbpm");
-    constexpr const char* user_facing_name = "set-bpm";
-
-    // Checking number of args
-    if (!(1 <= args.size() <= 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::Between, 1, 2);
-        return Value::error();
-    }
-
-    // Eval args
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Checking individual args
-    if (!(args[0].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
-        return Value::error();
-    }
 
     double thresh = 0.0;
     double newBpm = args[0].as_float();
 
     if (args.size() == 2)
     {
-        if (!(args[1].is_number()))
-        {
-            report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                             args[1].display());
-            return Value::error();
-        }
-        else
-        {
-            thresh = args[1].as_float();
-        }
+        thresh = args[1].as_float();
     }
 
     set_bpm(newBpm, thresh);
     return args[0];
-}
+)
 
-Value ModuLispInterpreter::useq_set_time_sig(std::vector<Value>& args,
-                                             Environment& env)
-{
+BUILTIN_NUMS(useq_set_time_sig, "set-time-sig", 2,
     DBG("ModuLispInterpreter::useq_set_time_sig");
-    constexpr const char* user_facing_name = "set-time-sig";
-
-    // Checking number of args
-    if (!(args.size() == 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, 0);
-        return Value::error();
-    }
-
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Checking individual args
-    if (!(args[0].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
-        return Value::error();
-    }
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
     set_time_sig(args[0].as_float(), args[1].as_float());
     return Value::nil();
-}
+)
 
-Value ModuLispInterpreter::useq_tri(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "tri";
-    if (!(args.size() == 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, 0);
-        return Value::error();
-    }
-    if (!(args[0].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
-        return Value::error();
-    }
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
+BUILTIN_NOEVAL(useq_tri, "tri", 2,
+    BUILTIN_CHECK_ALL_NUMS("tri")
     double duty = args[0].as_float();
     if (duty < 0.01)
     {
@@ -1046,7 +743,7 @@ Value ModuLispInterpreter::useq_tri(std::vector<Value>& args, Environment& env)
         phase = (duty - ((phase - duty) * (duty / (1 - duty))));
     }
     return Value(phase / duty);
-}
+)
 
 // NOTE: doesn't eval its arguments until they're selected by the phasor
 Value fromList(std::vector<Value>& lst, double phasor, Environment& env)
@@ -1067,106 +764,27 @@ Value fromList(std::vector<Value>& lst, double phasor, Environment& env)
     return ModuLispInterpreter::eval_in(lst[idx], env);
 }
 
-Value ModuLispInterpreter::useq_dm(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "dm";
-
-    // Checking number of args
-    if (!(args.size() == 3))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 3, -1);
-        return Value::error();
-    }
-
-    // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-        // Check all-pred(s)
-
-        if (!(args[i].is_number()))
-        {
-            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
-            return Value::error();
-        }
-    }
-
-    // BODY
-    Value result = Value::nil();
-
+BUILTIN_NUMS(useq_dm, "dm", 3,
     int index = args[0].as_int();
     double v1 = args[1].as_float();
     double v2 = args[2].as_float();
-    result    = Value(index > 0 ? v2 : v1);
-
-    return result;
-}
+    return Value(index > 0 ? v2 : v1);
+)
 
 // FIXME shouldn't the pulsewidth be compared to the
 // 1/nth phase of the phasor, where n is the number of gates?
 // the way it is now it defaults to muting the first half of the gates
-Value ModuLispInterpreter::useq_gates(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "gates";
-
-    // Checking number of args
-    if (!(2 <= args.size() <= 3))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::Between, 2, 3);
-        return Value::error();
+BUILTIN_VARGS(useq_gates, "gates", 2, 3,
+    BUILTIN_CHECK_ARG_SEQ("gates", 0)
+    for (size_t _gi = 1; _gi < args.size(); ++_gi) {
+        BUILTIN_CHECK_ARG_NUM("gates", _gi)
     }
-
-    // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-        // Check all-pred(s)
-
-        if (i == 0)
-        {
-            if (!(args[i].is_sequential()))
-            {
-                report_error_wrong_specific_pred(
-                    user_facing_name, i + 1, "a vector or list", args[i].display());
-                return Value::error();
-            }
-        }
-        else
-        {
-            if (!(args[i].is_number()))
-            {
-                report_error_wrong_specific_pred(user_facing_name, i + 1, "a number",
-                                                 args[i].display());
-                return Value::error();
-            }
-        }
-    }
-
-    // BODY
-    Value result = Value::nil();
 
     bool pulse_width_specified = args.size() == 3;
     auto gates_vec             = args[0].as_sequential();
 
-    double pulseWidth;
-    double phasor;
+    double pulseWidth = 0.5;
+    double phasor = 0;
     if (pulse_width_specified)
     {
         pulseWidth = args[1].as_float();
@@ -1174,60 +792,18 @@ Value ModuLispInterpreter::useq_gates(std::vector<Value>& args, Environment& env
     }
     else
     {
-        pulseWidth = 0.5;
         phasor     = args[1].as_float();
     }
 
     const double val = fromList(gates_vec, phasor, env).as_int();
     const double gates =
         (fmod(phasor * gates_vec.size(), 1.0)) < pulseWidth ? 1.0 : 0.0;
-    result = Value(val * gates);
+    return Value(val * gates);
+)
 
-    return result;
-}
-
-Value ModuLispInterpreter::useq_gatesw(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "gatesw";
-
-    // Checking number of args
-    if (!(args.size() == 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, -1);
-        return Value::error();
-    }
-
-    // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Check specific preds
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a vector or list",
-                                         args[0].display());
-        return Value::error();
-    }
-
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_all_pred(user_facing_name, 2, "a number",
-                                    args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result = Value::nil();
+BUILTIN_ANY(useq_gatesw, "gatesw", 2,
+    BUILTIN_CHECK_ARG_SEQ("gatesw", 0)
+    BUILTIN_CHECK_ARG_NUM("gatesw", 1)
 
     auto gates_vec               = args[0].as_sequential();
     const double phasor          = args[1].as_float();
@@ -1236,53 +812,12 @@ Value ModuLispInterpreter::useq_gatesw(std::vector<Value>& args, Environment& en
     const double relative_phasor = fmod(phasor * gates_vec.size(), 1.0);
     const double gate            = relative_phasor < pulseWidth ? 1.0 : 0.0;
 
-    result = Value((val > 0 ? 1.0 : 0.0) * gate);
+    return Value((val > 0 ? 1.0 : 0.0) * gate);
+)
 
-    return result;
-}
-
-Value ModuLispInterpreter::useq_trigs(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "trigs";
-
-    // Checking number of args
-    if (!(2 <= args.size() <= 3))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::Between, 2, 3);
-        return Value::error();
-    }
-
-    // Evaluating args, checking for errors & all-arg constraints
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Check specific preds
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a vector or list",
-                                         args[0].display());
-        return Value::error();
-    }
-
-    if (!(args.back().is_number()))
-    {
-        report_error_wrong_all_pred(user_facing_name, args.size() + 1, "a number",
-                                    args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result = Value::nil();
+BUILTIN_VARGS(useq_trigs, "trigs", 2, 3,
+    BUILTIN_CHECK_ARG_SEQ("trigs", 0)
+    BUILTIN_CHECK_ARG_NUM("trigs", static_cast<int>(args.size()) - 1)
 
     auto lst = args[0].as_sequential();
     // NOTE: phasor at the end
@@ -1291,47 +826,10 @@ Value ModuLispInterpreter::useq_trigs(std::vector<Value>& args, Environment& env
     const double amp        = std::clamp(val / 9.0, 0.0, 1.0);
     const double pulseWidth = args.size() == 3 ? args[1].as_float() : 0.1;
     const double gate = fmod(phasor * lst.size(), 1.0) < pulseWidth ? 1.0 : 0.0;
-    result            = Value((val > 0 ? 1.0 : 0.0) * gate * amp);
+    return Value((val > 0 ? 1.0 : 0.0) * gate * amp);
+)
 
-    return result;
-}
-
-Value ModuLispInterpreter::useq_euclidean(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "euclid";
-
-    // Checking number of args
-    if (!(3 <= args.size() <= 5))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::Between, 3, 5);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-
-        // Check all-pred(s)
-        if (!(args[i].is_number()))
-        {
-            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
-            return Value::error();
-        }
-    }
-
-    // BODY
-    Value result = Value::nil();
-
+BUILTIN_VARGS_NUMS(useq_euclidean, "euclid", 3, 5,
     // NOTE: Phasor is the last arg
     const double phasor = args.back().as_float();
     const int n         = args[0].as_int();
@@ -1361,47 +859,10 @@ Value ModuLispInterpreter::useq_euclidean(std::vector<Value>& args, Environment&
 
     // Include offset in euclidean calculation
     const int idx = ((i + n - offset) * k) % n;
-    result = Value(idx < k && rem < pulseWidth ? 1 : 0);
+    return Value(idx < k && rem < pulseWidth ? 1 : 0);
+)
 
-    return result;
-}
-
-Value ModuLispInterpreter::useq_eu(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "eu";
-
-    // Checking number of args
-    if (!(3 <= args.size() <= 5))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::Between, 3, 5);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-
-        // Check all-pred(s)
-        if (!(args[i].is_number()))
-        {
-            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
-            return Value::error();
-        }
-    }
-
-    // BODY
-    Value result = Value::nil();
-
+BUILTIN_VARGS_NUMS(useq_eu, "eu", 3, 5,
     // NOTE: Phasor is the last arg
     const double phasor = args.back().as_float();
     const int n         = args[0].as_int();
@@ -1431,59 +892,13 @@ Value ModuLispInterpreter::useq_eu(std::vector<Value>& args, Environment& env)
 
     // Include offset in euclidean calculation
     const int idx = ((i + n - offset) * k) % n;
-    result = Value(idx < k && rem < pulseWidth ? 1 : 0);
+    return Value(idx < k && rem < pulseWidth ? 1 : 0);
+)
 
-
-    return result;
-}
-
-Value ModuLispInterpreter::useq_ratiotrig(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "rpulse";
-
-    // Checking number of args
-    if (!(3 == args.size()))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 3, -1);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(
-            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
-            args[0].display());
-        return Value::error();
-    }
-    // Checking individual args
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-    if (!(args[2].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result = Value::nil();
+BUILTIN_ANY(useq_ratiotrig, "rpulse", 3,
+    BUILTIN_CHECK_ARG_SEQ("rpulse", 0)
+    BUILTIN_CHECK_ARG_NUM("rpulse", 1)
+    BUILTIN_CHECK_ARG_NUM("rpulse", 2)
 
     auto ratios           = args[0].as_sequential();
     const auto pulseWidth = args[1].as_float();
@@ -1503,7 +918,6 @@ Value ModuLispInterpreter::useq_ratiotrig(std::vector<Value>& args, Environment&
         accumulatedSum += v.as_float();
         if (phaseAdj <= accumulatedSum)
         {
-            // check pulse width
             double beatPhase = (phaseAdj - lastAccumulatedSum) /
                                (accumulatedSum - lastAccumulatedSum);
             trig = beatPhase <= pulseWidth;
@@ -1511,52 +925,12 @@ Value ModuLispInterpreter::useq_ratiotrig(std::vector<Value>& args, Environment&
         }
         lastAccumulatedSum = accumulatedSum;
     }
-    result = Value(trig);
+    return Value(trig);
+)
 
-    return result;
-}
-
-Value ModuLispInterpreter::useq_ratiostep(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "rstep";
-
-    // Checking number of args
-    if (!(2 == args.size()))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, -1);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        args[i] = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            Value pre_eval = args[i];
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(
-            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
-            args[0].display());
-        return Value::error();
-    }
-    // Checking individual args
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result = Value::nil();
+BUILTIN_ANY(useq_ratiostep, "rstep", 2,
+    BUILTIN_CHECK_ARG_SEQ("rstep", 0)
+    BUILTIN_CHECK_ARG_NUM("rstep", 1)
 
     auto ratios      = args[0].as_sequential();
     const auto phase = args[1].as_float();
@@ -1580,53 +954,12 @@ Value ModuLispInterpreter::useq_ratiostep(std::vector<Value>& args, Environment&
         }
         lastAccumulatedSum = accumulatedSum;
     }
-    result = Value(phaseOut / ratioSum);
-    return result;
-}
+    return Value(phaseOut / ratioSum);
+)
 
-LISP_FUNC_DECL(ModuLispInterpreter::useq_ratioindex)
-// Value ModuLispInterpreter::useq_ratioindex(std::vector<Value>& args,
-// Environment& env)
-{
-    constexpr const char* user_facing_name = "ridx";
-
-    // Checking number of args
-    if (!(2 == args.size()))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, -1);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        args[i] = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            Value pre_eval = args[i];
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(
-            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
-            args[0].display());
-        return Value::error();
-    }
-    // Checking individual args
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result = Value::nil();
+BUILTIN_ANY(useq_ratioindex, "ridx", 2,
+    BUILTIN_CHECK_ARG_SEQ("ridx", 0)
+    BUILTIN_CHECK_ARG_NUM("ridx", 1)
 
     auto ratios      = args[0].as_sequential();
     const auto phase = args[1].as_float();
@@ -1649,53 +982,12 @@ LISP_FUNC_DECL(ModuLispInterpreter::useq_ratioindex)
         index++;
     }
     index /= static_cast<double>(ratios.size());
-    result = Value(index);
-    return result;
-}
+    return Value(index);
+)
 
-LISP_FUNC_DECL(ModuLispInterpreter::useq_ratiowarp)
-// Value ModuLispInterpreter::useq_ratiowarp(std::vector<Value>& args,
-// Environment& env)
-{
-    constexpr const char* user_facing_name = "rwarp";
-
-    // Checking number of args
-    if (!(2 == args.size()))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, -1);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        args[i] = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            Value pre_eval = args[i];
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(
-            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
-            args[0].display());
-        return Value::error();
-    }
-    // Checking individual args
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result = Value::nil();
+BUILTIN_ANY(useq_ratiowarp, "rwarp", 2,
+    BUILTIN_CHECK_ARG_SEQ("rwarp", 0)
+    BUILTIN_CHECK_ARG_NUM("rwarp", 1)
 
     auto ratios      = args[0].as_sequential();
     const auto phase = args[1].as_float();
@@ -1731,115 +1023,25 @@ LISP_FUNC_DECL(ModuLispInterpreter::useq_ratiowarp)
         }
     }
 
-    result = Value(output);
-    return result;
-}
+    return Value(output);
+)
 
-Value ModuLispInterpreter::useq_phasor_offset(std::vector<Value>& args,
-                                              Environment& env)
-{
-    constexpr const char* user_facing_name = "shift";
-
-    // Checking number of args
-    if (!(2 == args.size()))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 3, -1);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-    // Checking individual args
-    if (!(args[0].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result = Value::nil();
-
+BUILTIN_NUMS(useq_phasor_offset, "shift", 2,
     const auto offset = args[0].as_float();
     auto phase        = args[1].as_float();
-
     phase  = std::fmod(phase + offset, 1.0);
-    result = Value(phase);
+    return Value(phase);
+)
 
-    return result;
-}
+// NOTE: evals both args to handle symbols that point to lists
+BUILTIN_ANY(useq_fromList, "from-list", 2,
+    BUILTIN_CHECK_ARG_SEQ("from-list", 0)
+    BUILTIN_CHECK_ARG_NUM("from-list", 1)
 
-// NOTE: doesn't eval its arguments until they're selected by the phasor
-Value ModuLispInterpreter::useq_fromList(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "from-list";
-
-    // Checking number of args
-    // if (!(2 <= args.size() <= 3))
-    if (!(args.size() == 2))
-    {
-        // error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-        //                      NumArgsComparison::Between, 2, 3);
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, -1);
-        return Value::error();
-    }
-
-    // NOTE: This needs to eval both of its args, including the list,
-    // to cover for cases where the user passes anything other than a
-    // list literal (e.g. a symbol that points to a list)
-    //
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Checking individual args
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(
-            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
-            args[0].display());
-        return Value::error();
-    }
-    // Checking individual args
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
     auto lst            = args[0].as_sequential();
     const double phasor = args[1].as_float();
     return fromList(lst, phasor, env);
-}
+)
 
 Value flatten_impl(const Value& val, Environment& env)
 {
@@ -1891,45 +1093,9 @@ Value flatten_impl(const Value& val, Environment& env)
 // simple_hashing_function is now delegated to RandomGenerator via inline function in
 // header
 
-Value ModuLispInterpreter::useq_index_rand(std::vector<Value>& args,
-                                           Environment& env)
-{
-    constexpr const char* user_facing_name = "index-rand";
-
-    // Checking number of args
-    if (!(1 <= args.size() <= 3))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::Between, 0, 2);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-
-        // Check all-pred(s)
-        if (!(args[i].is_number()))
-        {
-            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
-            return Value::error();
-        }
-    }
-
+BUILTIN_VARGS_NUMS(useq_index_rand, "index-rand", 1, 3,
     bool scale                = args.size() > 1;
     bool lower_bound_provided = args.size() == 3;
-
-    // BODY
-    Value result = Value::nil();
 
     double index = args[args.size() - 1].as_float();
     double lo    = (scale && lower_bound_provided) ? args[0].as_float() : 0.0;
@@ -1937,50 +1103,12 @@ Value ModuLispInterpreter::useq_index_rand(std::vector<Value>& args,
 
     double rand_val = simple_hashing_function(index);
     rand_val        = lo + (rand_val * (hi - lo));
-    // TODO
-    result = Value(rand_val);
+    return Value(rand_val);
+)
 
-    return result;
-}
-
-Value ModuLispInterpreter::useq_random(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "random";
-
-    // Checking number of args
-    if (!(0 <= args.size() <= 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::Between, 0, 2);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-
-        // Check all-pred(s)
-        if (!(args[i].is_number()))
-        {
-            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
-            return Value::error();
-        }
-    }
-
+BUILTIN_VARGS_NUMS(useq_random, "random", 0, 2,
     bool scale                = args.size() > 0;
     bool lower_bound_provided = args.size() == 2;
-
-    // BODY
-    Value result = Value::nil();
 
     uint32_t current_beat_num =
         static_cast<uint32_t>(env.get("beat-num")
@@ -1997,179 +1125,38 @@ Value ModuLispInterpreter::useq_random(std::vector<Value>& args, Environment& en
         rand_val    = low + (rand_val * (high - low));
     }
 
-    // TODO
-    result = Value(rand_val);
+    return Value(rand_val);
+)
 
-    return result;
-}
+BUILTIN_PARTIAL(useq_loop_at_time, "loop-at-time", 2, 1,
+    BUILTIN_CHECK_ARG_NUM("loop-at-time", 0)
 
-Value ModuLispInterpreter::useq_loop_at_time(std::vector<Value>& args,
-                                             Environment& env)
-{
-    constexpr const char* user_facing_name = "loop-at-time";
-
-    // Checking number of args
-    if (!(args.size() == 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, 2);
-        return Value::error();
-    }
-
-    Value pre_eval = args[0];
-    args[0]        = args[0].eval(env);
-    if (args[0].is_error())
-    {
-        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
-        return Value::error();
-    }
-
-    // Checking individual args
-    if (!(args[0].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[0].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result            = Value::nil();
     double current_time_s   = env.get("t").value().as_float();
     double modulo_time_s    = args[0].as_float();
     double new_time_seconds = fmod(current_time_s, modulo_time_s);
     double new_time_micros  = new_time_seconds * 1e+6;
 
-    result = eval_at_time(args[1], env, new_time_micros);
-
-    return result;
-}
+    return eval_at_time(args[1], env, new_time_micros);
+)
 
 // TODO test
-Value ModuLispInterpreter::useq_flatten(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "flatten";
+BUILTIN_ANY(useq_flatten, "flatten", 1,
+    return flatten_impl(args[0], env);
+)
 
-    if (!(args.size() == 1))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 1, -1);
-        return Value::error();
-    }
-
-    // Check list for error
-    Value pre_eval = args[0];
-    args[0]        = args[0].eval(env);
-    if (args[0].is_error())
-    {
-        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result = Value::nil();
-    result       = flatten_impl(args[0], env);
-
-    return result;
-}
-
-Value ModuLispInterpreter::useq_fromFlattenedList(std::vector<Value>& args,
-                                                  Environment& env)
-{
-    constexpr const char* user_facing_name = "from-flat-list";
-
-    if (!(args.size() == 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, -1);
-        return Value::error();
-    }
-
-    // NOTE: This needs to eval both of its args, including the list,
-    // to cover for cases where the user passes anything other than a
-    // list literal (e.g. a symbol that points to a list)
-    //
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Checking individual args
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(
-            user_facing_name, 0, "a sequential structure (e.g. a list or a vector)",
-            args[0].display());
-        return Value::error();
-    }
-
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result = Value::nil();
+BUILTIN_ANY(useq_fromFlattenedList, "from-flat-list", 2,
+    BUILTIN_CHECK_ARG_SEQ("from-flat-list", 0)
+    BUILTIN_CHECK_ARG_NUM("from-flat-list", 1)
 
     auto lst      = flatten_impl(args[0], env).as_sequential();
     double phasor = args[1].as_float();
-    result        = fromList(lst, phasor, env);
+    return fromList(lst, phasor, env);
+)
 
-    return result;
-}
+BUILTIN_ANY(useq_interpolate, "interp", 2,
+    BUILTIN_CHECK_ARG_SEQ("interp", 0)
+    BUILTIN_CHECK_ARG_NUM("interp", 1)
 
-Value ModuLispInterpreter::useq_interpolate(std::vector<Value>& args,
-                                            Environment& env)
-{
-    constexpr const char* user_facing_name = "interp";
-
-    // Check num arguments
-    if (!(args.size() == 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, -1);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Checking individual args
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 0, "a list or a vector",
-                                         args[0].display());
-        return Value::error();
-    }
-
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result  = Value::nil();
     auto lst      = args[0].as_list();
     double phasor = args[1].as_float();
     if (phasor < 0.0)
@@ -2188,50 +1175,14 @@ Value ModuLispInterpreter::useq_interpolate(std::vector<Value>& args,
     a         = (index - pos0);
     double v2 = lst[pos0 + 1].as_float();
     double v1 = lst[pos0].as_float();
-    result    = Value(((v2 - v1) * a) + v1);
+    return Value(((v2 - v1) * a) + v1);
+)
 
-    return result;
-}
-
-Value ModuLispInterpreter::useq_step(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "step";
-
-    // Check num arguments
-    if (!(2 <= args.size() <= 3))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::Between, 2, 3);
-        return Value::error();
-    }
-
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-
-        // Check all-pred(s)
-        if (!(args[i].is_number()))
-        {
-            report_error_wrong_all_pred(user_facing_name, i + 1, "a number",
-                                        args[i].display());
-            return Value::error();
-        }
-    }
-
-    // BODY
-    Value result = Value::nil();
-
+BUILTIN_VARGS_NUMS(useq_step, "step", 2, 3,
     const int count      = args[0].as_int();
     bool offset_provided = args.size() == 3;
-    double phasor, offset;
+    double phasor = 0;
+    double offset = 0;
 
     if (offset_provided)
     {
@@ -2240,118 +1191,40 @@ Value ModuLispInterpreter::useq_step(std::vector<Value>& args, Environment& env)
     }
     else
     {
-        offset = 0;
         phasor = args[1].as_float();
     }
 
     double val = static_cast<int>(phasor * abs(count));
     if (val == count)
         val--;
-    result = Value((count > 0 ? val : count - 1 - val) + offset);
-    return result;
-}
+    return Value((count > 0 ? val : count - 1 - val) + offset);
+)
 
-Value ModuLispInterpreter::useq_rewind_logical_time(std::vector<Value>& args,
-                                                    Environment& env)
-{
-    (void)env;
-    constexpr const char* user_facing_name = "useq-rewind";
-    if (!args.empty())
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 0, -1);
-        return Value::error();
-    }
-
+BUILTIN_ZEROARG(useq_rewind_logical_time, "useq-rewind",
     reset_logical_time();
     return Value::string(get_transport_state_string());
-}
+)
 
 // (schedule <name> <period> <expr>)
-Value ModuLispInterpreter::useq_schedule(std::vector<Value>& args, Environment& env)
-{
+BUILTIN_PARTIAL(useq_schedule, "schedule", 3, 2,
     DBG("uSEQ::lisp_schedule");
-    constexpr const char* user_facing_name = "schedule";
+    BUILTIN_CHECK_ARG_STR("schedule", 0)
+    BUILTIN_CHECK_ARG_NUM("schedule", 1)
 
-    // Checking number of args
-    if (!(args.size() == 3))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 3, 0);
-        return Value::error();
-    }
-
-    // Evaluating ONLY first 2 args & checking for errors
-    for (size_t i = 0; i < 2; i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Checking individual args
-    if (!(args[0].is_string()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a string",
-                                         args[0].display());
-        return Value::error();
-    }
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-    // BODY
     const auto itemName = args[0].as_string();
     const auto period   = static_cast<size_t>(args[1].as_float());
     const auto ast      = args[2];
 
-    // Use Scheduler to manage scheduled items
     m_scheduler->schedule(itemName, ast, period);
     return Value::nil();
-}
+)
 
-// (schedule <name> <period> <expr>)
-Value ModuLispInterpreter::useq_unschedule(std::vector<Value>& args,
-                                           Environment& env)
-{
+BUILTIN_PARTIAL(useq_unschedule, "unschedule", 1, 1,
     DBG("ModuLispInterpreter::useq_unschedule");
-    constexpr const char* user_facing_name = "unschedule";
-
-    // Checking number of args
-    if (!(args.size() == 1))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 1, 0);
-        return Value::error();
-    }
-
-    // Evaluating ONLY first arg & checking for errors
-    Value pre_eval = args[0];
-    args[0]        = args[0].eval(env);
-    if (args[0].is_error())
-    {
-        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
-        return Value::error();
-    }
-
-    // Checking individual args
-    if (!(args[0].is_string()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a string",
-                                         args[0].display());
-        return Value::error();
-    }
+    BUILTIN_CHECK_ARG_STR("unschedule", 0)
 
     const String id = args[0].as_string();
 
-    // Use Scheduler to unschedule items
     if (m_scheduler->unschedule(id))
     {
         println("- (unschedule) Item " + args[0].str + " removed successfully.");
@@ -2361,6 +1234,6 @@ Value ModuLispInterpreter::useq_unschedule(std::vector<Value>& args,
         println("- (unschedule) Item " + args[0].str + " not found; ignoring.");
     }
     return Value::nil();
-}
+)
 
 #pragma GCC diagnostic pop

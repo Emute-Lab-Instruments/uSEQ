@@ -234,131 +234,34 @@ BUILTINFUNC_MEMBER(
 // especially once the exprs get more and more complex
 
 // Unified analog output functions - forward to OutputManager
-Value uSEQ::useq_a1(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        1, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-
-Value uSEQ::useq_a2(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        2, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_a3(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        3, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_a4(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        4, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_a5(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        5, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_a6(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        6, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_a7(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        7, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_a8(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        8, OutputManager::OutputType::CONTINUOUS, args, env);
-}
+DEFINE_USEQ_OUTPUT_SETTER(a1, 1, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_SETTER(a2, 2, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_SETTER(a3, 3, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_SETTER(a4, 4, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_SETTER(a5, 5, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_SETTER(a6, 6, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_SETTER(a7, 7, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_SETTER(a8, 8, CONTINUOUS)
 
 // Unified digital output functions - forward to OutputManager
-Value uSEQ::useq_d1(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        1, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_d2(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        2, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_d3(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        3, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_d4(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        4, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_d5(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        5, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_d6(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        6, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_d7(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        7, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_d8(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        8, OutputManager::OutputType::BINARY, args, env);
-}
+DEFINE_USEQ_OUTPUT_SETTER(d1, 1, BINARY)
+DEFINE_USEQ_OUTPUT_SETTER(d2, 2, BINARY)
+DEFINE_USEQ_OUTPUT_SETTER(d3, 3, BINARY)
+DEFINE_USEQ_OUTPUT_SETTER(d4, 4, BINARY)
+DEFINE_USEQ_OUTPUT_SETTER(d5, 5, BINARY)
+DEFINE_USEQ_OUTPUT_SETTER(d6, 6, BINARY)
+DEFINE_USEQ_OUTPUT_SETTER(d7, 7, BINARY)
+DEFINE_USEQ_OUTPUT_SETTER(d8, 8, BINARY)
 
 // Unified serial output functions - forward to OutputManager
-Value uSEQ::useq_s1(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        1, OutputManager::OutputType::SERIAL_OUT, args, env);
-}
-Value uSEQ::useq_s2(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        2, OutputManager::OutputType::SERIAL_OUT, args, env);
-}
-Value uSEQ::useq_s3(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        3, OutputManager::OutputType::SERIAL_OUT, args, env);
-}
-Value uSEQ::useq_s4(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        4, OutputManager::OutputType::SERIAL_OUT, args, env);
-}
-Value uSEQ::useq_s5(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        5, OutputManager::OutputType::SERIAL_OUT, args, env);
-}
-Value uSEQ::useq_s6(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        6, OutputManager::OutputType::SERIAL_OUT, args, env);
-}
-Value uSEQ::useq_s7(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        7, OutputManager::OutputType::SERIAL_OUT, args, env);
-}
-Value uSEQ::useq_s8(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_setter(
-        8, OutputManager::OutputType::SERIAL_OUT, args, env);
-}
+DEFINE_USEQ_OUTPUT_SETTER(s1, 1, SERIAL_OUT)
+DEFINE_USEQ_OUTPUT_SETTER(s2, 2, SERIAL_OUT)
+DEFINE_USEQ_OUTPUT_SETTER(s3, 3, SERIAL_OUT)
+DEFINE_USEQ_OUTPUT_SETTER(s4, 4, SERIAL_OUT)
+DEFINE_USEQ_OUTPUT_SETTER(s5, 5, SERIAL_OUT)
+DEFINE_USEQ_OUTPUT_SETTER(s6, 6, SERIAL_OUT)
+DEFINE_USEQ_OUTPUT_SETTER(s7, 7, SERIAL_OUT)
+DEFINE_USEQ_OUTPUT_SETTER(s8, 8, SERIAL_OUT)
 
 // Function that should be available in all builds (not just Arduino)
 void uSEQ::clear_all_outputs()
@@ -401,113 +304,30 @@ void uSEQ::clear_all_outputs()
 BUILTINFUNC_NOEVAL_MEMBER(useq_stop_all, clear_all_outputs();
                           println("All outputs cleared.");, 0)
 
-Value uSEQ::useq_in1(std::vector<Value>& args, Environment& env)
-{
-    return m_io_manager ? Value(m_io_manager->get_input_value(USEQI1))
-                        : Value::nil();
-}
-
-Value uSEQ::useq_in2(std::vector<Value>& args, Environment& env)
-{
-    return m_io_manager ? Value(m_io_manager->get_input_value(USEQI2))
-                        : Value::nil();
-}
-
-Value uSEQ::useq_ain1(std::vector<Value>& args, Environment& env)
-{
-    return m_io_manager ? Value(m_io_manager->get_input_value(USEQAI1))
-                        : Value::nil();
-}
-
-Value uSEQ::useq_ain2(std::vector<Value>& args, Environment& env)
-{
-    return m_io_manager ? Value(m_io_manager->get_input_value(USEQAI2))
-                        : Value::nil();
-}
+DEFINE_USEQ_INPUT_GETTER(in1, USEQI1)
+DEFINE_USEQ_INPUT_GETTER(in2, USEQI2)
+DEFINE_USEQ_INPUT_GETTER(ain1, USEQAI1)
+DEFINE_USEQ_INPUT_GETTER(ain2, USEQAI2)
 
 // Unified analog output getter functions - forward to OutputManager
-Value uSEQ::useq_get_a1(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        1, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_get_a2(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        2, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_get_a3(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        3, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_get_a4(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        4, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_get_a5(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        5, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_get_a6(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        6, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_get_a7(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        7, OutputManager::OutputType::CONTINUOUS, args, env);
-}
-Value uSEQ::useq_get_a8(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        8, OutputManager::OutputType::CONTINUOUS, args, env);
-}
+DEFINE_USEQ_OUTPUT_GETTER(a1, 1, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_GETTER(a2, 2, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_GETTER(a3, 3, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_GETTER(a4, 4, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_GETTER(a5, 5, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_GETTER(a6, 6, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_GETTER(a7, 7, CONTINUOUS)
+DEFINE_USEQ_OUTPUT_GETTER(a8, 8, CONTINUOUS)
 
 // Unified digital output getter functions - forward to OutputManager
-Value uSEQ::useq_get_d1(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        1, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_get_d2(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        2, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_get_d3(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        3, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_get_d4(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        4, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_get_d5(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        5, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_get_d6(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        6, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_get_d7(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        7, OutputManager::OutputType::BINARY, args, env);
-}
-Value uSEQ::useq_get_d8(std::vector<Value>& args, Environment& env)
-{
-    return m_output_manager->handle_output_getter(
-        8, OutputManager::OutputType::BINARY, args, env);
-}
+DEFINE_USEQ_OUTPUT_GETTER(d1, 1, BINARY)
+DEFINE_USEQ_OUTPUT_GETTER(d2, 2, BINARY)
+DEFINE_USEQ_OUTPUT_GETTER(d3, 3, BINARY)
+DEFINE_USEQ_OUTPUT_GETTER(d4, 4, BINARY)
+DEFINE_USEQ_OUTPUT_GETTER(d5, 5, BINARY)
+DEFINE_USEQ_OUTPUT_GETTER(d6, 6, BINARY)
+DEFINE_USEQ_OUTPUT_GETTER(d7, 7, BINARY)
+DEFINE_USEQ_OUTPUT_GETTER(d8, 8, BINARY)
 
 BUILTINFUNC_MEMBER(
     useq_reset_external_clock_tracking,
