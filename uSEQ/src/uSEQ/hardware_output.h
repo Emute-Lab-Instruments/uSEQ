@@ -70,5 +70,5 @@ class HardwareOutput
             s_hook(e);
     }
 
-    static OutputWriteHook s_hook;
+    inline static OutputWriteHook s_hook = nullptr;
 };

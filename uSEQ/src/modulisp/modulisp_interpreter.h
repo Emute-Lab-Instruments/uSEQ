@@ -304,8 +304,6 @@ public:
     LISP_FUNC_DECL(useq_step);
     LISP_FUNC_DECL(useq_fromList);
     LISP_FUNC_DECL(useq_fromFlattenedList);
-    LISP_FUNC_DECL(useq_seq);
-    LISP_FUNC_DECL(useq_flatseq);
     LISP_FUNC_DECL(useq_interpolate);
     LISP_FUNC_DECL(useq_rewind_logical_time);
     LISP_FUNC_DECL(useq_clear);
@@ -417,17 +415,6 @@ protected:
     std::vector<StoredOutput> m_digital_outputs;
     std::vector<StoredOutput> m_serial_outputs;
     bool m_is_playing = true;
-
-    // Signal tracking: map symbol names to whether they are time-dependent signals
-    std::map<String, bool> m_signal_map;
-
-public:
-    // Helper methods for signal detection and propagation (public for builtin access)
-    bool is_time_variable(const String& name) const;
-    bool contains_time_variable(const Value& expr) const;
-    bool is_signal(const String& name) const;
-    void mark_as_signal(const String& name);
-    void propagate_signal_status(const String& newly_marked_signal);
 
 protected:
 

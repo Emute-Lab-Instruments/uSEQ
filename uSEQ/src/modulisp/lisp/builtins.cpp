@@ -1250,24 +1250,6 @@ Value define(std::vector<Value>& args, Environment& env)
     env.set_expr(name, body);
     env.set(name, body.eval(env));
 
-    // Signal tracking: check if this definition is a signal
-    if (ModuLispInterpreter::modulisp_instance_ptr)
-    {
-        bool was_signal_before = ModuLispInterpreter::modulisp_instance_ptr->is_signal(name);
-
-        // Check if the expression contains time variables or references other signals
-        if (ModuLispInterpreter::modulisp_instance_ptr->contains_time_variable(body))
-        {
-            ModuLispInterpreter::modulisp_instance_ptr->mark_as_signal(name);
-
-            // If this is newly marked as a signal, propagate to dependent expressions
-            if (!was_signal_before)
-            {
-                ModuLispInterpreter::modulisp_instance_ptr->propagate_signal_status(name);
-            }
-        }
-    }
-
     result = Value::atom(name);
     return result;
 }

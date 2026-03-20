@@ -18,7 +18,6 @@ SOURCES=(
     "uSEQ/src/utils/itoa.cpp"
     "uSEQ/src/utils/log.cpp"
     "uSEQ/src/utils/error_messages.cpp"
-    "uSEQ/src/utils/flags.cpp"
     "uSEQ/src/utils/logger_bridge.cpp"
     "uSEQ/src/utils/default_logger.cpp"
     "uSEQ/src/utils.cpp"
@@ -36,8 +35,6 @@ SOURCES=(
     "uSEQ/src/modulisp/modulisp.cpp"
     "uSEQ/src/modulisp/modulisp_time.cpp"
     "uSEQ/src/modulisp/modulisp_api.cpp"
-    "uSEQ/src/modulisp/modulisp_eval.cpp"
-    "uSEQ/src/modulisp/modulisp_interpreter.cpp"
     "uSEQ/src/modulisp/modulisp_interpreter_core.cpp"
     "uSEQ/src/modulisp/function_registry.cpp"
     "uSEQ/src/modulisp/phasor_manager.cpp"
@@ -51,7 +48,6 @@ SOURCES=(
     # Skip hardware-specific files for WASM:
     # - uSEQ/src/uSEQ_io.cpp (hardware I/O)
     # - uSEQ/src/uSEQ_i2c.cpp (I2C networking) 
-    # - uSEQ/src/uSEQ_led.cpp (LED control)
     # - uSEQ/src/uSEQ_flash.cpp (flash storage)
     # - uSEQ/src/uSEQ/output_manager.cpp (hardware outputs)
     # - uSEQ/src/uSEQ/io_manager.cpp (hardware I/O management)

@@ -83,12 +83,12 @@ void ModuLispInterpreter::init_builtinfuncs()
     INSERT_BUILTINDEF("rwarp", useq_ratiowarp);
     INSERT_BUILTINDEF("shift", useq_phasor_offset);
 
-    // NOTE: different names for the same function
+    // "seq" is an alias for "from-list"
     INSERT_BUILTINDEF("from-list", useq_fromList);
-    INSERT_BUILTINDEF("seq", useq_seq);
-    INSERT_BUILTINDEF("flatseq", useq_flatseq);
-    //
+    INSERT_BUILTINDEF("seq", useq_fromList);
+    // "flatseq" is an alias for "from-flattened-list"
     INSERT_BUILTINDEF("from-flattened-list", useq_fromFlattenedList);
+    INSERT_BUILTINDEF("flatseq", useq_fromFlattenedList);
     INSERT_BUILTINDEF("flatten", useq_flatten);
     INSERT_BUILTINDEF("interp", useq_interpolate);
     INSERT_BUILTINDEF("step", useq_step);
@@ -1830,61 +1830,6 @@ Value ModuLispInterpreter::useq_fromList(std::vector<Value>& args, Environment& 
     return fromList(lst, phasor, env);
 }
 
-// NOTE: duplicate of fromList, FIXME
-Value ModuLispInterpreter::useq_seq(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "seq";
-
-    // Checking number of args
-    // if (!(2 <= args.size() <= 3))
-    if (!(args.size() == 2))
-    {
-        // error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-        //                      NumArgsComparison::Between, 2, 3);
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, -1);
-        return Value::error();
-    }
-
-    // NOTE: This needs to eval both of its args, including the list,
-    // to cover for cases where the user passes anything other than a
-    // list literal (e.g. a symbol that points to a list)
-    //
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Checking individual args
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(
-            user_facing_name, 1, "a sequential structure (e.g. a list or a vector)",
-            args[0].display());
-        return Value::error();
-    }
-    // Checking individual args
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 2, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    auto lst            = args[0].as_sequential();
-    const double phasor = args[1].as_float();
-    return fromList(lst, phasor, env);
-}
-
 Value flatten_impl(const Value& val, Environment& env)
 {
     std::vector<Value> flattened;
@@ -2112,60 +2057,6 @@ Value ModuLispInterpreter::useq_flatten(std::vector<Value>& args, Environment& e
     // BODY
     Value result = Value::nil();
     result       = flatten_impl(args[0], env);
-
-    return result;
-}
-
-// NOTE: duplicate of fromFlattenedList, FIXME
-Value ModuLispInterpreter::useq_flatseq(std::vector<Value>& args, Environment& env)
-{
-    constexpr const char* user_facing_name = "flatseq";
-
-    if (!(args.size() == 2))
-    {
-        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
-                                    NumArgsComparison::EqualTo, 2, -1);
-        return Value::error();
-    }
-
-    // NOTE: This needs to eval both of its args, including the list,
-    // to cover for cases where the user passes anything other than a
-    // list literal (e.g. a symbol that points to a list)
-    //
-    // Evaluating & checking args for errors
-    for (size_t i = 0; static_cast<size_t>(i) < args.size(); i++)
-    {
-        // Eval
-        Value pre_eval = args[i];
-        args[i]        = args[i].eval(env);
-        if (args[i].is_error())
-        {
-            report_error_arg_is_error(user_facing_name, i + 1, pre_eval.display());
-            return Value::error();
-        }
-    }
-
-    // Checking individual args
-    if (!(args[0].is_sequential()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 0, "a list or a vector",
-                                         args[0].display());
-        return Value::error();
-    }
-
-    if (!(args[1].is_number()))
-    {
-        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
-                                         args[1].display());
-        return Value::error();
-    }
-
-    // BODY
-    Value result = Value::nil();
-
-    auto lst      = flatten_impl(args[0], env).as_sequential();
-    double phasor = args[1].as_float();
-    result        = fromList(lst, phasor, env);
 
     return result;
 }

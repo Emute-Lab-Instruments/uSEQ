@@ -151,8 +151,6 @@ public:
 #endif
     void update_clock_from_external(double ts);
 
-    double delme = 928.22234;
-
     static uSEQ* instance;
 
     // ModuLispInterpreter delegation methods
@@ -454,7 +452,6 @@ public:
 #endif
 
     // void clear_non_program_flash();
-    static String current_output_being_processed;
 
 #ifdef ARDUINO
     // DSP ENGINE - use types from uSEQ_dsp.h

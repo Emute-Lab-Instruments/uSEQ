@@ -21,50 +21,6 @@ JsonProtocolState& state()
     return s;
 }
 
-String escape_json_string(const String& input)
-{
-    String escaped = "";
-    escaped.reserve(input.length());
-
-    for (size_t i = 0; i < input.length(); ++i)
-    {
-        const char c = input[i];
-        switch (c)
-        {
-        case '"':
-            escaped += "\\\"";
-            break;
-        case '\\':
-            escaped += "\\\\";
-            break;
-        case '\n':
-            escaped += "\\n";
-            break;
-        case '\r':
-            escaped += "\\r";
-            break;
-        case '\t':
-            escaped += "\\t";
-            break;
-        default:
-            if (static_cast<unsigned char>(c) < 0x20)
-            {
-                char buffer[7];
-                snprintf(buffer, sizeof(buffer), "\\u%04X",
-                         static_cast<unsigned char>(c));
-                escaped += buffer;
-            }
-            else
-            {
-                escaped += c;
-            }
-            break;
-        }
-    }
-
-    return escaped;
-}
-
 #ifdef ARDUINO
 void write_serial_json(const String& payload)
 {
@@ -252,14 +208,6 @@ void report_evaluation_error(const String& error_msg, String atom)
                  ", the following error ocurred:\n    " + error_msg;
     report_error(msg);
 }
-
-// void error_num_args_incorrect(String function_name, String expected,
-//                               int num_received)
-// {
-//     print("ERROR: ");
-//     print("(" + function_name + ") Expected " + String(num_expected));
-//     print("\\n");
-// }
 
 String comp_to_string(NumArgsComparison comp)
 {

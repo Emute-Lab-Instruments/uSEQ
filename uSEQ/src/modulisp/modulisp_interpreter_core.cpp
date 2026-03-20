@@ -206,14 +206,7 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
             return evaluated;
         };
 
-        // Check if this symbol is a signal - if so, always evaluate its expression
-        bool is_signal_var = false;
-        if (modulisp_instance_ptr)
-        {
-            is_signal_var = modulisp_instance_ptr->is_signal(symbol_name);
-        }
-
-        if (m_attempt_expr_eval_first || is_signal_var)
+        if (m_attempt_expr_eval_first)
         {
             if (auto evaluated = try_eval_expr_binding(symbol_name))
             {
@@ -222,7 +215,6 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
             }
         }
 
-        // For non-signals, use the cached value
         bool has_binding = env.has(symbol_name) ||
                            Environment::builtindefs().has(symbol_name);
         if (has_binding)
@@ -235,7 +227,7 @@ Value ModuLispInterpreter::eval_in(Value& v, Environment& env)
             }
         }
 
-        if (!m_attempt_expr_eval_first && !is_signal_var && m_eval_expr_if_def_not_found)
+        if (!m_attempt_expr_eval_first && m_eval_expr_if_def_not_found)
         {
             if (auto evaluated = try_eval_expr_binding(symbol_name))
             {
@@ -577,91 +569,165 @@ void ModuLispInterpreter::loadBuiltinDefs()
     Environment::builtindefs()["sqr"]    = Value("sqr", builtin::useq_sqr);
 }
 
-// ===== Signal tracking implementation =====
+// ===== eval_at_time (merged from modulisp_eval.cpp) =====
 
-bool ModuLispInterpreter::is_time_variable(const String& name) const
+Value ModuLispInterpreter::useq_eval_at_time(std::vector<Value>& args,
+                                             Environment& env)
 {
-    return name == "t" || name == "time" || name == "beat" || name == "bar" ||
-           name == "phrase" || name == "section";
-}
+    constexpr const char* user_facing_name = "eval-at-time";
 
-bool ModuLispInterpreter::contains_time_variable(const Value& expr) const
-{
-    if (expr.is_symbol())
+    // Checking number of args
+    if (!(args.size() == 2))
     {
-        const String& name = expr.as_atom();
-        // Check if it's a time variable
-        if (is_time_variable(name))
-        {
-            return true;
-        }
-        // Check if this symbol references a signal
-        if (is_signal(name))
-        {
-            return true;
-        }
-        return false;
+        report_error_wrong_num_args(user_facing_name, static_cast<int>(args.size()),
+                                    NumArgsComparison::EqualTo, 2, -1);
+        return Value::error();
     }
-    else if (expr.is_list())
+
+    // NOTE: This needs to eval both of its args, including the list,
+    // to cover for cases where the user passes anything other than a
+    // list literal (e.g. a symbol that points to a list)
+    //
+    // Evaluating & checking args for errors
+    Value pre_eval = args[0];
+    args[0]        = args[0].eval(env);
+    if (args[0].is_error())
     {
-        // Recursively check all elements in the list
-        for (const Value& elem : expr.list)
-        {
-            if (contains_time_variable(elem))
-            {
-                return true;
-            }
-        }
-        return false;
+        report_error_arg_is_error(user_facing_name, 1, pre_eval.display());
+        return Value::error();
     }
-    // Numbers, strings, nil, etc. are not signals
-    return false;
-}
 
-bool ModuLispInterpreter::is_signal(const String& name) const
-{
-    auto it = m_signal_map.find(name);
-    if (it != m_signal_map.end())
+    // Checking individual args
+    if (!(args[0].is_number()))
     {
-        return it->second;
+        report_error_wrong_specific_pred(user_facing_name, 1, "a number",
+                                         args[0].display());
+        return Value::error();
     }
-    return false;
+
+    // NOTE: go from seconds to micros for internal calculations
+    double time = args[0].as_float() * 1e+6;
+
+    // BODY
+    return eval_at_time(args[1], env, time);
 }
 
-void ModuLispInterpreter::mark_as_signal(const String& name)
+Value ModuLispInterpreter::eval_at_time(Value& expr, Environment& env,
+                                        TimeValue time_micros)
 {
-    m_signal_map[name] = true;
+
+    // Prepare new env with appropriate time vars
+    // and current env as parent
+
+    Environment new_env = this->make_env_for_time(time_micros);
+
+    new_env.set_parent_scope(&env);
+    // Eval in new env
+    Value result = ModuLispInterpreter::eval_in(expr, new_env);
+    return result;
 }
 
-void ModuLispInterpreter::propagate_signal_status(const String& newly_marked_signal)
-{
-    // Find all defined symbols that reference the newly marked signal
-    // and recursively mark them as signals too
+// make_env_for_time and make_env_with_updated_time_durs are now defined in
+// modulisp_time.cpp
 
-    bool changed = true;
-    while (changed)
+// ===== Execution API (merged from modulisp_interpreter.cpp) =====
+
+ExecutionResult ModuLispInterpreter::execute_now(const String& code)
+{
+    // Clear any previous errors before execution
+    // This ensures we only capture errors from THIS execution
+    error_msg_q.clear();
+
+    // Execute the code synchronously and capture the result
+    String result = eval(code);
+
+    // Build the execution result structure
+    ExecutionResult exec_result;
+    exec_result.result_text = result;
+    exec_result.had_errors = !error_msg_q.empty();
+    exec_result.errors = error_msg_q;  // Copy error queue to result
+    exec_result.printed = true;         // Immediate execution always prints
+
+    return exec_result;
+}
+
+ExecutionResult ModuLispInterpreter::schedule_code(const String& code)
+{
+    // Parse the code into an AST Value
+    Value expr = get_parser()->parse(code);
+
+    // Add the parsed expression to the scheduler's run queue
+    get_scheduler()->add_to_run_queue(expr);
+
+    // Build the execution result structure
+    ExecutionResult exec_result;
+    exec_result.result_text = code;     // Echo the scheduled code
+    exec_result.had_errors = false;     // Scheduling itself doesn't produce errors
+    exec_result.errors.clear();         // No errors
+    exec_result.printed = true;         // Echo confirms scheduling
+
+    return exec_result;
+}
+
+void ModuLispInterpreter::update_stream_value(size_t channel, double value)
+{
+    (void)channel;  // Suppress unused parameter warning
+    (void)value;    // Suppress unused parameter warning
+}
+
+void ModuLispInterpreter::run_scheduled_items()
+{
+    DBG("ModuLispInterpreter::runScheduledItems");
+
+    size_t current_time = static_cast<size_t>(m_time_manager->get_transport_time());
+    auto items_to_run   = m_scheduler->get_items_to_run(current_time);
+
+    for (auto* item : items_to_run)
     {
-        changed = false;
-
-        // Iterate through all expression bindings in the environment
-        const ValueMap& expr_map = m_environment->get_def_exprs();
-        for (const auto& pair : expr_map)
+        if (item && !item->ast.is_nil())
         {
-            const String& symbol_name = pair.first;
-            const Value& symbol_expr = pair.second;
-
-            // Skip if already marked as signal
-            if (is_signal(symbol_name))
-            {
-                continue;
-            }
-
-            // Check if this expression contains any signals
-            if (contains_time_variable(symbol_expr))
-            {
-                mark_as_signal(symbol_name);
-                changed = true;
-            }
+            Value result = eval(item->ast);
+            (void)result; // Suppress unused variable warning
         }
     }
 }
+
+void ModuLispInterpreter::check_code_quant_phasor()
+{
+    DBG("ModuLispInterpreter::check_code_quant_phasor");
+
+    double newCqpVal = eval(m_scheduler->get_cqp_ast()).as_float();
+    double last_cqp  = m_scheduler->get_last_cqp();
+
+    if (newCqpVal < last_cqp)
+    {
+        // Phasor wrapped around, execute queued items
+        update_Q0();
+        auto& run_queue = m_scheduler->get_run_queue();
+        for (const auto& item : run_queue)
+        {
+            Value res;
+            int cmdts = micros();
+            res       = eval(item);
+            cmdts     = micros() - cmdts;
+            println(res.to_lisp_src());
+        }
+        m_scheduler->clear_run_queue();
+    }
+    m_scheduler->set_last_cqp(newCqpVal);
+}
+
+void ModuLispInterpreter::update_Q0()
+{
+    const Value& q0_ast = m_scheduler->get_q0_ast();
+    if (!q0_ast.is_nil())
+    {
+        Value result = eval(q0_ast);
+        if (result.is_error())
+        {
+            println("Error in q0 output function, clearing");
+            m_scheduler->set_q0_ast(Value());
+        }
+    }
+}
+

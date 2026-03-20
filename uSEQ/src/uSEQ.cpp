@@ -2108,3 +2108,13 @@ Value uSEQ::ard_dw(std::vector<Value>& args, Environment& env)
 }
 
 #endif
+
+#ifdef ENABLE_LED_CONTROL
+void uSEQ::led_animation()
+{
+    if (m_io_manager)
+    {
+        m_io_manager->led_animation();
+    }
+}
+#endif // ENABLE_LED_CONTROL

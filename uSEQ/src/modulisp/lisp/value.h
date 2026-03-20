@@ -2,14 +2,12 @@
 #define VALUE_H_
 
 #include "../../utils/error_messages.h"
-#include "../../utils/flags.h"
 #include "../../utils/log.h"
 #include "../../utils/string.h"
 #include "symbol_intern.h"
 #include <cmath>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -42,9 +40,6 @@ using ModuLispInterpreter_Method_Ptr =
 #else
 #define VALUE_FAST_MEM // Empty for desktop builds
 #endif
-
-#include "signal_metadata.h"
-// #include "value_signal_processing.h"
 
 class Value
 {
@@ -134,59 +129,6 @@ public:
     bool is_list_and_empty() const;
     bool is_string() const;
     bool is_symbol() const;
-    bool is_signal() const;
-
-    // Core automation signal metadata query methods
-    double get_min() const;
-    double get_max() const;
-    bool is_periodic() const;
-    double get_period() const;
-    bool is_monotonic() const;
-    bool is_monotonic_increasing() const;
-    bool is_monotonic_decreasing() const;
-    bool is_constant() const;
-
-    // Continuity and smoothness metadata methods
-    bool is_continuous() const;
-    bool is_smooth() const;
-    bool is_stepped() const;
-    bool is_linear_segments() const;
-
-    // Time-based properties
-    double get_time_start() const;
-    double get_time_end() const;
-    bool is_causal() const;
-    bool is_memoryless() const;
-    double get_memory_length() const;
-
-    // Zero crossing analysis methods
-    bool has_zero_crossings() const;
-    double get_zero_crossing_rate() const;
-    bool are_zero_crossing_locations_known() const;
-
-    // Threshold and range analysis methods
-    bool supports_threshold_queries() const;
-    double get_min_threshold_resolution() const;
-    bool supports_range_queries() const;
-    double get_range_query_resolution() const;
-
-    // Extrema analysis methods
-    bool has_local_extrema() const;
-    bool are_extrema_locations_known() const;
-    double get_extrema_detection_threshold() const;
-
-    // Interpolation properties
-    int get_interpolation_type() const;
-
-    // Periodicity details
-    double get_phase_offset() const;
-    bool is_phase_locked() const;
-
-    // Quantization properties (for discrete automation)
-    bool is_quantized() const;
-    bool is_integer_valued() const;
-    double get_quantum_step() const;
-
     bool as_bool() const;
     int as_int() const;
     double as_float() const;
@@ -223,10 +165,6 @@ public:
     Value operator/(Value other) const;
     Value operator%(Value other) const;
 
-    // Power operation with metadata support
-    // Value pow(const Value& exponent) const { return
-    // ValueSignalProcessing::pow(*this, exponent); }
-
     ////////////////////////////////////////////////////////////////////////////////
     /// TRANSCENDENTAL AND MATHEMATICAL FUNCTIONS
     /// ////////////////////////////////////////////
@@ -245,75 +183,6 @@ public:
 
     // Other mathematical functions
     Value abs() const;
-    // Value floor() const { return ValueSignalProcessing::floor(*this); }
-    // Value round() const { return ValueSignalProcessing::round(*this); }
-    // Value sign() const { return ValueSignalProcessing::sign(*this); }
-    // Value step() const { return ValueSignalProcessing::step(*this); }
-
-    ////////////////////////////////////////////////////////////////////////////////
-    /// SIGNAL PROCESSING FUNCTIONS
-    /// ////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////
-
-    // Signal processing operations
-    // Value integrate() const { return ValueSignalProcessing::integrate(*this); }
-    // Value delay(const Value& time) const { return
-    // ValueSignalProcessing::delay(*this, time); } Value moving_average(const Value&
-    // window) const { return ValueSignalProcessing::moving_average(*this, window); }
-
-    ////////////////////////////////////////////////////////////////////////////////
-    /// AUTOMATION ANALYSIS METHODS
-    /// ////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////////////
-
-    // Zero Crossing Analysis
-    // std::vector<double> find_zero_crossings(double start_time, double end_time)
-    // const { return ValueSignalProcessing::find_zero_crossings(*this, start_time,
-    // end_time); } double get_next_zero_crossing(double from_time) const { return
-    // ValueSignalProcessing::get_next_zero_crossing(*this, from_time); } bool
-    // has_zero_crossings_in_range(double start_time, double end_time) const { return
-    // ValueSignalProcessing::has_zero_crossings_in_range(*this, start_time,
-    // end_time); }
-
-    // Threshold Analysis
-    // std::vector<double> find_threshold_crossings(double threshold, double
-    // start_time, double end_time) const { return
-    // ValueSignalProcessing::find_threshold_crossings(*this, threshold, start_time,
-    // end_time); } double get_next_threshold_crossing(double threshold, double
-    // from_time, bool rising_edge = true) const { return
-    // ValueSignalProcessing::get_next_threshold_crossing(*this, threshold,
-    // from_time, rising_edge); }
-
-    // Range Analysis
-    // std::vector<std::pair<double, double>> find_value_ranges(double min_val,
-    // double max_val, double start_time, double end_time) const { return
-    // ValueSignalProcessing::find_value_ranges(*this, min_val, max_val, start_time,
-    // end_time); } bool is_in_range(double min_val, double max_val, double at_time)
-    // const { return ValueSignalProcessing::is_in_range(*this, min_val, max_val,
-    // at_time); } double get_time_in_range(double min_val, double max_val, double
-    // start_time, double end_time) const { return
-    // ValueSignalProcessing::get_time_in_range(*this, min_val, max_val, start_time,
-    // end_time); }
-
-    // Extrema Analysis
-    // std::vector<double> find_local_maxima(double start_time, double end_time)
-    // const { return ValueSignalProcessing::find_local_maxima(*this, start_time,
-    // end_time); } std::vector<double> find_local_minima(double start_time, double
-    // end_time) const { return ValueSignalProcessing::find_local_minima(*this,
-    // start_time, end_time); } double get_global_maximum_time(double start_time,
-    // double end_time) const { return
-    // ValueSignalProcessing::get_global_maximum_time(*this, start_time, end_time); }
-    // double get_global_minimum_time(double start_time, double end_time) const {
-    // return ValueSignalProcessing::get_global_minimum_time(*this, start_time,
-    // end_time); }
-
-    // Monotonicity Analysis
-    // bool is_monotonic_in_range(double start_time, double end_time) const { return
-    // ValueSignalProcessing::is_monotonic_in_range(*this, start_time, end_time); }
-    // bool is_increasing_in_range(double start_time, double end_time) const { return
-    // ValueSignalProcessing::is_increasing_in_range(*this, start_time, end_time); }
-    // bool is_decreasing_in_range(double start_time, double end_time) const { return
-    // ValueSignalProcessing::is_decreasing_in_range(*this, start_time, end_time); }
 
     bool operator==(const String& str) const;
 
@@ -342,7 +211,6 @@ public:
         BUILTIN_MODULISP_METHOD,
         UNIT,
         NIL,
-        SIGNAL,
         ERROR
     } type;
 
@@ -361,9 +229,6 @@ public:
     std::vector<Value> list;
 
     std::shared_ptr<Environment> lambda_scope;
-
-    // Signal metadata (only present for SIGNAL type values)
-    std::optional<SignalMetadata> signal_metadata;
 };
 
 // end of class Value
