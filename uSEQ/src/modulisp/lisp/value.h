@@ -26,8 +26,10 @@ using BuiltinFunc     = std::function<Value(LispFuncArgsVec&, Environment&)>;
 // using BuiltinFunc = Value (*)(std::vector<Value>&, Environment&);
 using BuiltinFuncRawPtr = Value (*)(std::vector<Value>&, Environment&);
 
-class uSEQ;
-using uSEQ_Method_Ptr = Value (uSEQ::*)(std::vector<Value>&, Environment&);
+// Plugin builtin: function pointer + opaque context for zero-overhead extension.
+// The system layer (e.g. uSEQ) registers hardware builtins through this type,
+// allowing the interpreter to call them without knowing anything about the system.
+using PluginBuiltinFunc = Value(*)(void* ctx, std::vector<Value>& args, Environment& env);
 
 class ModuLispInterpreter;
 using ModuLispInterpreter_Method_Ptr =
@@ -63,7 +65,7 @@ public:
     // Constructs a named function that corresponds to a native C/C++ Lisp
     // function
     Value(String name, BuiltinFuncRawPtr ptr);
-    Value(String name, uSEQ_Method_Ptr);
+    Value(String name, PluginBuiltinFunc func, void* ctx);
     Value(String name, ModuLispInterpreter_Method_Ptr);
     // Value(String name, BuiltinFunc f);
     // Value(String name, RawBuiltinFuncPtr ptr);
@@ -207,7 +209,7 @@ public:
         STRING,
         LAMBDA,
         BUILTIN,
-        BUILTIN_METHOD,
+        BUILTIN_PLUGIN,
         BUILTIN_MODULISP_METHOD,
         UNIT,
         NIL,
@@ -220,9 +222,12 @@ public:
         int i;
         double f;
         BuiltinFuncRawPtr builtin;
-        uSEQ_Method_Ptr builtin_method;
+        PluginBuiltinFunc plugin_builtin;
         ModuLispInterpreter_Method_Ptr builtin_modulisp_method;
     } stack_data;
+
+    // Opaque context for plugin builtins (set only for BUILTIN_PLUGIN type)
+    void* plugin_context = nullptr;
 
     String str;
     SymbolIntern::SymbolID symbol_id = SymbolIntern::INVALID_ID;  // For fast ATOM comparison

@@ -101,11 +101,12 @@ Value::Value(String name, BuiltinFuncRawPtr ptr) : type(BUILTIN)
     stack_data.builtin = ptr;
 }
 
-// BUILTIN_METHOD
-Value::Value(String name, uSEQ_Method_Ptr ptr) : type(BUILTIN_METHOD)
+// BUILTIN_PLUGIN
+Value::Value(String name, PluginBuiltinFunc func, void* ctx) : type(BUILTIN_PLUGIN)
 {
-    str                       = name;
-    stack_data.builtin_method = ptr;
+    str                        = name;
+    stack_data.plugin_builtin  = func;
+    plugin_context             = ctx;
 }
 
 // BUILTIN_MODULISP_METHOD
@@ -190,7 +191,7 @@ bool Value::is_builtin() const
 {
     // Treat all builtin function carriers as builtins so the evaluator
     // does not pre-evaluate their arguments (special forms support).
-    return type == BUILTIN || type == BUILTIN_METHOD ||
+    return type == BUILTIN || type == BUILTIN_PLUGIN ||
            type == BUILTIN_MODULISP_METHOD;
 }
 
@@ -686,6 +687,8 @@ String Value::get_type_name() const
     case STRING:
         return STRING_TYPE;
     case BUILTIN:
+    case BUILTIN_PLUGIN:
+    case BUILTIN_MODULISP_METHOD:
     case LAMBDA:
         // Instead of differentiating between
         // lambda and builtin types, we group them together.
@@ -744,11 +747,9 @@ String Value::display() const
         // pointer or of the thing it's pointing to?
         return "{builtin " + str + " at " + String(size_t(&stack_data.builtin)) +
                "}";
-    case BUILTIN_METHOD:
-        // NOTE: should this print the address of the unique
-        // pointer or of the thing it's pointing to?
-        return "{builtin method " + str + " at " +
-               String(size_t(&stack_data.builtin_method)) + "}";
+    case BUILTIN_PLUGIN:
+        return "{builtin plugin " + str + " at " +
+               String(size_t(&stack_data.plugin_builtin)) + "}";
     case UNIT:
         return "";
     case ERROR:
@@ -812,7 +813,7 @@ String Value::to_lisp_src() const
         // i.e. referring to the variable that the original did
         // and not to any potential shadowings in the current scope
     case BUILTIN:
-    case BUILTIN_METHOD:
+    case BUILTIN_PLUGIN:
         return str;
     default:
         // We don't know how to display whatever type this is.

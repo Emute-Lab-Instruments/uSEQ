@@ -9,8 +9,8 @@
 #include <cctype>
 #include <cmath>
 
-// Creates a Lisp Value of type BUILTIN_METHOD,
-// which requires
+// Creates a Lisp Value of type BUILTIN_MODULISP_METHOD,
+// which stores a pointer-to-member of ModuLispInterpreter
 #define INSERT_BUILTINDEF(__name__, __func_name__)                                  \
     Environment::builtindefs()[__name__] =                                          \
         Value((String)__name__, &ModuLispInterpreter::__func_name__);

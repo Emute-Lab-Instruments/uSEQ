@@ -26,7 +26,6 @@ bool INTERP_MEM ModuLispInterpreter::m_eval_expr_if_def_not_found       = true;
 bool INTERP_MEM ModuLispInterpreter::m_update_loop_evaluation           = false;
 String INTERP_MEM ModuLispInterpreter::m_atom_currently_being_evaluated = "";
 
-uSEQ* INTERP_MEM ModuLispInterpreter::useq_instance_ptr;
 ModuLispInterpreter* INTERP_MEM ModuLispInterpreter::modulisp_instance_ptr;
 
 // Constructors
@@ -379,24 +378,24 @@ Value ModuLispInterpreter::apply(Value& f, LispFuncArgsVec& args, Environment& e
         report_generic_error("EMPTY BUILTIN POINTER");
         return Value::error();
     }
-    case Value::BUILTIN_METHOD:
+    case Value::BUILTIN_PLUGIN:
     {
-        dbg("builtin METHOD!");
-        if (f.stack_data.builtin_method != NULL &&
-            ModuLispInterpreter::useq_instance_ptr != NULL)
+        dbg("builtin PLUGIN!");
+        if (f.stack_data.plugin_builtin != NULL && f.plugin_context != NULL)
         {
             Value result =
-                (*useq_instance_ptr.*f.stack_data.builtin_method)(args, env);
+                f.stack_data.plugin_builtin(f.plugin_context, args, env);
             return result;
         }
-        if (f.stack_data.builtin_method == NULL)
+        if (f.stack_data.plugin_builtin == NULL)
         {
-            report_generic_error("EMPTY BUILTIN POINTER for method with name " +
+            report_generic_error("EMPTY PLUGIN BUILTIN POINTER for function with name " +
                                  f.str);
         }
-        else if (ModuLispInterpreter::useq_instance_ptr == NULL)
+        else if (f.plugin_context == NULL)
         {
-            report_generic_error("uSEQ POINTER INSTANCE IS NULL");
+            report_generic_error("PLUGIN CONTEXT IS NULL for function with name " +
+                                 f.str);
         }
         return Value::error();
     }
@@ -567,6 +566,15 @@ void ModuLispInterpreter::loadBuiltinDefs()
     Environment::builtindefs()["scope"]  = Value("scope", builtin::scope);
     Environment::builtindefs()["pulse"]  = Value("pulse", builtin::useq_pulse);
     Environment::builtindefs()["sqr"]    = Value("sqr", builtin::useq_sqr);
+}
+
+// ===== Plugin builtin registration =====
+
+void ModuLispInterpreter::register_plugin_builtin(const String& name,
+                                                   PluginBuiltinFunc func,
+                                                   void* ctx)
+{
+    Environment::builtindefs()[name] = Value(name, func, ctx);
 }
 
 // ===== eval_at_time (merged from modulisp_eval.cpp) =====

@@ -678,7 +678,6 @@ void uSEQ::init()
 
     // dbg("free heap (start):" + String(free_heap()));
 
-    ModuLispInterpreter::set_useq_instance_ptr(this);
     m_interpreter.init();
 
     uSEQ::instance = this;

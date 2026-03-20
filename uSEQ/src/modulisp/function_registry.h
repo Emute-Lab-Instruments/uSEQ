@@ -9,7 +9,6 @@
 #include <vector>
 
 // Forward declarations for method pointer types
-class uSEQ;
 class ModuLispInterpreter;
 
 /**
@@ -39,8 +38,8 @@ public:
     // Direct registration methods that match existing Value constructors
     void registerBuiltinFunction(const String& name, const String& module,
                                  BuiltinFuncRawPtr func);
-    void registerMethodFunction(const String& name, const String& module,
-                                uSEQ_Method_Ptr method, uSEQ* instance);
+    void registerPluginFunction(const String& name, const String& module,
+                                PluginBuiltinFunc func, void* ctx);
     void registerModuLispMethod(const String& name, const String& module,
                                 ModuLispInterpreter_Method_Ptr method,
                                 ModuLispInterpreter* instance);

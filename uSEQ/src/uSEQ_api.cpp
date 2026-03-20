@@ -7,11 +7,15 @@
 #include "dsp/uSeqGens/uSeqGen_Sampler.h"
 #endif
 
-// Creates a Lisp Value of type BUILTIN_METHOD,
-// which requires
+// Register a uSEQ method as a plugin builtin.
+// Creates a static trampoline that casts the void* context to uSEQ* and calls the method.
 #define INSERT_BUILTINDEF(__name__, __func_name__)                                  \
-    Environment::builtindefs()[__name__] =                                          \
-        Value((String)__name__, &uSEQ::__func_name__);
+    m_interpreter.register_plugin_builtin(                                          \
+        __name__,                                                                   \
+        [](void* ctx, std::vector<Value>& args, Environment& env) -> Value {        \
+            return static_cast<uSEQ*>(ctx)->__func_name__(args, env);               \
+        },                                                                          \
+        this);
 
 void uSEQ::init_builtinfuncs()
 {

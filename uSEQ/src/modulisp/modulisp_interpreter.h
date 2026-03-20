@@ -268,8 +268,9 @@ public:
         m_update_loop_evaluation = value;
     }
 
-    // Instance pointer helper for uSEQ integration
-    static void set_useq_instance_ptr(uSEQ* ptr) { useq_instance_ptr = ptr; }
+    // Plugin builtin registration API: allows the system layer to register
+    // hardware-specific builtins without the interpreter knowing about the system.
+    void register_plugin_builtin(const String& name, PluginBuiltinFunc func, void* ctx);
 
     // LISP function declarations
     LISP_FUNC_DECL(useq_eval_at_time);
@@ -445,8 +446,6 @@ private:
     static bool m_eval_expr_if_def_not_found;
     static bool m_update_loop_evaluation;
     static String m_atom_currently_being_evaluated;
-
-    static uSEQ* useq_instance_ptr;
 
 public:
     // Make instance pointer public for builtin access
