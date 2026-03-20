@@ -31,10 +31,6 @@ using BuiltinFuncRawPtr = Value (*)(std::vector<Value>&, Environment&);
 // allowing the interpreter to call them without knowing anything about the system.
 using PluginBuiltinFunc = Value(*)(void* ctx, std::vector<Value>& args, Environment& env);
 
-class ModuLispInterpreter;
-using ModuLispInterpreter_Method_Ptr =
-    Value (ModuLispInterpreter::*)(std::vector<Value>&, Environment&);
-
 // using LambdaScopeEnv = Environment<32>;
 
 #ifdef ARDUINO
@@ -66,7 +62,6 @@ public:
     // function
     Value(String name, BuiltinFuncRawPtr ptr);
     Value(String name, PluginBuiltinFunc func, void* ctx);
-    Value(String name, ModuLispInterpreter_Method_Ptr);
     // Value(String name, BuiltinFunc f);
     // Value(String name, RawBuiltinFuncPtr ptr);
 
@@ -210,7 +205,6 @@ public:
         LAMBDA,
         BUILTIN,
         BUILTIN_PLUGIN,
-        BUILTIN_MODULISP_METHOD,
         UNIT,
         NIL,
         ERROR
@@ -223,7 +217,6 @@ public:
         double f;
         BuiltinFuncRawPtr builtin;
         PluginBuiltinFunc plugin_builtin;
-        ModuLispInterpreter_Method_Ptr builtin_modulisp_method;
     } stack_data;
 
     // Opaque context for plugin builtins (set only for BUILTIN_PLUGIN type)

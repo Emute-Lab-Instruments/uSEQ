@@ -399,27 +399,6 @@ Value ModuLispInterpreter::apply(Value& f, LispFuncArgsVec& args, Environment& e
         }
         return Value::error();
     }
-    case Value::BUILTIN_MODULISP_METHOD:
-    {
-        dbg("builtin MODULISP METHOD!");
-        if (f.stack_data.builtin_modulisp_method != NULL &&
-            ModuLispInterpreter::modulisp_instance_ptr != NULL)
-        {
-            Value result = (*modulisp_instance_ptr.*
-                            f.stack_data.builtin_modulisp_method)(args, env);
-            return result;
-        }
-        if (f.stack_data.builtin_modulisp_method == NULL)
-        {
-            report_generic_error(
-                "EMPTY BUILTIN MODULISP POINTER for method with name " + f.str);
-        }
-        else if (ModuLispInterpreter::modulisp_instance_ptr == NULL)
-        {
-            report_generic_error("ModuLispInterpreter POINTER INSTANCE IS NULL");
-        }
-        return Value::error();
-    }
     case Value::VECTOR:
     {
         size_t size = f.list.size();

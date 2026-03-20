@@ -8,9 +8,6 @@
 #include <memory>
 #include <vector>
 
-// Forward declarations for method pointer types
-class ModuLispInterpreter;
-
 /**
  * Central registry for all LISP functions
  * Replaces the static Environment::builtindefs() with a more flexible system
@@ -41,8 +38,8 @@ public:
     void registerPluginFunction(const String& name, const String& module,
                                 PluginBuiltinFunc func, void* ctx);
     void registerModuLispMethod(const String& name, const String& module,
-                                ModuLispInterpreter_Method_Ptr method,
-                                ModuLispInterpreter* instance);
+                                PluginBuiltinFunc trampoline,
+                                void* instance);
 
     // Module management
     void registerModule(std::unique_ptr<FunctionModule> module);

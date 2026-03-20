@@ -9,11 +9,22 @@
 #include <cctype>
 #include <cmath>
 
-// Creates a Lisp Value of type BUILTIN_MODULISP_METHOD,
-// which stores a pointer-to-member of ModuLispInterpreter
+// Template trampoline: generates a zero-overhead static function for each
+// ModuLispInterpreter member, converting a plugin-style (void* ctx) call
+// into a member function call.
+template <Value (ModuLispInterpreter::*Method)(std::vector<Value>&, Environment&)>
+static Value method_trampoline(void* ctx, std::vector<Value>& args, Environment& env)
+{
+    return (static_cast<ModuLispInterpreter*>(ctx)->*Method)(args, env);
+}
+
+// Register a ModuLispInterpreter method as a plugin builtin via the
+// zero-overhead template trampoline.
 #define INSERT_BUILTINDEF(__name__, __func_name__)                                  \
-    Environment::builtindefs()[__name__] =                                          \
-        Value((String)__name__, &ModuLispInterpreter::__func_name__);
+    register_plugin_builtin(                                                        \
+        __name__,                                                                   \
+        &method_trampoline<&ModuLispInterpreter::__func_name__>,                    \
+        this);
 
 void ModuLispInterpreter::init_builtinfuncs()
 {

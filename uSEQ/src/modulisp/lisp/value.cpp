@@ -109,14 +109,6 @@ Value::Value(String name, PluginBuiltinFunc func, void* ctx) : type(BUILTIN_PLUG
     plugin_context             = ctx;
 }
 
-// BUILTIN_MODULISP_METHOD
-Value::Value(String name, ModuLispInterpreter_Method_Ptr ptr)
-    : type(BUILTIN_MODULISP_METHOD)
-{
-    str                                = name;
-    stack_data.builtin_modulisp_method = ptr;
-}
-
 // METHODS
 Value Value::quote(Value quoted)
 {
@@ -191,8 +183,7 @@ bool Value::is_builtin() const
 {
     // Treat all builtin function carriers as builtins so the evaluator
     // does not pre-evaluate their arguments (special forms support).
-    return type == BUILTIN || type == BUILTIN_PLUGIN ||
-           type == BUILTIN_MODULISP_METHOD;
+    return type == BUILTIN || type == BUILTIN_PLUGIN;
 }
 
 Value Value::apply(std::vector<Value>& args, Environment& env)
@@ -688,7 +679,6 @@ String Value::get_type_name() const
         return STRING_TYPE;
     case BUILTIN:
     case BUILTIN_PLUGIN:
-    case BUILTIN_MODULISP_METHOD:
     case LAMBDA:
         // Instead of differentiating between
         // lambda and builtin types, we group them together.
