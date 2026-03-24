@@ -237,30 +237,4 @@
         body \
     }
 
-// ============================================================
-// uSEQ output macros
-// ============================================================
-
-#define DEFINE_USEQ_OUTPUT_SETTER(name, index, output_type) \
-    Value uSEQ::useq_##name(std::vector<Value>& args, Environment& env) \
-    { \
-        return m_output_manager->handle_output_setter( \
-            index, OutputManager::OutputType::output_type, args, env); \
-    }
-
-#define DEFINE_USEQ_OUTPUT_GETTER(name, index, output_type) \
-    Value uSEQ::useq_get_##name(std::vector<Value>& args, Environment& env) \
-    { \
-        return m_output_manager->handle_output_getter( \
-            index, OutputManager::OutputType::output_type, args, env); \
-    }
-
-#define DEFINE_USEQ_INPUT_GETTER(name, input_id) \
-    Value uSEQ::useq_##name(std::vector<Value>& args, Environment& env) \
-    { \
-        (void)args; (void)env; \
-        return m_io_manager ? Value(m_io_manager->get_input_value(input_id)) \
-                            : Value::nil(); \
-    }
-
 #endif // MACROS_H_

@@ -7,15 +7,102 @@
 #include "dsp/uSeqGens/uSeqGen_Sampler.h"
 #endif
 
-// Register a uSEQ method as a plugin builtin.
-// Creates a static trampoline that casts the void* context to uSEQ* and calls the method.
+template <Value (uSEQ::*Method)(std::vector<Value>&, Environment&)>
+static Value method_trampoline(void* ctx, std::vector<Value>& args, Environment& env)
+{
+    return (static_cast<uSEQ*>(ctx)->*Method)(args, env);
+}
+
 #define INSERT_BUILTINDEF(__name__, __func_name__)                                  \
     m_interpreter.register_plugin_builtin(                                          \
-        __name__,                                                                   \
-        [](void* ctx, std::vector<Value>& args, Environment& env) -> Value {        \
-            return static_cast<uSEQ*>(ctx)->__func_name__(args, env);               \
-        },                                                                          \
-        this);
+        __name__, &method_trampoline<&uSEQ::__func_name__>, this);
+
+const std::array<uSEQ::OutputBuiltinEntry, uSEQ::kOutputBuiltinCount>
+    uSEQ::s_output_builtin_entries = {{
+        {"a1", 1, OutputManager::OutputType::CONTINUOUS, false},
+        {"a2", 2, OutputManager::OutputType::CONTINUOUS, false},
+        {"a3", 3, OutputManager::OutputType::CONTINUOUS, false},
+        {"a4", 4, OutputManager::OutputType::CONTINUOUS, false},
+        {"a5", 5, OutputManager::OutputType::CONTINUOUS, false},
+        {"a6", 6, OutputManager::OutputType::CONTINUOUS, false},
+        {"a7", 7, OutputManager::OutputType::CONTINUOUS, false},
+        {"a8", 8, OutputManager::OutputType::CONTINUOUS, false},
+        {"d1", 1, OutputManager::OutputType::BINARY, false},
+        {"d2", 2, OutputManager::OutputType::BINARY, false},
+        {"d3", 3, OutputManager::OutputType::BINARY, false},
+        {"d4", 4, OutputManager::OutputType::BINARY, false},
+        {"d5", 5, OutputManager::OutputType::BINARY, false},
+        {"d6", 6, OutputManager::OutputType::BINARY, false},
+        {"d7", 7, OutputManager::OutputType::BINARY, false},
+        {"d8", 8, OutputManager::OutputType::BINARY, false},
+        {"s1", 1, OutputManager::OutputType::SERIAL_OUT, false},
+        {"s2", 2, OutputManager::OutputType::SERIAL_OUT, false},
+        {"s3", 3, OutputManager::OutputType::SERIAL_OUT, false},
+        {"s4", 4, OutputManager::OutputType::SERIAL_OUT, false},
+        {"s5", 5, OutputManager::OutputType::SERIAL_OUT, false},
+        {"s6", 6, OutputManager::OutputType::SERIAL_OUT, false},
+        {"s7", 7, OutputManager::OutputType::SERIAL_OUT, false},
+        {"s8", 8, OutputManager::OutputType::SERIAL_OUT, false},
+        {"get-a1", 1, OutputManager::OutputType::CONTINUOUS, true},
+        {"get-a2", 2, OutputManager::OutputType::CONTINUOUS, true},
+        {"get-a3", 3, OutputManager::OutputType::CONTINUOUS, true},
+        {"get-a4", 4, OutputManager::OutputType::CONTINUOUS, true},
+        {"get-a5", 5, OutputManager::OutputType::CONTINUOUS, true},
+        {"get-a6", 6, OutputManager::OutputType::CONTINUOUS, true},
+        {"get-a7", 7, OutputManager::OutputType::CONTINUOUS, true},
+        {"get-a8", 8, OutputManager::OutputType::CONTINUOUS, true},
+        {"get-d1", 1, OutputManager::OutputType::BINARY, true},
+        {"get-d2", 2, OutputManager::OutputType::BINARY, true},
+        {"get-d3", 3, OutputManager::OutputType::BINARY, true},
+        {"get-d4", 4, OutputManager::OutputType::BINARY, true},
+        {"get-d5", 5, OutputManager::OutputType::BINARY, true},
+        {"get-d6", 6, OutputManager::OutputType::BINARY, true},
+        {"get-d7", 7, OutputManager::OutputType::BINARY, true},
+        {"get-d8", 8, OutputManager::OutputType::BINARY, true},
+    }};
+
+const std::array<uSEQ::InputBuiltinEntry, uSEQ::kInputBuiltinCount>
+    uSEQ::s_input_builtin_entries = {{
+        {"in1", USEQI1},
+        {"in2", USEQI2},
+        {"gin1", USEQI1},
+        {"gin2", USEQI2},
+        {"ain1", USEQAI1},
+        {"ain2", USEQAI2},
+    }};
+
+Value uSEQ::dispatch_output_builtin(void* ctx, std::vector<Value>& args,
+                                    Environment& env)
+{
+    const auto& output_ctx = *static_cast<OutputContext*>(ctx);
+    auto& output_manager   = output_ctx.useq->get_output_manager();
+    if (output_ctx.is_getter)
+    {
+        return output_manager.handle_output_getter(output_ctx.index,
+                                                   output_ctx.type,
+                                                   args, env);
+    }
+
+    return output_manager.handle_output_setter(output_ctx.index,
+                                               output_ctx.type,
+                                               args, env);
+}
+
+Value uSEQ::dispatch_input_builtin(void* ctx, std::vector<Value>& args,
+                                   Environment& env)
+{
+    (void)args;
+    (void)env;
+
+    const auto& input_ctx = *static_cast<InputContext*>(ctx);
+    if (!input_ctx.useq->get_io_manager())
+    {
+        return Value::nil();
+    }
+
+    return Value(input_ctx.useq->get_io_manager()->get_input_value(
+        input_ctx.input_id));
+}
 
 void uSEQ::init_builtinfuncs()
 {
@@ -28,36 +115,14 @@ void uSEQ::init_builtinfuncs()
 
     INSERT_BUILTINDEF("print-led-info", useq_print_led_info);
 
-    // Unified output system - individual functions forward to OutputManager
-    // Analog outputs (a1-a8)
-    INSERT_BUILTINDEF("a1", useq_a1);
-    INSERT_BUILTINDEF("a2", useq_a2);
-    INSERT_BUILTINDEF("a3", useq_a3);
-    INSERT_BUILTINDEF("a4", useq_a4);
-    INSERT_BUILTINDEF("a5", useq_a5);
-    INSERT_BUILTINDEF("a6", useq_a6);
-    INSERT_BUILTINDEF("a7", useq_a7);
-    INSERT_BUILTINDEF("a8", useq_a8);
-
-    // Digital outputs (d1-d8)
-    INSERT_BUILTINDEF("d1", useq_d1);
-    INSERT_BUILTINDEF("d2", useq_d2);
-    INSERT_BUILTINDEF("d3", useq_d3);
-    INSERT_BUILTINDEF("d4", useq_d4);
-    INSERT_BUILTINDEF("d5", useq_d5);
-    INSERT_BUILTINDEF("d6", useq_d6);
-    INSERT_BUILTINDEF("d7", useq_d7);
-    INSERT_BUILTINDEF("d8", useq_d8);
-
-    // Serial outputs (s1-s8)
-    INSERT_BUILTINDEF("s1", useq_s1);
-    INSERT_BUILTINDEF("s2", useq_s2);
-    INSERT_BUILTINDEF("s3", useq_s3);
-    INSERT_BUILTINDEF("s4", useq_s4);
-    INSERT_BUILTINDEF("s5", useq_s5);
-    INSERT_BUILTINDEF("s6", useq_s6);
-    INSERT_BUILTINDEF("s7", useq_s7);
-    INSERT_BUILTINDEF("s8", useq_s8);
+    for (size_t i = 0; i < s_output_builtin_entries.size(); ++i)
+    {
+        const auto& entry = s_output_builtin_entries[i];
+        m_output_contexts[i] = {this, entry.index, entry.type, entry.is_getter};
+        m_interpreter.register_plugin_builtin(entry.name,
+                                              &uSEQ::dispatch_output_builtin,
+                                              &m_output_contexts[i]);
+    }
 
     INSERT_BUILTINDEF("q0", useq_q0);
 
@@ -72,32 +137,14 @@ void uSEQ::init_builtinfuncs()
     INSERT_BUILTINDEF("ssin", useq_ssin);
 #endif
 
-    // Input functions
-    INSERT_BUILTINDEF("in1", useq_in1);
-    INSERT_BUILTINDEF("in2", useq_in2);
-    INSERT_BUILTINDEF("gin1", useq_in1); // Alias for in1
-    INSERT_BUILTINDEF("gin2", useq_in2); // Alias for in2
-    INSERT_BUILTINDEF("ain1", useq_ain1);
-    INSERT_BUILTINDEF("ain2", useq_ain2);
-
-    // Output getter functions
-    INSERT_BUILTINDEF("get-a1", useq_get_a1);
-    INSERT_BUILTINDEF("get-a2", useq_get_a2);
-    INSERT_BUILTINDEF("get-a3", useq_get_a3);
-    INSERT_BUILTINDEF("get-a4", useq_get_a4);
-    INSERT_BUILTINDEF("get-a5", useq_get_a5);
-    INSERT_BUILTINDEF("get-a6", useq_get_a6);
-    INSERT_BUILTINDEF("get-a7", useq_get_a7);
-    INSERT_BUILTINDEF("get-a8", useq_get_a8);
-
-    INSERT_BUILTINDEF("get-d1", useq_get_d1);
-    INSERT_BUILTINDEF("get-d2", useq_get_d2);
-    INSERT_BUILTINDEF("get-d3", useq_get_d3);
-    INSERT_BUILTINDEF("get-d4", useq_get_d4);
-    INSERT_BUILTINDEF("get-d5", useq_get_d5);
-    INSERT_BUILTINDEF("get-d6", useq_get_d6);
-    INSERT_BUILTINDEF("get-d7", useq_get_d7);
-    INSERT_BUILTINDEF("get-d8", useq_get_d8);
+    for (size_t i = 0; i < s_input_builtin_entries.size(); ++i)
+    {
+        const auto& entry = s_input_builtin_entries[i];
+        m_input_contexts[i] = {this, entry.input_id};
+        m_interpreter.register_plugin_builtin(entry.name,
+                                              &uSEQ::dispatch_input_builtin,
+                                              &m_input_contexts[i]);
+    }
 
     INSERT_BUILTINDEF("useq-report-firmware-info", useq_report_firmware_info);
     INSERT_BUILTINDEF("useq-firmware-info", useq_firmware_info);
@@ -233,36 +280,6 @@ BUILTINFUNC_MEMBER(
 // the exprs in both the environment and the class member vectors
 // especially once the exprs get more and more complex
 
-// Unified analog output functions - forward to OutputManager
-DEFINE_USEQ_OUTPUT_SETTER(a1, 1, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_SETTER(a2, 2, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_SETTER(a3, 3, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_SETTER(a4, 4, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_SETTER(a5, 5, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_SETTER(a6, 6, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_SETTER(a7, 7, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_SETTER(a8, 8, CONTINUOUS)
-
-// Unified digital output functions - forward to OutputManager
-DEFINE_USEQ_OUTPUT_SETTER(d1, 1, BINARY)
-DEFINE_USEQ_OUTPUT_SETTER(d2, 2, BINARY)
-DEFINE_USEQ_OUTPUT_SETTER(d3, 3, BINARY)
-DEFINE_USEQ_OUTPUT_SETTER(d4, 4, BINARY)
-DEFINE_USEQ_OUTPUT_SETTER(d5, 5, BINARY)
-DEFINE_USEQ_OUTPUT_SETTER(d6, 6, BINARY)
-DEFINE_USEQ_OUTPUT_SETTER(d7, 7, BINARY)
-DEFINE_USEQ_OUTPUT_SETTER(d8, 8, BINARY)
-
-// Unified serial output functions - forward to OutputManager
-DEFINE_USEQ_OUTPUT_SETTER(s1, 1, SERIAL_OUT)
-DEFINE_USEQ_OUTPUT_SETTER(s2, 2, SERIAL_OUT)
-DEFINE_USEQ_OUTPUT_SETTER(s3, 3, SERIAL_OUT)
-DEFINE_USEQ_OUTPUT_SETTER(s4, 4, SERIAL_OUT)
-DEFINE_USEQ_OUTPUT_SETTER(s5, 5, SERIAL_OUT)
-DEFINE_USEQ_OUTPUT_SETTER(s6, 6, SERIAL_OUT)
-DEFINE_USEQ_OUTPUT_SETTER(s7, 7, SERIAL_OUT)
-DEFINE_USEQ_OUTPUT_SETTER(s8, 8, SERIAL_OUT)
-
 // Function that should be available in all builds (not just Arduino)
 void uSEQ::clear_all_outputs()
 {
@@ -303,31 +320,6 @@ void uSEQ::clear_all_outputs()
 
 BUILTINFUNC_NOEVAL_MEMBER(useq_stop_all, clear_all_outputs();
                           println("All outputs cleared.");, 0)
-
-DEFINE_USEQ_INPUT_GETTER(in1, USEQI1)
-DEFINE_USEQ_INPUT_GETTER(in2, USEQI2)
-DEFINE_USEQ_INPUT_GETTER(ain1, USEQAI1)
-DEFINE_USEQ_INPUT_GETTER(ain2, USEQAI2)
-
-// Unified analog output getter functions - forward to OutputManager
-DEFINE_USEQ_OUTPUT_GETTER(a1, 1, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_GETTER(a2, 2, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_GETTER(a3, 3, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_GETTER(a4, 4, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_GETTER(a5, 5, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_GETTER(a6, 6, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_GETTER(a7, 7, CONTINUOUS)
-DEFINE_USEQ_OUTPUT_GETTER(a8, 8, CONTINUOUS)
-
-// Unified digital output getter functions - forward to OutputManager
-DEFINE_USEQ_OUTPUT_GETTER(d1, 1, BINARY)
-DEFINE_USEQ_OUTPUT_GETTER(d2, 2, BINARY)
-DEFINE_USEQ_OUTPUT_GETTER(d3, 3, BINARY)
-DEFINE_USEQ_OUTPUT_GETTER(d4, 4, BINARY)
-DEFINE_USEQ_OUTPUT_GETTER(d5, 5, BINARY)
-DEFINE_USEQ_OUTPUT_GETTER(d6, 6, BINARY)
-DEFINE_USEQ_OUTPUT_GETTER(d7, 7, BINARY)
-DEFINE_USEQ_OUTPUT_GETTER(d8, 8, BINARY)
 
 BUILTINFUNC_MEMBER(
     useq_reset_external_clock_tracking,

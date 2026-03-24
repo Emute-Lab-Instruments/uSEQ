@@ -32,12 +32,14 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #include "modulisp/modulisp_interpreter.h"
 #include "ports/IIo.h"
 #include "uSEQ/board.h"
+#include "uSEQ/output_manager.h"
 #ifdef ENABLE_I2C_NETWORKING
 #include "ports/II2CBus.h"
 #endif
 #ifdef ENABLE_FLASH_STORAGE
 #include "ports/IStorage.h"
 #endif
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -222,12 +224,56 @@ public:
     std::vector<bool> m_serial_output_stream_enabled;
 
 private:
+    struct OutputBuiltinEntry
+    {
+        const char* name;
+        int index;
+        OutputManager::OutputType type;
+        bool is_getter;
+    };
+
+    struct OutputContext
+    {
+        uSEQ* useq = nullptr;
+        int index = 0;
+        OutputManager::OutputType type = OutputManager::OutputType::CONTINUOUS;
+        bool is_getter = false;
+    };
+
+    struct InputBuiltinEntry
+    {
+        const char* name;
+        int input_id;
+    };
+
+    struct InputContext
+    {
+        uSEQ* useq = nullptr;
+        int input_id = 0;
+    };
+
+    static constexpr size_t kOutputBuiltinCount = 40;
+    static constexpr size_t kInputBuiltinCount  = 6;
+
+    static Value dispatch_output_builtin(void* ctx, std::vector<Value>& args,
+                                         Environment& env);
+    static Value dispatch_input_builtin(void* ctx, std::vector<Value>& args,
+                                        Environment& env);
+
+    static const std::array<OutputBuiltinEntry, kOutputBuiltinCount>
+        s_output_builtin_entries;
+    static const std::array<InputBuiltinEntry, kInputBuiltinCount>
+        s_input_builtin_entries;
+
     ModuLispInterpreter m_interpreter;
 
     uint m_num_continuous_outs = NUM_CONTINUOUS_OUTS;
     uint m_num_binary_outs     = NUM_BINARY_OUTS;
     uint m_num_serial_outs     = NUM_SERIAL_OUTS;
     uint m_num_serial_ins      = NUM_SERIAL_INS;
+
+    std::array<OutputContext, kOutputBuiltinCount> m_output_contexts;
+    std::array<InputContext, kInputBuiltinCount> m_input_contexts;
 
     // Flags
     bool m_initialised              = false;
@@ -328,14 +374,36 @@ private:
     bool handle_json_serial_request(const String& payload);
 
     // Function declarations are now organized in module-specific headers:
-    // - I/O functions: uSEQ_io.h
     // - DSP functions: uSEQ_dsp.h
     // - LISP integration: uSEQ_lisp.h
     // - Hardware-specific: uSEQ_hardware.h
 
 #include "uSEQ_hardware.h"
-#include "uSEQ_io.h"
 #include "uSEQ_lisp.h"
+
+    LISP_FUNC_DECL(useq_set_clock_internal);
+    LISP_FUNC_DECL(useq_set_clock_external);
+    LISP_FUNC_DECL(useq_get_clock_source);
+    LISP_FUNC_DECL(useq_reset_internal_clock);
+    LISP_FUNC_DECL(useq_reset_external_clock_tracking);
+    LISP_FUNC_DECL(useq_get_input_bpm);
+    LISP_FUNC_DECL(useq_q0);
+
+#ifdef ARDUINO
+    LISP_FUNC_DECL(ard_useqaw);
+    LISP_FUNC_DECL(ard_useqdw);
+    LISP_FUNC_DECL(ard_aw);
+    LISP_FUNC_DECL(ard_dw);
+#else
+    LISP_FUNC_DECL(ard_useqaw);
+    LISP_FUNC_DECL(ard_useqdw);
+    LISP_FUNC_DECL(ard_aw);
+    LISP_FUNC_DECL(ard_dw);
+#endif
+
+#ifdef MIDIOUT
+    LISP_FUNC_DECL(useq_mdo);
+#endif
 
     void clear_all_outputs();
 #ifdef ARDUINO
