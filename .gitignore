@@ -63,3 +63,7 @@ samples/load.sh
 .vscode/
 .clang_complete
 .gcc-flags.json
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
