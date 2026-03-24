@@ -82,7 +82,7 @@ TEST_CASE("CHARACTERIZATION: execute immediate code with @ marker",
           "[execution][semantics][immediate]")
 {
     // Setup interpreter
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Basic arithmetic evaluation")
     {
@@ -149,7 +149,7 @@ TEST_CASE("CHARACTERIZATION: schedule code for later execution",
           "[execution][semantics][scheduled]")
 {
     // Setup interpreter
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Schedule simple expression")
     {
@@ -271,7 +271,7 @@ TEST_CASE("CHARACTERIZATION: update serial stream value",
 TEST_CASE("CHARACTERIZATION: handle execution errors",
           "[execution][semantics][errors]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Undefined function error")
     {
@@ -362,7 +362,7 @@ TEST_CASE("CHARACTERIZATION: handle execution errors",
 TEST_CASE("CHARACTERIZATION: manual_evaluation flag behavior",
           "[execution][semantics][flags]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Flag is toggled during execution")
     {
@@ -449,7 +449,7 @@ TEST_CASE("CHARACTERIZATION: transport-specific output routing",
 TEST_CASE("CHARACTERIZATION: full execution flow simulation",
           "[execution][semantics][integration]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Immediate execution full flow")
     {

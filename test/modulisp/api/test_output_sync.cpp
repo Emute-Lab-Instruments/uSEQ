@@ -15,8 +15,7 @@
 TEST_CASE("Outputs evaluate transport time synchronously", "[outputs][sync]")
 {
     // Arrange: Create interpreter with 8 analog, 8 digital, 8 serial outputs
-    ErrorManager error_mgr;
-    ModuLispInterpreter interp(&error_mgr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr,
                                8, 8, 8);
 
     // Initialize the interpreter

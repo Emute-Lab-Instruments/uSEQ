@@ -16,8 +16,7 @@
 TEST_CASE("Signal detection and evaluation", "[signals][semantics]")
 {
     // Arrange: Create interpreter
-    ErrorManager error_mgr;
-    ModuLispInterpreter interp(&error_mgr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr,
                                8, 8, 8);
     interp.init();
     interp.set_bpm(120.0, 0.0);
@@ -156,8 +155,7 @@ TEST_CASE("Signal detection and evaluation", "[signals][semantics]")
 TEST_CASE("Signal evaluation behavior", "[signals][evaluation]")
 {
     // Arrange: Create interpreter
-    ErrorManager error_mgr;
-    ModuLispInterpreter interp(&error_mgr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr,
                                8, 8, 8);
     interp.init();
     interp.set_bpm(120.0, 0.0);
@@ -272,8 +270,7 @@ TEST_CASE("Signal evaluation behavior", "[signals][evaluation]")
 TEST_CASE("Edge cases and complex scenarios", "[signals][edge-cases]")
 {
     // Arrange: Create interpreter
-    ErrorManager error_mgr;
-    ModuLispInterpreter interp(&error_mgr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr,
                                8, 8, 8);
     interp.init();
     interp.set_bpm(120.0, 0.0);

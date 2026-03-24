@@ -39,8 +39,7 @@ extern "C"
         if (!useq_instance)
         {
             std::cout << "[WASM] Creating new ModuLispInterpreter instance..." << std::endl;
-            // Create with nullptr for ErrorManager - let the constructor handle defaults
-            useq_instance = new ModuLispInterpreter(nullptr);
+            useq_instance = new ModuLispInterpreter();
             std::cout << "[WASM] Calling init()..." << std::endl;
             useq_instance->init();
             std::cout << "[WASM] Initialization complete. Environment ptr="

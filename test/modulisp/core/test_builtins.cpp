@@ -130,7 +130,7 @@ TEST_CASE("Arithmetic remainder function", "[builtins][arithmetic]")
 // List processing builtins
 TEST_CASE("List processing: map", "[builtins][listops]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
     interp.init();
 
     // Define (defn inc (x) (+ x 1)) via interpreter
@@ -148,7 +148,7 @@ TEST_CASE("List processing: map", "[builtins][listops]")
 
 TEST_CASE("List processing: filter", "[builtins][listops]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
     interp.init();
 
     // Define (defn gt1 (x) (> x 1))
@@ -165,7 +165,7 @@ TEST_CASE("List processing: filter", "[builtins][listops]")
 
 TEST_CASE("List processing: reduce", "[builtins][listops]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
     interp.init();
 
     // Define (defn sum2 (acc x) (+ acc x))

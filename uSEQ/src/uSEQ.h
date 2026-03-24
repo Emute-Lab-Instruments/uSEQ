@@ -94,8 +94,7 @@ class uSEQ
 {
 public:
     uSEQ()
-        : m_error_manager(), m_environment(), m_parser(&m_error_manager),
-          m_interpreter(&m_error_manager, &m_environment, &m_parser),
+        : m_interpreter(),
           m_output_manager(nullptr), m_io_manager(nullptr)
     {
         init();
@@ -110,8 +109,7 @@ public:
                   IStorage* storage_port = nullptr
 #endif
                   )
-        : m_error_manager(), m_environment(), m_parser(&m_error_manager),
-          m_interpreter(&m_error_manager, &m_environment, &m_parser, clk, log),
+        : m_interpreter(clk, log),
           m_output_manager(nullptr), m_io_manager(nullptr), io(io_port)
 #ifdef ENABLE_I2C_NETWORKING
           ,
@@ -224,9 +222,6 @@ public:
     std::vector<bool> m_serial_output_stream_enabled;
 
 private:
-    ErrorManager m_error_manager;
-    Environment m_environment;
-    uLispParser m_parser;
     ModuLispInterpreter m_interpreter;
 
     uint m_num_continuous_outs = NUM_CONTINUOUS_OUTS;
@@ -368,8 +363,8 @@ public:
 #endif
 
     // Test accessors for environment
-    ValueMap& __test_get_defs() { return m_environment.__test_get_defs(); }
-    ValueMap& __test_get_def_exprs() { return m_environment.__test_get_def_exprs(); }
+    ValueMap& __test_get_defs() { return m_interpreter.get_environment()->__test_get_defs(); }
+    ValueMap& __test_get_def_exprs() { return m_interpreter.get_environment()->__test_get_def_exprs(); }
 
     // Public wrappers for storage functions (for testing)
 #ifndef ARDUINO

@@ -52,3 +52,13 @@
 # - linear.api-key
 # - github.org
 # - github.repo
+
+dolt.port: 3308
+
+dolt.host: 127.0.0.1
+
+dolt.user: "root"
+
+dolt.database: "beads_useq"
+
+federation.remote: "http://127.0.0.1:15051/useq"

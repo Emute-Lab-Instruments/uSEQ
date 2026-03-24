@@ -1,9 +1,6 @@
 #ifndef MODULISP_H_
 #define MODULISP_H_
 
-#include "lisp/environment.h"
-#include "lisp/error_context.h"
-#include "lisp/parser.h"
 #include "modulisp_interpreter.h"
 #include <cctype>
 #include <map>
@@ -235,10 +232,7 @@ public:
     ModuLispInterpreter* get_interpreter() { return &m_interpreter; }
 
 private:
-    // Owned components (order matters for initialization)
-    ErrorManager m_error_manager;
-    Environment m_environment;
-    uLispParser m_parser;
+    // The interpreter is the sole owner of ErrorManager, Environment, and Parser.
     ModuLispInterpreter m_interpreter;
 
     Context current_context;

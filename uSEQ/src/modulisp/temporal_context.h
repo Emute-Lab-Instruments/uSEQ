@@ -2,30 +2,6 @@
 
 #include "lisp/symbol_intern.h"
 #include "lisp/value.h"
-#include <cstddef>
-#include <cstdint>
-
-// Maximum number of symbol IDs we track for temporal variables.
-// This must be larger than any SymbolID assigned to a temporal variable name.
-static constexpr size_t TEMPORAL_LOOKUP_SIZE = 128;
-
-// Identifies which field of TemporalContext a symbol maps to.
-enum class TemporalField : uint8_t
-{
-    NONE = 0,
-    T,
-    BEAT,
-    BAR,
-    PHRASE,
-    SECTION,
-    TIME_SINCE_BOOT,
-    BEAT_NUM,
-    BAR_NUM,
-    BEAT_DUR,
-    BAR_DUR,
-    PHRASE_DUR,
-    SECTION_DUR
-};
 
 struct TemporalContext
 {
@@ -43,16 +19,17 @@ struct TemporalContext
     double sectionDur     = 32.0;
 
     // Fast lookup by symbol ID — returns true if id is a temporal variable.
-    // The Value is written into `out`.
     bool tryGet(SymbolIntern::SymbolID id, Value& out) const;
 
-    // Must be called once at startup (after SymbolIntern is constructed)
-    // to intern all temporal variable names and populate the lookup table.
+    // Must be called once at startup to intern temporal variable names.
     static void initLookupTable();
 
 private:
-    // Sparse lookup: index by SymbolID → TemporalField.
-    // IDs >= TEMPORAL_LOOKUP_SIZE are not temporal.
-    static TemporalField s_lookup[TEMPORAL_LOOKUP_SIZE];
+    // Pre-cached symbol IDs (set once by initLookupTable)
+    static SymbolIntern::SymbolID s_t, s_beat, s_bar, s_phrase, s_section;
+    static SymbolIntern::SymbolID s_time;
+    static SymbolIntern::SymbolID s_beatNum, s_barNum;
+    static SymbolIntern::SymbolID s_beatDur, s_barDur, s_phraseDur, s_sectionDur;
+    static SymbolIntern::SymbolID s_beat_dur, s_bar_dur, s_phrase_dur, s_section_dur;
     static bool s_initialized;
 };

@@ -5,12 +5,9 @@
 
 // Constructor
 ModuLisp::ModuLisp()
-    : current_context(Context::GENERAL), m_error_manager(), m_environment(),
-      m_parser(&m_error_manager),
-      m_interpreter(&m_error_manager, &m_environment, &m_parser)
+    : m_interpreter(), current_context(Context::GENERAL)
 {
-
-    // Initialize the interpreter
+    // Initialize the interpreter (sole owner of ErrorManager, Environment, Parser)
     m_interpreter.init();
     m_interpreter.init_builtinfuncs();
 }
@@ -22,7 +19,7 @@ ModuLisp::~ModuLisp() = default;
 ModuLisp::Response ModuLisp::send(const std::string& code)
 {
     // Clear any previous errors
-    m_error_manager.clear_error();
+    m_interpreter.get_error_manager()->clear_error();
 
     // Convert std::string to Arduino String
     String arduino_code(code.c_str());
@@ -36,7 +33,7 @@ ModuLisp::Response ModuLisp::send(const std::string& code)
     // If it's an error, get detailed information from error manager
     if (result.get_type_enum() == 14)
     { // ERROR type
-        const ErrorContext* error_ctx = m_error_manager.get_current_error();
+        const ErrorContext* error_ctx = m_interpreter.get_error_manager()->get_current_error();
         if (error_ctx)
         {
             response = create_response_from_error_context(*error_ctx, result);

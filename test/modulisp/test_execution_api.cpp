@@ -40,7 +40,7 @@ struct BuiltinsInitOnce
 
 TEST_CASE("execute_now() - valid code returns correct result", "[execution][api][immediate]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Basic arithmetic evaluation")
     {
@@ -91,7 +91,7 @@ TEST_CASE("execute_now() - valid code returns correct result", "[execution][api]
 
 TEST_CASE("execute_now() - error code populates error fields", "[execution][api][errors]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Undefined symbol error")
     {
@@ -134,7 +134,7 @@ TEST_CASE("execute_now() - error code populates error fields", "[execution][api]
 TEST_CASE("execute_now() - error queue is cleared before execution",
           "[execution][api][errors]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Previous errors don't leak into new execution")
     {
@@ -164,7 +164,7 @@ TEST_CASE("execute_now() - error queue is cleared before execution",
 
 TEST_CASE("schedule_code() - adds code to scheduler run queue", "[execution][api][scheduling]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Code is added to run queue")
     {
@@ -219,7 +219,7 @@ TEST_CASE("schedule_code() - adds code to scheduler run queue", "[execution][api
 TEST_CASE("schedule_code() - echoes scheduled code as confirmation",
           "[execution][api][scheduling]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Result text matches input code")
     {
@@ -249,7 +249,7 @@ TEST_CASE("schedule_code() - echoes scheduled code as confirmation",
 TEST_CASE("schedule_code() - handles malformed code gracefully",
           "[execution][api][scheduling][errors]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Malformed code is still added to queue (parser may accept it)")
     {
@@ -275,7 +275,7 @@ TEST_CASE("schedule_code() - handles malformed code gracefully",
 
 TEST_CASE("update_stream_value() - stub implementation", "[execution][api][streams]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Valid channel call succeeds without error")
     {
@@ -312,7 +312,7 @@ TEST_CASE("update_stream_value() - stub implementation", "[execution][api][strea
 
 TEST_CASE("Execution API - mixed usage patterns", "[execution][api][integration]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Interleaving execute_now and schedule_code")
     {
@@ -357,7 +357,7 @@ TEST_CASE("Execution API - mixed usage patterns", "[execution][api][integration]
 
 TEST_CASE("Execution API - result structure validation", "[execution][api][contract]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("ExecutionResult fields are properly initialized")
     {
@@ -403,7 +403,7 @@ TEST_CASE("Execution API - result structure validation", "[execution][api][contr
 
 TEST_CASE("Execution API - empty and whitespace code", "[execution][api][edge-cases]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     SECTION("Empty string immediate execution")
     {
@@ -433,7 +433,7 @@ TEST_CASE("Execution API - empty and whitespace code", "[execution][api][edge-ca
 
 TEST_CASE("Execution API - thread safety assumptions", "[execution][api][threading]")
 {
-    ModuLispInterpreter interp(nullptr);
+    ModuLispInterpreter interp;
 
     // NOTE: This test documents the current single-threaded assumption
     // If multi-threading is added in the future, these tests will need updating

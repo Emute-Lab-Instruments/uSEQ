@@ -10,11 +10,7 @@ TEST_CASE("Injected clock drives time deterministically", "[time][di][clock]")
     // Arrange: a controllable clock at 1.5 seconds
     MockClock clk;
     clk.set_micros(1500000ULL);
-    ErrorManager error_mgr;
-    Environment env;
-    uLispParser parser(&error_mgr);
-
-    ModuLispInterpreter interp(&error_mgr, nullptr, nullptr, &clk);
+    ModuLispInterpreter interp(&clk);
 
     // Initialize BPM-dependent durations to avoid divide-by-zero in phasors
     interp.set_bpm(120.0, 0.0);

@@ -51,11 +51,9 @@ struct ExecutionResult
 class ModuLispInterpreter
 {
 public:
-    // Constructor with dependency injection for testability
-    // NOTE: unused for now
-    explicit ModuLispInterpreter(ErrorManager* error_mgr, Environment* env = nullptr,
-                                 uLispParser* parser = nullptr,
-                                 IClock* clk = nullptr, ILogger* log = nullptr,
+    // Constructor — the interpreter is the sole owner of ErrorManager,
+    // Environment, and Parser.  External code accesses them via accessors.
+    explicit ModuLispInterpreter(IClock* clk = nullptr, ILogger* log = nullptr,
                                  IRandomGenerator* rng = nullptr,
                                  size_t num_analog_outs = 8,
                                  size_t num_digital_outs = 8,
@@ -66,7 +64,6 @@ public:
         loadBuiltinDefs();
         init_builtin_functions();
         init_builtinfuncs();
-        ModuLispInterpreter::modulisp_instance_ptr = this;
     }
 
     // Destructor
@@ -242,12 +239,12 @@ public:
     static std::unique_ptr<ModuLispInterpreter> create_fresh_interpreter();
 
     // Error handling and accessors
-    ErrorManager* get_error_manager() { return m_error_manager; }
-    const ErrorManager* get_error_manager() const { return m_error_manager; }
-    Environment* get_environment() { return m_environment; }
-    const Environment* get_environment() const { return m_environment; }
-    uLispParser* get_parser() { return m_parser; }
-    const uLispParser* get_parser() const { return m_parser; }
+    ErrorManager* get_error_manager() { return &m_error_manager; }
+    const ErrorManager* get_error_manager() const { return &m_error_manager; }
+    Environment* get_environment() { return &m_environment; }
+    const Environment* get_environment() const { return &m_environment; }
+    uLispParser* get_parser() { return &m_parser; }
+    const uLispParser* get_parser() const { return &m_parser; }
 
     // Atom evaluation tracking and flags
     static void set_atom_currently_being_evaluated(const String& atom_name)
@@ -430,13 +427,10 @@ private:
     // Absorbed Interpreter state
     bool m_builtindefs_init = false;
 
-    Environment* m_environment;
-    uLispParser* m_parser;
-    ErrorManager* m_error_manager;
-
-    std::unique_ptr<Environment> m_fallback_environment;
-    std::unique_ptr<uLispParser> m_fallback_parser;
-    std::unique_ptr<ErrorManager> m_fallback_error_manager;
+    // Sole-ownership components — no external injection, no fallback pattern.
+    ErrorManager m_error_manager;
+    Environment m_environment;
+    uLispParser m_parser;
 
     // Global temporal context — pointed to by the global environment
     TemporalContext m_global_temporal_ctx;
@@ -446,10 +440,6 @@ private:
     static bool m_eval_expr_if_def_not_found;
     static bool m_update_loop_evaluation;
     static String m_atom_currently_being_evaluated;
-
-public:
-    // Make instance pointer public for builtin access
-    static ModuLispInterpreter* modulisp_instance_ptr;
 };
 
 #endif // MODULISP_INTERPRETER_H_

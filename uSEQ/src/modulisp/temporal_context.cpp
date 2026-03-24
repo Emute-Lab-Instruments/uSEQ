@@ -1,68 +1,62 @@
 #include "temporal_context.h"
 
 // Static member definitions
-TemporalField TemporalContext::s_lookup[TEMPORAL_LOOKUP_SIZE] = {};
+SymbolIntern::SymbolID TemporalContext::s_t = 0;
+SymbolIntern::SymbolID TemporalContext::s_beat = 0;
+SymbolIntern::SymbolID TemporalContext::s_bar = 0;
+SymbolIntern::SymbolID TemporalContext::s_phrase = 0;
+SymbolIntern::SymbolID TemporalContext::s_section = 0;
+SymbolIntern::SymbolID TemporalContext::s_time = 0;
+SymbolIntern::SymbolID TemporalContext::s_beatNum = 0;
+SymbolIntern::SymbolID TemporalContext::s_barNum = 0;
+SymbolIntern::SymbolID TemporalContext::s_beatDur = 0;
+SymbolIntern::SymbolID TemporalContext::s_barDur = 0;
+SymbolIntern::SymbolID TemporalContext::s_phraseDur = 0;
+SymbolIntern::SymbolID TemporalContext::s_sectionDur = 0;
+SymbolIntern::SymbolID TemporalContext::s_beat_dur = 0;
+SymbolIntern::SymbolID TemporalContext::s_bar_dur = 0;
+SymbolIntern::SymbolID TemporalContext::s_phrase_dur = 0;
+SymbolIntern::SymbolID TemporalContext::s_section_dur = 0;
 bool TemporalContext::s_initialized = false;
 
 void TemporalContext::initLookupTable()
 {
     if (s_initialized) return;
 
-    // Zero-fill the table
-    for (size_t i = 0; i < TEMPORAL_LOOKUP_SIZE; ++i)
-        s_lookup[i] = TemporalField::NONE;
-
-    auto& intern = SymbolIntern::getInstance();
-
-    // Helper: register a name → field mapping
-    auto reg = [&](const char* name, TemporalField field) {
-        auto id = intern.intern(String(name));
-        if (id < TEMPORAL_LOOKUP_SIZE)
-            s_lookup[id] = field;
-    };
-
-    reg("t",            TemporalField::T);
-    reg("beat",         TemporalField::BEAT);
-    reg("bar",          TemporalField::BAR);
-    reg("phrase",       TemporalField::PHRASE);
-    reg("section",      TemporalField::SECTION);
-    reg("time",         TemporalField::TIME_SINCE_BOOT);
-    reg("beatNum",      TemporalField::BEAT_NUM);
-    reg("barNum",       TemporalField::BAR_NUM);
-
-    // Duration variables — canonical and alias forms
-    reg("beatDur",      TemporalField::BEAT_DUR);
-    reg("beat-dur",     TemporalField::BEAT_DUR);
-    reg("barDur",       TemporalField::BAR_DUR);
-    reg("bar-dur",      TemporalField::BAR_DUR);
-    reg("phraseDur",    TemporalField::PHRASE_DUR);
-    reg("phrase-dur",   TemporalField::PHRASE_DUR);
-    reg("sectionDur",   TemporalField::SECTION_DUR);
-    reg("section-dur",  TemporalField::SECTION_DUR);
+    auto& si = SymbolIntern::getInstance();
+    s_t           = si.intern("t");
+    s_beat        = si.intern("beat");
+    s_bar         = si.intern("bar");
+    s_phrase      = si.intern("phrase");
+    s_section     = si.intern("section");
+    s_time        = si.intern("time");
+    s_beatNum     = si.intern("beatNum");
+    s_barNum      = si.intern("barNum");
+    s_beatDur     = si.intern("beatDur");
+    s_barDur      = si.intern("barDur");
+    s_phraseDur   = si.intern("phraseDur");
+    s_sectionDur  = si.intern("sectionDur");
+    s_beat_dur    = si.intern("beat-dur");
+    s_bar_dur     = si.intern("bar-dur");
+    s_phrase_dur  = si.intern("phrase-dur");
+    s_section_dur = si.intern("section-dur");
 
     s_initialized = true;
 }
 
 bool TemporalContext::tryGet(SymbolIntern::SymbolID id, Value& out) const
 {
-    if (id == SymbolIntern::INVALID_ID || id >= TEMPORAL_LOOKUP_SIZE)
-        return false;
-
-    switch (s_lookup[id])
-    {
-    case TemporalField::T:              out = Value(t);              return true;
-    case TemporalField::BEAT:           out = Value(beat);           return true;
-    case TemporalField::BAR:            out = Value(bar);            return true;
-    case TemporalField::PHRASE:         out = Value(phrase);         return true;
-    case TemporalField::SECTION:        out = Value(section);        return true;
-    case TemporalField::TIME_SINCE_BOOT:out = Value(time_since_boot);return true;
-    case TemporalField::BEAT_NUM:       out = Value(beatNum);        return true;
-    case TemporalField::BAR_NUM:        out = Value(barNum);         return true;
-    case TemporalField::BEAT_DUR:       out = Value(beatDur);        return true;
-    case TemporalField::BAR_DUR:        out = Value(barDur);         return true;
-    case TemporalField::PHRASE_DUR:     out = Value(phraseDur);      return true;
-    case TemporalField::SECTION_DUR:    out = Value(sectionDur);     return true;
-    case TemporalField::NONE:           return false;
-    }
+    if (id == s_t)                                { out = Value(t);               return true; }
+    if (id == s_beat)                              { out = Value(beat);            return true; }
+    if (id == s_bar)                               { out = Value(bar);             return true; }
+    if (id == s_phrase)                             { out = Value(phrase);          return true; }
+    if (id == s_section)                            { out = Value(section);         return true; }
+    if (id == s_time)                               { out = Value(time_since_boot); return true; }
+    if (id == s_beatNum)                            { out = Value(beatNum);         return true; }
+    if (id == s_barNum)                             { out = Value(barNum);          return true; }
+    if (id == s_beatDur  || id == s_beat_dur)       { out = Value(beatDur);         return true; }
+    if (id == s_barDur   || id == s_bar_dur)        { out = Value(barDur);          return true; }
+    if (id == s_phraseDur || id == s_phrase_dur)    { out = Value(phraseDur);       return true; }
+    if (id == s_sectionDur || id == s_section_dur)  { out = Value(sectionDur);      return true; }
     return false;
 }

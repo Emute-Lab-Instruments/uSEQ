@@ -27,50 +27,20 @@ bool INTERP_MEM ModuLispInterpreter::m_eval_expr_if_def_not_found       = true;
 bool INTERP_MEM ModuLispInterpreter::m_update_loop_evaluation           = false;
 String INTERP_MEM ModuLispInterpreter::m_atom_currently_being_evaluated = "";
 
-ModuLispInterpreter* INTERP_MEM ModuLispInterpreter::modulisp_instance_ptr;
-
 // Constructors
-ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* env,
-                                         uLispParser* parser, IClock* clk,
-                                         ILogger* log, IRandomGenerator* rng,
+ModuLispInterpreter::ModuLispInterpreter(IClock* clk, ILogger* log,
+                                         IRandomGenerator* rng,
                                          size_t num_analog_outs,
                                          size_t num_digital_outs,
                                          size_t num_serial_outs)
     : clock(clk), logger(log),
       m_num_analog_outs(num_analog_outs),
       m_num_digital_outs(num_digital_outs),
-      m_num_serial_outs(num_serial_outs)
+      m_num_serial_outs(num_serial_outs),
+      m_error_manager(),
+      m_environment(),
+      m_parser(&m_error_manager)
 {
-    if (env == nullptr)
-    {
-        m_fallback_environment = std::make_unique<Environment>();
-        m_environment          = m_fallback_environment.get();
-    }
-    else
-    {
-        m_environment = env;
-    }
-
-    if (error_mgr == nullptr)
-    {
-        m_fallback_error_manager = std::make_unique<ErrorManager>();
-        m_error_manager          = m_fallback_error_manager.get();
-    }
-    else
-    {
-        m_error_manager = error_mgr;
-    }
-
-    if (parser == nullptr)
-    {
-        m_fallback_parser = std::make_unique<uLispParser>(m_error_manager);
-        m_parser          = m_fallback_parser.get();
-    }
-    else
-    {
-        m_parser = parser;
-    }
-
     // Managers
     m_time_manager = std::make_unique<TimeManager>(clk);
     m_scheduler    = std::make_unique<Scheduler>();
@@ -115,16 +85,16 @@ ModuLispInterpreter::ModuLispInterpreter(ErrorManager* error_mgr, Environment* e
     TemporalContext::initLookupTable();
 
     // Point the global environment at our temporal context struct
-    m_environment->set_temporal_context(&m_global_temporal_ctx);
+    m_environment.set_temporal_context(&m_global_temporal_ctx);
 
     // Initialize time variables with default values (0.0)
     // This ensures they always exist in the environment
-    m_environment->set("t", Value(0.0));
-    m_environment->set("time", Value(0.0));
-    m_environment->set("beat", Value(0.0));
-    m_environment->set("bar", Value(0.0));
-    m_environment->set("phrase", Value(0.0));
-    m_environment->set("section", Value(0.0));
+    m_environment.set("t", Value(0.0));
+    m_environment.set("time", Value(0.0));
+    m_environment.set("beat", Value(0.0));
+    m_environment.set("bar", Value(0.0));
+    m_environment.set("phrase", Value(0.0));
+    m_environment.set("section", Value(0.0));
 }
 
 // Destructor
@@ -143,7 +113,7 @@ void ModuLispInterpreter::init_builtin_functions()
         // Initialize temporal context lookup table (must happen after SymbolIntern)
         TemporalContext::initLookupTable();
 
-        ModuLispInterpreter temp(nullptr);
+        ModuLispInterpreter temp;
         temp.loadBuiltinDefs();
         initialized = true;
     }
@@ -152,18 +122,18 @@ void ModuLispInterpreter::init_builtin_functions()
 std::unique_ptr<ModuLispInterpreter> ModuLispInterpreter::create_fresh_interpreter()
 {
     init_builtin_functions();
-    return std::make_unique<ModuLispInterpreter>(nullptr);
+    return std::make_unique<ModuLispInterpreter>();
 }
 
 // Instance eval wrappers
 String ModuLispInterpreter::eval(const String& code)
 {
-    return eval_in(code, *m_environment);
+    return eval_in(code, m_environment);
 }
-Value ModuLispInterpreter::eval(Value v) { return eval_in(v, *m_environment); }
+Value ModuLispInterpreter::eval(Value v) { return eval_in(v, m_environment); }
 Value ModuLispInterpreter::eval_v(const String& code)
 {
-    return eval(m_parser->parse(code));
+    return eval(m_parser.parse(code));
 }
 
 // Static helpers (ported)
