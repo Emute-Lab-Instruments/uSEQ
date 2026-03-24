@@ -80,6 +80,7 @@ EM_FLAGS=(
     "-s EXPORT_NAME='createModule'"
     "-s ENVIRONMENT='web'"
     "-s SINGLE_FILE=1"
+    "--post-js=wasm/emscripten-post.js"
     "--no-entry"
 )
 
