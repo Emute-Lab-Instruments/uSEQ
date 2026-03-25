@@ -1779,7 +1779,8 @@ private:
         }
         if (op == "pow")
         {
-            return binary([](double lhs, double rhs) { return std::pow(lhs, rhs); });
+            // ModuLisp convention: (pow exponent base) → base^exponent
+            return binary([](double lhs, double rhs) { return std::pow(rhs, lhs); });
         }
         if (op == "sin")
         {
@@ -3093,7 +3094,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 out = std::fmax(left, right);
                 break;
             case NumericVmOpcode::POW:
-                out = std::pow(left, right);
+                // ModuLisp convention: (pow exponent base) → base^exponent
+                out = std::pow(right, left);
                 break;
             case NumericVmOpcode::PULSE:
                 out = left < right ? 1.0 : 0.0;

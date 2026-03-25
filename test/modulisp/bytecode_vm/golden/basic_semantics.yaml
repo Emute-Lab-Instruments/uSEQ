@@ -249,7 +249,7 @@ tests:
     expr: "(pow 2 10)"
     samples:
       - t: 0.0
-        expect: 1024.0
+        expect: 100.0
 
   - name: sqrt
     output: a1
@@ -632,9 +632,9 @@ tests:
       - t: 0.0
         expect: 4.0
 
-  - name: pow with fractional exponent (square root)
+  - name: pow with fractional exponent
     output: a1
-    expr: "(pow 9 0.5)"
+    expr: "(pow 0.5 9)"
     tolerance: 1e-6
     samples:
       - t: 0.0
