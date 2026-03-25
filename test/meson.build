@@ -100,6 +100,10 @@ bytecode_vm_probe_src = [
   'modulisp/bytecode_vm/bytecode_vm_probe.cpp'
 ]
 
+bytecode_vm_benchmark_src = [
+  'modulisp/bytecode_vm/bytecode_vm_benchmark.cpp'
+]
+
 vm_fallback_detection_src = [
   'modulisp/bytecode_vm/test_vm_fallback_detection.cpp'
 ]
@@ -370,6 +374,16 @@ vm_fallback_detection_exe = executable(
 )
 
 test('test_vm_fallback_detection', vm_fallback_detection_exe)
+
+# Benchmark executable -- NOT a test; run manually with ./build/test/bytecode_vm_benchmark
+bytecode_vm_benchmark_exe = executable(
+  'bytecode_vm_benchmark',
+  sources : bytecode_vm_benchmark_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
 
 # Signal semantics test removed (signal metadata deleted)
 
