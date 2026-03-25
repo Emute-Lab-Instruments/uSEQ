@@ -143,13 +143,13 @@ void ModuLispInterpreter::reset_output_slot(StoredOutput& slot, OutputType type)
     slot.lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
     slot.lastValue       = default_output_value(type);
     slot.hasExpr         = false;
-    slot.numericProgram.reset();
-    slot.numericProgramExprSource = "";
-    slot.numericProgramDependencies.clear();
-    slot.numericProgramDependencySnapshots.clear();
+    slot.activeProgram = {};
+    slot.lkgProgram = {};
     slot.numericProgramAttempted = false;
     slot.numericProgramSucceeded = false;
     slot.numericProgramDirty = false;
+    slot.fallbackToLkg = false;
+    slot.lastDiagnostic = "";
 }
 
 void ModuLispInterpreter::clear_all_outputs()
@@ -169,13 +169,13 @@ void ModuLispInterpreter::clear_all_outputs()
             outputs[index].lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
             outputs[index].lastValue       = defaultValue;
             outputs[index].hasExpr         = true;
-            outputs[index].numericProgram.reset();
-            outputs[index].numericProgramExprSource = "";
-            outputs[index].numericProgramDependencies.clear();
-            outputs[index].numericProgramDependencySnapshots.clear();
+            outputs[index].activeProgram = {};
+            outputs[index].lkgProgram = {};
             outputs[index].numericProgramAttempted = false;
             outputs[index].numericProgramSucceeded = false;
             outputs[index].numericProgramDirty = false;
+            outputs[index].fallbackToLkg = false;
+            outputs[index].lastDiagnostic = "";
         }
     };
 
@@ -256,24 +256,23 @@ String ModuLispInterpreter::snapshot_binding_state(const Environment& env,
     return String("missing");
 }
 
-bool ModuLispInterpreter::output_program_is_dirty(const StoredOutput& slot,
-                                                  const Environment& env) const
+bool ModuLispInterpreter::compiled_program_is_dirty(const CompiledOutputProgram& program,
+                                                    const Environment& env) const
 {
-    if (slot.numericProgramDirty)
+    if (!program.program)
+    {
+        return false;
+    }
+
+    if (program.dependencies.size() != program.dependencySnapshots.size())
     {
         return true;
     }
 
-    if (slot.numericProgramDependencies.size() !=
-        slot.numericProgramDependencySnapshots.size())
+    for (size_t i = 0; i < program.dependencies.size(); ++i)
     {
-        return true;
-    }
-
-    for (size_t i = 0; i < slot.numericProgramDependencies.size(); ++i)
-    {
-        if (snapshot_binding_state(env, slot.numericProgramDependencies[i]) !=
-            slot.numericProgramDependencySnapshots[i])
+        if (snapshot_binding_state(env, program.dependencies[i]) !=
+            program.dependencySnapshots[i])
         {
             return true;
         }
@@ -282,37 +281,75 @@ bool ModuLispInterpreter::output_program_is_dirty(const StoredOutput& slot,
     return false;
 }
 
+bool ModuLispInterpreter::output_program_is_dirty(const StoredOutput& slot,
+                                                  const Environment& env) const
+{
+    if (slot.numericProgramDirty)
+    {
+        return true;
+    }
+
+    return compiled_program_is_dirty(slot.activeProgram, env);
+}
+
+bool ModuLispInterpreter::compile_output_program(const Value& expr,
+                                                 Environment& env,
+                                                 CompiledOutputProgram& out,
+                                                 String* error) const
+{
+    out = {};
+    out.exprSource = expr.to_lisp_src();
+
+    const NumericVmCompileResult compiled = compile_numeric_program(expr, env);
+    if (!compiled.ok)
+    {
+        if (error)
+        {
+            *error = compiled.error;
+        }
+        return false;
+    }
+
+    out.program = std::make_shared<NumericVmProgram>(compiled.program);
+    out.dependencies = compiled.program.dependencies;
+    out.dependencySnapshots.reserve(out.dependencies.size());
+    for (const String& dependency : out.dependencies)
+    {
+        out.dependencySnapshots.push_back(snapshot_binding_state(env, dependency));
+    }
+    return true;
+}
+
 bool ModuLispInterpreter::refresh_output_program(StoredOutput& slot, Environment& env)
 {
-    slot.numericProgram.reset();
-    slot.numericProgramExprSource = slot.expr.to_lisp_src();
-    slot.numericProgramDependencies.clear();
-    slot.numericProgramDependencySnapshots.clear();
     slot.numericProgramAttempted = true;
-    slot.numericProgramSucceeded = false;
     slot.numericProgramDirty = false;
 
     if (!slot.hasExpr)
     {
+        slot.numericProgramSucceeded = false;
+        slot.fallbackToLkg = false;
         return false;
     }
 
-    const NumericVmCompileResult compiled = compile_numeric_program(slot.expr, env);
-    if (!compiled.ok)
+    CompiledOutputProgram compiled;
+    String compileError;
+    if (!compile_output_program(slot.expr, env, compiled, &compileError))
     {
+        slot.numericProgramSucceeded = false;
+        slot.lastDiagnostic = compileError;
         return false;
     }
 
-    slot.numericProgram = std::make_shared<NumericVmProgram>(compiled.program);
+    if (slot.activeProgram.program && slot.activeProgram.observedGood)
+    {
+        slot.lkgProgram = slot.activeProgram;
+    }
+
+    slot.activeProgram = compiled;
     slot.numericProgramSucceeded = true;
-    slot.numericProgramDependencies = compiled.program.dependencies;
-    slot.numericProgramDependencySnapshots.reserve(
-        slot.numericProgramDependencies.size());
-    for (const String& dependency : slot.numericProgramDependencies)
-    {
-        slot.numericProgramDependencySnapshots.push_back(
-            snapshot_binding_state(env, dependency));
-    }
+    slot.fallbackToLkg = false;
+    slot.lastDiagnostic = "";
 
     return true;
 }
@@ -392,14 +429,10 @@ Value ModuLispInterpreter::handle_output_assignment(const char* name,
     slot->hasExpr         = !expr.is_nil();
     slot->lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
     slot->lastValue       = default_output_value(type);
-    slot->numericProgram.reset();
-    slot->numericProgramExprSource = "";
-    slot->numericProgramDependencies.clear();
-    slot->numericProgramDependencySnapshots.clear();
     slot->numericProgramAttempted = false;
-    slot->numericProgramSucceeded = false;
     slot->numericProgramDirty = false;
-
+    slot->fallbackToLkg = false;
+    slot->lastDiagnostic = "";
     refresh_output_program(*slot, *get_environment());
 
     return Value::atom(lispName);
@@ -505,45 +538,6 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
 
     const double time_micros = time_seconds * 1e6;
 
-    bool program_refreshed = false;
-    if (!slot->numericProgramAttempted ||
-        slot->numericProgramExprSource != slot->expr.to_lisp_src() ||
-        output_program_is_dirty(*slot, *get_environment()))
-    {
-        refresh_output_program(*slot, *get_environment());
-        program_refreshed = true;
-    }
-
-    constexpr double epsilon = 1e-9;
-    if (std::isfinite(slot->lastTimeSeconds) &&
-        std::fabs(slot->lastTimeSeconds - time_seconds) < epsilon &&
-        !program_refreshed &&
-        !output_program_is_dirty(*slot, *get_environment()))
-    {
-        if (ok)
-        {
-            *ok = true;
-        }
-        return slot->lastValue;
-    }
-
-    if (slot->numericProgramSucceeded && slot->numericProgram)
-    {
-        const TemporalContext ctx = make_temporal_context(time_seconds);
-        const NumericVmExecutionResult vm_result =
-            execute_numeric_program(*slot->numericProgram, ctx);
-        if (vm_result.ok && std::isfinite(vm_result.value))
-        {
-            slot->lastValue = vm_result.value;
-            slot->lastTimeSeconds = time_seconds;
-            if (ok)
-            {
-                *ok = true;
-            }
-            return vm_result.value;
-        }
-    }
-
     char prefixChar = 'a';
     switch (type)
     {
@@ -560,6 +554,108 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
 
     String exprName(prefixChar);
     exprName += String(static_cast<int>(index) + 1);
+
+    bool program_refreshed = false;
+    bool permit_tree_fallback = true;
+    if (!slot->numericProgramAttempted ||
+        slot->activeProgram.exprSource != slot->expr.to_lisp_src() ||
+        output_program_is_dirty(*slot, *get_environment()))
+    {
+        refresh_output_program(*slot, *get_environment());
+        program_refreshed = true;
+        if (!slot->numericProgramSucceeded && slot->lastDiagnostic.length() > 0)
+        {
+            report_generic_error("Output " + exprName + " compile failed: " +
+                                 slot->lastDiagnostic);
+            if (slot->lastDiagnostic.startsWith("Signal VM rejects"))
+            {
+                permit_tree_fallback = false;
+            }
+        }
+    }
+
+    constexpr double epsilon = 1e-9;
+    if (std::isfinite(slot->lastTimeSeconds) &&
+        std::fabs(slot->lastTimeSeconds - time_seconds) < epsilon &&
+        !program_refreshed &&
+        !output_program_is_dirty(*slot, *get_environment()))
+    {
+        if (ok)
+        {
+            *ok = true;
+        }
+        return slot->lastValue;
+    }
+
+    CompiledOutputProgram* program_to_run = nullptr;
+    if (slot->fallbackToLkg && slot->lkgProgram.program)
+    {
+        program_to_run = &slot->lkgProgram;
+    }
+    else if (slot->activeProgram.program)
+    {
+        program_to_run = &slot->activeProgram;
+    }
+
+    if (program_to_run && program_to_run->program)
+    {
+        const TemporalContext ctx = make_temporal_context(time_seconds);
+        const NumericVmExecutionResult vm_result =
+            execute_numeric_program(*program_to_run->program, ctx);
+        if (vm_result.ok && std::isfinite(vm_result.value))
+        {
+            if (program_to_run == &slot->activeProgram)
+            {
+                slot->activeProgram.observedGood = true;
+            }
+            slot->lastDiagnostic = "";
+            slot->lastValue = vm_result.value;
+            slot->lastTimeSeconds = time_seconds;
+            if (ok)
+            {
+                *ok = true;
+            }
+            return vm_result.value;
+        }
+
+        slot->lastDiagnostic = vm_result.error;
+        report_generic_error("Output " + exprName + " runtime failed: " +
+                             vm_result.error);
+        permit_tree_fallback = false;
+
+        if (program_to_run == &slot->activeProgram && slot->lkgProgram.program)
+        {
+            slot->fallbackToLkg = true;
+            const NumericVmExecutionResult lkg_result =
+                execute_numeric_program(*slot->lkgProgram.program, ctx);
+            if (lkg_result.ok && std::isfinite(lkg_result.value))
+            {
+                slot->lastValue = lkg_result.value;
+                slot->lastTimeSeconds = time_seconds;
+                if (ok)
+                {
+                    *ok = true;
+                }
+                return lkg_result.value;
+            }
+        }
+
+        if (std::isfinite(slot->lastTimeSeconds))
+        {
+            if (ok)
+            {
+                *ok = true;
+            }
+            return slot->lastValue;
+        }
+    }
+
+    if (!permit_tree_fallback)
+    {
+        slot->lastValue = defaultValue;
+        slot->lastTimeSeconds = time_seconds;
+        return std::isfinite(slot->lastValue) ? slot->lastValue : defaultValue;
+    }
 
     Value expr_to_eval = slot->expr;
 

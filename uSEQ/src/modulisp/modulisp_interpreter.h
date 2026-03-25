@@ -53,6 +53,15 @@ struct ExecutionResult
 class ModuLispInterpreter
 {
 public:
+    struct CompiledOutputProgram
+    {
+        std::shared_ptr<NumericVmProgram> program;
+        String exprSource;
+        std::vector<String> dependencies;
+        std::vector<String> dependencySnapshots;
+        bool observedGood = false;
+    };
+
     // Constructor — the interpreter is the sole owner of ErrorManager,
     // Environment, and Parser.  External code accesses them via accessors.
     explicit ModuLispInterpreter(IClock* clk = nullptr, ILogger* log = nullptr,
@@ -376,13 +385,13 @@ public:
         double lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
         double lastValue       = 0.0;
         bool hasExpr           = false;
-        std::shared_ptr<NumericVmProgram> numericProgram;
-        String numericProgramExprSource;
-        std::vector<String> numericProgramDependencies;
-        std::vector<String> numericProgramDependencySnapshots;
+        CompiledOutputProgram activeProgram;
+        CompiledOutputProgram lkgProgram;
         bool numericProgramAttempted = false;
         bool numericProgramSucceeded = false;
         bool numericProgramDirty     = false;
+        bool fallbackToLkg = false;
+        String lastDiagnostic;
     };
 
     // Performance monitoring
@@ -437,6 +446,10 @@ protected:
                                     double time_seconds, bool* used_vm = nullptr);
     bool refresh_output_program(StoredOutput& slot, Environment& env);
     bool output_program_is_dirty(const StoredOutput& slot, const Environment& env) const;
+    bool compiled_program_is_dirty(const CompiledOutputProgram& program,
+                                   const Environment& env) const;
+    bool compile_output_program(const Value& expr, Environment& env,
+                                CompiledOutputProgram& out, String* error = nullptr) const;
     String snapshot_binding_state(const Environment& env, const String& symbol) const;
     std::optional<Value> lookup_value_without_error(const Environment& env,
                                                     const String& symbol) const;

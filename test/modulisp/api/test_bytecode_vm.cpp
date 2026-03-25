@@ -544,3 +544,43 @@ TEST_CASE("Compiled output invalidates after dependency redefinition",
     REQUIRE(ok);
     REQUIRE(second_value == Approx(7.5).epsilon(1e-6));
 }
+
+TEST_CASE("Numeric VM rejects side-effectful signal forms at compile time",
+          "[modulisp][vm][signals]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto define_result =
+        compile_numeric_program(interp.get_parser()->parse("(do (define x 1) (+ t 1))"),
+                                *interp.get_environment());
+    REQUIRE_FALSE(define_result.ok);
+    REQUIRE(define_result.error.indexOf("Signal VM rejects side-effectful form") >= 0);
+
+    const auto eval_result =
+        compile_numeric_program(interp.get_parser()->parse("(eval \"(+ t 1)\")"),
+                                *interp.get_environment());
+    REQUIRE_FALSE(eval_result.ok);
+    REQUIRE(eval_result.error.indexOf("Signal VM rejects eval") >= 0);
+}
+
+TEST_CASE("Compile-time rejection keeps the current active output graph",
+          "[modulisp][vm][outputs]")
+{
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr, 8, 8, 8);
+    interp.init();
+
+    interp.eval("(a1 (+ t 1))");
+
+    bool ok = false;
+    const double first_value = interp.eval_output_at_time("a1", 2.0, &ok);
+    REQUIRE(ok);
+    REQUIRE(first_value == Approx(3.0).epsilon(1e-6));
+
+    interp.eval("(a1 (do (define x 1) (+ t 2)))");
+
+    ok = false;
+    const double second_value = interp.eval_output_at_time("a1", 2.0, &ok);
+    REQUIRE(ok);
+    REQUIRE(second_value == Approx(3.0).epsilon(1e-6));
+}

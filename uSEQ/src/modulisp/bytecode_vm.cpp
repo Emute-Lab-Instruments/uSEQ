@@ -5,6 +5,41 @@
 
 namespace
 {
+bool is_output_assignment_symbol(const String& symbol)
+{
+    if (symbol.length() < 2)
+    {
+        return false;
+    }
+
+    const char prefix = symbol[0];
+    if (prefix != 'a' && prefix != 'd' && prefix != 's')
+    {
+        return false;
+    }
+
+    for (unsigned int i = 1; i < symbol.length(); ++i)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(symbol[i])))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool is_signal_side_effect_form(const String& op)
+{
+    return op == "define" || op == "def" || op == "defn" || op == "defun" ||
+           op == "defs" || op == "set" || op == "eval" ||
+           op == "schedule" || op == "unschedule" || op == "useq-play" ||
+           op == "useq-pause" || op == "useq-stop" || op == "useq-rewind" ||
+           op == "useq-clear" || op == "set-bpm" || op == "set-time-sig" ||
+           op == "useq-set-time-offset" || op == "useq-nudge-time" ||
+           is_output_assignment_symbol(op);
+}
+
 struct AffineTimeTransform
 {
     double scale = 1.0;
@@ -97,6 +132,18 @@ private:
         }
 
         const String op = items[0].as_atom();
+        if (is_signal_side_effect_form(op))
+        {
+            if (op == "eval")
+            {
+                fail("Signal VM rejects eval in signal context");
+            }
+            else
+            {
+                fail("Signal VM rejects side-effectful form: " + op);
+            }
+            return -1;
+        }
         if (op == "fast" || op == "slow" || op == "offset" || op == "shift")
         {
             return compile_time_warp(op, items, transform);

@@ -210,4 +210,24 @@ TEST_CASE("Output time-window sampling", "[outputs][sampling]")
         REQUIRE(updated_results["a1"][1] == Approx(5.0).epsilon(1e-6));
         REQUIRE(updated_results["a1"][2] == Approx(10.0).epsilon(1e-6));
     }
+
+    SECTION("Runtime failures fall back to the last known good graph for the batch")
+    {
+        interp.eval("(a1 (+ t 1))");
+        auto healthy_results = interp.eval_outputs(0.0, 1.0, 5, {"a1"});
+        REQUIRE(healthy_results.find("a1") != healthy_results.end());
+        REQUIRE(healthy_results["a1"].size() == 5);
+
+        interp.eval("(a1 (/ 1 (- beat beat)))");
+
+        auto fallback_results = interp.eval_outputs(0.0, 1.0, 5, {"a1"});
+        REQUIRE(fallback_results.find("a1") != fallback_results.end());
+        REQUIRE(fallback_results["a1"].size() == healthy_results["a1"].size());
+
+        for (size_t i = 0; i < healthy_results["a1"].size(); ++i)
+        {
+            REQUIRE(fallback_results["a1"][i] ==
+                    Approx(healthy_results["a1"][i]).epsilon(1e-6));
+        }
+    }
 }
