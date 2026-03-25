@@ -11,6 +11,11 @@ struct AffineTimeTransform
     double offset = 0.0;
 };
 
+struct LocalValueBinding
+{
+    int source_register = -1;
+};
+
 class NumericVmCompiler
 {
 public:
@@ -55,6 +60,12 @@ private:
             return compile_symbol(expr.as_atom(), transform);
         }
 
+        if (expr.is_vector())
+        {
+            fail("Numeric VM cannot return vector values directly");
+            return -1;
+        }
+
         if (!expr.is_list())
         {
             fail("Unsupported non-numeric expression in numeric VM");
@@ -73,7 +84,15 @@ private:
         }
         if (items.empty() || !items[0].is_symbol())
         {
-            fail("Numeric VM only supports builtin call forms");
+            int callable_reg = -1;
+            if (try_compile_callable_form(items, transform, callable_reg))
+            {
+                return callable_reg;
+            }
+            if (callable_reg < 0 && m_error.length() == 0)
+            {
+                fail("Numeric VM only supports builtin and inline-call forms");
+            }
             return -1;
         }
 
@@ -89,6 +108,10 @@ private:
         if (op == "if")
         {
             return compile_if(items, transform);
+        }
+        if (op == "let")
+        {
+            return compile_let(items, transform);
         }
 
         if (op == "+")
@@ -192,17 +215,45 @@ private:
         {
             return compile_vector_builtin(items, transform, false);
         }
-        if (op == "interp")
+        if (op == "seq")
+        {
+            return compile_vector_builtin(items, transform, false);
+        }
+        if (op == "interp" || op == "flatseq")
         {
             return compile_vector_builtin(items, transform, true);
         }
+        if (op == "dm")
+        {
+            return compile_dm(items, transform);
+        }
+        if (op == "euclid" || op == "eu")
+        {
+            return compile_euclid(items, transform);
+        }
 
-        fail("Unsupported numeric VM builtin: " + op);
+        int callable_reg = -1;
+        if (try_compile_callable_form(items, transform, callable_reg))
+        {
+            return callable_reg;
+        }
+
+        if (m_error.length() == 0)
+        {
+            fail("Unsupported numeric VM builtin: " + op);
+        }
         return -1;
     }
 
     int compile_symbol(const String& symbol, const AffineTimeTransform& transform)
     {
+        if (const std::optional<int> local_reg = find_local_value_binding(symbol))
+        {
+            const int copy = allocate_register();
+            emit_mov(copy, *local_reg);
+            return copy;
+        }
+
         NumericVmTemporalChannel channel;
         if (try_get_temporal_channel(symbol, channel))
         {
@@ -239,10 +290,13 @@ private:
                 maybe_add_dependency(symbol);
                 return emit_const(Value(value->as_float()));
             }
+            if (value->is_builtin())
+            {
+                return emit_late_bound_numeric_symbol(symbol);
+            }
         }
 
-        fail("Unsupported numeric VM symbol: " + symbol);
-        return -1;
+        return emit_late_bound_numeric_symbol(symbol);
     }
 
     int compile_time_warp(const String& op,
@@ -360,6 +414,68 @@ private:
         return result_reg;
     }
 
+    int compile_let(const std::vector<Value>& items,
+                    const AffineTimeTransform& transform)
+    {
+        if (items.size() < 3)
+        {
+            fail("let expects a bindings vector and at least one body form");
+            return -1;
+        }
+        if (!items[1].is_sequential())
+        {
+            fail("let bindings must be a sequential collection");
+            return -1;
+        }
+
+        const std::vector<Value> bindings = items[1].as_sequential();
+        if (bindings.size() % 2 != 0)
+        {
+            fail("let bindings must contain symbol/value pairs");
+            return -1;
+        }
+
+        push_local_scope();
+        for (size_t i = 0; i < bindings.size(); i += 2)
+        {
+            if (!bindings[i].is_symbol())
+            {
+                pop_local_scope();
+                fail("let binding names must be symbols");
+                return -1;
+            }
+
+            const String name = bindings[i].as_atom();
+            const Value& value_expr = bindings[i + 1];
+            if (try_bind_local_callable(name, value_expr))
+            {
+                continue;
+            }
+
+            const int bound_reg = compile_expr(value_expr, transform);
+            if (bound_reg < 0)
+            {
+                pop_local_scope();
+                return -1;
+            }
+            bind_local_value(name, bound_reg);
+        }
+
+        int result = -1;
+        for (size_t i = 2; i < items.size(); ++i)
+        {
+            result = compile_expr(items[i], transform);
+            if (result < 0)
+            {
+                pop_local_scope();
+                return -1;
+            }
+        }
+
+        pop_local_scope();
+        return result;
+    }
+
     int compile_vector_builtin(const std::vector<Value>& items,
                                const AffineTimeTransform& transform,
                                bool interpolate)
@@ -372,6 +488,132 @@ private:
         }
 
         return compile_vector_lookup(items[1], items[2], transform, interpolate);
+    }
+
+    int compile_dm(const std::vector<Value>& items,
+                   const AffineTimeTransform& transform)
+    {
+        if (items.size() != 4)
+        {
+            fail("dm expects exactly 3 arguments");
+            return -1;
+        }
+
+        const int result_reg = allocate_register();
+        const int cond_reg = compile_expr(items[1], transform);
+        if (cond_reg < 0)
+        {
+            return -1;
+        }
+
+        NumericVmInstruction branch_to_else;
+        branch_to_else.opcode = NumericVmOpcode::BRANCH_UNLESS;
+        branch_to_else.rs1 = static_cast<uint16_t>(cond_reg);
+        branch_to_else.imm = 0;
+        const size_t branch_to_else_index = m_program.instructions.size();
+        m_program.instructions.push_back(branch_to_else);
+
+        const int then_reg = compile_expr(items[3], transform);
+        if (then_reg < 0)
+        {
+            return -1;
+        }
+        emit_mov(result_reg, then_reg);
+
+        NumericVmInstruction branch_to_end;
+        branch_to_end.opcode = NumericVmOpcode::BRANCH;
+        branch_to_end.imm = 0;
+        const size_t branch_to_end_index = m_program.instructions.size();
+        m_program.instructions.push_back(branch_to_end);
+
+        const size_t else_start_index = m_program.instructions.size();
+        patch_branch(branch_to_else_index, else_start_index);
+
+        const int else_reg = compile_expr(items[2], transform);
+        if (else_reg < 0)
+        {
+            return -1;
+        }
+        emit_mov(result_reg, else_reg);
+
+        patch_branch(branch_to_end_index, m_program.instructions.size());
+        return result_reg;
+    }
+
+    int compile_euclid(const std::vector<Value>& items,
+                       const AffineTimeTransform& transform)
+    {
+        if (items.size() < 4 || items.size() > 6)
+        {
+            fail("euclid expects 3 to 5 arguments");
+            return -1;
+        }
+
+        const std::optional<double> n_value =
+            try_resolve_numeric_constant(items[1]);
+        const std::optional<double> k_value =
+            try_resolve_numeric_constant(items[2]);
+        const std::optional<double> pulse_width =
+            items.size() >= 5 ? try_resolve_numeric_constant(items[3])
+                              : std::optional<double>(0.5);
+        const std::optional<double> offset =
+            items.size() == 6 ? try_resolve_numeric_constant(items[4])
+                              : std::optional<double>(0.0);
+        if (n_value.has_value() && k_value.has_value() && pulse_width.has_value() &&
+            offset.has_value())
+        {
+            const int n = static_cast<int>(*n_value);
+            const int k = static_cast<int>(*k_value);
+            if (n > 0)
+            {
+                std::vector<double> pattern;
+                pattern.reserve(static_cast<size_t>(n));
+                for (int i = 0; i < n; ++i)
+                {
+                    const int idx = ((i + n - static_cast<int>(*offset)) * k) % n;
+                    pattern.push_back(idx < k ? 1.0 : 0.0);
+                }
+
+                std::vector<Value> expanded_items = {
+                    Value::atom("from-list"),
+                    Value::vector({}),
+                    items.back()
+                };
+                expanded_items[1] = Value::vector({});
+                for (double value : pattern)
+                {
+                    expanded_items[1].push(Value(value));
+                }
+
+                if (*pulse_width < 1.0)
+                {
+                    std::vector<Value> gate_items = {
+                        Value::atom("if"),
+                        Value({ Value::atom("<"),
+                                Value({ Value::atom("frac"),
+                                        Value({ Value::atom("*"),
+                                                Value(static_cast<double>(n)),
+                                                items.back() }) }),
+                                Value(*pulse_width) }),
+                        Value(expanded_items),
+                        Value(0.0)
+                    };
+                    return compile_expr(Value(gate_items), transform);
+                }
+
+                return compile_expr(Value(expanded_items), transform);
+            }
+        }
+
+        int result = -1;
+        if (try_emit_intrinsic_call(items[0].as_atom(),
+                                    std::vector<Value>(items.begin() + 1, items.end()),
+                                    transform, result))
+        {
+            return result;
+        }
+        fail("Failed to lower euclid builtin");
+        return -1;
     }
 
     int compile_vector_lookup(const Value& source_expr,
@@ -517,6 +759,33 @@ private:
         return dst;
     }
 
+    int emit_late_bound_numeric_symbol(const String& symbol)
+    {
+        maybe_add_dependency(symbol);
+        const size_t intrinsic_index = store_intrinsic(
+            [env = &m_env, symbol](const std::vector<Value>&,
+                                   const TemporalContext&) -> Value {
+                if (const std::optional<Value> value = env->get(symbol))
+                {
+                    if (value->is_number())
+                    {
+                        return Value(value->as_float());
+                    }
+                }
+                return Value::error();
+            });
+
+        const int dst = allocate_register();
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::CALL_INTRINSIC;
+        insn.rd = static_cast<uint16_t>(dst);
+        insn.rs1 = 0;
+        insn.rs2 = 0;
+        insn.imm = static_cast<int32_t>(intrinsic_index);
+        m_program.instructions.push_back(insn);
+        return dst;
+    }
+
     int emit_mov(int dst, int src)
     {
         NumericVmInstruction insn;
@@ -558,6 +827,12 @@ private:
     int allocate_register()
     {
         return m_next_register++;
+    }
+
+    size_t store_intrinsic(const TaggedVmIntrinsic& intrinsic)
+    {
+        m_program.intrinsics.push_back(intrinsic);
+        return m_program.intrinsics.size() - 1;
     }
 
     size_t store_constant(const Value& value)
@@ -602,6 +877,11 @@ private:
 
     void maybe_add_dependency(const String& symbol)
     {
+        if (find_local_value_binding(symbol).has_value() ||
+            find_local_callable_binding(symbol).has_value())
+        {
+            return;
+        }
         if (m_env.get_defs().has(symbol) || m_env.get_def_exprs().has(symbol))
         {
             add_dependency(symbol);
@@ -872,9 +1152,35 @@ private:
     std::optional<std::vector<double>> try_resolve_numeric_sequence(
         const Value& expr)
     {
+        if (expr.is_vector())
+        {
+            const std::vector<Value> items = expr.as_vector();
+            if (items.empty())
+            {
+                return std::nullopt;
+            }
+
+            std::vector<double> values;
+            values.reserve(items.size());
+            for (const Value& item : items)
+            {
+                const std::optional<double> numeric = try_resolve_numeric_constant(item);
+                if (!numeric.has_value())
+                {
+                    return std::nullopt;
+                }
+                values.push_back(*numeric);
+            }
+            return values;
+        }
+
         if (expr.is_symbol())
         {
             const String symbol = expr.as_atom();
+            if (find_local_value_binding(symbol).has_value())
+            {
+                return std::nullopt;
+            }
             if (is_in_recursion_stack(symbol))
             {
                 return std::nullopt;
@@ -970,6 +1276,311 @@ private:
         return false;
     }
 
+    bool parse_lambda_value(const Value& value,
+                            std::vector<Value>& params,
+                            Value& body) const
+    {
+        if (value.type == Value::LAMBDA)
+        {
+            params = value.list[0].as_vector();
+            body = value.list[1];
+            return true;
+        }
+
+        if (!value.is_list())
+        {
+            return false;
+        }
+
+        const std::vector<Value> items = value.as_list();
+        if (items.empty() || !items[0].is_symbol())
+        {
+            return false;
+        }
+        const String op = items[0].as_atom();
+        if (op != "lambda")
+        {
+            return false;
+        }
+        if (items.size() < 3 || !items[1].is_vector())
+        {
+            return false;
+        }
+
+        params = items[1].as_vector();
+        if (items.size() == 3)
+        {
+            body = items[2];
+        }
+        else
+        {
+            std::vector<Value> body_items;
+            body_items.push_back(Value::atom("do"));
+            for (size_t i = 2; i < items.size(); ++i)
+            {
+                body_items.push_back(items[i]);
+            }
+            body = Value(body_items);
+        }
+        return true;
+    }
+
+    bool try_bind_local_callable(const String& name, const Value& expr)
+    {
+        std::vector<Value> params;
+        Value body;
+        if (parse_lambda_value(expr, params, body))
+        {
+            bind_local_callable(name, expr);
+            return true;
+        }
+
+        if (expr.is_symbol())
+        {
+            const String symbol = expr.as_atom();
+            if (const std::optional<Value> value = m_env.get(symbol))
+            {
+                if (value->type == Value::LAMBDA)
+                {
+                    maybe_add_dependency(symbol);
+                    bind_local_callable(name, *value);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    bool try_compile_callable_form(const std::vector<Value>& items,
+                                   const AffineTimeTransform& transform,
+                                   int& out_reg)
+    {
+        if (items.empty())
+        {
+            fail("Cannot compile empty call form");
+            return false;
+        }
+
+        std::vector<Value> params;
+        Value body;
+        if (items[0].is_symbol())
+        {
+            const String op = items[0].as_atom();
+            if (const std::optional<Value> local_callable =
+                    find_local_callable_binding(op))
+            {
+                if (parse_lambda_value(*local_callable, params, body))
+                {
+                    out_reg = compile_inline_lambda(params, body,
+                                                    std::vector<Value>(items.begin() + 1,
+                                                                       items.end()),
+                                                    transform);
+                    return out_reg >= 0;
+                }
+            }
+            if (const std::optional<Value> global_callable = m_env.get(op))
+            {
+                if (parse_lambda_value(*global_callable, params, body))
+                {
+                    maybe_add_dependency(op);
+                    out_reg = compile_inline_lambda(params, body,
+                                                    std::vector<Value>(items.begin() + 1,
+                                                                       items.end()),
+                                                    transform);
+                    return out_reg >= 0;
+                }
+                if (global_callable->is_builtin())
+                {
+                    return try_emit_intrinsic_call(op,
+                                                   std::vector<Value>(items.begin() + 1,
+                                                                      items.end()),
+                                                   transform, out_reg);
+                }
+            }
+        }
+
+        if (parse_lambda_value(items[0], params, body))
+        {
+            out_reg = compile_inline_lambda(params, body,
+                                            std::vector<Value>(items.begin() + 1,
+                                                               items.end()),
+                                            transform);
+            return out_reg >= 0;
+        }
+
+        return false;
+    }
+
+    int compile_inline_lambda(const std::vector<Value>& params,
+                              const Value& body,
+                              const std::vector<Value>& arg_exprs,
+                              const AffineTimeTransform& transform)
+    {
+        if (params.size() != arg_exprs.size())
+        {
+            fail("Inline lambda call arity mismatch");
+            return -1;
+        }
+
+        std::vector<int> arg_regs;
+        arg_regs.reserve(arg_exprs.size());
+        for (const Value& arg_expr : arg_exprs)
+        {
+            const int arg_reg = compile_expr(arg_expr, transform);
+            if (arg_reg < 0)
+            {
+                return -1;
+            }
+            arg_regs.push_back(arg_reg);
+        }
+
+        push_local_scope();
+        for (size_t i = 0; i < params.size(); ++i)
+        {
+            if (!params[i].is_symbol())
+            {
+                pop_local_scope();
+                fail("Lambda parameters must be symbols");
+                return -1;
+            }
+            bind_local_value(params[i].as_atom(), arg_regs[i]);
+        }
+
+        const int result = compile_expr(body, transform);
+        pop_local_scope();
+        return result;
+    }
+
+    bool try_emit_intrinsic_call(const String& name,
+                                 const std::vector<Value>& arg_exprs,
+                                 const AffineTimeTransform& transform,
+                                 int& out_reg)
+    {
+        const std::optional<Value> callable = m_env.get(name);
+        if (!callable.has_value() || !callable->is_builtin())
+        {
+            return false;
+        }
+
+        std::vector<int> arg_regs;
+        arg_regs.reserve(arg_exprs.size());
+        for (const Value& arg_expr : arg_exprs)
+        {
+            const int arg_reg = compile_expr(arg_expr, transform);
+            if (arg_reg < 0)
+            {
+                return false;
+            }
+            arg_regs.push_back(arg_reg);
+        }
+
+        maybe_add_dependency(name);
+        const int first_arg_reg = allocate_argument_window(arg_regs);
+        const size_t intrinsic_index = store_intrinsic(
+            [callable_value = *callable, env = &m_env](const std::vector<Value>& args,
+                                                       const TemporalContext& ctx)
+                -> Value {
+                Environment exec_env(*env);
+                TemporalContext exec_ctx = ctx;
+                exec_env.set_temporal_context(&exec_ctx);
+                std::vector<Value> call_args = args;
+                Value mutable_callable = callable_value;
+                return mutable_callable.apply(call_args, exec_env);
+            });
+
+        out_reg = allocate_register();
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::CALL_INTRINSIC;
+        insn.rd = static_cast<uint16_t>(out_reg);
+        insn.rs1 = static_cast<uint16_t>(first_arg_reg >= 0 ? first_arg_reg : 0);
+        insn.rs2 = static_cast<uint16_t>(arg_exprs.size());
+        insn.imm = static_cast<int32_t>(intrinsic_index);
+        m_program.instructions.push_back(insn);
+        return true;
+    }
+
+    int allocate_argument_window(const std::vector<int>& arg_regs)
+    {
+        if (arg_regs.empty())
+        {
+            return -1;
+        }
+
+        const int first = allocate_register();
+        emit_mov(first, arg_regs[0]);
+        for (size_t i = 1; i < arg_regs.size(); ++i)
+        {
+            const int dst = allocate_register();
+            emit_mov(dst, arg_regs[i]);
+        }
+        return first;
+    }
+
+    void push_local_scope()
+    {
+        m_local_value_scopes.emplace_back();
+        m_local_callable_scopes.emplace_back();
+    }
+
+    void pop_local_scope()
+    {
+        if (!m_local_value_scopes.empty())
+        {
+            m_local_value_scopes.pop_back();
+        }
+        if (!m_local_callable_scopes.empty())
+        {
+            m_local_callable_scopes.pop_back();
+        }
+    }
+
+    void bind_local_value(const String& symbol, int source_register)
+    {
+        if (m_local_value_scopes.empty())
+        {
+            push_local_scope();
+        }
+        m_local_value_scopes.back()[symbol] = { source_register };
+    }
+
+    void bind_local_callable(const String& symbol, const Value& callable)
+    {
+        if (m_local_callable_scopes.empty())
+        {
+            push_local_scope();
+        }
+        m_local_callable_scopes.back()[symbol] = callable;
+    }
+
+    std::optional<int> find_local_value_binding(const String& symbol) const
+    {
+        for (auto it = m_local_value_scopes.rbegin();
+             it != m_local_value_scopes.rend(); ++it)
+        {
+            const auto found = it->find(symbol);
+            if (found != it->end())
+            {
+                return found->second.source_register;
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Value> find_local_callable_binding(const String& symbol) const
+    {
+        for (auto it = m_local_callable_scopes.rbegin();
+             it != m_local_callable_scopes.rend(); ++it)
+        {
+            const auto found = it->find(symbol);
+            if (found != it->end())
+            {
+                return found->second;
+            }
+        }
+        return std::nullopt;
+    }
+
     bool is_in_recursion_stack(const String& symbol) const
     {
         for (const auto& active : m_recursion_stack)
@@ -995,6 +1606,8 @@ private:
     int m_next_register = 0;
     String m_error;
     std::vector<String> m_recursion_stack;
+    std::vector<std::map<String, LocalValueBinding>> m_local_value_scopes;
+    std::vector<std::map<String, Value>> m_local_callable_scopes;
     mutable NumericVmTemporalChannel m_unused_channel = NumericVmTemporalChannel::T;
 };
 

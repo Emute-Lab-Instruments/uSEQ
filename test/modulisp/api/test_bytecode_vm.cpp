@@ -18,6 +18,22 @@ Value sum_intrinsic(const std::vector<Value>& args, const TemporalContext&)
     }
     return Value(total);
 }
+
+bool has_opcode(const NumericVmProgram& program, NumericVmOpcode opcode)
+{
+    return std::any_of(program.instructions.begin(), program.instructions.end(),
+                       [opcode](const NumericVmInstruction& insn) {
+                           return insn.opcode == opcode;
+                       });
+}
+
+bool has_dependency(const NumericVmProgram& program, const String& dependency)
+{
+    return std::any_of(program.dependencies.begin(), program.dependencies.end(),
+                       [&dependency](const String& item) {
+                           return item == dependency;
+                       });
+}
 } // namespace
 
 TEST_CASE("Numeric VM executes direct bytecode", "[modulisp][vm]")
@@ -270,6 +286,138 @@ TEST_CASE("Numeric VM compiler lowers if into branches", "[modulisp][vm]")
     REQUIRE(true_result.value == Approx(1.0).epsilon(1e-9));
 }
 
+TEST_CASE("Numeric VM compiler folds constant if conditions at compile time",
+          "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(if 1 (+ t 1) (+ t 2))"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+    REQUIRE_FALSE(has_opcode(compile_result.program, NumericVmOpcode::BRANCH));
+    REQUIRE_FALSE(has_opcode(compile_result.program, NumericVmOpcode::BRANCH_IF));
+    REQUIRE_FALSE(has_opcode(compile_result.program, NumericVmOpcode::BRANCH_UNLESS));
+
+    TemporalContext ctx;
+    ctx.t = 4.0;
+    ctx.beatDur = 0.5;
+    ctx.barDur = 2.0;
+    ctx.phraseDur = 8.0;
+    ctx.sectionDur = 32.0;
+
+    const NumericVmExecutionResult result =
+        execute_numeric_program(compile_result.program, ctx);
+    REQUIRE(result.ok);
+    REQUIRE(result.value == Approx(5.0).epsilon(1e-9));
+}
+
+TEST_CASE("Numeric VM compiler lowers do blocks to the last form", "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(do (+ 1 2) (+ t 3))"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+    REQUIRE(compile_result.program.instructions.back().opcode ==
+            NumericVmOpcode::RET);
+
+    TemporalContext ctx;
+    ctx.t = 2.0;
+    ctx.beatDur = 0.5;
+    ctx.barDur = 2.0;
+    ctx.phraseDur = 8.0;
+    ctx.sectionDur = 32.0;
+
+    const NumericVmExecutionResult result =
+        execute_numeric_program(compile_result.program, ctx);
+    REQUIRE(result.ok);
+    REQUIRE(result.value == Approx(5.0).epsilon(1e-9));
+}
+
+TEST_CASE("Numeric VM compiler expands interpolated vectors without intrinsics",
+          "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(interp [10 20 30] beat)"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+    REQUIRE(compile_result.program.data_segments.size() == 1);
+    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::VEC_LERP));
+    REQUIRE_FALSE(has_opcode(compile_result.program, NumericVmOpcode::CALL_INTRINSIC));
+}
+
+TEST_CASE("Numeric VM compiler tracks transitive dependencies across aliases",
+          "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define leaf (+ t 1))");
+    interp.eval("(define alias leaf)");
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("alias"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+    REQUIRE(has_dependency(compile_result.program, "alias"));
+    REQUIRE(has_dependency(compile_result.program, "leaf"));
+}
+
+TEST_CASE("Numeric VM compiler inlines defn callables without CALL opcodes",
+          "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(defn add1 (x) (+ x 1))");
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(add1 t)"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+    REQUIRE_FALSE(has_opcode(compile_result.program, NumericVmOpcode::CALL));
+    REQUIRE_FALSE(has_opcode(compile_result.program, NumericVmOpcode::CALL_INTRINSIC));
+    REQUIRE(has_dependency(compile_result.program, "add1"));
+}
+
+TEST_CASE("Numeric VM compiler lowers unsupported numeric builtins via CALL_INTRINSIC",
+          "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(tri 0.5 beat)"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::CALL_INTRINSIC));
+
+    TemporalContext ctx;
+    ctx.t = 0.125;
+    ctx.beatDur = 0.5;
+    ctx.barDur = 2.0;
+    ctx.phraseDur = 8.0;
+    ctx.sectionDur = 32.0;
+
+    const NumericVmExecutionResult result =
+        execute_numeric_program(compile_result.program, ctx);
+    REQUIRE(result.ok);
+    REQUIRE(result.value == Approx(0.5).epsilon(1e-9));
+}
+
 TEST_CASE("Numeric VM compiler flattens slow into LOAD_TIME scale", "[modulisp][vm]")
 {
     ModuLispInterpreter interp;
@@ -304,6 +452,44 @@ TEST_CASE("Numeric VM compiler lowers vector lookup into data segments",
     REQUIRE(compile_result.program.instructions[0].opcode == NumericVmOpcode::LOAD_TIME);
     REQUIRE(compile_result.program.instructions[1].opcode == NumericVmOpcode::VEC_INDEX);
     REQUIRE(compile_result.program.instructions[2].opcode == NumericVmOpcode::RET);
+}
+
+TEST_CASE("Output sampling falls back for let expressions", "[modulisp][vm][outputs]")
+{
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr, 8, 8, 8);
+    interp.init();
+
+    interp.eval("(a1 (let [x 1 y 2] (+ x y)))");
+
+    bool ok = false;
+    const double value = interp.eval_output_at_time("a1", 0.0, &ok);
+    REQUIRE(ok);
+    REQUIRE(value == Approx(3.0).epsilon(1e-9));
+}
+
+TEST_CASE("Output sampling falls back for defn and lambda callables",
+          "[modulisp][vm][outputs]")
+{
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr, 8, 8, 8);
+    interp.init();
+
+    interp.eval("(defn add1 (x) (+ x 1))");
+    interp.eval("(a1 (add1 t))");
+
+    bool ok = false;
+    const double first_value = interp.eval_output_at_time("a1", 2.0, &ok);
+    REQUIRE(ok);
+    REQUIRE(first_value == Approx(3.0).epsilon(1e-9));
+}
+
+TEST_CASE("Public eval_v handles lambda callables directly", "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const Value result = interp.eval_v("((lambda [x] (+ x 3)) 2)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(5.0).epsilon(1e-9));
 }
 
 TEST_CASE("Output sampling uses numeric VM vector lookup expressions",
