@@ -18,6 +18,8 @@
 #include <memory>
 #include <vector>
 
+struct NumericVmProgram;
+
 #define LISP_FUNC_ARGS_TYPE std::vector<Value>&, Environment&
 #define LISP_FUNC_ARGS std::vector<Value>&args, Environment &env
 #define LISP_FUNC_RETURN_TYPE Value
@@ -374,6 +376,10 @@ public:
         double lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
         double lastValue       = 0.0;
         bool hasExpr           = false;
+        std::shared_ptr<NumericVmProgram> numericProgram;
+        String numericProgramExprSource;
+        bool numericProgramAttempted = false;
+        bool numericProgramSucceeded = false;
     };
 
     // Performance monitoring

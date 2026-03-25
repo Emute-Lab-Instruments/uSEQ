@@ -92,6 +92,10 @@ output_sampling_test_src = [
   'modulisp/api/test_output_sampling.cpp'
 ]
 
+bytecode_vm_test_src = [
+  'modulisp/api/test_bytecode_vm.cpp'
+]
+
 bytecode_vm_probe_src = [
   'modulisp/bytecode_vm/bytecode_vm_probe.cpp'
 ]
@@ -227,6 +231,15 @@ test_modulisp_api_exe = executable(
   dependencies : [modulisp_dep, math_dep]
 )
 
+test_bytecode_vm_exe = executable(
+  'test_bytecode_vm',
+  sources : bytecode_vm_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
 # Error handling test executable
 test_error_handling_exe = executable(
   'test_error_handling',
@@ -280,6 +293,7 @@ test('parser_api_test', test_parser_api_exe)
 test('parser_error_reporting_test', test_parser_error_reporting_exe)
 test('interpreter_api_test', test_interpreter_api_exe)
 test('modulisp_api_test', test_modulisp_api_exe)
+test('bytecode_vm_test', test_bytecode_vm_exe)
 test('error_handling_test', test_error_handling_exe)
 # test('signals_test', test_signals_exe)  # Temporarily disabled - uses removed DSP methods
 # test('automation_analysis_test', test_automation_analysis_exe)

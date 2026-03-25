@@ -5,6 +5,7 @@
 #pragma GCC diagnostic ignored "-Wpedantic"
 
 #include "../utils.h"
+#include "bytecode_vm.h"
 #include "modulisp_interpreter.h"
 #include "temporal_context.h"
 #include "lisp/macros.h"
@@ -142,6 +143,10 @@ void ModuLispInterpreter::reset_output_slot(StoredOutput& slot, OutputType type)
     slot.lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
     slot.lastValue       = default_output_value(type);
     slot.hasExpr         = false;
+    slot.numericProgram.reset();
+    slot.numericProgramExprSource = "";
+    slot.numericProgramAttempted = false;
+    slot.numericProgramSucceeded = false;
 }
 
 void ModuLispInterpreter::clear_all_outputs()
@@ -161,6 +166,10 @@ void ModuLispInterpreter::clear_all_outputs()
             outputs[index].lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
             outputs[index].lastValue       = defaultValue;
             outputs[index].hasExpr         = true;
+            outputs[index].numericProgram.reset();
+            outputs[index].numericProgramExprSource = "";
+            outputs[index].numericProgramAttempted = false;
+            outputs[index].numericProgramSucceeded = false;
         }
     };
 
@@ -236,6 +245,10 @@ Value ModuLispInterpreter::handle_output_assignment(const char* name,
     slot->hasExpr         = !expr.is_nil();
     slot->lastTimeSeconds = std::numeric_limits<double>::quiet_NaN();
     slot->lastValue       = default_output_value(type);
+    slot->numericProgram.reset();
+    slot->numericProgramExprSource = "";
+    slot->numericProgramAttempted = false;
+    slot->numericProgramSucceeded = false;
 
     return Value::atom(lispName);
 }
@@ -383,10 +396,55 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
         // If no expression binding found, keep the atom - it will be evaluated as a value
     }
 
+    TemporalContext ctx;
+    ctx.t = time_seconds;
+    ctx.time_since_boot = m_time_manager ? m_time_manager->get_time_seconds() : 0;
+    ctx.beat = beat_at_time(time_micros);
+    ctx.bar = bar_at_time(time_micros);
+    ctx.phrase = phrase_at_time(time_micros);
+    ctx.section = section_at_time(time_micros);
+    ctx.beatNum = static_cast<int>(beat_num_at_time(time_micros));
+    ctx.barNum = static_cast<int>(bar_num_at_time(time_micros));
+    ctx.beatDur = m_beat_length / 1000000.0;
+    ctx.barDur = m_bar_length / 1000000.0;
+    ctx.phraseDur = m_phrase_length / 1000000.0;
+    ctx.sectionDur = m_section_length / 1000000.0;
+
+    const String expr_source = expr_to_eval.to_lisp_src();
+    if (!slot->numericProgramAttempted ||
+        slot->numericProgramExprSource != expr_source)
+    {
+        slot->numericProgram.reset();
+        slot->numericProgramExprSource = expr_source;
+        slot->numericProgramAttempted = true;
+
+        const NumericVmCompileResult compiled =
+            compile_numeric_program(expr_to_eval, *get_environment());
+        slot->numericProgramSucceeded = compiled.ok;
+        if (compiled.ok)
+        {
+            slot->numericProgram =
+                std::make_shared<NumericVmProgram>(compiled.program);
+        }
+    }
+
+    if (slot->numericProgramSucceeded && slot->numericProgram)
+    {
+        const NumericVmExecutionResult vm_result =
+            execute_numeric_program(*slot->numericProgram, ctx);
+        if (vm_result.ok && std::isfinite(vm_result.value))
+        {
+            slot->lastValue = vm_result.value;
+            slot->lastTimeSeconds = time_seconds;
+            if (ok)
+            {
+                *ok = true;
+            }
+            return vm_result.value;
+        }
+    }
+
     set_atom_currently_being_evaluated(exprName);
-    // Enable expression-first evaluation (like hardware does in update_signals)
-    // This makes atom evaluation look up expression bindings first, allowing
-    // redefined variables to update outputs dynamically.
     set_attempt_expr_eval_first(true);
     Value result = eval_at_time(expr_to_eval, *get_environment(), time_micros);
     set_attempt_expr_eval_first(false);
