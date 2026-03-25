@@ -100,6 +100,10 @@ bytecode_vm_probe_src = [
   'modulisp/bytecode_vm/bytecode_vm_probe.cpp'
 ]
 
+vm_fallback_detection_src = [
+  'modulisp/bytecode_vm/test_vm_fallback_detection.cpp'
+]
+
 # Signal semantics removed (signal metadata deleted)
 # signal_semantics_test_src = [
 #   'modulisp/api/test_signal_semantics.cpp'
@@ -355,6 +359,17 @@ test(
   ],
   depends : bytecode_vm_probe_exe
 )
+
+vm_fallback_detection_exe = executable(
+  'test_vm_fallback_detection',
+  sources : vm_fallback_detection_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
+test('test_vm_fallback_detection', vm_fallback_detection_exe)
 
 # Signal semantics test removed (signal metadata deleted)
 
