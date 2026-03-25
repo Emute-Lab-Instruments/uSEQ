@@ -77,6 +77,26 @@ TEST_CASE("Tagged VM preserves vector constants", "[modulisp][vm]")
     REQUIRE(result.value == Value::vector({ Value(1), Value(2), Value(3) }));
 }
 
+TEST_CASE("Tagged VM unary opcodes ignore unrelated source registers",
+          "[modulisp][vm]")
+{
+    NumericVmProgram program;
+    program.constants = { Value::string("sentinel"), Value(-2.0) };
+    program.register_count = 2;
+    program.instructions = {
+        { NumericVmOpcode::LOAD_CONST, 0, 0, 0, 0, 0, 0.0, 0.0 },
+        { NumericVmOpcode::LOAD_CONST, 1, 0, 0, 0, 1, 0.0, 0.0 },
+        { NumericVmOpcode::ABS, 1, 1, 0, 0, 0, 0.0, 0.0 },
+        { NumericVmOpcode::RET, 0, 1, 0, 0, 0, 0.0, 0.0 }
+    };
+
+    TemporalContext ctx;
+    const TaggedVmExecutionResult result = execute_tagged_program(program, ctx);
+    REQUIRE(result.ok);
+    REQUIRE(result.value.is_number());
+    REQUIRE(result.value.as_float() == Approx(2.0).epsilon(1e-9));
+}
+
 TEST_CASE("Tagged VM executes branch opcodes", "[modulisp][vm]")
 {
     NumericVmProgram program;

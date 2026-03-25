@@ -1901,26 +1901,12 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             ++pc;
             break;
         }
-        case NumericVmOpcode::ADD:
-        case NumericVmOpcode::SUB:
-        case NumericVmOpcode::MUL:
-        case NumericVmOpcode::DIV:
-        case NumericVmOpcode::MOD:
         case NumericVmOpcode::NEG:
-        case NumericVmOpcode::CMP_GT:
-        case NumericVmOpcode::CMP_LT:
-        case NumericVmOpcode::CMP_GE:
-        case NumericVmOpcode::CMP_LE:
-        case NumericVmOpcode::CMP_EQ:
         case NumericVmOpcode::FLOOR:
         case NumericVmOpcode::CEIL:
         case NumericVmOpcode::FRAC:
         case NumericVmOpcode::ABS:
-        case NumericVmOpcode::MIN:
-        case NumericVmOpcode::MAX:
-        case NumericVmOpcode::POW:
         case NumericVmOpcode::SQRT:
-        case NumericVmOpcode::CLAMP:
         case NumericVmOpcode::SIN:
         case NumericVmOpcode::COS:
         case NumericVmOpcode::TAN:
@@ -1928,27 +1914,90 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
                 !validate_register_index(insn.rs1, registers.size(), result.error,
-                                         "source") ||
-                (insn.opcode != NumericVmOpcode::NEG &&
-                 !validate_register_index(insn.rs2, registers.size(), result.error,
-                                          "source")))
+                                         "source"))
             {
                 return result;
             }
 
             const Value lhs = registers[insn.rs1];
-            const Value rhs = insn.opcode == NumericVmOpcode::NEG ? Value::nil()
-                                                                  : registers[insn.rs2];
-            if (!lhs.is_number() ||
-                (insn.opcode != NumericVmOpcode::NEG && !rhs.is_number()))
+            if (!lhs.is_number())
             {
                 result.error = "Numeric VM arithmetic requires numeric operands";
                 return result;
             }
 
             const double left = lhs.as_float();
-            const double right = insn.opcode == NumericVmOpcode::NEG ? 0.0
-                                                                     : rhs.as_float();
+            double out = 0.0;
+            switch (insn.opcode)
+            {
+            case NumericVmOpcode::NEG:
+                out = -left;
+                break;
+            case NumericVmOpcode::FLOOR:
+                out = std::floor(left);
+                break;
+            case NumericVmOpcode::CEIL:
+                out = std::ceil(left);
+                break;
+            case NumericVmOpcode::FRAC:
+                out = left - std::floor(left);
+                break;
+            case NumericVmOpcode::ABS:
+                out = std::fabs(left);
+                break;
+            case NumericVmOpcode::SQRT:
+                out = std::sqrt(left);
+                break;
+            case NumericVmOpcode::SIN:
+                out = std::sin(left);
+                break;
+            case NumericVmOpcode::COS:
+                out = std::cos(left);
+                break;
+            case NumericVmOpcode::TAN:
+                out = std::tan(left);
+                break;
+            default:
+                break;
+            }
+            registers[insn.rd] = Value(out);
+            ++pc;
+            break;
+        }
+        case NumericVmOpcode::ADD:
+        case NumericVmOpcode::SUB:
+        case NumericVmOpcode::MUL:
+        case NumericVmOpcode::DIV:
+        case NumericVmOpcode::MOD:
+        case NumericVmOpcode::CMP_GT:
+        case NumericVmOpcode::CMP_LT:
+        case NumericVmOpcode::CMP_GE:
+        case NumericVmOpcode::CMP_LE:
+        case NumericVmOpcode::CMP_EQ:
+        case NumericVmOpcode::MIN:
+        case NumericVmOpcode::MAX:
+        case NumericVmOpcode::POW:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source") ||
+                !validate_register_index(insn.rs2, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
+
+            const Value lhs = registers[insn.rs1];
+            const Value rhs = registers[insn.rs2];
+            if (!lhs.is_number() || !rhs.is_number())
+            {
+                result.error = "Numeric VM arithmetic requires numeric operands";
+                return result;
+            }
+
+            const double left = lhs.as_float();
+            const double right = rhs.as_float();
             double out = 0.0;
             switch (insn.opcode)
             {
@@ -1960,9 +2009,6 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 break;
             case NumericVmOpcode::MUL:
                 out = left * right;
-                break;
-            case NumericVmOpcode::NEG:
-                out = -left;
                 break;
             case NumericVmOpcode::DIV:
                 if (right == 0.0)
@@ -1995,18 +2041,6 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             case NumericVmOpcode::CMP_EQ:
                 out = left == right ? 1.0 : 0.0;
                 break;
-            case NumericVmOpcode::FLOOR:
-                out = std::floor(left);
-                break;
-            case NumericVmOpcode::CEIL:
-                out = std::ceil(left);
-                break;
-            case NumericVmOpcode::FRAC:
-                out = left - std::floor(left);
-                break;
-            case NumericVmOpcode::ABS:
-                out = std::fabs(left);
-                break;
             case NumericVmOpcode::MIN:
                 out = std::fmin(left, right);
                 break;
@@ -2016,38 +2050,39 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             case NumericVmOpcode::POW:
                 out = std::pow(left, right);
                 break;
-            case NumericVmOpcode::SQRT:
-                out = std::sqrt(left);
-                break;
-            case NumericVmOpcode::CLAMP:
-                if (!validate_register_index(insn.rs3, registers.size(), result.error,
-                                             "source"))
-                {
-                    return result;
-                }
-                {
-                    const Value high = registers[insn.rs3];
-                    if (!high.is_number())
-                    {
-                        result.error = "Numeric VM clamp requires numeric operands";
-                        return result;
-                    }
-                    out = std::fmin(std::fmax(left, right), high.as_float());
-                }
-                break;
-            case NumericVmOpcode::SIN:
-                out = std::sin(left);
-                break;
-            case NumericVmOpcode::COS:
-                out = std::cos(left);
-                break;
-            case NumericVmOpcode::TAN:
-                out = std::tan(left);
-                break;
             default:
                 break;
             }
             registers[insn.rd] = Value(out);
+            ++pc;
+            break;
+        }
+        case NumericVmOpcode::CLAMP:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source") ||
+                !validate_register_index(insn.rs2, registers.size(), result.error,
+                                         "source") ||
+                !validate_register_index(insn.rs3, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
+
+            const Value value = registers[insn.rs1];
+            const Value low = registers[insn.rs2];
+            const Value high = registers[insn.rs3];
+            if (!value.is_number() || !low.is_number() || !high.is_number())
+            {
+                result.error = "Numeric VM clamp requires numeric operands";
+                return result;
+            }
+
+            registers[insn.rd] =
+                Value(std::fmin(std::fmax(value.as_float(), low.as_float()),
+                                high.as_float()));
             ++pc;
             break;
         }

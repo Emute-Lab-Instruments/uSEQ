@@ -6,6 +6,7 @@ dolt-access.lock
 bd.sock
 bd.sock.startlock
 sync-state.json
+push-state.json
 last-touched
 
 # Local version tracking (prevents upgrade notification spam after git ops)

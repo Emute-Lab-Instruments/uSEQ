@@ -6,6 +6,67 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 uSEQ is a **livecodeable eurorack module** - a hardware music sequencer that can be programmed in real-time using a custom LISP-based language called ModuLisp. It combines embedded firmware (C++), hardware design (KiCad), and software interfaces (Python, Clojure) for live musical performance.
 
+## Agent Workflow
+
+### Issue Tracking
+
+This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+
+Use `bd` for all task tracking. Do not create markdown TODO lists or track work outside beads.
+
+```bash
+bd ready --json
+bd show <id> --json
+bd update <id> --claim --json
+bd close <id> --reason "Done" --json
+bd dolt push
+```
+
+When new follow-up work is discovered, create a linked issue:
+
+```bash
+bd create "Issue title" --description="Context" -t bug|feature|task -p 0-4 --deps discovered-from:<parent-id> --json
+```
+
+### Non-Interactive Shell Commands
+
+Always use non-interactive flags with shell commands that may prompt.
+
+```bash
+cp -f source dest
+mv -f source dest
+rm -f file
+rm -rf directory
+cp -rf source dest
+scp -o BatchMode=yes ...
+ssh -o BatchMode=yes ...
+apt-get -y ...
+HOMEBREW_NO_AUTO_UPDATE=1 brew ...
+```
+
+### WIP Discipline
+
+This repository has active long-running epics. Agents must not be trigger-happy about declaring them complete.
+
+- Treat closed subtasks as completed slices, not proof that the parent epic is done.
+- If implementation is partial, first-pass, or knowingly missing semantic coverage, say so explicitly in code review notes, handoffs, and issue wording.
+- Do not use language like "replaces the interpreter", "general VM complete", or "closure support done" unless the remaining semantic gaps and regression coverage actually support that claim.
+- When you find a known gap that is not being fixed in the current change, file or update a `bd` issue instead of hand-waving it away.
+
+### Session Completion
+
+When ending a work session, finish the operational steps instead of leaving work stranded locally:
+
+1. File issues for remaining work.
+2. Run quality gates if code changed.
+3. Update issue state.
+4. Push all changes:
+   `git pull --rebase`
+   `bd dolt push`
+   `git push`
+   `git status`
+5. Verify the branch is up to date with origin before handing off.
+
 ## Build Commands
 
 ### Desktop/Standalone Build (Default for Development)
