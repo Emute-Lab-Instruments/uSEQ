@@ -474,7 +474,8 @@ TEST_CASE("Numeric VM compiler lowers vector lookup into data segments",
     REQUIRE(compile_result.program.instructions[2].opcode == NumericVmOpcode::RET);
 }
 
-TEST_CASE("Output sampling falls back for let expressions", "[modulisp][vm][outputs]")
+TEST_CASE("Output sampling handles let expressions through the VM path",
+          "[modulisp][vm][outputs]")
 {
     ModuLispInterpreter interp(nullptr, nullptr, nullptr, 8, 8, 8);
     interp.init();
@@ -487,7 +488,7 @@ TEST_CASE("Output sampling falls back for let expressions", "[modulisp][vm][outp
     REQUIRE(value == Approx(3.0).epsilon(1e-9));
 }
 
-TEST_CASE("Output sampling falls back for defn and lambda callables",
+TEST_CASE("Output sampling handles defn and lambda callables through the VM path",
           "[modulisp][vm][outputs]")
 {
     ModuLispInterpreter interp(nullptr, nullptr, nullptr, 8, 8, 8);
@@ -508,6 +509,20 @@ TEST_CASE("Public eval_v handles lambda callables directly", "[modulisp][vm]")
     interp.init();
 
     const Value result = interp.eval_v("((lambda [x] (+ x 3)) 2)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(5.0).epsilon(1e-9));
+}
+
+TEST_CASE("Compiled eval preserves lambda_scope for captured closures",
+          "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define make-adder (let [x 2] (lambda [y] (+ x y))))");
+    interp.eval("(define x 99)");
+
+    const Value result = interp.eval_v("(make-adder 3)");
     REQUIRE(result.is_number());
     REQUIRE(result.as_float() == Approx(5.0).epsilon(1e-9));
 }
@@ -540,6 +555,23 @@ TEST_CASE("Output sampling uses numeric VM-compatible expressions", "[modulisp][
     const double value = interp.eval_output_at_time("a1", 9.0, &ok);
     REQUIRE(ok);
     REQUIRE(value == Approx(5.5).epsilon(1e-6));
+}
+
+TEST_CASE("Compiled output sampling preserves lambda_scope for captured closures",
+          "[modulisp][vm][outputs]")
+{
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr, 8, 8, 8);
+    interp.init();
+
+    interp.eval("(define make-adder (let [x 2] (lambda [y] (+ x y))))");
+    interp.eval("(define x 99)");
+    interp.eval("(a1 (make-adder t))");
+
+    auto results = interp.eval_outputs(0.0, 1.0, 2, { "a1" });
+    REQUIRE(results.find("a1") != results.end());
+    REQUIRE(results["a1"].size() == 2);
+    REQUIRE(results["a1"][0] == Approx(2.0).epsilon(1e-6));
+    REQUIRE(results["a1"][1] == Approx(3.0).epsilon(1e-6));
 }
 
 TEST_CASE("Compiled output invalidates after dependency redefinition",

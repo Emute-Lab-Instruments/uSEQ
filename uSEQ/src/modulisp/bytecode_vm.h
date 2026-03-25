@@ -108,7 +108,8 @@ struct TaggedVmExecutionResult
 };
 
 NumericVmCompileResult compile_numeric_program(const Value& expr,
-                                               const Environment& env);
+                                               const Environment& env,
+                                               bool signal_context = false);
 TaggedVmExecutionResult execute_tagged_program(const NumericVmProgram& program,
                                                const TemporalContext& ctx);
 NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program,

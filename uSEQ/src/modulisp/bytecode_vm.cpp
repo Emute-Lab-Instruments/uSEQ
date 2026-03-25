@@ -1,7 +1,9 @@
 #include "bytecode_vm.h"
+#include "modulisp_interpreter.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <set>
 
 namespace
 {
@@ -40,6 +42,50 @@ bool is_signal_side_effect_form(const String& op)
            is_output_assignment_symbol(op);
 }
 
+std::optional<String> find_signal_side_effect_form(const Value& expr)
+{
+    if (expr.type == Value::QUOTE)
+    {
+        return std::nullopt;
+    }
+
+    if (expr.is_list())
+    {
+        const std::vector<Value> items = expr.as_list();
+        if (!items.empty() && items[0].is_symbol())
+        {
+            const String op = items[0].as_atom();
+            if (is_signal_side_effect_form(op))
+            {
+                return op;
+            }
+        }
+
+        for (const Value& item : items)
+        {
+            if (const std::optional<String> nested =
+                    find_signal_side_effect_form(item))
+            {
+                return nested;
+            }
+        }
+    }
+
+    if (expr.is_vector())
+    {
+        for (const Value& item : expr.as_vector())
+        {
+            if (const std::optional<String> nested =
+                    find_signal_side_effect_form(item))
+            {
+                return nested;
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
 struct AffineTimeTransform
 {
     double scale = 1.0;
@@ -51,11 +97,50 @@ struct LocalValueBinding
     int source_register = -1;
 };
 
+bool lambda_has_captured_scope(const Value& value)
+{
+    if (value.type != Value::LAMBDA || !value.lambda_scope)
+    {
+        return false;
+    }
+
+    if (!value.lambda_scope->get_def_exprs().empty())
+    {
+        return true;
+    }
+
+    for (const auto& entry : value.lambda_scope->get_defs())
+    {
+        if (!entry.second.is_builtin())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+struct CompilerCheckpoint
+{
+    size_t instruction_count = 0;
+    size_t constant_count = 0;
+    size_t data_segment_count = 0;
+    size_t dependency_count = 0;
+    size_t function_count = 0;
+    size_t intrinsic_count = 0;
+    int next_register = 0;
+};
+
+double wrap_phase(double time_seconds, double duration_seconds);
+double time_to_count(double time_seconds, double duration_seconds);
+TemporalContext apply_time_transform(const TemporalContext& ctx,
+                                     const AffineTimeTransform& transform);
+
 class NumericVmCompiler
 {
 public:
-    explicit NumericVmCompiler(const Environment& env)
-        : m_env(env)
+    explicit NumericVmCompiler(const Environment& env, bool signal_context)
+        : m_env(env), m_signal_context(signal_context)
     {
     }
 
@@ -97,17 +182,32 @@ private:
 
         if (expr.is_vector())
         {
-            fail("Numeric VM cannot return vector values directly");
-            return -1;
+            return emit_runtime_eval(expr, transform);
+        }
+
+        if (expr.type == Value::QUOTE)
+        {
+            return emit_const(expr.list.empty() ? Value::nil() : expr.list[0]);
+        }
+
+        if (expr.type == Value::STRING || expr.type == Value::UNIT ||
+            expr.type == Value::NIL || expr.type == Value::LAMBDA)
+        {
+            record_dependencies(expr);
+            return emit_const(expr);
         }
 
         if (!expr.is_list())
         {
-            fail("Unsupported non-numeric expression in numeric VM");
-            return -1;
+            record_dependencies(expr);
+            return emit_const(expr);
         }
 
         const std::vector<Value> items = expr.as_list();
+        if (items.empty())
+        {
+            return emit_const(Value::nil());
+        }
         if (items.size() == 2)
         {
             if (const int vector_lookup =
@@ -287,7 +387,7 @@ private:
 
         if (m_error.length() == 0)
         {
-            fail("Unsupported numeric VM builtin: " + op);
+            return emit_runtime_eval(expr, transform);
         }
         return -1;
     }
@@ -325,25 +425,31 @@ private:
         {
             maybe_add_dependency(symbol);
             m_recursion_stack.push_back(symbol);
+            const CompilerCheckpoint checkpoint = checkpoint_state();
+            const String prior_error = m_error;
             const int reg = compile_expr(*expr, transform);
+            if (reg < 0)
+            {
+                rollback(checkpoint);
+                m_error = prior_error;
+                m_recursion_stack.pop_back();
+                return emit_late_bound_symbol(symbol, transform);
+            }
             m_recursion_stack.pop_back();
             return reg;
         }
 
         if (const std::optional<Value> value = m_env.get(symbol))
         {
-            if (value->is_number())
+            maybe_add_dependency(symbol);
+            if (!value->is_builtin())
             {
-                maybe_add_dependency(symbol);
-                return emit_const(Value(value->as_float()));
+                return emit_const(*value);
             }
-            if (value->is_builtin())
-            {
-                return emit_late_bound_numeric_symbol(symbol);
-            }
+            return emit_late_bound_symbol(symbol, transform);
         }
 
-        return emit_late_bound_numeric_symbol(symbol);
+        return emit_late_bound_symbol(symbol, transform);
     }
 
     int compile_time_warp(const String& op,
@@ -806,18 +912,26 @@ private:
         return dst;
     }
 
-    int emit_late_bound_numeric_symbol(const String& symbol)
+    int emit_late_bound_symbol(const String& symbol,
+                               const AffineTimeTransform& transform)
     {
         maybe_add_dependency(symbol);
         const size_t intrinsic_index = store_intrinsic(
             [env = &m_env, symbol](const std::vector<Value>&,
-                                   const TemporalContext&) -> Value {
+                                   const TemporalContext& ctx) -> Value {
+                TemporalContext exec_ctx = ctx;
+                Environment exec_env;
+                exec_env.set_parent_scope(const_cast<Environment*>(env));
+                exec_env.set_temporal_context(&exec_ctx);
+
+                if (const std::optional<Value> expr = env->get_expr(symbol))
+                {
+                    Value mutable_expr = *expr;
+                    return ModuLispInterpreter::eval_in(mutable_expr, exec_env);
+                }
                 if (const std::optional<Value> value = env->get(symbol))
                 {
-                    if (value->is_number())
-                    {
-                        return Value(value->as_float());
-                    }
+                    return *value;
                 }
                 return Value::error();
             });
@@ -828,6 +942,82 @@ private:
         insn.rd = static_cast<uint16_t>(dst);
         insn.rs1 = 0;
         insn.rs2 = 0;
+        insn.imm = static_cast<int32_t>(intrinsic_index);
+        (void)transform;
+        m_program.instructions.push_back(insn);
+        return dst;
+    }
+
+    int emit_runtime_eval(const Value& expr, const AffineTimeTransform& transform)
+    {
+        if (m_signal_context)
+        {
+            if (const std::optional<String> side_effect =
+                    find_signal_side_effect_form(expr))
+            {
+                if (*side_effect == "eval")
+                {
+                    fail("Signal VM rejects eval in signal context");
+                }
+                else
+                {
+                    fail("Signal VM rejects side-effectful form: " + *side_effect);
+                }
+                return -1;
+            }
+        }
+
+        record_dependencies(expr);
+
+        const std::vector<std::pair<String, int>> local_values =
+            collect_active_local_values();
+        const std::vector<std::pair<String, Value>> local_callables =
+            collect_active_local_callables();
+
+        std::vector<int> arg_regs;
+        arg_regs.reserve(local_values.size());
+        for (const auto& binding : local_values)
+        {
+            arg_regs.push_back(binding.second);
+        }
+        const int first_arg_reg = allocate_argument_window(arg_regs);
+
+        const size_t intrinsic_index = store_intrinsic(
+            [env = &m_env, runtime_expr = expr, transform, local_values,
+             local_callables](const std::vector<Value>& args,
+                              const TemporalContext& ctx) -> Value {
+                TemporalContext exec_ctx = apply_time_transform(ctx, transform);
+                Environment exec_env;
+                exec_env.set_parent_scope(const_cast<Environment*>(env));
+                exec_env.set_temporal_context(&exec_ctx);
+
+                for (size_t i = 0; i < local_values.size() && i < args.size(); ++i)
+                {
+                    exec_env.set(local_values[i].first, args[i]);
+                }
+
+                for (const auto& callable : local_callables)
+                {
+                    Value callable_expr = callable.second;
+                    Value callable_value =
+                        ModuLispInterpreter::eval_in(callable_expr, exec_env);
+                    if (callable_value.is_error())
+                    {
+                        return callable_value;
+                    }
+                    exec_env.set(callable.first, callable_value);
+                }
+
+                Value mutable_expr = runtime_expr;
+                return ModuLispInterpreter::eval_in(mutable_expr, exec_env);
+            });
+
+        const int dst = allocate_register();
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::CALL_INTRINSIC;
+        insn.rd = static_cast<uint16_t>(dst);
+        insn.rs1 = static_cast<uint16_t>(first_arg_reg >= 0 ? first_arg_reg : 0);
+        insn.rs2 = static_cast<uint16_t>(local_values.size());
         insn.imm = static_cast<int32_t>(intrinsic_index);
         m_program.instructions.push_back(insn);
         return dst;
@@ -1417,6 +1607,11 @@ private:
             if (const std::optional<Value> local_callable =
                     find_local_callable_binding(op))
             {
+                if (lambda_has_captured_scope(*local_callable))
+                {
+                    out_reg = emit_runtime_eval(Value(items), transform);
+                    return out_reg >= 0;
+                }
                 if (parse_lambda_value(*local_callable, params, body))
                 {
                     out_reg = compile_inline_lambda(params, body,
@@ -1428,6 +1623,12 @@ private:
             }
             if (const std::optional<Value> global_callable = m_env.get(op))
             {
+                if (lambda_has_captured_scope(*global_callable))
+                {
+                    maybe_add_dependency(op);
+                    out_reg = emit_runtime_eval(Value(items), transform);
+                    return out_reg >= 0;
+                }
                 if (parse_lambda_value(*global_callable, params, body))
                 {
                     maybe_add_dependency(op);
@@ -1648,7 +1849,74 @@ private:
         }
     }
 
+    CompilerCheckpoint checkpoint_state() const
+    {
+        CompilerCheckpoint checkpoint;
+        checkpoint.instruction_count = m_program.instructions.size();
+        checkpoint.constant_count = m_program.constants.size();
+        checkpoint.data_segment_count = m_program.data_segments.size();
+        checkpoint.dependency_count = m_program.dependencies.size();
+        checkpoint.function_count = m_program.functions.size();
+        checkpoint.intrinsic_count = m_program.intrinsics.size();
+        checkpoint.next_register = m_next_register;
+        return checkpoint;
+    }
+
+    void rollback(const CompilerCheckpoint& checkpoint)
+    {
+        m_program.instructions.resize(checkpoint.instruction_count);
+        m_program.constants.resize(checkpoint.constant_count);
+        m_program.data_segments.resize(checkpoint.data_segment_count);
+        m_program.dependencies.resize(checkpoint.dependency_count);
+        m_program.functions.resize(checkpoint.function_count);
+        m_program.intrinsics.resize(checkpoint.intrinsic_count);
+        m_next_register = checkpoint.next_register;
+    }
+
+    std::vector<std::pair<String, int>> collect_active_local_values() const
+    {
+        std::vector<std::pair<String, int>> bindings;
+        std::set<String> seen;
+
+        for (auto scope_it = m_local_value_scopes.rbegin();
+             scope_it != m_local_value_scopes.rend(); ++scope_it)
+        {
+            for (const auto& entry : *scope_it)
+            {
+                if (seen.insert(entry.first).second)
+                {
+                    bindings.push_back({ entry.first, entry.second.source_register });
+                }
+            }
+        }
+
+        std::reverse(bindings.begin(), bindings.end());
+        return bindings;
+    }
+
+    std::vector<std::pair<String, Value>> collect_active_local_callables() const
+    {
+        std::vector<std::pair<String, Value>> bindings;
+        std::set<String> seen;
+
+        for (auto scope_it = m_local_callable_scopes.rbegin();
+             scope_it != m_local_callable_scopes.rend(); ++scope_it)
+        {
+            for (const auto& entry : *scope_it)
+            {
+                if (seen.insert(entry.first).second)
+                {
+                    bindings.push_back(entry);
+                }
+            }
+        }
+
+        std::reverse(bindings.begin(), bindings.end());
+        return bindings;
+    }
+
     const Environment& m_env;
+    bool m_signal_context = false;
     NumericVmProgram m_program;
     int m_next_register = 0;
     String m_error;
@@ -1679,6 +1947,21 @@ double time_to_count(double time_seconds, double duration_seconds)
         return 0.0;
     }
     return std::floor(time_seconds / duration_seconds);
+}
+
+TemporalContext apply_time_transform(const TemporalContext& ctx,
+                                     const AffineTimeTransform& transform)
+{
+    TemporalContext adjusted = ctx;
+    const double warped_t = (ctx.t * transform.scale) + transform.offset;
+    adjusted.t = warped_t;
+    adjusted.beat = wrap_phase(warped_t, ctx.beatDur);
+    adjusted.bar = wrap_phase(warped_t, ctx.barDur);
+    adjusted.phrase = wrap_phase(warped_t, ctx.phraseDur);
+    adjusted.section = wrap_phase(warped_t, ctx.sectionDur);
+    adjusted.beatNum = static_cast<int>(time_to_count(warped_t, ctx.beatDur));
+    adjusted.barNum = static_cast<int>(time_to_count(warped_t, ctx.barDur));
+    return adjusted;
 }
 
 bool is_truthy(const Value& value)
@@ -2197,9 +2480,10 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
 } // namespace
 
 NumericVmCompileResult compile_numeric_program(const Value& expr,
-                                               const Environment& env)
+                                               const Environment& env,
+                                               bool signal_context)
 {
-    NumericVmCompiler compiler(env);
+    NumericVmCompiler compiler(env, signal_context);
     return compiler.compile(expr);
 }
 

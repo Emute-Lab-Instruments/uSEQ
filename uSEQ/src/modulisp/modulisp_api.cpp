@@ -300,7 +300,8 @@ bool ModuLispInterpreter::compile_output_program(const Value& expr,
     out = {};
     out.exprSource = expr.to_lisp_src();
 
-    const NumericVmCompileResult compiled = compile_numeric_program(expr, env);
+    const NumericVmCompileResult compiled =
+        compile_numeric_program(expr, env, true);
     if (!compiled.ok)
     {
         if (error)
