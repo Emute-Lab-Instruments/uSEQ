@@ -4,6 +4,7 @@
 #include <cmath>
 #include <functional>
 #include <set>
+#include <unordered_map>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -144,6 +145,7 @@ struct CompilerCheckpoint
     size_t function_count = 0;
     size_t intrinsic_count = 0;
     int next_register = 0;
+    size_t cse_cache_size = 0;
 };
 
 double wrap_phase(double time_seconds, double duration_seconds);
@@ -161,6 +163,10 @@ public:
 
     NumericVmCompileResult compile(const Value& expr)
     {
+        // Pre-scan: find subexpressions that appear more than once so
+        // CSE only pays the preservation-MOV cost for actual duplicates.
+        prescan_for_cse(expr, { 1.0, 0.0 });
+
         NumericVmCompileResult result;
         const int out_reg = compile_expr(expr, { 1.0, 0.0 });
         if (out_reg < 0)
@@ -182,6 +188,64 @@ public:
 
 private:
     int compile_expr(const Value& expr, const AffineTimeTransform& transform)
+    {
+        // CSE: only consider list expressions that the pre-scan found
+        // appearing more than once. This avoids wasting a preservation
+        // register + MOV on expressions that are never duplicated.
+        const bool cse_candidate = expr.is_list() && !expr.as_list().empty();
+        std::string cse_sig;
+        bool cse_eligible = false;
+        if (cse_candidate)
+        {
+            cse_sig = expr_signature(expr, transform);
+            const auto seen_it = m_cse_seen_count.find(cse_sig);
+            cse_eligible = (seen_it != m_cse_seen_count.end() && seen_it->second > 1);
+
+            if (cse_eligible)
+            {
+                if (const auto it = m_cse_cache.find(cse_sig);
+                    it != m_cse_cache.end())
+                {
+                    // Copy from the preserved register to a fresh one
+                    // so callers can freely overwrite the returned register.
+                    const int copy = allocate_register();
+                    emit_mov(copy, it->second);
+                    return copy;
+                }
+            }
+        }
+
+        const size_t insn_before = m_program.instructions.size();
+        const int result = compile_expr_inner(expr, transform);
+
+        // Cache the result for future CSE hits, unless the compiled
+        // code contains CALL_INTRINSIC instructions (which may depend
+        // on mutable state or have side effects). We preserve the
+        // value in a dedicated register that is never returned to
+        // callers, so in-place emit_unary/emit_binary won't corrupt it.
+        if (cse_eligible && result >= 0)
+        {
+            bool has_intrinsic = false;
+            for (size_t i = insn_before; i < m_program.instructions.size(); ++i)
+            {
+                if (m_program.instructions[i].opcode == NumericVmOpcode::CALL_INTRINSIC)
+                {
+                    has_intrinsic = true;
+                    break;
+                }
+            }
+            if (!has_intrinsic)
+            {
+                const int preserved = allocate_register();
+                emit_mov(preserved, result);
+                m_cse_cache[cse_sig] = preserved;
+            }
+        }
+
+        return result;
+    }
+
+    int compile_expr_inner(const Value& expr, const AffineTimeTransform& transform)
     {
         if (const std::optional<double> constant =
                 try_resolve_numeric_constant(expr))
@@ -2206,6 +2270,7 @@ private:
     {
         m_local_value_scopes.emplace_back();
         m_local_callable_scopes.emplace_back();
+        m_cse_scope_stack.push_back(m_cse_cache.size());
     }
 
     void pop_local_scope()
@@ -2217,6 +2282,24 @@ private:
         if (!m_local_callable_scopes.empty())
         {
             m_local_callable_scopes.pop_back();
+        }
+        // Evict any CSE entries added while the inner scope was active,
+        // since they may reference local bindings that are now gone.
+        if (!m_cse_scope_stack.empty())
+        {
+            const size_t target_size = m_cse_scope_stack.back();
+            m_cse_scope_stack.pop_back();
+            if (m_cse_cache.size() > target_size)
+            {
+                // Rebuild cache keeping only entries that existed before
+                // this scope was pushed. The simple approach: clear all
+                // entries added during this scope. Since unordered_map
+                // doesn't preserve insertion order, we clear the whole
+                // cache when any inner-scope entries exist — this is
+                // conservative but correct, and in practice inner scopes
+                // are rare (only let/lambda).
+                m_cse_cache.clear();
+            }
         }
     }
 
@@ -2278,6 +2361,131 @@ private:
         return false;
     }
 
+    // --- CSE pre-scan and signature generation ---
+
+    // Walk the expression tree and record which list-form signatures
+    // appear more than once. Only those get cached during compilation.
+    void prescan_for_cse(const Value& expr, const AffineTimeTransform& transform)
+    {
+        if (!expr.is_list())
+        {
+            return;
+        }
+        const std::vector<Value> items = expr.as_list();
+        if (items.empty())
+        {
+            return;
+        }
+
+        const std::string sig = expr_signature(expr, transform);
+        auto it = m_cse_seen_count.find(sig);
+        if (it == m_cse_seen_count.end())
+        {
+            m_cse_seen_count[sig] = 1;
+        }
+        else
+        {
+            it->second++;
+        }
+
+        // Handle time warps: adjust transform for recursive scan
+        if (!items.empty() && items[0].is_symbol())
+        {
+            const String op = items[0].as_atom();
+            if ((op == "fast" || op == "slow" || op == "offset" || op == "shift") &&
+                items.size() == 3)
+            {
+                const std::optional<double> factor =
+                    try_resolve_numeric_constant(items[1]);
+                if (factor.has_value())
+                {
+                    AffineTimeTransform next = transform;
+                    if (op == "fast")
+                    {
+                        next.scale *= *factor;
+                        next.offset *= *factor;
+                    }
+                    else if (op == "slow")
+                    {
+                        next.scale /= *factor;
+                        next.offset /= *factor;
+                    }
+                    else
+                    {
+                        next.offset += *factor;
+                    }
+                    prescan_for_cse(items[2], next);
+                    return;
+                }
+            }
+        }
+
+        // Recurse into all sub-items with the same transform
+        for (const Value& item : items)
+        {
+            prescan_for_cse(item, transform);
+        }
+    }
+
+    void append_value_signature(const Value& expr, std::string& sig) const
+    {
+        if (expr.is_number())
+        {
+            sig += 'N';
+            sig += std::to_string(expr.as_float());
+            return;
+        }
+        if (expr.is_symbol())
+        {
+            if (find_local_value_binding(expr.as_atom()).has_value())
+            {
+                sig += 'L';
+                sig += expr.as_atom().c_str();
+                return;
+            }
+            sig += 'S';
+            sig += expr.as_atom().c_str();
+            return;
+        }
+        if (expr.is_list())
+        {
+            sig += '(';
+            for (const Value& item : expr.as_list())
+            {
+                append_value_signature(item, sig);
+                sig += ' ';
+            }
+            sig += ')';
+            return;
+        }
+        if (expr.is_vector())
+        {
+            sig += '[';
+            for (const Value& item : expr.as_vector())
+            {
+                append_value_signature(item, sig);
+                sig += ' ';
+            }
+            sig += ']';
+            return;
+        }
+        // Unique marker for other types — prevents false CSE matches
+        sig += '?';
+        sig += std::to_string(reinterpret_cast<uintptr_t>(&expr));
+    }
+
+    std::string expr_signature(const Value& expr,
+                               const AffineTimeTransform& transform) const
+    {
+        std::string sig;
+        sig += std::to_string(transform.scale);
+        sig += ',';
+        sig += std::to_string(transform.offset);
+        sig += ':';
+        append_value_signature(expr, sig);
+        return sig;
+    }
+
     void fail(const String& error)
     {
         if (m_error.length() == 0)
@@ -2296,6 +2504,7 @@ private:
         checkpoint.function_count = m_program.functions.size();
         checkpoint.intrinsic_count = m_program.intrinsics.size();
         checkpoint.next_register = m_next_register;
+        checkpoint.cse_cache_size = m_cse_cache.size();
         return checkpoint;
     }
 
@@ -2308,6 +2517,12 @@ private:
         m_program.functions.resize(checkpoint.function_count);
         m_program.intrinsics.resize(checkpoint.intrinsic_count);
         m_next_register = checkpoint.next_register;
+        // CSE entries added since checkpoint may reference rolled-back
+        // registers/instructions — clear them conservatively.
+        if (m_cse_cache.size() > checkpoint.cse_cache_size)
+        {
+            m_cse_cache.clear();
+        }
     }
 
     std::vector<std::pair<String, int>> collect_active_local_values() const
@@ -2361,6 +2576,18 @@ private:
     std::vector<std::map<String, LocalValueBinding>> m_local_value_scopes;
     std::vector<std::map<String, Value>> m_local_callable_scopes;
     mutable NumericVmTemporalChannel m_unused_channel = NumericVmTemporalChannel::T;
+
+    // Pre-scan: how many times each list-expression signature appears.
+    // Only signatures with count > 1 are eligible for CSE caching.
+    std::unordered_map<std::string, int> m_cse_seen_count;
+    // CSE cache: maps expression signature → preserved register containing
+    // the result. The preserved register is never returned to callers
+    // (a copy is returned instead), so it cannot be overwritten by
+    // subsequent in-place operations like emit_unary/emit_binary.
+    std::unordered_map<std::string, int> m_cse_cache;
+    // Saved CSE cache sizes at each scope boundary, used to invalidate
+    // entries that reference locals from inner scopes.
+    std::vector<size_t> m_cse_scope_stack;
 };
 
 double wrap_phase(double time_seconds, double duration_seconds)
