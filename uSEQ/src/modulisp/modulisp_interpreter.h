@@ -378,8 +378,11 @@ public:
         bool hasExpr           = false;
         std::shared_ptr<NumericVmProgram> numericProgram;
         String numericProgramExprSource;
+        std::vector<String> numericProgramDependencies;
+        std::vector<String> numericProgramDependencySnapshots;
         bool numericProgramAttempted = false;
         bool numericProgramSucceeded = false;
+        bool numericProgramDirty     = false;
     };
 
     // Performance monitoring
@@ -428,6 +431,17 @@ protected:
     void reset_output_slot(StoredOutput& slot, OutputType type);
     void clear_all_outputs();
     String get_transport_state_string() const;
+    TemporalContext make_temporal_context(double time_seconds) const;
+    Value eval_form_with_vm(Value expr);
+    Value eval_form_with_vm_at_time(const Value& expr, Environment& env,
+                                    double time_seconds, bool* used_vm = nullptr);
+    bool refresh_output_program(StoredOutput& slot, Environment& env);
+    bool output_program_is_dirty(const StoredOutput& slot, const Environment& env) const;
+    String snapshot_binding_state(const Environment& env, const String& symbol) const;
+    std::optional<Value> lookup_value_without_error(const Environment& env,
+                                                    const String& symbol) const;
+    std::optional<Value> lookup_expr_without_error(const Environment& env,
+                                                   const String& symbol) const;
 
 private:
     // Absorbed Interpreter state

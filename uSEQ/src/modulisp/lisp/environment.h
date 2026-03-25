@@ -83,6 +83,7 @@ public:
     String toString();
 
     void set_parent_scope(Environment* parent) { m_parent_env = parent; }
+    const Environment* get_parent_scope() const { return m_parent_env; }
 
     void set_temporal_context(TemporalContext* ctx) { m_temporal_ctx = ctx; }
     TemporalContext* get_temporal_context() const { return m_temporal_ctx; }

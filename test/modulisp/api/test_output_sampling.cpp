@@ -92,6 +92,34 @@ TEST_CASE("Output time-window sampling", "[outputs][sampling]")
         REQUIRE(results["a3"][2] == Approx(10.0).epsilon(1e-6));
     }
 
+    SECTION("Mixed output families sample consistently across the same window")
+    {
+        interp.eval("(a1 (+ t 1))");
+        interp.eval("(d1 (* t 2))");
+        interp.eval("(s1 (- t 1))");
+
+        auto results = interp.eval_outputs(1.0, 3.0, 3, {"a1", "d1", "s1"});
+
+        REQUIRE(results.find("a1") != results.end());
+        REQUIRE(results.find("d1") != results.end());
+        REQUIRE(results.find("s1") != results.end());
+        REQUIRE(results["a1"].size() == 3);
+        REQUIRE(results["d1"].size() == 3);
+        REQUIRE(results["s1"].size() == 3);
+
+        REQUIRE(results["a1"][0] == Approx(2.0).epsilon(1e-6));
+        REQUIRE(results["a1"][1] == Approx(3.0).epsilon(1e-6));
+        REQUIRE(results["a1"][2] == Approx(4.0).epsilon(1e-6));
+
+        REQUIRE(results["d1"][0] == Approx(2.0).epsilon(1e-6));
+        REQUIRE(results["d1"][1] == Approx(4.0).epsilon(1e-6));
+        REQUIRE(results["d1"][2] == Approx(6.0).epsilon(1e-6));
+
+        REQUIRE(results["s1"][0] == Approx(0.0).epsilon(1e-6));
+        REQUIRE(results["s1"][1] == Approx(1.0).epsilon(1e-6));
+        REQUIRE(results["s1"][2] == Approx(2.0).epsilon(1e-6));
+    }
+
     SECTION("Empty outputs vector samples all outputs")
     {
         // Act: Set up multiple outputs
@@ -159,5 +187,27 @@ TEST_CASE("Output time-window sampling", "[outputs][sampling]")
             // Beat phase should be close to 0 (first beat of bar)
             REQUIRE(value < 0.1);
         }
+    }
+
+    SECTION("Time-window sampling reflects recompilation after dependency redefinition")
+    {
+        interp.eval("(define scale 2)");
+        interp.eval("(a1 (* scale t))");
+
+        auto initial_results = interp.eval_outputs(0.0, 2.0, 3, {"a1"});
+        REQUIRE(initial_results.find("a1") != initial_results.end());
+        REQUIRE(initial_results["a1"].size() == 3);
+        REQUIRE(initial_results["a1"][0] == Approx(0.0).epsilon(1e-6));
+        REQUIRE(initial_results["a1"][1] == Approx(2.0).epsilon(1e-6));
+        REQUIRE(initial_results["a1"][2] == Approx(4.0).epsilon(1e-6));
+
+        interp.eval("(define scale 5)");
+
+        auto updated_results = interp.eval_outputs(0.0, 2.0, 3, {"a1"});
+        REQUIRE(updated_results.find("a1") != updated_results.end());
+        REQUIRE(updated_results["a1"].size() == 3);
+        REQUIRE(updated_results["a1"][0] == Approx(0.0).epsilon(1e-6));
+        REQUIRE(updated_results["a1"][1] == Approx(5.0).epsilon(1e-6));
+        REQUIRE(updated_results["a1"][2] == Approx(10.0).epsilon(1e-6));
     }
 }

@@ -521,3 +521,26 @@ TEST_CASE("Output sampling uses numeric VM-compatible expressions", "[modulisp][
     REQUIRE(ok);
     REQUIRE(value == Approx(5.5).epsilon(1e-6));
 }
+
+TEST_CASE("Compiled output invalidates after dependency redefinition",
+          "[modulisp][vm][outputs]")
+{
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr, 8, 8, 8);
+    interp.init();
+    interp.set_bpm(120.0, 0.0);
+
+    interp.eval("(define scale 2)");
+    interp.eval("(a1 (* scale t))");
+
+    bool ok = false;
+    const double first_value = interp.eval_output_at_time("a1", 1.5, &ok);
+    REQUIRE(ok);
+    REQUIRE(first_value == Approx(3.0).epsilon(1e-6));
+
+    interp.eval("(define scale 5)");
+
+    ok = false;
+    const double second_value = interp.eval_output_at_time("a1", 1.5, &ok);
+    REQUIRE(ok);
+    REQUIRE(second_value == Approx(7.5).epsilon(1e-6));
+}

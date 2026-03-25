@@ -1,5 +1,6 @@
 #include "../utils.h"
 #include "../utils/log.h"
+#include "bytecode_vm.h"
 #include "lisp/builtins.h"
 #include "lisp/configure.h"
 #include "lisp/environment.h"
@@ -26,6 +27,56 @@ bool INTERP_MEM ModuLispInterpreter::m_attempt_expr_eval_first          = false;
 bool INTERP_MEM ModuLispInterpreter::m_eval_expr_if_def_not_found       = true;
 bool INTERP_MEM ModuLispInterpreter::m_update_loop_evaluation           = false;
 String INTERP_MEM ModuLispInterpreter::m_atom_currently_being_evaluated = "";
+
+namespace
+{
+bool is_output_assignment_symbol(const String& symbol)
+{
+    if (symbol.length() < 2)
+    {
+        return false;
+    }
+
+    const char prefix = symbol[0];
+    if (prefix != 'a' && prefix != 'd' && prefix != 's')
+    {
+        return false;
+    }
+
+    for (unsigned int i = 1; i < symbol.length(); ++i)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(symbol[i])))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool requires_tree_walk_eval(const Value& expr)
+{
+    if (expr.type != Value::LIST || expr.list.empty() || !expr.list[0].is_symbol())
+    {
+        return false;
+    }
+
+    const String& head = expr.list[0].as_atom();
+    if (is_output_assignment_symbol(head))
+    {
+        return true;
+    }
+
+    return head == "define" || head == "def" || head == "defn" ||
+           head == "defun" || head == "defs" || head == "set" ||
+           head == "schedule" || head == "unschedule" ||
+           head == "useq-play" || head == "useq-pause" ||
+           head == "useq-stop" || head == "useq-rewind" ||
+           head == "useq-clear" || head == "set-bpm" ||
+           head == "set-time-sig" || head == "useq-set-time-offset" ||
+           head == "useq-nudge-time";
+}
+} // namespace
 
 // Constructors
 ModuLispInterpreter::ModuLispInterpreter(IClock* clk, ILogger* log,
@@ -125,15 +176,76 @@ std::unique_ptr<ModuLispInterpreter> ModuLispInterpreter::create_fresh_interpret
     return std::make_unique<ModuLispInterpreter>();
 }
 
+Value ModuLispInterpreter::eval_form_with_vm_at_time(const Value& expr,
+                                                     Environment& env,
+                                                     double time_seconds,
+                                                     bool* used_vm)
+{
+    if (used_vm)
+    {
+        *used_vm = false;
+    }
+
+    const NumericVmCompileResult compiled = compile_numeric_program(expr, env);
+    if (!compiled.ok)
+    {
+        return Value::error();
+    }
+
+    const TaggedVmExecutionResult executed =
+        execute_tagged_program(compiled.program, make_temporal_context(time_seconds));
+    if (!executed.ok)
+    {
+        return Value::error();
+    }
+
+    if (used_vm)
+    {
+        *used_vm = true;
+    }
+
+    return executed.value;
+}
+
+Value ModuLispInterpreter::eval_form_with_vm(Value expr)
+{
+    if (requires_tree_walk_eval(expr))
+    {
+        return eval_in(expr, m_environment);
+    }
+
+    if (expr.type == Value::LIST && !expr.list.empty() && expr.list[0].is_symbol() &&
+        expr.list[0].as_atom() == "do")
+    {
+        Value result = Value::nil();
+        for (size_t i = 1; i < expr.list.size(); ++i)
+        {
+            result = eval_form_with_vm(expr.list[i]);
+        }
+        return result;
+    }
+
+    bool used_vm = false;
+    const double time_seconds =
+        m_time_manager ? m_time_manager->get_transport_time() / 1e6 : 0.0;
+    Value result = eval_form_with_vm_at_time(expr, m_environment, time_seconds, &used_vm);
+    if (used_vm)
+    {
+        return result;
+    }
+
+    return eval_in(expr, m_environment);
+}
+
 // Instance eval wrappers
 String ModuLispInterpreter::eval(const String& code)
 {
-    return eval_in(code, m_environment);
+    return eval_v(code).display();
 }
-Value ModuLispInterpreter::eval(Value v) { return eval_in(v, m_environment); }
+Value ModuLispInterpreter::eval(Value v) { return eval_form_with_vm(v); }
 Value ModuLispInterpreter::eval_v(const String& code)
 {
-    return eval(m_parser.parse(code));
+    return eval_form_with_vm(m_parser.parse(code));
 }
 
 // Static helpers (ported)
@@ -582,19 +694,15 @@ Value ModuLispInterpreter::useq_eval_at_time(std::vector<Value>& args,
 Value ModuLispInterpreter::eval_at_time(Value& expr, Environment& env,
                                         TimeValue time_micros)
 {
-    TemporalContext ctx;
-    ctx.t = time_micros * 1e-6;
-    ctx.time_since_boot = m_time_manager ? m_time_manager->get_time_seconds() : 0;
-    ctx.beat = beat_at_time(time_micros);
-    ctx.bar = bar_at_time(time_micros);
-    ctx.phrase = phrase_at_time(time_micros);
-    ctx.section = section_at_time(time_micros);
-    ctx.beatNum = static_cast<int>(beat_num_at_time(time_micros));
-    ctx.barNum = static_cast<int>(bar_num_at_time(time_micros));
-    ctx.beatDur = m_beat_length / 1000000.0;
-    ctx.barDur = m_bar_length / 1000000.0;
-    ctx.phraseDur = m_phrase_length / 1000000.0;
-    ctx.sectionDur = m_section_length / 1000000.0;
+    bool used_vm = false;
+    Value compiled_result =
+        eval_form_with_vm_at_time(expr, env, time_micros * 1e-6, &used_vm);
+    if (used_vm)
+    {
+        return compiled_result;
+    }
+
+    TemporalContext ctx = make_temporal_context(time_micros * 1e-6);
 
     Environment new_env;  // empty, no map allocations
     new_env.set_temporal_context(&ctx);
@@ -705,4 +813,3 @@ void ModuLispInterpreter::update_Q0()
         }
     }
 }
-

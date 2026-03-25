@@ -145,8 +145,11 @@ void ModuLispInterpreter::reset_output_slot(StoredOutput& slot, OutputType type)
     slot.hasExpr         = false;
     slot.numericProgram.reset();
     slot.numericProgramExprSource = "";
+    slot.numericProgramDependencies.clear();
+    slot.numericProgramDependencySnapshots.clear();
     slot.numericProgramAttempted = false;
     slot.numericProgramSucceeded = false;
+    slot.numericProgramDirty = false;
 }
 
 void ModuLispInterpreter::clear_all_outputs()
@@ -168,8 +171,11 @@ void ModuLispInterpreter::clear_all_outputs()
             outputs[index].hasExpr         = true;
             outputs[index].numericProgram.reset();
             outputs[index].numericProgramExprSource = "";
+            outputs[index].numericProgramDependencies.clear();
+            outputs[index].numericProgramDependencySnapshots.clear();
             outputs[index].numericProgramAttempted = false;
             outputs[index].numericProgramSucceeded = false;
+            outputs[index].numericProgramDirty = false;
         }
     };
 
@@ -193,6 +199,147 @@ String ModuLispInterpreter::get_transport_state_string() const
     }
 
     return "paused";
+}
+
+std::optional<Value> ModuLispInterpreter::lookup_expr_without_error(
+    const Environment& env,
+    const String& symbol) const
+{
+    if (auto expr = env.get_def_exprs().get(symbol))
+    {
+        return expr;
+    }
+
+    if (const Environment* parent = env.get_parent_scope())
+    {
+        return lookup_expr_without_error(*parent, symbol);
+    }
+
+    return std::nullopt;
+}
+
+std::optional<Value> ModuLispInterpreter::lookup_value_without_error(
+    const Environment& env,
+    const String& symbol) const
+{
+    if (auto value = env.get_defs().get(symbol))
+    {
+        return value;
+    }
+
+    if (auto builtin = Environment::builtindefs().get(symbol))
+    {
+        return builtin;
+    }
+
+    if (const Environment* parent = env.get_parent_scope())
+    {
+        return lookup_value_without_error(*parent, symbol);
+    }
+
+    return std::nullopt;
+}
+
+String ModuLispInterpreter::snapshot_binding_state(const Environment& env,
+                                                   const String& symbol) const
+{
+    if (auto expr = lookup_expr_without_error(env, symbol))
+    {
+        return String("expr:") + expr->to_lisp_src();
+    }
+
+    if (auto value = lookup_value_without_error(env, symbol))
+    {
+        return String("value:") + value->to_lisp_src();
+    }
+
+    return String("missing");
+}
+
+bool ModuLispInterpreter::output_program_is_dirty(const StoredOutput& slot,
+                                                  const Environment& env) const
+{
+    if (slot.numericProgramDirty)
+    {
+        return true;
+    }
+
+    if (slot.numericProgramDependencies.size() !=
+        slot.numericProgramDependencySnapshots.size())
+    {
+        return true;
+    }
+
+    for (size_t i = 0; i < slot.numericProgramDependencies.size(); ++i)
+    {
+        if (snapshot_binding_state(env, slot.numericProgramDependencies[i]) !=
+            slot.numericProgramDependencySnapshots[i])
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool ModuLispInterpreter::refresh_output_program(StoredOutput& slot, Environment& env)
+{
+    slot.numericProgram.reset();
+    slot.numericProgramExprSource = slot.expr.to_lisp_src();
+    slot.numericProgramDependencies.clear();
+    slot.numericProgramDependencySnapshots.clear();
+    slot.numericProgramAttempted = true;
+    slot.numericProgramSucceeded = false;
+    slot.numericProgramDirty = false;
+
+    if (!slot.hasExpr)
+    {
+        return false;
+    }
+
+    const NumericVmCompileResult compiled = compile_numeric_program(slot.expr, env);
+    if (!compiled.ok)
+    {
+        return false;
+    }
+
+    slot.numericProgram = std::make_shared<NumericVmProgram>(compiled.program);
+    slot.numericProgramSucceeded = true;
+    slot.numericProgramDependencies = compiled.program.dependencies;
+    slot.numericProgramDependencySnapshots.reserve(
+        slot.numericProgramDependencies.size());
+    for (const String& dependency : slot.numericProgramDependencies)
+    {
+        slot.numericProgramDependencySnapshots.push_back(
+            snapshot_binding_state(env, dependency));
+    }
+
+    return true;
+}
+
+TemporalContext ModuLispInterpreter::make_temporal_context(double time_seconds) const
+{
+    const double time_micros = time_seconds * 1e6;
+
+    TemporalContext ctx;
+    ctx.t = time_seconds;
+    ctx.time_since_boot = m_time_manager ? m_time_manager->get_time_seconds() : 0;
+    ctx.beat = const_cast<ModuLispInterpreter*>(this)->beat_at_time(time_micros);
+    ctx.bar = const_cast<ModuLispInterpreter*>(this)->bar_at_time(time_micros);
+    ctx.phrase = const_cast<ModuLispInterpreter*>(this)->phrase_at_time(time_micros);
+    ctx.section =
+        const_cast<ModuLispInterpreter*>(this)->section_at_time(time_micros);
+    ctx.beatNum =
+        static_cast<int>(const_cast<ModuLispInterpreter*>(this)->beat_num_at_time(
+            time_micros));
+    ctx.barNum =
+        static_cast<int>(const_cast<ModuLispInterpreter*>(this)->bar_num_at_time(
+            time_micros));
+    ctx.beatDur = m_beat_length / 1000000.0;
+    ctx.barDur = m_bar_length / 1000000.0;
+    ctx.phraseDur = m_phrase_length / 1000000.0;
+    ctx.sectionDur = m_section_length / 1000000.0;
+    return ctx;
 }
 
 Value ModuLispInterpreter::handle_output_assignment(const char* name,
@@ -247,8 +394,13 @@ Value ModuLispInterpreter::handle_output_assignment(const char* name,
     slot->lastValue       = default_output_value(type);
     slot->numericProgram.reset();
     slot->numericProgramExprSource = "";
+    slot->numericProgramDependencies.clear();
+    slot->numericProgramDependencySnapshots.clear();
     slot->numericProgramAttempted = false;
     slot->numericProgramSucceeded = false;
+    slot->numericProgramDirty = false;
+
+    refresh_output_program(*slot, *get_environment());
 
     return Value::atom(lispName);
 }
@@ -351,9 +503,22 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
         return defaultValue;
     }
 
+    const double time_micros = time_seconds * 1e6;
+
+    bool program_refreshed = false;
+    if (!slot->numericProgramAttempted ||
+        slot->numericProgramExprSource != slot->expr.to_lisp_src() ||
+        output_program_is_dirty(*slot, *get_environment()))
+    {
+        refresh_output_program(*slot, *get_environment());
+        program_refreshed = true;
+    }
+
     constexpr double epsilon = 1e-9;
     if (std::isfinite(slot->lastTimeSeconds) &&
-        std::fabs(slot->lastTimeSeconds - time_seconds) < epsilon)
+        std::fabs(slot->lastTimeSeconds - time_seconds) < epsilon &&
+        !program_refreshed &&
+        !output_program_is_dirty(*slot, *get_environment()))
     {
         if (ok)
         {
@@ -362,7 +527,22 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
         return slot->lastValue;
     }
 
-    const double time_micros = time_seconds * 1e6;
+    if (slot->numericProgramSucceeded && slot->numericProgram)
+    {
+        const TemporalContext ctx = make_temporal_context(time_seconds);
+        const NumericVmExecutionResult vm_result =
+            execute_numeric_program(*slot->numericProgram, ctx);
+        if (vm_result.ok && std::isfinite(vm_result.value))
+        {
+            slot->lastValue = vm_result.value;
+            slot->lastTimeSeconds = time_seconds;
+            if (ok)
+            {
+                *ok = true;
+            }
+            return vm_result.value;
+        }
+    }
 
     char prefixChar = 'a';
     switch (type)
@@ -381,68 +561,7 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
     String exprName(prefixChar);
     exprName += String(static_cast<int>(index) + 1);
 
-    // If the stored expression is an atom/symbol, look up its current expression binding.
-    // This allows variables to be redefined and have the output update dynamically.
-    // Example: (define foo (usin bar)) (a1 foo) (define foo (usin beat))
-    // Without this lookup, a1 would still output (usin bar) after the redefinition.
     Value expr_to_eval = slot->expr;
-    if (expr_to_eval.is_symbol())
-    {
-        std::optional<Value> expr_binding = get_environment()->get_expr(expr_to_eval.as_atom());
-        if (expr_binding)
-        {
-            expr_to_eval = *expr_binding;
-        }
-        // If no expression binding found, keep the atom - it will be evaluated as a value
-    }
-
-    TemporalContext ctx;
-    ctx.t = time_seconds;
-    ctx.time_since_boot = m_time_manager ? m_time_manager->get_time_seconds() : 0;
-    ctx.beat = beat_at_time(time_micros);
-    ctx.bar = bar_at_time(time_micros);
-    ctx.phrase = phrase_at_time(time_micros);
-    ctx.section = section_at_time(time_micros);
-    ctx.beatNum = static_cast<int>(beat_num_at_time(time_micros));
-    ctx.barNum = static_cast<int>(bar_num_at_time(time_micros));
-    ctx.beatDur = m_beat_length / 1000000.0;
-    ctx.barDur = m_bar_length / 1000000.0;
-    ctx.phraseDur = m_phrase_length / 1000000.0;
-    ctx.sectionDur = m_section_length / 1000000.0;
-
-    const String expr_source = expr_to_eval.to_lisp_src();
-    if (!slot->numericProgramAttempted ||
-        slot->numericProgramExprSource != expr_source)
-    {
-        slot->numericProgram.reset();
-        slot->numericProgramExprSource = expr_source;
-        slot->numericProgramAttempted = true;
-
-        const NumericVmCompileResult compiled =
-            compile_numeric_program(expr_to_eval, *get_environment());
-        slot->numericProgramSucceeded = compiled.ok;
-        if (compiled.ok)
-        {
-            slot->numericProgram =
-                std::make_shared<NumericVmProgram>(compiled.program);
-        }
-    }
-
-    if (slot->numericProgramSucceeded && slot->numericProgram)
-    {
-        const NumericVmExecutionResult vm_result =
-            execute_numeric_program(*slot->numericProgram, ctx);
-        if (vm_result.ok && std::isfinite(vm_result.value))
-        {
-            slot->lastValue = vm_result.value;
-            slot->lastTimeSeconds = time_seconds;
-            if (ok)
-            {
-                *ok = true;
-            }
-            return vm_result.value;
-        }
-    }
 
     set_atom_currently_being_evaluated(exprName);
     set_attempt_expr_eval_first(true);
