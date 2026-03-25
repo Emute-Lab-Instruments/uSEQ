@@ -2697,12 +2697,20 @@ bool load_phasor_value(const std::vector<Value>& registers, uint16_t index,
     phasor = value.as_float();
     return true;
 }
+static constexpr int VM_MAX_CALL_DEPTH = 64;
+
 TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& program,
                                                     const TemporalContext& ctx,
                                                     const std::vector<Value>& initial_registers =
-                                                        {})
+                                                        {},
+                                                    int call_depth = 0)
 {
     TaggedVmExecutionResult result;
+    if (call_depth > VM_MAX_CALL_DEPTH)
+    {
+        result.error = "Numeric VM call depth exceeded";
+        return result;
+    }
     if (program.register_count == 0 || program.instructions.empty())
     {
         result.error = "Numeric VM program is empty";
@@ -2744,9 +2752,13 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
         &&op_U_COS_BI,      &&op_TRI,           &&op_SQR,
         &&op_PULSE,         &&op_LOAD_INPUT
     };
+    static_assert(sizeof(dispatch_table) / sizeof(dispatch_table[0]) == 53,
+                  "dispatch_table must have one entry per NumericVmOpcode");
     #define VM_DISPATCH() do { \
         if (pc >= program.instructions.size()) goto vm_loop_exit; \
         insn = program.instructions[pc]; \
+        if (static_cast<int>(insn.opcode) < 0 || \
+            static_cast<int>(insn.opcode) >= 53) goto vm_loop_exit; \
         goto *dispatch_table[static_cast<int>(insn.opcode)]; \
     } while (0)
     #define VM_CASE(op) op_##op:
@@ -3191,7 +3203,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
 
                 const TaggedVmExecutionResult callee_result =
                     execute_tagged_program_impl(
-                        *program.functions[static_cast<size_t>(insn.imm)], ctx, args);
+                        *program.functions[static_cast<size_t>(insn.imm)], ctx, args,
+                        call_depth + 1);
                 if (!callee_result.ok)
                 {
                     return callee_result;

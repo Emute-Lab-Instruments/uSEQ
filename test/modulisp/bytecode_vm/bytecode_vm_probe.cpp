@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -55,7 +56,7 @@ void print_json(bool ok, const std::string& mode, const std::string& output,
                 double time_seconds, double value,
                 const std::string& error = std::string())
 {
-    std::cout << "{"
+    std::cout << std::setprecision(15) << "{"
               << "\"ok\":" << (ok ? "true" : "false") << ","
               << "\"mode\":\"" << json_escape(mode) << "\","
               << "\"output\":\"" << json_escape(output) << "\","
