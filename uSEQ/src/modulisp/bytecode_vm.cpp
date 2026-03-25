@@ -2714,12 +2714,67 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
     {
         registers[i] = initial_registers[i];
     }
+// Computed-goto dispatch: enabled for GCC/Clang on non-WASM builds when
+// USE_COMPUTED_GOTO is defined.  Falls back to a normal switch otherwise.
+#if defined(__GNUC__) && !defined(WASM_BUILD) && defined(USE_COMPUTED_GOTO)
+#define VM_USE_COMPUTED_GOTO 1
+#else
+#define VM_USE_COMPUTED_GOTO 0
+#endif
+
+#if VM_USE_COMPUTED_GOTO
+    // 53 opcodes: LOAD_CONST(0) through LOAD_INPUT(52)
+    static const void* dispatch_table[] = {
+        &&op_LOAD_CONST,    &&op_LOAD_TIME,     &&op_MOV,
+        &&op_VEC_INDEX,     &&op_VEC_LERP,      &&op_ADD,
+        &&op_SUB,           &&op_MUL,           &&op_DIV,
+        &&op_MOD,           &&op_NEG,           &&op_CMP_GT,
+        &&op_CMP_LT,       &&op_CMP_GE,       &&op_CMP_LE,
+        &&op_CMP_EQ,       &&op_FLOOR,         &&op_CEIL,
+        &&op_FRAC,          &&op_ABS,           &&op_MIN,
+        &&op_MAX,           &&op_POW,           &&op_SQRT,
+        &&op_CLAMP,         &&op_SIN,           &&op_COS,
+        &&op_TAN,           &&op_BRANCH,        &&op_BRANCH_IF,
+        &&op_BRANCH_UNLESS, &&op_CALL,          &&op_CALL_INTRINSIC,
+        &&op_RET,           &&op_IS_NIL,        &&op_IS_NUMBER,
+        &&op_IS_LIST,       &&op_IS_STRING,     &&op_NOT,
+        &&op_AND,           &&op_OR,            &&op_MAKE_LIST,
+        &&op_LIST_HEAD,     &&op_LIST_TAIL,     &&op_LIST_LENGTH,
+        &&op_U_SIN,         &&op_U_COS,         &&op_U_SIN_BI,
+        &&op_U_COS_BI,      &&op_TRI,           &&op_SQR,
+        &&op_PULSE,         &&op_LOAD_INPUT
+    };
+    #define VM_DISPATCH() do { \
+        if (pc >= program.instructions.size()) goto vm_loop_exit; \
+        insn = program.instructions[pc]; \
+        goto *dispatch_table[static_cast<int>(insn.opcode)]; \
+    } while (0)
+    #define VM_CASE(op) op_##op:
+    #define VM_NEXT() do { ++pc; VM_DISPATCH(); } while (0)
+    #define VM_BREAK VM_NEXT()
+    #define VM_BRANCH_DONE() VM_DISPATCH()
+#else
+    // Note: VM_NEXT and VM_BRANCH_DONE use bare braces (not do-while)
+    // because continue/break inside do{...}while(0) would target the
+    // do-while loop instead of the enclosing for loop.
+    #define VM_DISPATCH() continue
+    #define VM_CASE(op) case NumericVmOpcode::op:
+    #define VM_NEXT() { ++pc; continue; }
+    #define VM_BREAK break
+    #define VM_BRANCH_DONE() break
+#endif
+
     for (size_t pc = 0; pc < program.instructions.size();)
     {
+#if VM_USE_COMPUTED_GOTO
+        NumericVmInstruction insn{};
+        VM_DISPATCH();
+#else
         const NumericVmInstruction& insn = program.instructions[pc];
         switch (insn.opcode)
         {
-        case NumericVmOpcode::LOAD_CONST:
+#endif
+        VM_CASE(LOAD_CONST)
             if (insn.imm < 0 ||
                 static_cast<size_t>(insn.imm) >= program.constants.size())
             {
@@ -2732,9 +2787,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 return result;
             }
             registers[insn.rd] = program.constants[static_cast<size_t>(insn.imm)];
-            ++pc;
-            break;
-        case NumericVmOpcode::LOAD_TIME:
+            VM_NEXT();
+        VM_CASE(LOAD_TIME)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination"))
@@ -2772,10 +2826,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 break;
             }
             registers[insn.rd] = Value(value);
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::LOAD_INPUT:
+        VM_CASE(LOAD_INPUT)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination"))
@@ -2784,10 +2837,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             }
             // Stub: no physical inputs in standalone/WASM mode
             registers[insn.rd] = Value(0.0);
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::MOV:
+        VM_CASE(MOV)
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
                 !validate_register_index(insn.rs1, registers.size(), result.error,
@@ -2796,10 +2848,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 return result;
             }
             registers[insn.rd] = registers[insn.rs1];
-            ++pc;
-            break;
-        case NumericVmOpcode::VEC_INDEX:
-        case NumericVmOpcode::VEC_LERP:
+            VM_NEXT();
+        VM_CASE(VEC_INDEX)
+        VM_CASE(VEC_LERP)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -2857,24 +2908,23 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                               (((*data)[base + 1] - (*data)[base]) * fraction));
                 }
             }
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::NEG:
-        case NumericVmOpcode::FLOOR:
-        case NumericVmOpcode::CEIL:
-        case NumericVmOpcode::FRAC:
-        case NumericVmOpcode::ABS:
-        case NumericVmOpcode::SQRT:
-        case NumericVmOpcode::SIN:
-        case NumericVmOpcode::COS:
-        case NumericVmOpcode::TAN:
-        case NumericVmOpcode::U_SIN:
-        case NumericVmOpcode::U_COS:
-        case NumericVmOpcode::U_SIN_BI:
-        case NumericVmOpcode::U_COS_BI:
-        case NumericVmOpcode::TRI:
-        case NumericVmOpcode::SQR:
+        VM_CASE(NEG)
+        VM_CASE(FLOOR)
+        VM_CASE(CEIL)
+        VM_CASE(FRAC)
+        VM_CASE(ABS)
+        VM_CASE(SQRT)
+        VM_CASE(SIN)
+        VM_CASE(COS)
+        VM_CASE(TAN)
+        VM_CASE(U_SIN)
+        VM_CASE(U_COS)
+        VM_CASE(U_SIN_BI)
+        VM_CASE(U_COS_BI)
+        VM_CASE(TRI)
+        VM_CASE(SQR)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -2944,23 +2994,22 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 break;
             }
             registers[insn.rd] = Value(out);
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::ADD:
-        case NumericVmOpcode::SUB:
-        case NumericVmOpcode::MUL:
-        case NumericVmOpcode::DIV:
-        case NumericVmOpcode::MOD:
-        case NumericVmOpcode::CMP_GT:
-        case NumericVmOpcode::CMP_LT:
-        case NumericVmOpcode::CMP_GE:
-        case NumericVmOpcode::CMP_LE:
-        case NumericVmOpcode::CMP_EQ:
-        case NumericVmOpcode::MIN:
-        case NumericVmOpcode::MAX:
-        case NumericVmOpcode::POW:
-        case NumericVmOpcode::PULSE:
+        VM_CASE(ADD)
+        VM_CASE(SUB)
+        VM_CASE(MUL)
+        VM_CASE(DIV)
+        VM_CASE(MOD)
+        VM_CASE(CMP_GT)
+        VM_CASE(CMP_LT)
+        VM_CASE(CMP_GE)
+        VM_CASE(CMP_LE)
+        VM_CASE(CMP_EQ)
+        VM_CASE(MIN)
+        VM_CASE(MAX)
+        VM_CASE(POW)
+        VM_CASE(PULSE)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -3041,10 +3090,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 break;
             }
             registers[insn.rd] = Value(out);
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::CLAMP:
+        VM_CASE(CLAMP)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -3070,10 +3118,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             registers[insn.rd] =
                 Value(std::fmin(std::fmax(value.as_float(), low.as_float()),
                                 high.as_float()));
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::BRANCH:
+        VM_CASE(BRANCH)
         {
             size_t target = 0;
             if (!resolve_branch_target(pc, insn.imm, program.instructions.size(), target,
@@ -3082,10 +3129,10 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 return result;
             }
             pc = target;
-            break;
+            VM_BRANCH_DONE();
         }
-        case NumericVmOpcode::BRANCH_IF:
-        case NumericVmOpcode::BRANCH_UNLESS:
+        VM_CASE(BRANCH_IF)
+        VM_CASE(BRANCH_UNLESS)
             if (!validate_register_index(insn.rs1, registers.size(), result.error,
                                          "source"))
             {
@@ -3108,9 +3155,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             {
                 ++pc;
             }
-            break;
-        case NumericVmOpcode::CALL:
-        case NumericVmOpcode::CALL_INTRINSIC:
+            VM_BRANCH_DONE();
+        VM_CASE(CALL)
+        VM_CASE(CALL_INTRINSIC)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination"))
@@ -3163,14 +3210,13 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 registers[insn.rd] =
                     program.intrinsics[static_cast<size_t>(insn.imm)](args, ctx);
             }
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::IS_NIL:
-        case NumericVmOpcode::IS_NUMBER:
-        case NumericVmOpcode::IS_LIST:
-        case NumericVmOpcode::IS_STRING:
-        case NumericVmOpcode::NOT:
+        VM_CASE(IS_NIL)
+        VM_CASE(IS_NUMBER)
+        VM_CASE(IS_LIST)
+        VM_CASE(IS_STRING)
+        VM_CASE(NOT)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -3203,10 +3249,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 break;
             }
             registers[insn.rd] = Value(out);
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::AND:
+        VM_CASE(AND)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -3221,10 +3266,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             registers[insn.rd] = is_truthy(registers[insn.rs1])
                                      ? registers[insn.rs2]
                                      : registers[insn.rs1];
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::OR:
+        VM_CASE(OR)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -3239,10 +3283,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             registers[insn.rd] = is_truthy(registers[insn.rs1])
                                      ? registers[insn.rs1]
                                      : registers[insn.rs2];
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::MAKE_LIST:
+        VM_CASE(MAKE_LIST)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination"))
@@ -3265,10 +3308,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 elements.push_back(registers[start + i]);
             }
             registers[insn.rd] = Value(elements);
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::LIST_HEAD:
+        VM_CASE(LIST_HEAD)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -3294,10 +3336,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             {
                 registers[insn.rd] = items[0];
             }
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::LIST_TAIL:
+        VM_CASE(LIST_TAIL)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -3324,10 +3365,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 registers[insn.rd] = Value(
                     std::vector<Value>(items.begin() + 1, items.end()));
             }
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::LIST_LENGTH:
+        VM_CASE(LIST_LENGTH)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -3347,10 +3387,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             {
                 registers[insn.rd] = Value(0.0);
             }
-            ++pc;
-            break;
+            VM_NEXT();
         }
-        case NumericVmOpcode::RET:
+        VM_CASE(RET)
             if (!validate_register_index(insn.rs1, registers.size(), result.error,
                                          "source"))
             {
@@ -3359,11 +3398,24 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             result.ok = true;
             result.value = registers[insn.rs1];
             return result;
-        }
-    }
+#if !VM_USE_COMPUTED_GOTO
+        } // end switch
+#endif
+    } // end for
+
+#if VM_USE_COMPUTED_GOTO
+vm_loop_exit:
+#endif
 
     result.error = "Numeric VM program terminated without RET";
     return result;
+
+#undef VM_DISPATCH
+#undef VM_CASE
+#undef VM_NEXT
+#undef VM_BREAK
+#undef VM_BRANCH_DONE
+#undef VM_USE_COMPUTED_GOTO
 }
 } // namespace
 
