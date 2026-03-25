@@ -1,4 +1,5 @@
 #include "bytecode_vm.h"
+#include <algorithm>
 #include <cmath>
 #include <functional>
 
@@ -42,9 +43,11 @@ public:
 private:
     int compile_expr(const Value& expr, const AffineTimeTransform& transform)
     {
-        if (expr.is_number())
+        if (const std::optional<double> constant =
+                try_resolve_numeric_constant(expr))
         {
-            return emit_const(expr.as_float());
+            record_dependencies(expr);
+            return emit_const(Value(*constant));
         }
 
         if (expr.is_symbol())
@@ -59,6 +62,15 @@ private:
         }
 
         const std::vector<Value> items = expr.as_list();
+        if (items.size() == 2)
+        {
+            if (const int vector_lookup =
+                    compile_vector_lookup(items[0], items[1], transform, false);
+                vector_lookup >= 0)
+            {
+                return vector_lookup;
+            }
+        }
         if (items.empty() || !items[0].is_symbol())
         {
             fail("Numeric VM only supports builtin call forms");
@@ -70,14 +82,22 @@ private:
         {
             return compile_time_warp(op, items, transform);
         }
+        if (op == "do")
+        {
+            return compile_do(items, transform);
+        }
+        if (op == "if")
+        {
+            return compile_if(items, transform);
+        }
 
         if (op == "+")
         {
-            return compile_fold(items, 1, NumericVmOpcode::ADD, transform);
+            return compile_fold(items, 1, NumericVmOpcode::ADD, transform, true);
         }
         if (op == "*")
         {
-            return compile_fold(items, 1, NumericVmOpcode::MUL, transform);
+            return compile_fold(items, 1, NumericVmOpcode::MUL, transform, true);
         }
         if (op == "-")
         {
@@ -90,11 +110,11 @@ private:
                 }
                 return emit_unary(NumericVmOpcode::NEG, src);
             }
-            return compile_fold(items, 1, NumericVmOpcode::SUB, transform);
+            return compile_fold(items, 1, NumericVmOpcode::SUB, transform, false);
         }
         if (op == "/")
         {
-            return compile_fold(items, 1, NumericVmOpcode::DIV, transform);
+            return compile_binary(items, NumericVmOpcode::DIV, transform);
         }
         if (op == "%")
         {
@@ -168,6 +188,14 @@ private:
         {
             return compile_unary(items, NumericVmOpcode::TAN, transform);
         }
+        if (op == "from-list")
+        {
+            return compile_vector_builtin(items, transform, false);
+        }
+        if (op == "interp")
+        {
+            return compile_vector_builtin(items, transform, true);
+        }
 
         fail("Unsupported numeric VM builtin: " + op);
         return -1;
@@ -197,6 +225,7 @@ private:
 
         if (const std::optional<Value> expr = m_env.get_expr(symbol))
         {
+            maybe_add_dependency(symbol);
             m_recursion_stack.push_back(symbol);
             const int reg = compile_expr(*expr, transform);
             m_recursion_stack.pop_back();
@@ -207,7 +236,8 @@ private:
         {
             if (value->is_number())
             {
-                return emit_const(value->as_float());
+                maybe_add_dependency(symbol);
+                return emit_const(Value(value->as_float()));
             }
         }
 
@@ -252,13 +282,144 @@ private:
         return compile_expr(items[2], next);
     }
 
+    int compile_do(const std::vector<Value>& items, const AffineTimeTransform& transform)
+    {
+        if (items.size() < 2)
+        {
+            fail("do expects at least one form");
+            return -1;
+        }
+
+        int result = -1;
+        for (size_t i = 1; i < items.size(); ++i)
+        {
+            result = compile_expr(items[i], transform);
+            if (result < 0)
+            {
+                return -1;
+            }
+        }
+        return result;
+    }
+
+    int compile_if(const std::vector<Value>& items, const AffineTimeTransform& transform)
+    {
+        if (items.size() != 4)
+        {
+            fail("if expects exactly 3 arguments");
+            return -1;
+        }
+
+        const std::optional<double> constant_condition =
+            try_resolve_numeric_constant(items[1]);
+        if (constant_condition.has_value())
+        {
+            return compile_expr(*constant_condition != 0.0 ? items[2] : items[3],
+                                transform);
+        }
+
+        const int result_reg = allocate_register();
+        const int cond_reg = compile_expr(items[1], transform);
+        if (cond_reg < 0)
+        {
+            return -1;
+        }
+
+        NumericVmInstruction branch_to_else;
+        branch_to_else.opcode = NumericVmOpcode::BRANCH_UNLESS;
+        branch_to_else.rs1 = static_cast<uint16_t>(cond_reg);
+        branch_to_else.imm = 0;
+        const size_t branch_to_else_index = m_program.instructions.size();
+        m_program.instructions.push_back(branch_to_else);
+
+        const int then_reg = compile_expr(items[2], transform);
+        if (then_reg < 0)
+        {
+            return -1;
+        }
+        emit_mov(result_reg, then_reg);
+
+        NumericVmInstruction branch_to_end;
+        branch_to_end.opcode = NumericVmOpcode::BRANCH;
+        branch_to_end.imm = 0;
+        const size_t branch_to_end_index = m_program.instructions.size();
+        m_program.instructions.push_back(branch_to_end);
+
+        const size_t else_start_index = m_program.instructions.size();
+        patch_branch(branch_to_else_index, else_start_index);
+
+        const int else_reg = compile_expr(items[3], transform);
+        if (else_reg < 0)
+        {
+            return -1;
+        }
+        emit_mov(result_reg, else_reg);
+
+        const size_t end_index = m_program.instructions.size();
+        patch_branch(branch_to_end_index, end_index);
+        return result_reg;
+    }
+
+    int compile_vector_builtin(const std::vector<Value>& items,
+                               const AffineTimeTransform& transform,
+                               bool interpolate)
+    {
+        if (items.size() != 3)
+        {
+            fail(String(interpolate ? "interp" : "from-list") +
+                 " expects exactly 2 arguments");
+            return -1;
+        }
+
+        return compile_vector_lookup(items[1], items[2], transform, interpolate);
+    }
+
+    int compile_vector_lookup(const Value& source_expr,
+                              const Value& phasor_expr,
+                              const AffineTimeTransform& transform,
+                              bool interpolate)
+    {
+        const std::optional<std::vector<double>> values =
+            try_resolve_numeric_sequence(source_expr);
+        if (!values.has_value())
+        {
+            return -1;
+        }
+
+        const int phasor_reg = compile_expr(phasor_expr, transform);
+        if (phasor_reg < 0)
+        {
+            return -1;
+        }
+
+        NumericVmInstruction insn;
+        insn.opcode = interpolate ? NumericVmOpcode::VEC_LERP
+                                  : NumericVmOpcode::VEC_INDEX;
+        insn.rd = static_cast<uint16_t>(phasor_reg);
+        insn.rs1 = static_cast<uint16_t>(phasor_reg);
+        insn.imm = static_cast<int32_t>(store_data_segment(*values));
+        m_program.instructions.push_back(insn);
+        return phasor_reg;
+    }
+
     int compile_fold(const std::vector<Value>& items,
                      size_t arg_start,
                      NumericVmOpcode opcode,
-                     const AffineTimeTransform& transform)
+                     const AffineTimeTransform& transform,
+                     bool allow_single_arg_identity)
     {
-        if (items.size() <= arg_start + 1)
+        if (items.size() <= arg_start)
         {
+            fail("Not enough arguments for numeric VM fold");
+            return -1;
+        }
+
+        if (items.size() == arg_start + 1)
+        {
+            if (allow_single_arg_identity)
+            {
+                return compile_expr(items[arg_start], transform);
+            }
             fail("Not enough arguments for numeric VM fold");
             return -1;
         }
@@ -335,55 +496,151 @@ private:
             return -1;
         }
 
-        const int dst = allocate_register();
         NumericVmInstruction insn;
         insn.opcode = NumericVmOpcode::CLAMP;
-        insn.rd = static_cast<uint16_t>(dst);
+        insn.rd = static_cast<uint16_t>(value);
         insn.rs1 = static_cast<uint16_t>(value);
         insn.rs2 = static_cast<uint16_t>(low);
         insn.rs3 = static_cast<uint16_t>(high);
         m_program.instructions.push_back(insn);
-        return dst;
+        return value;
     }
 
-    int emit_const(double value)
+    int emit_const(const Value& value)
     {
         const int dst = allocate_register();
         NumericVmInstruction insn;
         insn.opcode = NumericVmOpcode::LOAD_CONST;
         insn.rd = static_cast<uint16_t>(dst);
-        insn.imm = static_cast<int32_t>(m_program.constants.size());
-        m_program.constants.push_back(value);
+        insn.imm = static_cast<int32_t>(store_constant(value));
         m_program.instructions.push_back(insn);
         return dst;
     }
 
-    int emit_unary(NumericVmOpcode opcode, int src)
+    int emit_mov(int dst, int src)
     {
-        const int dst = allocate_register();
         NumericVmInstruction insn;
-        insn.opcode = opcode;
+        insn.opcode = NumericVmOpcode::MOV;
         insn.rd = static_cast<uint16_t>(dst);
         insn.rs1 = static_cast<uint16_t>(src);
         m_program.instructions.push_back(insn);
         return dst;
     }
 
-    int emit_binary(NumericVmOpcode opcode, int lhs, int rhs)
+    void patch_branch(size_t instruction_index, size_t target_index)
     {
-        const int dst = allocate_register();
+        NumericVmInstruction& insn = m_program.instructions[instruction_index];
+        insn.imm = static_cast<int32_t>(target_index) -
+                   static_cast<int32_t>(instruction_index + 1);
+    }
+
+    int emit_unary(NumericVmOpcode opcode, int src)
+    {
         NumericVmInstruction insn;
         insn.opcode = opcode;
-        insn.rd = static_cast<uint16_t>(dst);
+        insn.rd = static_cast<uint16_t>(src);
+        insn.rs1 = static_cast<uint16_t>(src);
+        m_program.instructions.push_back(insn);
+        return src;
+    }
+
+    int emit_binary(NumericVmOpcode opcode, int lhs, int rhs)
+    {
+        NumericVmInstruction insn;
+        insn.opcode = opcode;
+        insn.rd = static_cast<uint16_t>(lhs);
         insn.rs1 = static_cast<uint16_t>(lhs);
         insn.rs2 = static_cast<uint16_t>(rhs);
         m_program.instructions.push_back(insn);
-        return dst;
+        return lhs;
     }
 
     int allocate_register()
     {
         return m_next_register++;
+    }
+
+    size_t store_constant(const Value& value)
+    {
+        for (size_t i = 0; i < m_program.constants.size(); ++i)
+        {
+            if (m_program.constants[i] == value)
+            {
+                return i;
+            }
+        }
+
+        m_program.constants.push_back(value);
+        return m_program.constants.size() - 1;
+    }
+
+    size_t store_data_segment(const std::vector<double>& values)
+    {
+        for (size_t i = 0; i < m_program.data_segments.size(); ++i)
+        {
+            if (m_program.data_segments[i] == values)
+            {
+                return i;
+            }
+        }
+
+        m_program.data_segments.push_back(values);
+        return m_program.data_segments.size() - 1;
+    }
+
+    void add_dependency(const String& symbol)
+    {
+        for (const auto& existing : m_program.dependencies)
+        {
+            if (existing == symbol)
+            {
+                return;
+            }
+        }
+        m_program.dependencies.push_back(symbol);
+    }
+
+    void maybe_add_dependency(const String& symbol)
+    {
+        if (m_env.get_defs().has(symbol) || m_env.get_def_exprs().has(symbol))
+        {
+            add_dependency(symbol);
+        }
+    }
+
+    void record_dependencies(const Value& expr)
+    {
+        if (expr.is_symbol())
+        {
+            const String symbol = expr.as_atom();
+            if (try_get_temporal_channel(symbol, m_unused_channel))
+            {
+                return;
+            }
+
+            if (m_env.get_expr(symbol).has_value() || m_env.get(symbol).has_value())
+            {
+                maybe_add_dependency(symbol);
+            }
+            return;
+        }
+
+        if (expr.is_list())
+        {
+            for (const Value& item : expr.as_list())
+            {
+                record_dependencies(item);
+            }
+            return;
+        }
+
+        if (expr.is_vector())
+        {
+            for (const Value& item : expr.as_vector())
+            {
+                record_dependencies(item);
+            }
+        }
     }
 
     std::optional<double> try_resolve_numeric_constant(const Value& expr)
@@ -412,8 +669,9 @@ private:
                 m_recursion_stack.pop_back();
                 return value;
             }
-            if (const std::optional<Value> value = m_env.get(symbol))
+            if (m_env.has(symbol))
             {
+                const std::optional<Value> value = m_env.get(symbol);
                 if (value->is_number())
                 {
                     return value->as_float();
@@ -498,11 +756,64 @@ private:
             {
                 return unary([](double value) { return -value; });
             }
-            return binary([](double lhs, double rhs) { return lhs - rhs; });
+            const std::optional<double> first = try_resolve_numeric_constant(items[1]);
+            if (!first.has_value())
+            {
+                return std::nullopt;
+            }
+
+            double total = *first;
+            for (size_t i = 2; i < items.size(); ++i)
+            {
+                const std::optional<double> value =
+                    try_resolve_numeric_constant(items[i]);
+                if (!value.has_value())
+                {
+                    return std::nullopt;
+                }
+                total -= *value;
+            }
+            return total;
         }
         if (op == "/")
         {
             return binary([](double lhs, double rhs) { return lhs / rhs; });
+        }
+        if (op == "%")
+        {
+            return binary([](double lhs, double rhs) { return std::fmod(lhs, rhs); });
+        }
+        if (op == ">")
+        {
+            return binary([](double lhs, double rhs) { return lhs > rhs ? 1.0 : 0.0; });
+        }
+        if (op == "<")
+        {
+            return binary([](double lhs, double rhs) { return lhs < rhs ? 1.0 : 0.0; });
+        }
+        if (op == ">=")
+        {
+            return binary([](double lhs, double rhs) { return lhs >= rhs ? 1.0 : 0.0; });
+        }
+        if (op == "<=")
+        {
+            return binary([](double lhs, double rhs) { return lhs <= rhs ? 1.0 : 0.0; });
+        }
+        if (op == "=")
+        {
+            return binary([](double lhs, double rhs) { return lhs == rhs ? 1.0 : 0.0; });
+        }
+        if (op == "min")
+        {
+            return binary([](double lhs, double rhs) { return std::fmin(lhs, rhs); });
+        }
+        if (op == "max")
+        {
+            return binary([](double lhs, double rhs) { return std::fmax(lhs, rhs); });
+        }
+        if (op == "pow")
+        {
+            return binary([](double lhs, double rhs) { return std::pow(lhs, rhs); });
         }
         if (op == "sin")
         {
@@ -532,8 +843,85 @@ private:
         {
             return unary([](double value) { return std::fabs(value); });
         }
+        if (op == "frac")
+        {
+            return unary([](double value) { return value - std::floor(value); });
+        }
+        if (op == "clamp")
+        {
+            if (items.size() != 4)
+            {
+                return std::nullopt;
+            }
+            const std::optional<double> value =
+                try_resolve_numeric_constant(items[1]);
+            const std::optional<double> low =
+                try_resolve_numeric_constant(items[2]);
+            const std::optional<double> high =
+                try_resolve_numeric_constant(items[3]);
+            if (!value.has_value() || !low.has_value() || !high.has_value())
+            {
+                return std::nullopt;
+            }
+            return std::fmin(std::fmax(*value, *low), *high);
+        }
 
         return std::nullopt;
+    }
+
+    std::optional<std::vector<double>> try_resolve_numeric_sequence(
+        const Value& expr)
+    {
+        if (expr.is_symbol())
+        {
+            const String symbol = expr.as_atom();
+            if (is_in_recursion_stack(symbol))
+            {
+                return std::nullopt;
+            }
+
+            if (const std::optional<Value> nested = m_env.get_expr(symbol))
+            {
+                maybe_add_dependency(symbol);
+                m_recursion_stack.push_back(symbol);
+                const std::optional<std::vector<double>> values =
+                    try_resolve_numeric_sequence(*nested);
+                m_recursion_stack.pop_back();
+                return values;
+            }
+
+            if (const std::optional<Value> value = m_env.get(symbol))
+            {
+                maybe_add_dependency(symbol);
+                return try_resolve_numeric_sequence(*value);
+            }
+
+            return std::nullopt;
+        }
+
+        if (!expr.is_sequential())
+        {
+            return std::nullopt;
+        }
+
+        const std::vector<Value> items = expr.as_sequential();
+        if (items.empty())
+        {
+            return std::nullopt;
+        }
+
+        std::vector<double> values;
+        values.reserve(items.size());
+        for (const Value& item : items)
+        {
+            const std::optional<double> numeric = try_resolve_numeric_constant(item);
+            if (!numeric.has_value())
+            {
+                return std::nullopt;
+            }
+            values.push_back(*numeric);
+        }
+        return values;
     }
 
     bool try_get_temporal_channel(const String& symbol,
@@ -632,28 +1020,96 @@ double time_to_count(double time_seconds, double duration_seconds)
     }
     return std::floor(time_seconds / duration_seconds);
 }
-} // namespace
 
-NumericVmCompileResult compile_numeric_program(const Value& expr,
-                                               const Environment& env)
+bool is_truthy(const Value& value)
 {
-    NumericVmCompiler compiler(env);
-    return compiler.compile(expr);
+    if (value.is_nil())
+    {
+        return false;
+    }
+    if (value.is_number())
+    {
+        return value.as_float() != 0.0;
+    }
+    return true;
 }
 
-NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program,
-                                                 const TemporalContext& ctx)
+bool validate_register_index(uint16_t index, size_t register_count, String& error,
+                             const char* role)
 {
-    NumericVmExecutionResult result;
+    if (static_cast<size_t>(index) >= register_count)
+    {
+        error = String("Numeric VM ") + role + " register out of range";
+        return false;
+    }
+    return true;
+}
+
+bool resolve_branch_target(size_t pc, int32_t offset, size_t instruction_count,
+                           size_t& target_pc, String& error)
+{
+    const int64_t target = static_cast<int64_t>(pc) + 1 + static_cast<int64_t>(offset);
+    if (target < 0 || target >= static_cast<int64_t>(instruction_count))
+    {
+        error = "Numeric VM branch target out of range";
+        return false;
+    }
+
+    target_pc = static_cast<size_t>(target);
+    return true;
+}
+
+bool load_data_segment(const NumericVmProgram& program, int32_t index,
+                       const std::vector<double>*& data, String& error)
+{
+    if (index < 0 || static_cast<size_t>(index) >= program.data_segments.size())
+    {
+        error = "Numeric VM data segment index out of range";
+        return false;
+    }
+    data = &program.data_segments[static_cast<size_t>(index)];
+    return true;
+}
+
+bool load_phasor_value(const std::vector<Value>& registers, uint16_t index,
+                       double& phasor, String& error)
+{
+    if (static_cast<size_t>(index) >= registers.size())
+    {
+        error = "Numeric VM source register out of range";
+        return false;
+    }
+
+    const Value& value = registers[index];
+    if (!value.is_number())
+    {
+        error = "Numeric VM vector opcode requires a numeric phasor";
+        return false;
+    }
+
+    phasor = value.as_float();
+    return true;
+}
+TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& program,
+                                                    const TemporalContext& ctx,
+                                                    const std::vector<Value>& initial_registers =
+                                                        {})
+{
+    TaggedVmExecutionResult result;
     if (program.register_count == 0 || program.instructions.empty())
     {
         result.error = "Numeric VM program is empty";
         return result;
     }
 
-    std::vector<double> registers(program.register_count, 0.0);
-    for (const auto& insn : program.instructions)
+    std::vector<Value> registers(program.register_count, Value::nil());
+    for (size_t i = 0; i < initial_registers.size() && i < registers.size(); ++i)
     {
+        registers[i] = initial_registers[i];
+    }
+    for (size_t pc = 0; pc < program.instructions.size();)
+    {
+        const NumericVmInstruction& insn = program.instructions[pc];
         switch (insn.opcode)
         {
         case NumericVmOpcode::LOAD_CONST:
@@ -663,125 +1119,377 @@ NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program
                 result.error = "Numeric VM constant index out of range";
                 return result;
             }
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination"))
+            {
+                return result;
+            }
             registers[insn.rd] = program.constants[static_cast<size_t>(insn.imm)];
+            ++pc;
             break;
         case NumericVmOpcode::LOAD_TIME:
         {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination"))
+            {
+                return result;
+            }
+
             const NumericVmTemporalChannel channel =
                 static_cast<NumericVmTemporalChannel>(insn.imm);
             const double warped_t = (ctx.t * insn.imm0) + insn.imm1;
+            double value = 0.0;
             switch (channel)
             {
             case NumericVmTemporalChannel::T:
             case NumericVmTemporalChannel::TIME:
-                registers[insn.rd] = warped_t;
+                value = warped_t;
                 break;
             case NumericVmTemporalChannel::BEAT:
-                registers[insn.rd] = wrap_phase(warped_t, ctx.beatDur);
+                value = wrap_phase(warped_t, ctx.beatDur);
                 break;
             case NumericVmTemporalChannel::BAR:
-                registers[insn.rd] = wrap_phase(warped_t, ctx.barDur);
+                value = wrap_phase(warped_t, ctx.barDur);
                 break;
             case NumericVmTemporalChannel::PHRASE:
-                registers[insn.rd] = wrap_phase(warped_t, ctx.phraseDur);
+                value = wrap_phase(warped_t, ctx.phraseDur);
                 break;
             case NumericVmTemporalChannel::SECTION:
-                registers[insn.rd] = wrap_phase(warped_t, ctx.sectionDur);
+                value = wrap_phase(warped_t, ctx.sectionDur);
                 break;
             case NumericVmTemporalChannel::BEAT_NUM:
-                registers[insn.rd] = time_to_count(warped_t, ctx.beatDur);
+                value = time_to_count(warped_t, ctx.beatDur);
                 break;
             case NumericVmTemporalChannel::BAR_NUM:
-                registers[insn.rd] = time_to_count(warped_t, ctx.barDur);
+                value = time_to_count(warped_t, ctx.barDur);
                 break;
             }
+            registers[insn.rd] = Value(value);
+            ++pc;
             break;
         }
         case NumericVmOpcode::MOV:
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
             registers[insn.rd] = registers[insn.rs1];
+            ++pc;
             break;
+        case NumericVmOpcode::VEC_INDEX:
+        case NumericVmOpcode::VEC_LERP:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
+
+            const std::vector<double>* data = nullptr;
+            if (!load_data_segment(program, insn.imm, data, result.error))
+            {
+                return result;
+            }
+            if (!data || data->empty())
+            {
+                result.error = "Numeric VM data segment is empty";
+                return result;
+            }
+
+            double phasor = 0.0;
+            if (!load_phasor_value(registers, insn.rs1, phasor, result.error))
+            {
+                return result;
+            }
+
+            const double clamped_phasor = std::clamp(phasor, 0.0, 1.0);
+            const double scaled = clamped_phasor * static_cast<double>(data->size());
+            const size_t index =
+                std::min(static_cast<size_t>(std::floor(scaled)), data->size() - 1);
+
+            if (insn.opcode == NumericVmOpcode::VEC_INDEX)
+            {
+                registers[insn.rd] = Value((*data)[index]);
+            }
+            else
+            {
+                if (data->size() == 1)
+                {
+                    registers[insn.rd] = Value((*data)[0]);
+                }
+                else
+                {
+                    const double scaled_lerp =
+                        clamped_phasor * static_cast<double>(data->size() - 1);
+                    size_t base = static_cast<size_t>(std::floor(scaled_lerp));
+                    if (base >= data->size() - 1)
+                    {
+                        base = data->size() - 2;
+                    }
+                    const double fraction =
+                        scaled_lerp - static_cast<double>(base);
+                    registers[insn.rd] =
+                        Value((*data)[base] +
+                              (((*data)[base + 1] - (*data)[base]) * fraction));
+                }
+            }
+            ++pc;
+            break;
+        }
         case NumericVmOpcode::ADD:
-            registers[insn.rd] = registers[insn.rs1] + registers[insn.rs2];
-            break;
         case NumericVmOpcode::SUB:
-            registers[insn.rd] = registers[insn.rs1] - registers[insn.rs2];
-            break;
         case NumericVmOpcode::MUL:
-            registers[insn.rd] = registers[insn.rs1] * registers[insn.rs2];
-            break;
         case NumericVmOpcode::DIV:
-            if (registers[insn.rs2] == 0.0)
-            {
-                result.error = "Numeric VM division by zero";
-                return result;
-            }
-            registers[insn.rd] = registers[insn.rs1] / registers[insn.rs2];
-            break;
         case NumericVmOpcode::MOD:
-            if (registers[insn.rs2] == 0.0)
+        case NumericVmOpcode::NEG:
+        case NumericVmOpcode::CMP_GT:
+        case NumericVmOpcode::CMP_LT:
+        case NumericVmOpcode::CMP_GE:
+        case NumericVmOpcode::CMP_LE:
+        case NumericVmOpcode::CMP_EQ:
+        case NumericVmOpcode::FLOOR:
+        case NumericVmOpcode::CEIL:
+        case NumericVmOpcode::FRAC:
+        case NumericVmOpcode::ABS:
+        case NumericVmOpcode::MIN:
+        case NumericVmOpcode::MAX:
+        case NumericVmOpcode::POW:
+        case NumericVmOpcode::SQRT:
+        case NumericVmOpcode::CLAMP:
+        case NumericVmOpcode::SIN:
+        case NumericVmOpcode::COS:
+        case NumericVmOpcode::TAN:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source") ||
+                (insn.opcode != NumericVmOpcode::NEG &&
+                 !validate_register_index(insn.rs2, registers.size(), result.error,
+                                          "source")))
             {
-                result.error = "Numeric VM modulo by zero";
                 return result;
             }
-            registers[insn.rd] = std::fmod(registers[insn.rs1], registers[insn.rs2]);
+
+            const Value lhs = registers[insn.rs1];
+            const Value rhs = insn.opcode == NumericVmOpcode::NEG ? Value::nil()
+                                                                  : registers[insn.rs2];
+            if (!lhs.is_number() ||
+                (insn.opcode != NumericVmOpcode::NEG && !rhs.is_number()))
+            {
+                result.error = "Numeric VM arithmetic requires numeric operands";
+                return result;
+            }
+
+            const double left = lhs.as_float();
+            const double right = insn.opcode == NumericVmOpcode::NEG ? 0.0
+                                                                     : rhs.as_float();
+            double out = 0.0;
+            switch (insn.opcode)
+            {
+            case NumericVmOpcode::ADD:
+                out = left + right;
+                break;
+            case NumericVmOpcode::SUB:
+                out = left - right;
+                break;
+            case NumericVmOpcode::MUL:
+                out = left * right;
+                break;
+            case NumericVmOpcode::NEG:
+                out = -left;
+                break;
+            case NumericVmOpcode::DIV:
+                if (right == 0.0)
+                {
+                    result.error = "Numeric VM division by zero";
+                    return result;
+                }
+                out = left / right;
+                break;
+            case NumericVmOpcode::MOD:
+                if (right == 0.0)
+                {
+                    result.error = "Numeric VM modulo by zero";
+                    return result;
+                }
+                out = std::fmod(left, right);
+                break;
+            case NumericVmOpcode::CMP_GT:
+                out = left > right ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::CMP_LT:
+                out = left < right ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::CMP_GE:
+                out = left >= right ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::CMP_LE:
+                out = left <= right ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::CMP_EQ:
+                out = left == right ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::FLOOR:
+                out = std::floor(left);
+                break;
+            case NumericVmOpcode::CEIL:
+                out = std::ceil(left);
+                break;
+            case NumericVmOpcode::FRAC:
+                out = left - std::floor(left);
+                break;
+            case NumericVmOpcode::ABS:
+                out = std::fabs(left);
+                break;
+            case NumericVmOpcode::MIN:
+                out = std::fmin(left, right);
+                break;
+            case NumericVmOpcode::MAX:
+                out = std::fmax(left, right);
+                break;
+            case NumericVmOpcode::POW:
+                out = std::pow(left, right);
+                break;
+            case NumericVmOpcode::SQRT:
+                out = std::sqrt(left);
+                break;
+            case NumericVmOpcode::CLAMP:
+                if (!validate_register_index(insn.rs3, registers.size(), result.error,
+                                             "source"))
+                {
+                    return result;
+                }
+                {
+                    const Value high = registers[insn.rs3];
+                    if (!high.is_number())
+                    {
+                        result.error = "Numeric VM clamp requires numeric operands";
+                        return result;
+                    }
+                    out = std::fmin(std::fmax(left, right), high.as_float());
+                }
+                break;
+            case NumericVmOpcode::SIN:
+                out = std::sin(left);
+                break;
+            case NumericVmOpcode::COS:
+                out = std::cos(left);
+                break;
+            case NumericVmOpcode::TAN:
+                out = std::tan(left);
+                break;
+            default:
+                break;
+            }
+            registers[insn.rd] = Value(out);
+            ++pc;
             break;
-        case NumericVmOpcode::NEG:
-            registers[insn.rd] = -registers[insn.rs1];
+        }
+        case NumericVmOpcode::BRANCH:
+        {
+            size_t target = 0;
+            if (!resolve_branch_target(pc, insn.imm, program.instructions.size(), target,
+                                       result.error))
+            {
+                return result;
+            }
+            pc = target;
             break;
-        case NumericVmOpcode::CMP_GT:
-            registers[insn.rd] = registers[insn.rs1] > registers[insn.rs2] ? 1.0 : 0.0;
+        }
+        case NumericVmOpcode::BRANCH_IF:
+        case NumericVmOpcode::BRANCH_UNLESS:
+            if (!validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
+            if ((insn.opcode == NumericVmOpcode::BRANCH_IF &&
+                 is_truthy(registers[insn.rs1])) ||
+                (insn.opcode == NumericVmOpcode::BRANCH_UNLESS &&
+                 !is_truthy(registers[insn.rs1])))
+            {
+                size_t target = 0;
+                if (!resolve_branch_target(pc, insn.imm, program.instructions.size(),
+                                           target, result.error))
+                {
+                    return result;
+                }
+                pc = target;
+            }
+            else
+            {
+                ++pc;
+            }
             break;
-        case NumericVmOpcode::CMP_LT:
-            registers[insn.rd] = registers[insn.rs1] < registers[insn.rs2] ? 1.0 : 0.0;
+        case NumericVmOpcode::CALL:
+        case NumericVmOpcode::CALL_INTRINSIC:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination"))
+            {
+                return result;
+            }
+            const size_t arg_start = static_cast<size_t>(insn.rs1);
+            const size_t arg_count = static_cast<size_t>(insn.rs2);
+            if (arg_start + arg_count > registers.size())
+            {
+                result.error = "Numeric VM call arguments out of range";
+                return result;
+            }
+
+            std::vector<Value> args;
+            args.reserve(arg_count);
+            for (size_t i = 0; i < arg_count; ++i)
+            {
+                args.push_back(registers[arg_start + i]);
+            }
+
+            if (insn.opcode == NumericVmOpcode::CALL)
+            {
+                if (insn.imm < 0 ||
+                    static_cast<size_t>(insn.imm) >= program.functions.size() ||
+                    !program.functions[static_cast<size_t>(insn.imm)])
+                {
+                    result.error = "Numeric VM function index out of range";
+                    return result;
+                }
+
+                const TaggedVmExecutionResult callee_result =
+                    execute_tagged_program_impl(
+                        *program.functions[static_cast<size_t>(insn.imm)], ctx, args);
+                if (!callee_result.ok)
+                {
+                    return callee_result;
+                }
+                registers[insn.rd] = callee_result.value;
+            }
+            else
+            {
+                if (insn.imm < 0 ||
+                    static_cast<size_t>(insn.imm) >= program.intrinsics.size() ||
+                    !program.intrinsics[static_cast<size_t>(insn.imm)])
+                {
+                    result.error = "Numeric VM intrinsic index out of range";
+                    return result;
+                }
+                registers[insn.rd] =
+                    program.intrinsics[static_cast<size_t>(insn.imm)](args, ctx);
+            }
+            ++pc;
             break;
-        case NumericVmOpcode::CMP_GE:
-            registers[insn.rd] = registers[insn.rs1] >= registers[insn.rs2] ? 1.0 : 0.0;
-            break;
-        case NumericVmOpcode::CMP_LE:
-            registers[insn.rd] = registers[insn.rs1] <= registers[insn.rs2] ? 1.0 : 0.0;
-            break;
-        case NumericVmOpcode::CMP_EQ:
-            registers[insn.rd] = registers[insn.rs1] == registers[insn.rs2] ? 1.0 : 0.0;
-            break;
-        case NumericVmOpcode::FLOOR:
-            registers[insn.rd] = std::floor(registers[insn.rs1]);
-            break;
-        case NumericVmOpcode::CEIL:
-            registers[insn.rd] = std::ceil(registers[insn.rs1]);
-            break;
-        case NumericVmOpcode::FRAC:
-            registers[insn.rd] = registers[insn.rs1] - std::floor(registers[insn.rs1]);
-            break;
-        case NumericVmOpcode::ABS:
-            registers[insn.rd] = std::fabs(registers[insn.rs1]);
-            break;
-        case NumericVmOpcode::MIN:
-            registers[insn.rd] = std::fmin(registers[insn.rs1], registers[insn.rs2]);
-            break;
-        case NumericVmOpcode::MAX:
-            registers[insn.rd] = std::fmax(registers[insn.rs1], registers[insn.rs2]);
-            break;
-        case NumericVmOpcode::POW:
-            registers[insn.rd] = std::pow(registers[insn.rs1], registers[insn.rs2]);
-            break;
-        case NumericVmOpcode::SQRT:
-            registers[insn.rd] = std::sqrt(registers[insn.rs1]);
-            break;
-        case NumericVmOpcode::CLAMP:
-            registers[insn.rd] = std::fmin(
-                std::fmax(registers[insn.rs1], registers[insn.rs2]),
-                registers[insn.rs3]);
-            break;
-        case NumericVmOpcode::SIN:
-            registers[insn.rd] = std::sin(registers[insn.rs1]);
-            break;
-        case NumericVmOpcode::COS:
-            registers[insn.rd] = std::cos(registers[insn.rs1]);
-            break;
-        case NumericVmOpcode::TAN:
-            registers[insn.rd] = std::tan(registers[insn.rs1]);
-            break;
+        }
         case NumericVmOpcode::RET:
+            if (!validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
             result.ok = true;
             result.value = registers[insn.rs1];
             return result;
@@ -789,5 +1497,48 @@ NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program
     }
 
     result.error = "Numeric VM program terminated without RET";
+    return result;
+}
+} // namespace
+
+NumericVmCompileResult compile_numeric_program(const Value& expr,
+                                               const Environment& env)
+{
+    NumericVmCompiler compiler(env);
+    return compiler.compile(expr);
+}
+
+TaggedVmExecutionResult execute_tagged_program(const NumericVmProgram& program,
+                                               const TemporalContext& ctx)
+{
+    return execute_tagged_program_impl(program, ctx);
+}
+
+NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program,
+                                                 const TemporalContext& ctx)
+{
+    NumericVmExecutionResult result;
+    const TaggedVmExecutionResult tagged_result = execute_tagged_program(program, ctx);
+    if (!tagged_result.ok)
+    {
+        result.error = tagged_result.error;
+        return result;
+    }
+
+    if (!tagged_result.value.is_number())
+    {
+        result.error = "Numeric VM did not produce a numeric result";
+        return result;
+    }
+
+    const double numeric_value = tagged_result.value.as_float();
+    if (!std::isfinite(numeric_value))
+    {
+        result.error = "Numeric VM produced a non-finite result";
+        return result;
+    }
+
+    result.ok = true;
+    result.value = numeric_value;
     return result;
 }

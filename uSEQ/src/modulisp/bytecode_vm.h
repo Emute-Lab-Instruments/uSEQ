@@ -6,6 +6,8 @@
 #include "temporal_context.h"
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <vector>
 
 enum class NumericVmOpcode
@@ -13,6 +15,8 @@ enum class NumericVmOpcode
     LOAD_CONST,
     LOAD_TIME,
     MOV,
+    VEC_INDEX,
+    VEC_LERP,
     ADD,
     SUB,
     MUL,
@@ -36,6 +40,11 @@ enum class NumericVmOpcode
     SIN,
     COS,
     TAN,
+    BRANCH,
+    BRANCH_IF,
+    BRANCH_UNLESS,
+    CALL,
+    CALL_INTRINSIC,
     RET
 };
 
@@ -50,6 +59,9 @@ enum class NumericVmTemporalChannel
     BEAT_NUM,
     BAR_NUM
 };
+
+using TaggedVmIntrinsic = std::function<Value(const std::vector<Value>&,
+                                              const TemporalContext&)>;
 
 struct NumericVmInstruction
 {
@@ -66,7 +78,11 @@ struct NumericVmInstruction
 struct NumericVmProgram
 {
     std::vector<NumericVmInstruction> instructions;
-    std::vector<double> constants;
+    std::vector<Value> constants;
+    std::vector<std::vector<double>> data_segments;
+    std::vector<String> dependencies;
+    std::vector<std::shared_ptr<NumericVmProgram>> functions;
+    std::vector<TaggedVmIntrinsic> intrinsics;
     size_t register_count = 0;
 };
 
@@ -84,7 +100,16 @@ struct NumericVmExecutionResult
     String error;
 };
 
+struct TaggedVmExecutionResult
+{
+    bool ok = false;
+    Value value;
+    String error;
+};
+
 NumericVmCompileResult compile_numeric_program(const Value& expr,
                                                const Environment& env);
+TaggedVmExecutionResult execute_tagged_program(const NumericVmProgram& program,
+                                               const TemporalContext& ctx);
 NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program,
                                                  const TemporalContext& ctx);
