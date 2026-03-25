@@ -101,6 +101,17 @@ struct LocalValueBinding
     int source_register = -1;
 };
 
+// Diagnostic counter: tracks how many times the VM compiler falls back to
+// the tree-walker because a callable has a captured scope (closure).
+// To compile closures natively, the VM would need to:
+//   1. Identify which variables the closure captures from its defining scope
+//   2. Pass those captured values as additional CALL arguments
+//   3. Bind them in the callee's local scope before executing the body
+// This is deferred to a future iteration. For now, we measure the frequency
+// to determine whether it's worth the complexity.
+static int s_closure_fallback_count = 0;
+int get_closure_fallback_count() { return s_closure_fallback_count; }
+
 bool lambda_has_captured_scope(const Value& value)
 {
     if (value.type != Value::LAMBDA || !value.lambda_scope)
@@ -186,7 +197,7 @@ private:
 
         if (expr.is_vector())
         {
-            return emit_runtime_eval(expr, transform);
+            return compile_vector_as_list(expr.as_vector(), transform);
         }
 
         if (expr.type == Value::QUOTE)
@@ -476,6 +487,29 @@ private:
         if (op == "list")
         {
             return compile_list_constructor(items, transform);
+        }
+
+        // --- Pure numeric builtins: inlined as arithmetic ---
+        // These are commonly used in signal expressions. Compiling them to
+        // native VM arithmetic avoids the full tree-walk via eval_in that
+        // would occur in the generic CALL_INTRINSIC fallback path.
+        if (op == "b->u" || op == "bi->uni")
+        {
+            // bipolar-to-unipolar: x * 0.5 + 0.5
+            return compile_range_conversion(items, transform, 0.5, 0.5);
+        }
+        if (op == "u->b" || op == "uni->bi")
+        {
+            // unipolar-to-bipolar: x * 2.0 - 1.0
+            return compile_range_conversion(items, transform, 2.0, -1.0);
+        }
+        if (op == "scale")
+        {
+            return compile_scale_intrinsic(items, transform);
+        }
+        if (op == "lerp")
+        {
+            return compile_lerp_intrinsic(items, transform);
         }
 
         int callable_reg = -1;
@@ -947,6 +981,34 @@ private:
         return -1;
     }
 
+    // Compile a vector literal [a b c] into a MAKE_LIST instruction.
+    // This avoids the tree-walker fallback that was previously used for
+    // vector-as-expression forms.
+    int compile_vector_as_list(const std::vector<Value>& elements,
+                               const AffineTimeTransform& transform)
+    {
+        std::vector<int> element_regs;
+        for (const Value& elem : elements)
+        {
+            const int reg = compile_expr(elem, transform);
+            if (reg < 0)
+            {
+                return -1;
+            }
+            element_regs.push_back(reg);
+        }
+
+        const int first_reg = allocate_argument_window(element_regs);
+        const int dst = allocate_register();
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::MAKE_LIST;
+        insn.rd = static_cast<uint16_t>(dst);
+        insn.rs1 = static_cast<uint16_t>(first_reg >= 0 ? first_reg : 0);
+        insn.rs2 = static_cast<uint16_t>(element_regs.size());
+        m_program.instructions.push_back(insn);
+        return dst;
+    }
+
     int compile_list_constructor(const std::vector<Value>& items,
                                  const AffineTimeTransform& transform)
     {
@@ -1102,6 +1164,126 @@ private:
         insn.rs3 = static_cast<uint16_t>(high);
         m_program.instructions.push_back(insn);
         return value;
+    }
+
+    // Compile (b->u x) as x * scale + offset, or (u->b x) similarly.
+    // Avoids tree-walker fallback for these very common range conversions.
+    int compile_range_conversion(const std::vector<Value>& items,
+                                 const AffineTimeTransform& transform,
+                                 double scale, double offset)
+    {
+        if (items.size() != 2)
+        {
+            fail("Range conversion expects exactly 1 argument");
+            return -1;
+        }
+
+        const int src = compile_expr(items[1], transform);
+        if (src < 0)
+        {
+            return -1;
+        }
+
+        const int scale_reg = emit_const(Value(scale));
+        const int result = emit_binary(NumericVmOpcode::MUL, src, scale_reg);
+        const int offset_reg = emit_const(Value(offset));
+        return emit_binary(NumericVmOpcode::ADD, result, offset_reg);
+    }
+
+    // Compile (scale out_min out_max phasor) — 3-arg form — as
+    //   out_min + (out_max - out_min) * phasor
+    // The 5-arg form (scale in_min in_max out_min out_max phasor) is also
+    // supported:
+    //   out_min + (out_max - out_min) * ((phasor - in_min) / (in_max - in_min))
+    int compile_scale_intrinsic(const std::vector<Value>& items,
+                                const AffineTimeTransform& transform)
+    {
+        if (items.size() == 4)
+        {
+            // 3-arg: (scale out_min out_max phasor)
+            const int out_min = compile_expr(items[1], transform);
+            const int out_max = compile_expr(items[2], transform);
+            const int phasor = compile_expr(items[3], transform);
+            if (out_min < 0 || out_max < 0 || phasor < 0)
+            {
+                return -1;
+            }
+
+            // range = out_max - out_min
+            const int range = emit_binary(NumericVmOpcode::SUB, out_max, out_min);
+            // scaled = range * phasor
+            const int scaled = emit_binary(NumericVmOpcode::MUL, range, phasor);
+            // result = out_min + scaled
+            return emit_binary(NumericVmOpcode::ADD, out_min, scaled);
+        }
+        if (items.size() == 6)
+        {
+            // 5-arg: (scale in_min in_max out_min out_max phasor)
+            const int in_min = compile_expr(items[1], transform);
+            const int in_max = compile_expr(items[2], transform);
+            const int out_min = compile_expr(items[3], transform);
+            const int out_max = compile_expr(items[4], transform);
+            const int phasor = compile_expr(items[5], transform);
+            if (in_min < 0 || in_max < 0 || out_min < 0 || out_max < 0 || phasor < 0)
+            {
+                return -1;
+            }
+
+            // norm = (phasor - in_min) / (in_max - in_min)
+            const int num = emit_binary(NumericVmOpcode::SUB, phasor, in_min);
+            const int den = emit_binary(NumericVmOpcode::SUB, in_max, in_min);
+            const int norm = emit_binary(NumericVmOpcode::DIV, num, den);
+            // out_range = out_max - out_min
+            const int out_range = emit_binary(NumericVmOpcode::SUB, out_max, out_min);
+            // scaled = out_range * norm
+            const int scaled = emit_binary(NumericVmOpcode::MUL, out_range, norm);
+            // result = out_min + scaled
+            return emit_binary(NumericVmOpcode::ADD, out_min, scaled);
+        }
+
+        fail("scale expects 3 or 5 arguments");
+        return -1;
+    }
+
+    // Compile (lerp a b t lo hi) — the ModuLisp lerp takes 5 args.
+    // The actual computation is lerp(a, b, t) = a + t * (b - a)
+    // (lo and hi seem to be unused based on the builtin source, which
+    // computes lerp(args[0], args[1], args[0]) — likely a bug in the
+    // original builtin, but we match the declared arity.)
+    // For the VM, we compile the standard 3-arg lerp semantics using
+    // the first 3 arguments: a + t * (b - a).
+    // Falls back to intrinsic call if arity doesn't match.
+    int compile_lerp_intrinsic(const std::vector<Value>& items,
+                               const AffineTimeTransform& transform)
+    {
+        // Accept both 3-arg (lerp a b t) and 5-arg forms
+        if (items.size() != 4 && items.size() != 6)
+        {
+            fail("lerp expects 3 or 5 arguments");
+            return -1;
+        }
+
+        const int a = compile_expr(items[1], transform);
+        const int b = compile_expr(items[2], transform);
+        const int t = compile_expr(items[3], transform);
+        if (a < 0 || b < 0 || t < 0)
+        {
+            return -1;
+        }
+
+        // Compile remaining args but discard them (for arity compat)
+        for (size_t i = 4; i < items.size(); ++i)
+        {
+            if (compile_expr(items[i], transform) < 0)
+            {
+                return -1;
+            }
+        }
+
+        // lerp(a, b, t) = a + t * (b - a)
+        const int diff = emit_binary(NumericVmOpcode::SUB, b, a);
+        const int scaled = emit_binary(NumericVmOpcode::MUL, t, diff);
+        return emit_binary(NumericVmOpcode::ADD, a, scaled);
     }
 
     int emit_const(const Value& value)
@@ -1856,6 +2038,10 @@ private:
             {
                 if (lambda_has_captured_scope(*local_callable))
                 {
+                    // CLOSURE FALLBACK: local callable has captured scope.
+                    // Falls back to tree-walker because the VM cannot yet
+                    // pass captured variables as extra CALL arguments.
+                    ++s_closure_fallback_count;
                     out_reg = emit_runtime_eval(Value(items), transform);
                     return out_reg >= 0;
                 }
@@ -1872,6 +2058,10 @@ private:
             {
                 if (lambda_has_captured_scope(*global_callable))
                 {
+                    // CLOSURE FALLBACK: global callable has captured scope.
+                    // Falls back to tree-walker because the VM cannot yet
+                    // pass captured variables as extra CALL arguments.
+                    ++s_closure_fallback_count;
                     maybe_add_dependency(op);
                     out_reg = emit_runtime_eval(Value(items), transform);
                     return out_reg >= 0;
