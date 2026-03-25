@@ -43,7 +43,10 @@ SOURCES=(
     "uSEQ/src/modulisp/random_generator.cpp"
     "uSEQ/src/modulisp/scheduler.cpp"
     "uSEQ/src/modulisp/time_manager.cpp"
-    
+
+    # Bytecode VM
+    "uSEQ/src/modulisp/bytecode_vm.cpp"
+
     # Skip uSEQ.cpp entirely - use ModuLisp directly for WASM
     # "uSEQ/src/uSEQ.cpp"
     

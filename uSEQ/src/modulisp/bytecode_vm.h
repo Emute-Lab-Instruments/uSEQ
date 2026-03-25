@@ -45,7 +45,26 @@ enum class NumericVmOpcode
     BRANCH_UNLESS,
     CALL,
     CALL_INTRINSIC,
-    RET
+    RET,
+    IS_NIL,
+    IS_NUMBER,
+    IS_LIST,
+    IS_STRING,
+    NOT,
+    AND,
+    OR,
+    MAKE_LIST,
+    LIST_HEAD,
+    LIST_TAIL,
+    LIST_LENGTH,
+    U_SIN,
+    U_COS,
+    U_SIN_BI,
+    U_COS_BI,
+    TRI,
+    SQR,
+    PULSE,
+    LOAD_INPUT
 };
 
 enum class NumericVmTemporalChannel

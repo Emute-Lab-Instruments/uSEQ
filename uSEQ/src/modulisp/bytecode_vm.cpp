@@ -5,6 +5,10 @@
 #include <functional>
 #include <set>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace
 {
 bool is_output_assignment_symbol(const String& symbol)
@@ -260,6 +264,14 @@ private:
         {
             return compile_let(items, transform);
         }
+        if (op == "while")
+        {
+            return compile_while(items, transform);
+        }
+        if (op == "for")
+        {
+            return compile_for(items, transform);
+        }
 
         if (op == "+")
         {
@@ -358,6 +370,49 @@ private:
         {
             return compile_unary(items, NumericVmOpcode::TAN, transform);
         }
+        if (op == "usin" || op == "u-sin")
+        {
+            return compile_unary(items, NumericVmOpcode::U_SIN, transform);
+        }
+        if (op == "ucos" || op == "u-cos")
+        {
+            return compile_unary(items, NumericVmOpcode::U_COS, transform);
+        }
+        if (op == "usinbi" || op == "u-sin-bi")
+        {
+            return compile_unary(items, NumericVmOpcode::U_SIN_BI, transform);
+        }
+        if (op == "ucosbi" || op == "u-cos-bi")
+        {
+            return compile_unary(items, NumericVmOpcode::U_COS_BI, transform);
+        }
+        if (op == "tri")
+        {
+            return compile_unary(items, NumericVmOpcode::TRI, transform);
+        }
+        if (op == "sqr")
+        {
+            return compile_unary(items, NumericVmOpcode::SQR, transform);
+        }
+        if (op == "pulse")
+        {
+            return compile_binary(items, NumericVmOpcode::PULSE, transform);
+        }
+        if (op == "input")
+        {
+            if (items.size() != 2 || !items[1].is_number())
+            {
+                fail("Numeric VM input requires a compile-time constant integer slot index");
+                return -1;
+            }
+            const int reg = allocate_register();
+            NumericVmInstruction insn;
+            insn.opcode = NumericVmOpcode::LOAD_INPUT;
+            insn.rd = static_cast<uint16_t>(reg);
+            insn.imm = static_cast<int32_t>(items[1].as_int());
+            m_program.instructions.push_back(insn);
+            return reg;
+        }
         if (op == "from-list")
         {
             return compile_vector_builtin(items, transform, false);
@@ -377,6 +432,50 @@ private:
         if (op == "euclid" || op == "eu")
         {
             return compile_euclid(items, transform);
+        }
+        if (op == "nil?")
+        {
+            return compile_unary(items, NumericVmOpcode::IS_NIL, transform);
+        }
+        if (op == "number?")
+        {
+            return compile_unary(items, NumericVmOpcode::IS_NUMBER, transform);
+        }
+        if (op == "list?")
+        {
+            return compile_unary(items, NumericVmOpcode::IS_LIST, transform);
+        }
+        if (op == "string?")
+        {
+            return compile_unary(items, NumericVmOpcode::IS_STRING, transform);
+        }
+        if (op == "not")
+        {
+            return compile_unary(items, NumericVmOpcode::NOT, transform);
+        }
+        if (op == "and")
+        {
+            return compile_binary(items, NumericVmOpcode::AND, transform);
+        }
+        if (op == "or")
+        {
+            return compile_binary(items, NumericVmOpcode::OR, transform);
+        }
+        if (op == "head" || op == "car")
+        {
+            return compile_unary(items, NumericVmOpcode::LIST_HEAD, transform);
+        }
+        if (op == "tail" || op == "cdr")
+        {
+            return compile_unary(items, NumericVmOpcode::LIST_TAIL, transform);
+        }
+        if (op == "length")
+        {
+            return compile_unary(items, NumericVmOpcode::LIST_LENGTH, transform);
+        }
+        if (op == "list")
+        {
+            return compile_list_constructor(items, transform);
         }
 
         int callable_reg = -1;
@@ -629,6 +728,85 @@ private:
         return result;
     }
 
+    // Compile (while condition body...) natively using BRANCH instructions.
+    // If any sub-expression cannot be compiled, falls back to emit_runtime_eval.
+    //
+    // NOTE: Infinite-loop protection is not yet implemented in the VM executor.
+    // Loops that do not terminate will stall the VM. This should be addressed
+    // in a future change by adding an iteration counter to the executor's
+    // branch-back handling.
+    int compile_while(const std::vector<Value>& items,
+                      const AffineTimeTransform& transform)
+    {
+        if (items.size() < 3)
+        {
+            fail("while expects a condition and at least one body form");
+            return -1;
+        }
+
+        const CompilerCheckpoint checkpoint = checkpoint_state();
+        const String prior_error = m_error;
+
+        const int result_reg = allocate_register();
+        {
+            const int nil_reg = emit_const(Value::nil());
+            emit_mov(result_reg, nil_reg);
+        }
+
+        const size_t loop_start = m_program.instructions.size();
+        const int cond_reg = compile_expr(items[1], transform);
+        if (cond_reg < 0)
+        {
+            rollback(checkpoint);
+            m_error = prior_error;
+            return emit_runtime_eval(Value(items), transform);
+        }
+
+        NumericVmInstruction branch_to_exit;
+        branch_to_exit.opcode = NumericVmOpcode::BRANCH_UNLESS;
+        branch_to_exit.rs1 = static_cast<uint16_t>(cond_reg);
+        branch_to_exit.imm = 0;
+        const size_t branch_to_exit_index = m_program.instructions.size();
+        m_program.instructions.push_back(branch_to_exit);
+
+        int body_reg = -1;
+        for (size_t i = 2; i < items.size(); ++i)
+        {
+            body_reg = compile_expr(items[i], transform);
+            if (body_reg < 0)
+            {
+                rollback(checkpoint);
+                m_error = prior_error;
+                return emit_runtime_eval(Value(items), transform);
+            }
+        }
+        emit_mov(result_reg, body_reg);
+
+        {
+            NumericVmInstruction branch_back;
+            branch_back.opcode = NumericVmOpcode::BRANCH;
+            branch_back.imm = static_cast<int32_t>(loop_start) -
+                              static_cast<int32_t>(m_program.instructions.size() + 1);
+            m_program.instructions.push_back(branch_back);
+        }
+
+        patch_branch(branch_to_exit_index, m_program.instructions.size());
+        return result_reg;
+    }
+
+    // Compile (for var list body...) — delegates to tree-walker since
+    // list iteration requires dynamic variable binding beyond the numeric VM.
+    int compile_for(const std::vector<Value>& items,
+                    const AffineTimeTransform& transform)
+    {
+        if (items.size() < 3)
+        {
+            fail("for expects a variable, a list, and at least one body form");
+            return -1;
+        }
+        return emit_runtime_eval(Value(items), transform);
+    }
+
     int compile_vector_builtin(const std::vector<Value>& items,
                                const AffineTimeTransform& transform,
                                bool interpolate)
@@ -767,6 +945,31 @@ private:
         }
         fail("Failed to lower euclid builtin");
         return -1;
+    }
+
+    int compile_list_constructor(const std::vector<Value>& items,
+                                 const AffineTimeTransform& transform)
+    {
+        std::vector<int> element_regs;
+        for (size_t i = 1; i < items.size(); ++i)
+        {
+            const int reg = compile_expr(items[i], transform);
+            if (reg < 0)
+            {
+                return -1;
+            }
+            element_regs.push_back(reg);
+        }
+
+        const int first_reg = allocate_argument_window(element_regs);
+        const int dst = allocate_register();
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::MAKE_LIST;
+        insn.rd = static_cast<uint16_t>(dst);
+        insn.rs1 = static_cast<uint16_t>(first_reg >= 0 ? first_reg : 0);
+        insn.rs2 = static_cast<uint16_t>(element_regs.size());
+        m_program.instructions.push_back(insn);
+        return dst;
     }
 
     int compile_vector_lookup(const Value& source_expr,
@@ -1343,6 +1546,50 @@ private:
         if (op == "tan")
         {
             return unary([](double value) { return std::tan(value); });
+        }
+        if (op == "usin" || op == "u-sin")
+        {
+            return unary([](double x) { return (std::sin(x * 2.0 * M_PI) + 1.0) / 2.0; });
+        }
+        if (op == "ucos" || op == "u-cos")
+        {
+            return unary([](double x) { return (std::cos(x * 2.0 * M_PI) + 1.0) / 2.0; });
+        }
+        if (op == "usinbi" || op == "u-sin-bi")
+        {
+            return unary([](double x) { return std::sin(x * 2.0 * M_PI); });
+        }
+        if (op == "ucosbi" || op == "u-cos-bi")
+        {
+            return unary([](double x) { return std::cos(x * 2.0 * M_PI); });
+        }
+        if (op == "tri")
+        {
+            return unary([](double x) { return 1.0 - std::fabs(2.0 * x - 1.0); });
+        }
+        if (op == "sqr")
+        {
+            return unary([](double x) { return x < 0.5 ? 1.0 : 0.0; });
+        }
+        if (op == "pulse")
+        {
+            if (items.size() != 3)
+            {
+                return std::nullopt;
+            }
+            const std::optional<double> phasor =
+                try_resolve_numeric_constant(items[1]);
+            const std::optional<double> width =
+                try_resolve_numeric_constant(items[2]);
+            if (phasor && width)
+            {
+                return *phasor < *width ? 1.0 : 0.0;
+            }
+            return std::nullopt;
+        }
+        if (op == "input")
+        {
+            return 0.0;
         }
         if (op == "floor")
         {
@@ -2111,6 +2358,18 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             ++pc;
             break;
         }
+        case NumericVmOpcode::LOAD_INPUT:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination"))
+            {
+                return result;
+            }
+            // Stub: no physical inputs in standalone/WASM mode
+            registers[insn.rd] = Value(0.0);
+            ++pc;
+            break;
+        }
         case NumericVmOpcode::MOV:
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -2193,6 +2452,12 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
         case NumericVmOpcode::SIN:
         case NumericVmOpcode::COS:
         case NumericVmOpcode::TAN:
+        case NumericVmOpcode::U_SIN:
+        case NumericVmOpcode::U_COS:
+        case NumericVmOpcode::U_SIN_BI:
+        case NumericVmOpcode::U_COS_BI:
+        case NumericVmOpcode::TRI:
+        case NumericVmOpcode::SQR:
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -2240,6 +2505,24 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             case NumericVmOpcode::TAN:
                 out = std::tan(left);
                 break;
+            case NumericVmOpcode::U_SIN:
+                out = (std::sin(left * 2.0 * M_PI) + 1.0) / 2.0;
+                break;
+            case NumericVmOpcode::U_COS:
+                out = (std::cos(left * 2.0 * M_PI) + 1.0) / 2.0;
+                break;
+            case NumericVmOpcode::U_SIN_BI:
+                out = std::sin(left * 2.0 * M_PI);
+                break;
+            case NumericVmOpcode::U_COS_BI:
+                out = std::cos(left * 2.0 * M_PI);
+                break;
+            case NumericVmOpcode::TRI:
+                out = 1.0 - std::fabs(2.0 * left - 1.0);
+                break;
+            case NumericVmOpcode::SQR:
+                out = left < 0.5 ? 1.0 : 0.0;
+                break;
             default:
                 break;
             }
@@ -2260,6 +2543,7 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
         case NumericVmOpcode::MIN:
         case NumericVmOpcode::MAX:
         case NumericVmOpcode::POW:
+        case NumericVmOpcode::PULSE:
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination") ||
@@ -2332,6 +2616,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 break;
             case NumericVmOpcode::POW:
                 out = std::pow(left, right);
+                break;
+            case NumericVmOpcode::PULSE:
+                out = left < right ? 1.0 : 0.0;
                 break;
             default:
                 break;
@@ -2458,6 +2745,190 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 }
                 registers[insn.rd] =
                     program.intrinsics[static_cast<size_t>(insn.imm)](args, ctx);
+            }
+            ++pc;
+            break;
+        }
+        case NumericVmOpcode::IS_NIL:
+        case NumericVmOpcode::IS_NUMBER:
+        case NumericVmOpcode::IS_LIST:
+        case NumericVmOpcode::IS_STRING:
+        case NumericVmOpcode::NOT:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
+
+            const Value& src = registers[insn.rs1];
+            double out = 0.0;
+            switch (insn.opcode)
+            {
+            case NumericVmOpcode::IS_NIL:
+                out = src.is_nil() ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::IS_NUMBER:
+                out = src.is_number() ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::IS_LIST:
+                out = src.is_list() ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::IS_STRING:
+                out = (src.type == Value::STRING) ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::NOT:
+                out = is_truthy(src) ? 0.0 : 1.0;
+                break;
+            default:
+                break;
+            }
+            registers[insn.rd] = Value(out);
+            ++pc;
+            break;
+        }
+        case NumericVmOpcode::AND:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source") ||
+                !validate_register_index(insn.rs2, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
+
+            registers[insn.rd] = is_truthy(registers[insn.rs1])
+                                     ? registers[insn.rs2]
+                                     : registers[insn.rs1];
+            ++pc;
+            break;
+        }
+        case NumericVmOpcode::OR:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source") ||
+                !validate_register_index(insn.rs2, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
+
+            registers[insn.rd] = is_truthy(registers[insn.rs1])
+                                     ? registers[insn.rs1]
+                                     : registers[insn.rs2];
+            ++pc;
+            break;
+        }
+        case NumericVmOpcode::MAKE_LIST:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination"))
+            {
+                return result;
+            }
+
+            const size_t start = static_cast<size_t>(insn.rs1);
+            const size_t count = static_cast<size_t>(insn.rs2);
+            if (count > 0 && start + count > registers.size())
+            {
+                result.error = "Numeric VM MAKE_LIST arguments out of range";
+                return result;
+            }
+
+            std::vector<Value> elements;
+            elements.reserve(count);
+            for (size_t i = 0; i < count; ++i)
+            {
+                elements.push_back(registers[start + i]);
+            }
+            registers[insn.rd] = Value(elements);
+            ++pc;
+            break;
+        }
+        case NumericVmOpcode::LIST_HEAD:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
+
+            const Value& src = registers[insn.rs1];
+            if (!src.is_list())
+            {
+                result.error = "Numeric VM LIST_HEAD requires a list operand";
+                return result;
+            }
+
+            const std::vector<Value> items = src.as_list();
+            if (items.empty())
+            {
+                registers[insn.rd] = Value::nil();
+            }
+            else
+            {
+                registers[insn.rd] = items[0];
+            }
+            ++pc;
+            break;
+        }
+        case NumericVmOpcode::LIST_TAIL:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
+
+            const Value& src = registers[insn.rs1];
+            if (!src.is_list())
+            {
+                result.error = "Numeric VM LIST_TAIL requires a list operand";
+                return result;
+            }
+
+            const std::vector<Value> items = src.as_list();
+            if (items.size() <= 1)
+            {
+                registers[insn.rd] = Value(std::vector<Value>{});
+            }
+            else
+            {
+                registers[insn.rd] = Value(
+                    std::vector<Value>(items.begin() + 1, items.end()));
+            }
+            ++pc;
+            break;
+        }
+        case NumericVmOpcode::LIST_LENGTH:
+        {
+            if (!validate_register_index(insn.rd, registers.size(), result.error,
+                                         "destination") ||
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "source"))
+            {
+                return result;
+            }
+
+            const Value& src = registers[insn.rs1];
+            if (src.is_list())
+            {
+                registers[insn.rd] =
+                    Value(static_cast<double>(src.as_list().size()));
+            }
+            else
+            {
+                registers[insn.rd] = Value(0.0);
             }
             ++pc;
             break;
