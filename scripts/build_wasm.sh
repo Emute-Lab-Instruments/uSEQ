@@ -68,7 +68,8 @@ FLAGS=(
     "-D__not_in_flash_func(x)="
     "-DWASM_BUILD"
     "-std=c++17"
-    "-O2"
+    "-O3"
+    "-flto"
 )
 
 # Emscripten-specific flags
@@ -79,7 +80,7 @@ EM_FLAGS=(
     "-s MODULARIZE=1"
     "-s EXPORT_NAME='createModule'"
     "-s ENVIRONMENT='web'"
-    "-s SINGLE_FILE=1"
+    "-s SINGLE_FILE=0"
     "--post-js=wasm/emscripten-post.js"
     "--no-entry"
 )
@@ -87,9 +88,22 @@ EM_FLAGS=(
 # Build command - output to wasm directory
 emcc "${SOURCES[@]}" "${FLAGS[@]}" ${EM_FLAGS[@]} -o wasm/useq.js
 
-if [ $? -eq 0 ]; then
-    echo "Build successful! Generated wasm/useq.js"
-else
+if [ $? -ne 0 ]; then
     echo "Build failed!"
     exit 1
 fi
+
+echo "emcc build successful."
+
+# Post-process with wasm-opt if available (Binaryen)
+if command -v wasm-opt &> /dev/null; then
+    echo "Running wasm-opt -O3..."
+    wasm-opt -O3 --all-features wasm/useq.wasm -o wasm/useq.wasm
+    echo "wasm-opt complete."
+else
+    echo "wasm-opt not found — skipping post-processing (install binaryen for smaller/faster WASM)"
+fi
+
+# Report output sizes
+echo "Output:"
+ls -lh wasm/useq.js wasm/useq.wasm 2>/dev/null
