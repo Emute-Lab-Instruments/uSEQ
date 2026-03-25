@@ -40,6 +40,8 @@ test_inc = include_directories('../uSEQ', '../uSEQ/src')
 # Math library dependency
 math_dep = declare_dependency(link_args : ['-lm'])
 
+python3 = find_program('python3')
+
 # ===== ModuLisp Core Tests (LISP interpreter) =====
 test_src = [
   'modulisp/core/test_builtins.cpp'
@@ -88,6 +90,10 @@ output_sync_test_src = [
 
 output_sampling_test_src = [
   'modulisp/api/test_output_sampling.cpp'
+]
+
+bytecode_vm_probe_src = [
+  'modulisp/bytecode_vm/bytecode_vm_probe.cpp'
 ]
 
 # Signal semantics removed (signal metadata deleted)
@@ -314,6 +320,27 @@ output_sampling_exe = executable(
 )
 
 test('output_sampling_test', output_sampling_exe)
+
+bytecode_vm_probe_exe = executable(
+  'bytecode_vm_probe',
+  sources : bytecode_vm_probe_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
+test('bytecode_vm_probe_smoke', bytecode_vm_probe_exe)
+
+test(
+  'bytecode_vm_golden_fixture',
+  python3,
+  args : [
+    files('../scripts/run_bytecode_vm_golden.py'),
+    files('modulisp/bytecode_vm/golden/basic_semantics.yaml')
+  ],
+  depends : bytecode_vm_probe_exe
+)
 
 # Signal semantics test removed (signal metadata deleted)
 

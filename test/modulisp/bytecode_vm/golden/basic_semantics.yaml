@@ -1,0 +1,25 @@
+schema_version: 1
+name: bytecode-vm-harness-smoke
+description: Minimal golden fixture for the bytecode VM harness probe.
+default_bpm: 120
+default_time_sig: [4, 4]
+default_tolerance: 1e-9
+
+tests:
+  - name: constant arithmetic
+    output: a1
+    expr: "(+ 1 2)"
+    samples:
+      - t: 0.0
+        expect: 3.0
+
+  - name: beat phasor at 120 bpm
+    output: a1
+    expr: beat
+    samples:
+      - t: 0.0
+        expect: 0.0
+      - t: 0.25
+        expect: 0.5
+      - t: 0.5
+        expect: 0.0

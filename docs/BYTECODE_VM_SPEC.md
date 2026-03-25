@@ -468,6 +468,11 @@ tests:
     sample_range: {start: 0.0, end: 2.0, points: 100}
 ```
 
+The first harness slice in this repo uses a smaller v0 subset of that schema:
+fixture files live under `test/modulisp/bytecode_vm/golden/`, the C++ probe executable
+samples a named output at explicit time points, and `scripts/run_bytecode_vm_golden.py`
+drives validation and optional benchmarking against the current interpreter backend.
+
 **Schema features:**
 - `t` is the only required temporal input; `beat`, `bar`, `phrase`, etc. are derived from `t` + `bpm` + `time_sig`
 - `tolerance` is per-test configurable, defaults to `1e-9`
