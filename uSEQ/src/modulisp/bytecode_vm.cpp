@@ -278,9 +278,24 @@ public:
         m_program.instructions.push_back(ret);
         m_program.register_count = m_next_register;
 
-        result.ok = true;
+        // ok is false if any diagnostic is an error — even if compilation
+        // "succeeded" via report_and_continue with placeholder values
+        bool has_errors = false;
+        for (const auto& d : m_diagnostics)
+        {
+            if (d.severity == DiagnosticSeverity::Error)
+            {
+                has_errors = true;
+                break;
+            }
+        }
+        result.ok = !has_errors;
         result.program = m_program;
         result.diagnostics = m_diagnostics;
+        if (has_errors && m_error.length() == 0 && !m_diagnostics.empty())
+        {
+            result.error = m_diagnostics[0].message;
+        }
         return result;
     }
 
