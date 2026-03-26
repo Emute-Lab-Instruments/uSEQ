@@ -2,9 +2,8 @@
 #define PARSE_H_
 
 #include "value.h"
-
-// Forward declaration
-class ErrorManager;
+#include "../diagnostic.h"
+#include <vector>
 
 // a -> symbol
 // foo -> symbol
@@ -21,11 +20,11 @@ class ErrorManager;
 class uLispParser
 {
 public:
-    // Constructor that accepts ErrorManager for dependency injection
-    explicit uLispParser(ErrorManager* error_mgr) : m_error_manager(error_mgr) {}
+    // Constructor that accepts a diagnostics vector for dependency injection
+    explicit uLispParser(std::vector<Diagnostic>* diags) : m_diagnostics(diags) {}
 
-    // Default constructor for compatibility (uses nullptr error manager)
-    uLispParser() : m_error_manager(nullptr) {}
+    // Default constructor for compatibility (uses nullptr diagnostics)
+    uLispParser() : m_diagnostics(nullptr) {}
 
     // Instance methods (no longer static)
     const String unescape(const String str) const;
@@ -63,7 +62,7 @@ public:
     static Value parse_static(String s);
 
 private:
-    ErrorManager* m_error_manager;
+    std::vector<Diagnostic>* m_diagnostics;
 };
 
 // Utils

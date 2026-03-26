@@ -120,7 +120,7 @@ void test_zero_intrinsic_expressions()
     assert_zero_intrinsics(interp, "(fast 2 beat)", "time warp fast");
     assert_zero_intrinsics(interp, "(sin beat)", "trig sin");
     assert_zero_intrinsics(interp, "(usin beat)", "UGen usin");
-    assert_zero_intrinsics(interp, "(tri beat)", "UGen tri (unary)");
+    assert_zero_intrinsics(interp, "(tri 0.5 beat)", "tri duty+phase");
     assert_zero_intrinsics(interp, "(not (> beat 0.5))", "logical not");
     assert_zero_intrinsics(interp, "(nil? 0)", "type predicate nil?");
     assert_zero_intrinsics(interp, "(min beat bar)", "binary min");
@@ -138,6 +138,9 @@ void test_expected_intrinsic_expressions()
     // knowing the call form.
     assert_has_intrinsic(interp, "sin",
                          "bare builtin symbol resolves via intrinsic");
+
+    assert_has_intrinsic(interp, "(tri beat)",
+                         "tri wrong arity falls back to builtin arity checks");
 
     // A symbol not in the environment at all should produce CALL_INTRINSIC
     // for late binding.

@@ -3,8 +3,8 @@
 
 #include "../ports/IClock.h"
 #include "../ports/ILogger.h"
+#include "diagnostic.h"
 #include "lisp/environment.h"
-#include "lisp/error_context.h"
 #include "lisp/parser.h"
 #include "lisp/value.h"
 #include "random_generator.h"
@@ -62,7 +62,7 @@ public:
         bool observedGood = false;
     };
 
-    // Constructor — the interpreter is the sole owner of ErrorManager,
+    // Constructor — the interpreter owns the diagnostics vector,
     // Environment, and Parser.  External code accesses them via accessors.
     explicit ModuLispInterpreter(IClock* clk = nullptr, ILogger* log = nullptr,
                                  IRandomGenerator* rng = nullptr,
@@ -249,9 +249,16 @@ public:
     // Factory for tests
     static std::unique_ptr<ModuLispInterpreter> create_fresh_interpreter();
 
-    // Error handling and accessors
-    ErrorManager* get_error_manager() { return &m_error_manager; }
-    const ErrorManager* get_error_manager() const { return &m_error_manager; }
+    // Diagnostics accessors
+    std::vector<Diagnostic>& get_diagnostics() { return m_diagnostics; }
+    const std::vector<Diagnostic>& get_diagnostics() const { return m_diagnostics; }
+    bool has_diagnostics_error() const {
+        for (const auto& d : m_diagnostics) {
+            if (d.severity == DiagnosticSeverity::Error) return true;
+        }
+        return false;
+    }
+    void clear_diagnostics() { m_diagnostics.clear(); }
     Environment* get_environment() { return &m_environment; }
     const Environment* get_environment() const { return &m_environment; }
     uLispParser* get_parser() { return &m_parser; }
@@ -461,7 +468,7 @@ private:
     bool m_builtindefs_init = false;
 
     // Sole-ownership components — no external injection, no fallback pattern.
-    ErrorManager m_error_manager;
+    std::vector<Diagnostic> m_diagnostics;
     Environment m_environment;
     uLispParser m_parser;
 

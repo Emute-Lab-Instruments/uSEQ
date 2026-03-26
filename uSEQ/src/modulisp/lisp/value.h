@@ -6,6 +6,7 @@
 #include "../../utils/string.h"
 #include "symbol_intern.h"
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <set>
@@ -38,6 +39,8 @@ using PluginBuiltinFunc = Value(*)(void* ctx, std::vector<Value>& args, Environm
 #else
 #define VALUE_FAST_MEM // Empty for desktop builds
 #endif
+
+#include "../diagnostic.h"  // SourceSpan
 
 class Value
 {
@@ -224,12 +227,15 @@ public:
 
     String str;
     SymbolIntern::SymbolID symbol_id = SymbolIntern::INVALID_ID;  // For fast ATOM comparison
+    SourceSpan span;  // Source location, placed in padding gap before list
     std::vector<Value> list;
 
     std::shared_ptr<Environment> lambda_scope;
 };
 
 // end of class Value
+
+static_assert(sizeof(SourceSpan) == 4, "SourceSpan must be 4 bytes");
 
 // Global time constant accessible outside class namespace
 extern const Value& t;

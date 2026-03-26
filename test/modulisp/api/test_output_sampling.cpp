@@ -9,7 +9,7 @@
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
 
-#include "../../../uSEQ/src/modulisp/lisp/error_context.h"
+#include "../../../uSEQ/src/modulisp/diagnostic.h"
 #include "../../../uSEQ/src/modulisp/modulisp_interpreter.h"
 
 TEST_CASE("Output time-window sampling", "[outputs][sampling]")

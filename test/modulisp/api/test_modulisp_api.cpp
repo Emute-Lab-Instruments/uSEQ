@@ -3,7 +3,7 @@
 #include "catch.hpp"
 
 #include "../uSEQ/src/modulisp/lisp/environment.h"
-#include "../uSEQ/src/modulisp/lisp/error_context.h"
+#include "../uSEQ/src/modulisp/diagnostic.h"
 #include "../uSEQ/src/modulisp/lisp/value.h"
 #include "../uSEQ/src/modulisp/modulisp_interpreter.h"
 #include "../uSEQ/src/ports/mocks/MockClock.h"

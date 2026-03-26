@@ -651,6 +651,11 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
         }
     }
 
+    // TEMPORARY: force VM-only mode — disable tree-walker fallback
+    // to verify all expressions are handled by the bytecode VM.
+    // Revert this block to restore fallback behavior.
+    permit_tree_fallback = false;
+
     if (!permit_tree_fallback)
     {
         slot->lastValue = defaultValue;

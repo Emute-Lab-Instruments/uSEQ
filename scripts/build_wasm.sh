@@ -26,7 +26,6 @@ SOURCES=(
     "uSEQ/src/modulisp/lisp/parser.cpp"
     "uSEQ/src/modulisp/lisp/value.cpp"
     "uSEQ/src/modulisp/lisp/environment.cpp"
-    "uSEQ/src/modulisp/lisp/error_context.cpp"
     "uSEQ/src/modulisp/lisp/builtins.cpp"
     "uSEQ/src/template_instantiations.cpp"
 

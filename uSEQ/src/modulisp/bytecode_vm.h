@@ -54,6 +54,7 @@ enum class NumericVmOpcode
     AND,
     OR,
     MAKE_LIST,
+    MAKE_VECTOR,
     LIST_HEAD,
     LIST_TAIL,
     LIST_LENGTH,

@@ -139,7 +139,6 @@ lisp_core_lib = static_library('useq_lisp_core',
   'uSEQ/src/modulisp/lisp/environment.cpp',
   # interpreter merged into ModuLispInterpreter
   'uSEQ/src/modulisp/lisp/builtins.cpp',
-  'uSEQ/src/modulisp/lisp/error_context.cpp',
   'uSEQ/src/template_instantiations.cpp',
   include_directories : src_inc,
   cpp_args : standalone_args,

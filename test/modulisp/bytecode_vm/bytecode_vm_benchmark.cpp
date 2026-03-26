@@ -232,9 +232,9 @@ int main()
         const BenchCase& bc = cases[ci];
 
         // 1. Eval setup code (binds expression to output a1)
-        interp.get_error_manager()->clear_error();
+        interp.clear_diagnostics();
         interp.eval(String(bc.setup_code));
-        if (interp.get_error_manager()->has_error())
+        if (interp.has_diagnostics_error())
         {
             std::cerr << "  WARNING: " << bc.name
                       << " -- setup eval failed, skipping\n";

@@ -1,4 +1,4 @@
-#include "../../../uSEQ/src/modulisp/lisp/error_context.h"
+#include "../../../uSEQ/src/modulisp/diagnostic.h"
 #include "../../../uSEQ/src/modulisp/modulisp_interpreter.h"
 
 #include <cmath>
@@ -81,19 +81,22 @@ void print_json(bool ok, const std::string& mode, const std::string& output,
 
 std::string error_message(const ModuLispInterpreter& interp)
 {
-    const ErrorManager* manager = interp.get_error_manager();
-    if (!manager || !manager->has_error())
+    const auto& diags = interp.get_diagnostics();
+    if (diags.empty())
     {
         return std::string();
     }
 
-    const ErrorContext* ctx = manager->get_current_error();
-    if (!ctx)
+    // Return the last error-severity diagnostic message
+    for (auto it = diags.rbegin(); it != diags.rend(); ++it)
     {
-        return std::string("unknown interpreter error");
+        if (it->severity == DiagnosticSeverity::Error)
+        {
+            return it->message.c_str();
+        }
     }
 
-    return ctx->primary_message.c_str();
+    return std::string();
 }
 
 Options parse_args(int argc, char* argv[])
@@ -170,9 +173,9 @@ int main(int argc, char* argv[])
         return 2;
     }
 
-    interp.get_error_manager()->clear_error();
+    interp.clear_diagnostics();
     String result = interp.eval(String(code.c_str()));
-    if (interp.get_error_manager()->has_error())
+    if (interp.has_diagnostics_error())
     {
         const std::string message = error_message(interp);
         print_json(false, opts.smoke ? "smoke" : "probe", opts.output,

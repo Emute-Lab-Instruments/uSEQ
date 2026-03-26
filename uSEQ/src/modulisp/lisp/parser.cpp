@@ -1,5 +1,4 @@
 #include "parser.h"
-#include "error_context.h"
 #include "value.h"
 
 const String uLispParser::unescape(const String str) const
@@ -209,10 +208,15 @@ Value uLispParser::parse(String s, int& ptr) const
 
         if (ptr >= int(s.length()))
         {
-            if (m_error_manager)
+            if (m_diagnostics)
             {
-                m_error_manager->report_syntax_error(
-                    "Unmatched closing parenthesis");
+                m_diagnostics->push_back({
+                    DiagnosticSeverity::Error,
+                    DiagnosticCategory::Syntax,
+                    {static_cast<uint16_t>(0), static_cast<uint16_t>(ptr)},
+                    "missing a closing brace",
+                    "add '}' to close the map"
+                });
             }
             return Value::error();
         }
@@ -253,10 +257,15 @@ Value uLispParser::parse(String s, int& ptr) const
         {
             if (ptr + n >= int(s.length()))
             {
-                if (m_error_manager)
+                if (m_diagnostics)
                 {
-                    m_error_manager->report_syntax_error(
-                        "Unexpected end of input, expected closing quote");
+                    m_diagnostics->push_back({
+                        DiagnosticSeverity::Error,
+                        DiagnosticCategory::Syntax,
+                        {static_cast<uint16_t>(ptr), static_cast<uint16_t>(ptr + n)},
+                        "this string was never closed",
+                        "add a closing '\"' to complete the string"
+                    });
                 }
                 return Value::error();
             }
@@ -313,10 +322,15 @@ Value uLispParser::parse(String s, int& ptr) const
     }
     else
     {
-        if (m_error_manager)
+        if (m_diagnostics)
         {
-            m_error_manager->report_syntax_error(
-                "Invalid input - cannot parse token");
+            m_diagnostics->push_back({
+                DiagnosticSeverity::Error,
+                DiagnosticCategory::Syntax,
+                {static_cast<uint16_t>(ptr), static_cast<uint16_t>(ptr + 1)},
+                "unexpected character, cannot parse token",
+                "check for stray characters or typos"
+            });
         }
         return Value::error();
     }
@@ -392,10 +406,15 @@ Value uLispParser::parse(String code) const
     // If the whole string wasn't parsed, the program must be bad.
     if (i < int(code.length()))
     {
-        if (m_error_manager)
+        if (m_diagnostics)
         {
-            m_error_manager->report_syntax_error(
-                "Malformed program - unexpected end of input");
+            m_diagnostics->push_back({
+                DiagnosticSeverity::Error,
+                DiagnosticCategory::Syntax,
+                {static_cast<uint16_t>(i), static_cast<uint16_t>(code.length())},
+                "could not parse the entire program",
+                "check for unmatched parentheses or brackets"
+            });
         }
         error = true;
     }

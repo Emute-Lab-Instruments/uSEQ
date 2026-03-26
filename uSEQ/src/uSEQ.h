@@ -25,7 +25,7 @@ USEQ_SUPPRESS_EXTERNAL_WARNINGS_PUSH
 #include "hardware_includes.h"
 #endif
 #include "modulisp/lisp/environment.h"
-#include "modulisp/lisp/error_context.h"
+#include "modulisp/diagnostic.h"
 #include "modulisp/lisp/macros.h"
 #include "modulisp/lisp/parser.h"
 #include "modulisp/lisp/value.h"

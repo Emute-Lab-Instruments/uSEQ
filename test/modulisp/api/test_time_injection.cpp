@@ -1,7 +1,7 @@
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
 
-#include "../uSEQ/src/modulisp/lisp/error_context.h"
+#include "../uSEQ/src/modulisp/diagnostic.h"
 #include "../uSEQ/src/modulisp/modulisp.h"
 #include "../uSEQ/src/ports/mocks/MockClock.h"
 

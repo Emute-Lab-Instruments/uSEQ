@@ -451,7 +451,7 @@ Interpolate across a list, using a phasor.  This function acts as if the list of
 describes a triangle shape, and returns the value that it 75% along the triangle (0.25).
 
 ```
-(a1 (interp '(1 0.5 0 0.6 1) bar))
+(a1 (interp [1 0.5 0 0.6 1] bar))
 ```
 
 makes a roughly inverted triangle, and plays it once per bar on PWM output 1

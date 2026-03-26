@@ -8,7 +8,7 @@
 
 The ModuLisp interpreter currently uses a tree-walking evaluator. For every sample point, `eval_output_internal()` traverses the full AST — at 100 samples x N active channels, this means 300+ complete tree-walks per frame. Each walk allocates temporary `Value` objects, creates environment frames, and performs string-keyed lookups.
 
-A bytecode VM compiles expressions once and executes a flat instruction loop per sample. The expected speedup is 10-50x for tight arithmetic, driven by:
+A bytecode VM compiles expressions once and executes a flat instruction loop per sample. The long-term motivation is an unboxed fast path for tight arithmetic. The current tagged-register implementation is materially faster than the tree-walker on benchmark coverage, but still much closer to low-single-digit speedups than to the original 10-50x aspiration.
 
 - No AST node allocation per sample
 - No environment frame creation per sample
@@ -66,29 +66,30 @@ Side-effectful forms inside signal expressions are a **compile-time error**. The
 
 ### 2.6 Data Types
 
-The bytecode VM replaces the tree-walking interpreter entirely, so it must support a minimal tagged-value subset of the language rather than only scalar doubles. V1 supports at least:
+The current bytecode VM includes a tagged-value execution path for the subset already represented by `Value`, rather than only scalar doubles. Today that means:
 
-- `number` (double)
+- `number` (double/int)
 - `string`
 - `symbol`
-- `keyword`
-- `bool`
-- `nil`
+- `list`
 - `vector`
+- `nil`
 - `lambda` / closure
 
 Signal hot paths remain numerically optimized. The compiler specializes arithmetic-heavy signal graphs into numeric fast paths whenever it can prove that an expression stays in the numeric/vector subset required for sampling. General REPL evaluation and mixed-type expressions use the tagged-value execution path.
 
 Quoted lists (`'(...)`) remain part of the general language for metaprogramming, scheduling, and code-as-data. Signal-oriented data is still expected to use vectors (`[...]`) by default, following the Clojure convention: parens for code, brackets for data.
 
+Dedicated `keyword` and `bool` runtime tags are not implemented yet. Current truthiness follows the existing language/runtime conventions rather than round-tripping through a separate boolean value type.
+
 ### 2.7 Loops and Comprehensions
 
-The current language already contains looping and comprehension-like constructs, and the VM must be able to represent the supported subset rather than wish them away.
+The current language already contains looping and comprehension-like constructs, and the VM must at minimum describe which subset is native versus interpreter-bridged.
 
-- `for` remains part of the general language. If we keep the current imperative semantics, the general VM must support them. If we later change `for` to comprehension-only semantics, that will be an explicit language change with dedicated migration and tests.
-- `while` remains part of the general language and therefore part of the full-replacement VM scope, even though it is outside the numeric signal fast path.
+- `while` has a native bytecode lowering for the subset the compiler can express, and the executor now applies a backward-branch budget so compiled infinite loops fail instead of stalling forever.
+- `for` remains part of the language but is still handled through the interpreter bridge rather than native VM lowering.
 
-The arithmetic/vector fast path does not need to optimize loops in V1, but the general VM must still execute them correctly.
+The arithmetic/vector fast path does not optimize loops in V1. General loop completeness is still a follow-up item, not a solved property of the current implementation.
 
 ### 2.8 Dynamic `eval` in Signal Context
 
@@ -100,7 +101,7 @@ The arithmetic/vector fast path does not need to optimize loops in V1, but the g
 
 The current tree-walker maintains two parallel lookup maps (`m_defs` for static bindings, `m_def_exprs` for expression bindings) with an `attempt_expr_eval_first` flag that flips lookup order during output sampling. This complexity exists because the tree-walker doesn't distinguish between imperative and signal contexts.
 
-The bytecode VM eliminates this distinction. The compiler resolves all names at compile time by inlining bindings into the signal graph. There is no runtime symbol lookup during sampling (except for the rare `LOAD_VAR` escape hatch). The dual-map architecture is replaced by the compile-time symbol resolution + dependency invalidation system (section 6.2).
+The current bytecode VM reduces this distinction for many signal expressions, but does not eliminate it entirely. The compiler resolves many names at compile time by inlining bindings into the signal graph, while late-bound symbols and unsupported forms still bridge through runtime intrinsic callbacks that delegate to the interpreter. Dependency invalidation still matters, but the implementation is currently hybrid rather than a full replacement.
 
 ## 3. VM Architecture
 
@@ -202,9 +203,10 @@ LOAD_TIME   rd, channel, scale, offset
                             ; rd = temporal_var(time * scale + offset)
                             ; channel: T, BEAT, BAR, PHRASE, SECTION, BEAT_NUM, BAR_NUM
 LOAD_INPUT  rd, #input_id  ; load external input (knob, MIDI CC)
-LOAD_VAR    rd, #sym_id    ; late-bound variable lookup (rare, for non-inlinable refs)
 MOV         rd, rs          ; rd = rs
 ```
+
+`LOAD_VAR` remains a plausible future opcode, but it is not implemented in the current VM. Late-bound lookup currently uses an intrinsic bridge back into interpreter evaluation.
 
 ### 4.3 Vector Operations
 
@@ -285,7 +287,7 @@ The compiler walks the AST and resolves symbols to their current bindings:
 - **Builtin functions**: inlined as dedicated instructions or intrinsic calls
 - **User-defined functions** (`defn`, `lambda`): body is inlined at the call site with parameter substitution
 - **User-defined variables** (`define`): binding expression is inlined (transitively)
-- **Unresolvable symbols**: emit `LOAD_VAR` for late-bound runtime lookup (rare)
+- **Unresolvable symbols**: currently emit an intrinsic bridge for late-bound runtime lookup
 
 A **dependency set** is recorded: the set of all user-defined symbols that were inlined. This set drives invalidation (section 6.2).
 
@@ -408,7 +410,7 @@ For REPL expressions, compiled bytecode may be ephemeral. For output assignments
 
 **Top-level `do` handling**: `(do form1 form2 ... formN)` at the top level is still desugared into sequential top-level evaluation of each child form.
 
-**Return values**: `useq_eval()` still returns a string representation at the API boundary, but that representation may come from any supported tagged value type, not only numbers. Strings, symbols, keywords, vectors, booleans, and `nil` must all round-trip through the general VM correctly.
+**Return values**: `useq_eval()` still returns a string representation at the API boundary, but that representation may come from any supported tagged value type, not only numbers. Strings, symbols, lists, vectors, lambdas/closures, and `nil` should round-trip through the general VM correctly.
 
 This design preserves one execution engine with two optimization tiers: a general tagged-value VM for language completeness and a specialized numeric fast path for arithmetic/vector-heavy signal evaluation.
 
@@ -716,7 +718,7 @@ Move WASM evaluation to a Web Worker with SharedArrayBuffer for batch results. T
 
 ### Phase 2: Compiler frontend
 - AST → bytecode compiler for simple expressions (arithmetic, temporals)
-- Establish the tagged-value execution path for strings, symbols, keywords, booleans, nil, vectors, and closures
+- Establish the tagged-value execution path for strings, symbols, lists, vectors, nil, and closures
 - Register allocation (linear scan)
 - Constant folding pass
 - Integration with `eval_in()` — compile then execute instead of tree-walk

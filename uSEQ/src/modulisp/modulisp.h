@@ -232,7 +232,7 @@ public:
     ModuLispInterpreter* get_interpreter() { return &m_interpreter; }
 
 private:
-    // The interpreter is the sole owner of ErrorManager, Environment, and Parser.
+    // The interpreter owns the diagnostics vector, Environment, and Parser.
     ModuLispInterpreter m_interpreter;
 
     Context current_context;
@@ -242,9 +242,9 @@ private:
     Response analyze_error(const Value& result, const std::string& code);
     void detect_suggestions(Response& response, const std::string& code);
 
-    // New centralized error handling
-    Response create_response_from_error_context(const ErrorContext& error_ctx,
-                                                const Value& result);
+    // Centralized error handling from Diagnostic
+    Response create_response_from_diagnostic(const Diagnostic& diag,
+                                             const Value& result);
 };
 
 #endif // MODULISP_H_

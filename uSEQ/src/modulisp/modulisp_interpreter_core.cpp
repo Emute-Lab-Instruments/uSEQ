@@ -88,9 +88,9 @@ ModuLispInterpreter::ModuLispInterpreter(IClock* clk, ILogger* log,
       m_num_analog_outs(num_analog_outs),
       m_num_digital_outs(num_digital_outs),
       m_num_serial_outs(num_serial_outs),
-      m_error_manager(),
+      m_diagnostics(),
       m_environment(),
-      m_parser(&m_error_manager)
+      m_parser(&m_diagnostics)
 {
     // Managers
     m_time_manager = std::make_unique<TimeManager>(clk);

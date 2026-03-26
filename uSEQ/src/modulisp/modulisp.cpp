@@ -7,7 +7,7 @@
 ModuLisp::ModuLisp()
     : m_interpreter(), current_context(Context::GENERAL)
 {
-    // Initialize the interpreter (sole owner of ErrorManager, Environment, Parser)
+    // Initialize the interpreter (owns diagnostics, Environment, Parser)
     m_interpreter.init();
     m_interpreter.init_builtinfuncs();
 }
@@ -18,8 +18,8 @@ ModuLisp::~ModuLisp() = default;
 // Main API: send LISP code and get response
 ModuLisp::Response ModuLisp::send(const std::string& code)
 {
-    // Clear any previous errors
-    m_interpreter.get_error_manager()->clear_error();
+    // Clear any previous diagnostics
+    m_interpreter.clear_diagnostics();
 
     // Convert std::string to Arduino String
     String arduino_code(code.c_str());
@@ -30,17 +30,17 @@ ModuLisp::Response ModuLisp::send(const std::string& code)
     // Create response
     Response response(result);
 
-    // If it's an error, get detailed information from error manager
+    // If it's an error, get detailed information from diagnostics
     if (result.get_type_enum() == 14)
     { // ERROR type
-        const ErrorContext* error_ctx = m_interpreter.get_error_manager()->get_current_error();
-        if (error_ctx)
+        const auto& diagnostics = m_interpreter.get_diagnostics();
+        if (!diagnostics.empty())
         {
-            response = create_response_from_error_context(*error_ctx, result);
+            response = create_response_from_diagnostic(diagnostics.back(), result);
         }
         else
         {
-            // Fallback to old method if no error context available
+            // Fallback to old method if no diagnostic available
             response = analyze_error(result, code);
         }
     }
@@ -291,45 +291,35 @@ std::string ModuLisp::Response::to_log_format() const
     return log.str();
 }
 
-// Create response from centralized error context
+// Create response from a Diagnostic
 ModuLisp::Response
-ModuLisp::create_response_from_error_context(const ErrorContext& error_ctx,
-                                             const Value& result)
+ModuLisp::create_response_from_diagnostic(const Diagnostic& diag,
+                                          const Value& result)
 {
     Response response(result);
 
-    // Map ErrorCategory to ModuLisp::ErrorType
+    // Map DiagnosticCategory to ModuLisp::ErrorType
     ModuLisp::ErrorType error_type = ErrorType::GENERIC_ERROR;
-    switch (error_ctx.category)
+    switch (diag.category)
     {
-    case ErrorCategory::SYNTAX_ERROR:
+    case DiagnosticCategory::Syntax:
         error_type = ErrorType::SYNTAX_ERROR;
         break;
-    case ErrorCategory::UNDEFINED_SYMBOL:
+    case DiagnosticCategory::UndefinedName:
         error_type = ErrorType::UNDEFINED_VARIABLE;
         break;
-    case ErrorCategory::UNDEFINED_FUNCTION:
-        error_type = ErrorType::UNDEFINED_FUNCTION;
-        break;
-    case ErrorCategory::ARITY_ERROR:
+    case DiagnosticCategory::Arity:
         error_type = ErrorType::ARITY_ERROR;
         break;
-    case ErrorCategory::TYPE_ERROR:
+    case DiagnosticCategory::Type:
         error_type = ErrorType::TYPE_ERROR;
         break;
-    case ErrorCategory::ARITHMETIC_ERROR:
+    case DiagnosticCategory::Arithmetic:
         error_type = ErrorType::ARITHMETIC_ERROR;
         break;
-    case ErrorCategory::INDEX_ERROR:
-        error_type = ErrorType::INDEX_ERROR;
-        break;
-    case ErrorCategory::RECURSION_ERROR:
-        error_type = ErrorType::RECURSION_ERROR;
-        break;
-    case ErrorCategory::TIMEOUT_ERROR:
-        error_type = ErrorType::TIMEOUT_ERROR;
-        break;
-    case ErrorCategory::GENERIC_ERROR:
+    case DiagnosticCategory::Runtime:
+    case DiagnosticCategory::Boundary:
+    case DiagnosticCategory::Overflow:
     default:
         error_type = ErrorType::GENERIC_ERROR;
         break;
@@ -337,42 +327,18 @@ ModuLisp::create_response_from_error_context(const ErrorContext& error_ctx,
 
     // Set error information
     response.set_error_type(error_type);
-    response.set_error_message(std::string(error_ctx.primary_message.c_str()));
-
-    // Set location information
-    if (error_ctx.line > 0 || error_ctx.column > 0)
-    {
-        response.set_location(error_ctx.line, error_ctx.column);
-    }
+    response.set_error_message(std::string(diag.message.c_str()));
 
     // Set suggestion
-    if (error_ctx.suggestion.length() != 0)
+    if (diag.suggestion.length() != 0)
     {
-        response.set_suggestion(std::string(error_ctx.suggestion.c_str()));
+        response.set_suggestion(std::string(diag.suggestion.c_str()));
     }
 
-    // Add "did you mean" suggestions
-    for (const String& suggestion : error_ctx.did_you_mean)
+    // Set example
+    if (diag.example.length() != 0)
     {
-        response.add_did_you_mean(std::string(suggestion.c_str()));
-    }
-
-    // Add examples
-    for (const String& example : error_ctx.examples)
-    {
-        response.add_example(std::string(example.c_str()));
-    }
-
-    // Set code snippet
-    if (error_ctx.code_snippet.length() != 0)
-    {
-        response.set_context_snippet(std::string(error_ctx.code_snippet.c_str()));
-    }
-
-    // Add stack frames
-    for (const String& frame : error_ctx.stack_frames)
-    {
-        response.add_stack_frame(std::string(frame.c_str()));
+        response.add_example(std::string(diag.example.c_str()));
     }
 
     return response;
