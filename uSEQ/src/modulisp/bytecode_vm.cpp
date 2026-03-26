@@ -1261,6 +1261,25 @@ private:
         return phasor_reg;
     }
 
+    // Check if a Value is a non-numeric constant that will fail in arithmetic
+    void warn_if_non_numeric(const Value& arg, const String& op_name)
+    {
+        if (arg.is_string())
+        {
+            report(DiagnosticSeverity::Error, DiagnosticCategory::Type,
+                   arg.span,
+                   "can't do maths with text — " + op_name + " needs numbers",
+                   "Remove the quotes if you meant a number");
+        }
+        else if (arg.is_list() && !arg.list.empty() && !arg.list[0].is_symbol())
+        {
+            report(DiagnosticSeverity::Error, DiagnosticCategory::Type,
+                   arg.span,
+                   op_name + " needs numbers, not a list",
+                   "Use a number or an expression that produces a number");
+        }
+    }
+
     int compile_fold(const std::vector<Value>& items,
                      size_t arg_start,
                      NumericVmOpcode opcode,
@@ -1283,6 +1302,12 @@ private:
             return report_and_continue(DiagnosticCategory::Arity,
                    items[0].span, items[0].as_atom() + " needs at least 2 values",
                    "Try: (" + items[0].as_atom() + " 1 2)");
+        }
+
+        // Type-check arguments at compile time
+        for (size_t i = arg_start; i < items.size(); ++i)
+        {
+            warn_if_non_numeric(items[i], items[0].as_atom());
         }
 
         int acc = compile_expr(items[arg_start], transform);
@@ -1313,6 +1338,10 @@ private:
                    items[0].span, items[0].as_atom() + " needs exactly 2 values",
                    "Try: (" + items[0].as_atom() + " 1 2)");
         }
+
+        // Type-check arguments at compile time
+        warn_if_non_numeric(items[1], items[0].as_atom());
+        warn_if_non_numeric(items[2], items[0].as_atom());
 
         const int lhs = compile_expr(items[1], transform);
         const int rhs = compile_expr(items[2], transform);

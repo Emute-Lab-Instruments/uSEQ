@@ -187,6 +187,13 @@ Value ModuLispInterpreter::eval_form_with_vm_at_time(const Value& expr,
     }
 
     const NumericVmCompileResult compiled = compile_numeric_program(expr, env);
+
+    // Propagate compile diagnostics to interpreter state
+    for (const auto& d : compiled.diagnostics)
+    {
+        m_diagnostics.push_back(d);
+    }
+
     if (!compiled.ok)
     {
         return Value::error();
@@ -196,6 +203,11 @@ Value ModuLispInterpreter::eval_form_with_vm_at_time(const Value& expr,
         execute_tagged_program(compiled.program, make_temporal_context(time_seconds));
     if (!executed.ok)
     {
+        // Create a runtime diagnostic from the execution error
+        m_diagnostics.push_back({DiagnosticSeverity::Error,
+                                 executed.error_category,
+                                 expr.span,
+                                 executed.error});
         return Value::error();
     }
 
@@ -209,11 +221,7 @@ Value ModuLispInterpreter::eval_form_with_vm_at_time(const Value& expr,
 
 Value ModuLispInterpreter::eval_form_with_vm(Value expr)
 {
-    if (requires_tree_walk_eval(expr))
-    {
-        return eval_in(expr, m_environment);
-    }
-
+    // Top-level do: evaluate each child form sequentially
     if (expr.type == Value::LIST && !expr.list.empty() && expr.list[0].is_symbol() &&
         expr.list[0].as_atom() == "do")
     {
@@ -225,15 +233,25 @@ Value ModuLispInterpreter::eval_form_with_vm(Value expr)
         return result;
     }
 
-    bool used_vm = false;
+    // Imperative forms that mutate interpreter state must go through the
+    // tree-walker because the VM can't perform side-effects (define, set-bpm, etc.)
+    if (requires_tree_walk_eval(expr))
+    {
+        return eval_in(expr, m_environment);
+    }
+
+    // Everything else: try the VM first
     const double time_seconds =
         m_time_manager ? m_time_manager->get_transport_time() / 1e6 : 0.0;
+    bool used_vm = false;
     Value result = eval_form_with_vm_at_time(expr, m_environment, time_seconds, &used_vm);
     if (used_vm)
     {
         return result;
     }
 
+    // VM couldn't handle it (compilation failed) — diagnostics already captured
+    // in eval_form_with_vm_at_time, fall back to tree-walker for this form
     return eval_in(expr, m_environment);
 }
 

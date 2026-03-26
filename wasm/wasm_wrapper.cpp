@@ -58,6 +58,9 @@ extern "C"
             // Convert C string to String type
             String code(input);
 
+            // Clear diagnostics from previous eval
+            useq_instance->clear_diagnostics();
+
             // Evaluate the expression
             String result_str = useq_instance->eval(code);
 

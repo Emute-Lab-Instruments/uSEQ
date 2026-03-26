@@ -362,13 +362,20 @@ bool ModuLispInterpreter::output_program_is_dirty(const StoredOutput& slot,
 bool ModuLispInterpreter::compile_output_program(const Value& expr,
                                                  Environment& env,
                                                  CompiledOutputProgram& out,
-                                                 String* error) const
+                                                 String* error)
 {
     out = {};
     out.exprSource = expr.to_lisp_src();
 
     const NumericVmCompileResult compiled =
         compile_numeric_program(expr, env, true);
+
+    // Propagate compile diagnostics to interpreter state
+    for (const auto& d : compiled.diagnostics)
+    {
+        m_diagnostics.push_back(d);
+    }
+
     if (!compiled.ok)
     {
         if (error)

@@ -470,7 +470,7 @@ protected:
     String find_dirty_dependency(const CompiledOutputProgram& program,
                                 const Environment& env) const;
     bool compile_output_program(const Value& expr, Environment& env,
-                                CompiledOutputProgram& out, String* error = nullptr) const;
+                                CompiledOutputProgram& out, String* error = nullptr);
     String snapshot_binding_state(const Environment& env, const String& symbol) const;
     std::optional<Value> lookup_value_without_error(const Environment& env,
                                                     const String& symbol) const;
