@@ -11,6 +11,7 @@
  */
 
 #include "../uSEQ/src/modulisp/modulisp_interpreter.h"
+#include "../uSEQ/src/utils/json_builder.h"
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
