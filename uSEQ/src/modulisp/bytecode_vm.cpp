@@ -145,6 +145,7 @@ struct CompilerCheckpoint
     size_t intrinsic_count = 0;
     int next_register = 0;
     size_t cse_cache_size = 0;
+    size_t diagnostic_count = 0;
 };
 
 double wrap_phase(double time_seconds, double duration_seconds);
@@ -181,6 +182,7 @@ public:
         if (out_reg < 0)
         {
             result.error = m_error;
+            result.diagnostics = m_diagnostics;
             return result;
         }
 
@@ -192,6 +194,7 @@ public:
 
         result.ok = true;
         result.program = m_program;
+        result.diagnostics = m_diagnostics;
         return result;
     }
 
@@ -314,7 +317,8 @@ private:
             }
             if (callable_reg < 0 && m_error.length() == 0)
             {
-                fail("Numeric VM only supports builtin and inline-call forms");
+                report(DiagnosticSeverity::Error, DiagnosticCategory::Syntax,
+                       expr.span, "Numeric VM only supports builtin and inline-call forms");
             }
             return -1;
         }
@@ -324,11 +328,13 @@ private:
         {
             if (op == "eval")
             {
-                fail("Signal VM rejects eval in signal context");
+                report(DiagnosticSeverity::Error, DiagnosticCategory::Boundary,
+                       items[0].span, "Signal VM rejects eval in signal context");
             }
             else
             {
-                fail("Signal VM rejects side-effectful form: " + op);
+                report(DiagnosticSeverity::Error, DiagnosticCategory::Boundary,
+                       items[0].span, "Signal VM rejects side-effectful form: " + op);
             }
             return -1;
         }
@@ -489,8 +495,8 @@ private:
         {
             if (items.size() != 2 || !items[1].is_number())
             {
-                fail("Numeric VM input requires a compile-time constant integer slot index");
-                return -1;
+                return report_and_continue(DiagnosticCategory::Type,
+                       items[0].span, "Numeric VM input requires a compile-time constant integer slot index");
             }
             const int reg = allocate_register();
             NumericVmInstruction insn;
@@ -626,7 +632,8 @@ private:
 
         if (is_in_recursion_stack(symbol))
         {
-            fail("Recursive numeric binding is not supported: " + symbol);
+            report(DiagnosticSeverity::Error, DiagnosticCategory::Runtime,
+                   SourceSpan{}, "Recursive numeric binding is not supported: " + symbol);
             return -1;
         }
 
@@ -667,16 +674,16 @@ private:
     {
         if (items.size() != 3)
         {
-            fail(op + " expects exactly 2 arguments");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, op + " expects exactly 2 arguments");
         }
 
         const std::optional<double> factor_or_offset =
             try_resolve_numeric_constant(items[1]);
         if (!factor_or_offset.has_value())
         {
-            fail(op + " requires a compile-time numeric first argument");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Type,
+                   items[0].span, op + " requires a compile-time numeric first argument");
         }
 
         AffineTimeTransform next = transform;
@@ -702,8 +709,8 @@ private:
     {
         if (items.size() < 2)
         {
-            fail("do expects at least one form");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "do expects at least one form");
         }
 
         int result = -1;
@@ -722,8 +729,8 @@ private:
     {
         if (items.size() != 4)
         {
-            fail("if expects exactly 3 arguments");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "if expects exactly 3 arguments");
         }
 
         const std::optional<double> constant_condition =
@@ -781,20 +788,20 @@ private:
     {
         if (items.size() < 3)
         {
-            fail("let expects a bindings vector and at least one body form");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "let expects a bindings vector and at least one body form");
         }
         if (!items[1].is_sequential())
         {
-            fail("let bindings must be a sequential collection");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Type,
+                   items[0].span, "let bindings must be a sequential collection");
         }
 
         const std::vector<Value> bindings = items[1].as_sequential();
         if (bindings.size() % 2 != 0)
         {
-            fail("let bindings must contain symbol/value pairs");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "let bindings must contain symbol/value pairs");
         }
 
         push_local_scope();
@@ -803,8 +810,8 @@ private:
             if (!bindings[i].is_symbol())
             {
                 pop_local_scope();
-                fail("let binding names must be symbols");
-                return -1;
+                return report_and_continue(DiagnosticCategory::Type,
+                       bindings[i].span, "let binding names must be symbols");
             }
 
             const String name = bindings[i].as_atom();
@@ -850,8 +857,8 @@ private:
     {
         if (items.size() < 3)
         {
-            fail("while expects a condition and at least one body form");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "while expects a condition and at least one body form");
         }
 
         const CompilerCheckpoint checkpoint = checkpoint_state();
@@ -911,8 +918,8 @@ private:
     {
         if (items.size() < 3)
         {
-            fail("for expects a variable, a list, and at least one body form");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "for expects a variable, a list, and at least one body form");
         }
         return emit_runtime_eval(Value(items), transform);
     }
@@ -923,9 +930,9 @@ private:
     {
         if (items.size() != 3)
         {
-            fail(String(interpolate ? "interp" : "from-list") +
-                 " expects exactly 2 arguments");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, String(interpolate ? "interp" : "from-list") +
+                   " expects exactly 2 arguments");
         }
 
         return compile_vector_lookup(items[1], items[2], transform, interpolate);
@@ -936,8 +943,8 @@ private:
     {
         if (items.size() != 4)
         {
-            fail("dm expects exactly 3 arguments");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "dm expects exactly 3 arguments");
         }
 
         const int result_reg = allocate_register();
@@ -986,8 +993,8 @@ private:
     {
         if (items.size() < 4 || items.size() > 6)
         {
-            fail("euclid expects 3 to 5 arguments");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "euclid expects 3 to 5 arguments");
         }
 
         const std::optional<double> n_value =
@@ -1053,8 +1060,8 @@ private:
         {
             return result;
         }
-        fail("Failed to lower euclid builtin");
-        return -1;
+        return report_and_continue(DiagnosticCategory::Runtime,
+               items[0].span, "Failed to lower euclid builtin");
     }
 
     int compile_vector_literal(const std::vector<Value>& elements,
@@ -1143,8 +1150,8 @@ private:
     {
         if (items.size() <= arg_start)
         {
-            fail("Not enough arguments for numeric VM fold");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "Not enough arguments for numeric VM fold");
         }
 
         if (items.size() == arg_start + 1)
@@ -1153,8 +1160,8 @@ private:
             {
                 return compile_expr(items[arg_start], transform);
             }
-            fail("Not enough arguments for numeric VM fold");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "Not enough arguments for numeric VM fold");
         }
 
         int acc = compile_expr(items[arg_start], transform);
@@ -1181,8 +1188,8 @@ private:
     {
         if (items.size() != 3)
         {
-            fail("Numeric VM binary builtin expects exactly 2 arguments");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "Numeric VM binary builtin expects exactly 2 arguments");
         }
 
         const int lhs = compile_expr(items[1], transform);
@@ -1199,8 +1206,8 @@ private:
     {
         if (items.size() != 3)
         {
-            fail("tri expects exactly 2 arguments");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "tri expects exactly 2 arguments");
         }
 
         const int duty = compile_expr(items[1], transform);
@@ -1225,8 +1232,8 @@ private:
     {
         if (items.size() != 2)
         {
-            fail("Numeric VM unary builtin expects exactly 1 argument");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "Numeric VM unary builtin expects exactly 1 argument");
         }
 
         const int src = compile_expr(items[1], transform);
@@ -1242,8 +1249,8 @@ private:
     {
         if (items.size() != 4)
         {
-            fail("clamp expects exactly 3 arguments");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "clamp expects exactly 3 arguments");
         }
 
         const int value = compile_expr(items[1], transform);
@@ -1272,8 +1279,8 @@ private:
     {
         if (items.size() != 2)
         {
-            fail("Range conversion expects exactly 1 argument");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "Range conversion expects exactly 1 argument");
         }
 
         const int src = compile_expr(items[1], transform);
@@ -1339,8 +1346,8 @@ private:
             return emit_binary(NumericVmOpcode::ADD, out_min, scaled);
         }
 
-        fail("scale expects 3 or 5 arguments");
-        return -1;
+        return report_and_continue(DiagnosticCategory::Arity,
+               items[0].span, "scale expects 3 or 5 arguments");
     }
 
     // Compile (lerp a b t lo hi) — the ModuLisp lerp takes 5 args.
@@ -1357,8 +1364,8 @@ private:
         // Accept both 3-arg (lerp a b t) and 5-arg forms
         if (items.size() != 4 && items.size() != 6)
         {
-            fail("lerp expects 3 or 5 arguments");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   items[0].span, "lerp expects 3 or 5 arguments");
         }
 
         const int a = compile_expr(items[1], transform);
@@ -1440,11 +1447,13 @@ private:
             {
                 if (*side_effect == "eval")
                 {
-                    fail("Signal VM rejects eval in signal context");
+                    report(DiagnosticSeverity::Error, DiagnosticCategory::Boundary,
+                           expr.span, "Signal VM rejects eval in signal context");
                 }
                 else
                 {
-                    fail("Signal VM rejects side-effectful form: " + *side_effect);
+                    report(DiagnosticSeverity::Error, DiagnosticCategory::Boundary,
+                           expr.span, "Signal VM rejects side-effectful form: " + *side_effect);
                 }
                 return -1;
             }
@@ -2179,7 +2188,8 @@ private:
     {
         if (items.empty())
         {
-            fail("Cannot compile empty call form");
+            report(DiagnosticSeverity::Error, DiagnosticCategory::Syntax,
+                   SourceSpan{}, "Cannot compile empty call form");
             return false;
         }
 
@@ -2323,8 +2333,8 @@ private:
     {
         if (params.size() != arg_exprs.size())
         {
-            fail("Inline lambda call arity mismatch");
-            return -1;
+            return report_and_continue(DiagnosticCategory::Arity,
+                   body.span, "Inline lambda call arity mismatch");
         }
 
         std::vector<int> arg_regs;
@@ -2345,8 +2355,8 @@ private:
             if (!params[i].is_symbol())
             {
                 pop_local_scope();
-                fail("Lambda parameters must be symbols");
-                return -1;
+                return report_and_continue(DiagnosticCategory::Type,
+                       params[i].span, "Lambda parameters must be symbols");
             }
             bind_local_value(params[i].as_atom(), arg_regs[i]);
         }
@@ -2641,12 +2651,27 @@ private:
         return sig;
     }
 
-    void fail(const String& error)
+    void report(DiagnosticSeverity severity, DiagnosticCategory category,
+                SourceSpan span, const String& message,
+                const String& suggestion = "", const String& example = "")
     {
-        if (m_error.length() == 0)
-        {
-            m_error = error;
-        }
+        m_diagnostics.push_back({severity, category, span, message, suggestion, example});
+        if (severity == DiagnosticSeverity::Error && m_error.length() == 0)
+            m_error = message;  // backward compat
+    }
+
+    int report_and_continue(DiagnosticCategory category, SourceSpan span,
+                            const String& message, const String& suggestion = "",
+                            const String& example = "")
+    {
+        report(DiagnosticSeverity::Error, category, span, message, suggestion, example);
+        int reg = allocate_register();
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::LOAD_CONST;
+        insn.rd = static_cast<uint16_t>(reg);
+        insn.imm = static_cast<int32_t>(store_constant(Value(0.0)));
+        m_program.instructions.push_back(insn);
+        return reg;
     }
 
     CompilerCheckpoint checkpoint_state() const
@@ -2660,6 +2685,7 @@ private:
         checkpoint.intrinsic_count = m_program.intrinsics.size();
         checkpoint.next_register = m_next_register;
         checkpoint.cse_cache_size = m_cse_cache.size();
+        checkpoint.diagnostic_count = m_diagnostics.size();
         return checkpoint;
     }
 
@@ -2672,6 +2698,7 @@ private:
         m_program.functions.resize(checkpoint.function_count);
         m_program.intrinsics.resize(checkpoint.intrinsic_count);
         m_next_register = checkpoint.next_register;
+        m_diagnostics.resize(checkpoint.diagnostic_count);
         // CSE entries added since checkpoint may reference rolled-back
         // registers/instructions — clear them conservatively.
         if (m_cse_cache.size() > checkpoint.cse_cache_size)
@@ -2727,6 +2754,7 @@ private:
     NumericVmProgram m_program;
     int m_next_register = 0;
     String m_error;
+    std::vector<Diagnostic> m_diagnostics;
     std::vector<String> m_recursion_stack;
     std::vector<std::map<String, LocalValueBinding>> m_local_value_scopes;
     std::vector<std::map<String, Value>> m_local_callable_scopes;

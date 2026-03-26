@@ -118,6 +118,9 @@ Value uLispParser::parse(String s, int& ptr) const
             return Value();
     }
 
+    // Record span start AFTER whitespace/comment skipping
+    int span_start = ptr;
+
     // Parse the value
     if (s == "")
     {
@@ -132,7 +135,11 @@ Value uLispParser::parse(String s, int& ptr) const
         // println("is quote");
         //  If this is a quote
         ptr++;
-        return Value::quote(parse(s, ptr));
+        Value inner = parse(s, ptr);
+        Value result = Value::quote(inner);
+        // Use the inner expression's span end to avoid including trailing whitespace
+        result.span = {static_cast<uint16_t>(span_start), inner.span.end};
+        return result;
     }
     else if (is_list(s, ptr))
     {
@@ -158,7 +165,10 @@ Value uLispParser::parse(String s, int& ptr) const
             skip_whitespace(s, ptr);
         }
 
-        skip_whitespace(s, ++ptr);
+        ++ptr; // skip closing ')'
+        int span_end = ptr;
+        skip_whitespace(s, ptr);
+        result.span = {static_cast<uint16_t>(span_start), static_cast<uint16_t>(span_end)};
         return result;
     }
     else if (is_vector(s, ptr))
@@ -185,9 +195,12 @@ Value uLispParser::parse(String s, int& ptr) const
             skip_whitespace(s, ptr);
         }
         ptr++;
+        int span_end = ptr;
 
         // skip_whitespace(s, ++ptr);
-        return Value::vector(vec);
+        result = Value::vector(vec);
+        result.span = {static_cast<uint16_t>(span_start), static_cast<uint16_t>(span_end)};
+        return result;
     }
     else if (is_map(s, ptr))
     {
@@ -222,8 +235,11 @@ Value uLispParser::parse(String s, int& ptr) const
         }
 
         ptr++; // Skip closing brace
+        int span_end = ptr;
         skip_whitespace(s, ptr);
-        return Value(list);
+        Value result = Value(list);
+        result.span = {static_cast<uint16_t>(span_start), static_cast<uint16_t>(span_end)};
+        return result;
     }
     else if (isdigit(s[ptr]) || (s[ptr] == '-' && isdigit(s[ptr + 1])) ||
              (s[ptr] == '.' && isdigit(s[ptr + 1])))
@@ -239,13 +255,16 @@ Value uLispParser::parse(String s, int& ptr) const
         while (isdigit(s[ptr]) || s[ptr] == '.')
             ptr++;
         String n = s.substring(save_ptr, ptr);
+        int span_end = ptr;
         skip_whitespace(s, ptr);
 
+        Value result;
         if (n.indexOf('.') != -1)
-            // return Value((negate? -1 : 1) * atof(n.c_str()));
-            return Value((negate ? -1 : 1) * atof(n.c_str()));
+            result = Value((negate ? -1 : 1) * atof(n.c_str()));
         else
-            return Value((negate ? -1 : 1) * atoi(n.c_str()));
+            result = Value((negate ? -1 : 1) * atoi(n.c_str()));
+        result.span = {static_cast<uint16_t>(span_start), static_cast<uint16_t>(span_end)};
+        return result;
     }
     else if (s[ptr] == '\"')
     {
@@ -277,12 +296,15 @@ Value uLispParser::parse(String s, int& ptr) const
 
         String x = s.substring(ptr + 1, ptr + 1 + n - 1);
         ptr += n + 1;
+        int span_end = ptr;
         skip_whitespace(s, ptr);
 
         // Iterate over the characters in the string, and
         // replace escaped characters with their intended values.
         x = unescape(x);
-        return Value::string(x);
+        Value result = Value::string(x);
+        result.span = {static_cast<uint16_t>(span_start), static_cast<uint16_t>(span_end)};
+        return result;
     }
     else if (s[ptr] == '@')
     {
@@ -317,8 +339,11 @@ Value uLispParser::parse(String s, int& ptr) const
         symbol_done:
 
         String x = s.substring(start, ptr);
+        int span_end = ptr;
         skip_whitespace(s, ptr);
-        return Value::atom(x);
+        Value result = Value::atom(x);
+        result.span = {static_cast<uint16_t>(span_start), static_cast<uint16_t>(span_end)};
+        return result;
     }
     else
     {

@@ -350,3 +350,114 @@ TEST_CASE("Diagnostics include suggestions", "[parser][error][suggestions]")
     REQUIRE(err != nullptr);
     REQUIRE(err->suggestion.length() > 0);
 }
+
+TEST_CASE("Parser populates SourceSpan on Value nodes", "[parser][span]")
+{
+    uLispParser parser;
+
+    SECTION("Simple list: (sin beat)")
+    {
+        // Input: "(sin beat)"
+        //         0123456789
+        Value result = parser.parse("(sin beat)");
+
+        REQUIRE(result.is_list());
+        // Outer list spans the whole string
+        REQUIRE(result.span.start == 0);
+        REQUIRE(result.span.end == 10);
+
+        auto elems = result.as_list();
+        REQUIRE(elems.size() == 2);
+
+        // "sin" at positions 1..3
+        REQUIRE(elems[0].is_symbol());
+        REQUIRE(elems[0].span.start == 1);
+        REQUIRE(elems[0].span.end == 4);
+
+        // "beat" at positions 5..8
+        REQUIRE(elems[1].is_symbol());
+        REQUIRE(elems[1].span.start == 5);
+        REQUIRE(elems[1].span.end == 9);
+    }
+
+    SECTION("Number literals")
+    {
+        // Input: "(+ 42 3.14)"
+        //         0123456789AB  (A=10, B=11)
+        Value result = parser.parse("(+ 42 3.14)");
+        REQUIRE(result.is_list());
+
+        auto elems = result.as_list();
+        REQUIRE(elems.size() == 3);
+
+        // "+" at position 1
+        REQUIRE(elems[0].span.start == 1);
+        REQUIRE(elems[0].span.end == 2);
+
+        // "42" at positions 3..4
+        REQUIRE(elems[1].span.start == 3);
+        REQUIRE(elems[1].span.end == 5);
+
+        // "3.14" at positions 6..9
+        REQUIRE(elems[2].span.start == 6);
+        REQUIRE(elems[2].span.end == 10);
+    }
+
+    SECTION("String literal")
+    {
+        // Input: "\"hello\""
+        //         0123456
+        Value result = parser.parse("\"hello\"");
+        REQUIRE(result.is_string());
+        REQUIRE(result.span.start == 0);
+        REQUIRE(result.span.end == 7);
+    }
+
+    SECTION("Quoted form")
+    {
+        // Input: "'foo"
+        //         0123
+        Value result = parser.parse("'foo");
+        REQUIRE(result.span.start == 0);
+        REQUIRE(result.span.end == 4);
+    }
+
+    SECTION("Vector literal")
+    {
+        // Input: "[1 2]"
+        //         01234
+        Value result = parser.parse("[1 2]");
+        REQUIRE(result.is_vector());
+        REQUIRE(result.span.start == 0);
+        REQUIRE(result.span.end == 5);
+    }
+
+    SECTION("Multi-expression implicit do gets zero span")
+    {
+        // When multiple top-level forms are wrapped in implicit do,
+        // the synthesised wrapper should have span {0,0}
+        Value result = parser.parse("1 2");
+        REQUIRE(result.is_list());
+        REQUIRE(result.span.start == 0);
+        REQUIRE(result.span.end == 0);
+    }
+
+    SECTION("Nested list spans")
+    {
+        // Input: "(+ (- 1 2) 3)"
+        //         0123456789012
+        //         length = 13
+        Value result = parser.parse("(+ (- 1 2) 3)");
+        REQUIRE(result.is_list());
+        REQUIRE(result.span.start == 0);
+        REQUIRE(result.span.end == 13);
+
+        auto elems = result.as_list();
+        REQUIRE(elems.size() == 3);
+
+        // Inner list "(- 1 2)" at positions 3..9
+        REQUIRE(elems[1].is_list());
+        REQUIRE(elems[1].span.start == 3);
+        REQUIRE(elems[1].span.end == 10);
+    }
+}

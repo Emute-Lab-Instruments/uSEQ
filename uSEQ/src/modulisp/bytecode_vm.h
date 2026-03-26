@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../utils/string.h"
+#include "diagnostic.h"
 #include "lisp/environment.h"
 #include "lisp/value.h"
 #include "temporal_context.h"
@@ -110,7 +111,8 @@ struct NumericVmCompileResult
 {
     bool ok = false;
     NumericVmProgram program;
-    String error;
+    String error;  // backward compat — first error message
+    std::vector<Diagnostic> diagnostics;
 };
 
 struct NumericVmExecutionResult
