@@ -184,6 +184,42 @@ void ModuLispInterpreter::clear_all_outputs()
     clearOutputs(m_serial_outputs, OutputType::SERIAL, 's');
 }
 
+void ModuLispInterpreter::collect_active_diagnostics(
+    std::vector<std::pair<String, std::vector<Diagnostic>>>& out) const
+{
+    const auto scan = [&out](const std::vector<StoredOutput>& slots, char prefix) {
+        for (size_t i = 0; i < slots.size(); ++i)
+        {
+            const auto& slot = slots[i];
+            if (slot.lastDiagnostic.length() == 0)
+                continue;
+
+            // Build output name, e.g. "a1"
+            String name(prefix);
+            name += String(static_cast<int>(i) + 1);
+
+            // Determine category: compile error vs runtime error
+            DiagnosticCategory cat = DiagnosticCategory::Runtime;
+            if (!slot.numericProgramSucceeded && slot.numericProgramAttempted)
+                cat = DiagnosticCategory::Syntax; // compile failure
+
+            Diagnostic d;
+            d.severity = DiagnosticSeverity::Error;
+            d.category = cat;
+            d.span     = {0, 0};
+            d.message  = slot.lastDiagnostic;
+
+            std::vector<Diagnostic> diags;
+            diags.push_back(d);
+            out.push_back({name, std::move(diags)});
+        }
+    };
+
+    scan(m_analog_outputs, 'a');
+    scan(m_digital_outputs, 'd');
+    scan(m_serial_outputs, 's');
+}
+
 String ModuLispInterpreter::get_transport_state_string() const
 {
     if (m_is_playing)

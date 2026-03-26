@@ -39,3 +39,26 @@ struct Diagnostic {
     String example;      // may be empty
     String triggered_by; // symbol name for dependency-triggered errors, empty otherwise
 };
+
+inline const char* severity_to_cstr(DiagnosticSeverity s) {
+    switch (s) {
+    case DiagnosticSeverity::Hint:    return "hint";
+    case DiagnosticSeverity::Warning: return "warning";
+    case DiagnosticSeverity::Error:   return "error";
+    }
+    return "error";
+}
+
+inline const char* category_to_cstr(DiagnosticCategory c) {
+    switch (c) {
+    case DiagnosticCategory::Syntax:        return "syntax";
+    case DiagnosticCategory::UndefinedName: return "undefinedName";
+    case DiagnosticCategory::Arity:         return "arity";
+    case DiagnosticCategory::Type:          return "type";
+    case DiagnosticCategory::Boundary:      return "boundary";
+    case DiagnosticCategory::Arithmetic:    return "arithmetic";
+    case DiagnosticCategory::Runtime:       return "runtime";
+    case DiagnosticCategory::Overflow:      return "overflow";
+    }
+    return "runtime";
+}

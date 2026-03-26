@@ -95,7 +95,8 @@ String consume_request_text()
 
 void send_json_response(bool success, const String& text,
                         const std::optional<String>& meta,
-                        const String& request_id)
+                        const String& request_id,
+                        const std::optional<String>& diagnostics_json)
 {
     JsonBuilder b;
     b.object_begin()
@@ -111,6 +112,11 @@ void send_json_response(bool success, const String& text,
     else
     {
         b.field_null("meta");
+    }
+
+    if (diagnostics_json && diagnostics_json->length() > 0)
+    {
+        b.field_raw("diagnostics", *diagnostics_json);
     }
 
     b.field("requestId", request_id)

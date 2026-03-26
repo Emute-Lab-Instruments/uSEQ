@@ -401,6 +401,12 @@ public:
         String lastDiagnostic;
     };
 
+    // Collect active diagnostics across all output slots.
+    // Returns pairs of (output_name, diagnostics_vector).
+    // Only includes outputs that have an active diagnostic.
+    void collect_active_diagnostics(
+        std::vector<std::pair<String, std::vector<Diagnostic>>>& out) const;
+
     // Performance monitoring
     int ts          = 0;
     int updateSpeed = 0;

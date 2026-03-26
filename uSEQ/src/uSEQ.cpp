@@ -1021,8 +1021,41 @@ bool uSEQ::handle_json_serial_request(const String& payload)
         m_pending_transport_meta = "";
     }
 
+    // Build diagnostics JSON array if any diagnostics were produced
+    std::optional<String> diag_json = std::nullopt;
+    const auto& diagnostics = m_interpreter.get_diagnostics();
+    if (!diagnostics.empty())
+    {
+        JsonBuilder db;
+        db.array_begin_unkeyed();
+        for (const auto& d : diagnostics)
+        {
+            db.object_begin()
+                .field("severity", severity_to_cstr(d.severity))
+                .field("category", category_to_cstr(d.category))
+                .field("start", static_cast<int>(d.span.start))
+                .field("end", static_cast<int>(d.span.end))
+                .field("message", d.message);
+            if (d.suggestion.length() > 0)
+            {
+                db.field("suggestion", d.suggestion);
+            }
+            if (d.example.length() > 0)
+            {
+                db.field("example", d.example);
+            }
+            if (d.triggered_by.length() > 0)
+            {
+                db.field("triggeredBy", d.triggered_by);
+            }
+            db.object_end();
+        }
+        db.array_end();
+        diag_json = db.build();
+    }
+
     Protocol::send_json_response(success, console_out, meta,
-                                 parsed_request->request_id);
+                                 parsed_request->request_id, diag_json);
     Protocol::finish_request();
     error_msg_q.clear();
 

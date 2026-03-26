@@ -128,6 +128,74 @@ extern "C"
     }
 
     // ---------------------------------------------------------------
+    // Active diagnostics across all output slots
+    // ---------------------------------------------------------------
+
+    // Return a JSON object keyed by output name, containing diagnostic
+    // arrays for each output that has an active issue.
+    // Returns "{}" when no outputs have diagnostics.
+    // Caller must free() the returned pointer.
+    const char* useq_active_diagnostics()
+    {
+        if (!useq_instance)
+        {
+            char* buf = (char*)malloc(3);
+            strcpy(buf, "{}");
+            return buf;
+        }
+
+        std::vector<std::pair<String, std::vector<Diagnostic>>> active;
+        useq_instance->collect_active_diagnostics(active);
+
+        if (active.empty())
+        {
+            char* buf = (char*)malloc(3);
+            strcpy(buf, "{}");
+            return buf;
+        }
+
+        JsonBuilder json;
+        json.object_begin();
+
+        for (const auto& entry : active)
+        {
+            const String& output_name = entry.first;
+            const auto& diagnostics   = entry.second;
+
+            json.array_begin(output_name);
+
+            for (const auto& d : diagnostics)
+            {
+                json.object_begin();
+
+                json.field("severity", severity_to_cstr(d.severity));
+                json.field("category", category_to_cstr(d.category));
+                json.field("start", static_cast<int>(d.span.start));
+                json.field("end", static_cast<int>(d.span.end));
+                json.field("message", d.message);
+
+                if (d.suggestion.length() > 0)
+                    json.field("suggestion", d.suggestion);
+                if (d.example.length() > 0)
+                    json.field("example", d.example);
+                if (d.triggered_by.length() > 0)
+                    json.field("triggered_by", d.triggered_by);
+
+                json.object_end();
+            }
+
+            json.array_end();
+        }
+
+        json.object_end();
+
+        const String& result_str = json.build();
+        char* buf = (char*)malloc(result_str.length() + 1);
+        strcpy(buf, result_str.c_str());
+        return buf;
+    }
+
+    // ---------------------------------------------------------------
     // Batch evaluation helpers
     // ---------------------------------------------------------------
 
