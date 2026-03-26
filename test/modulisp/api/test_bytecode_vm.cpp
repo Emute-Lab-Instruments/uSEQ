@@ -561,7 +561,7 @@ TEST_CASE("Tagged VM aborts infinite while loops after iteration budget",
     const TaggedVmExecutionResult result =
         execute_tagged_program(compile_result.program, ctx);
     REQUIRE_FALSE(result.ok);
-    REQUIRE(result.error.indexOf("iteration budget exceeded") >= 0);
+    REQUIRE(result.error.indexOf("loop ran too long") >= 0);
 }
 
 TEST_CASE("Output sampling handles let expressions through the VM path",

@@ -128,6 +128,48 @@ extern "C"
     }
 
     // ---------------------------------------------------------------
+    // Diagnostics from the most recent useq_eval() call
+    // ---------------------------------------------------------------
+
+    const char* useq_last_diagnostics()
+    {
+        if (!useq_instance)
+        {
+            char* buf = (char*)malloc(3);
+            strcpy(buf, "[]");
+            return buf;
+        }
+
+        const auto& diagnostics = useq_instance->get_diagnostics();
+
+        JsonBuilder json;
+        json.array_begin_unkeyed();
+
+        for (const auto& d : diagnostics)
+        {
+            json.object_begin();
+            json.field("severity", severity_to_cstr(d.severity));
+            json.field("category", category_to_cstr(d.category));
+            json.field("start", static_cast<int>(d.span.start));
+            json.field("end", static_cast<int>(d.span.end));
+            json.field("message", d.message);
+            if (d.suggestion.length() > 0)
+                json.field("suggestion", d.suggestion);
+            if (d.example.length() > 0)
+                json.field("example", d.example);
+            if (d.triggered_by.length() > 0)
+                json.field("triggered_by", d.triggered_by);
+            json.object_end();
+        }
+
+        json.array_end();
+        const String result = json.build();
+        char* buf = (char*)malloc(result.length() + 1);
+        strcpy(buf, result.c_str());
+        return buf;
+    }
+
+    // ---------------------------------------------------------------
     // Active diagnostics across all output slots
     // ---------------------------------------------------------------
 

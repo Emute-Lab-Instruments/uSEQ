@@ -236,6 +236,7 @@ public:
 // end of class Value
 
 static_assert(sizeof(SourceSpan) == 4, "SourceSpan must be 4 bytes");
+static_assert(sizeof(Value) == 88, "Value size must not change — SourceSpan fits in padding gap");
 
 // Global time constant accessible outside class namespace
 extern const Value& t;
