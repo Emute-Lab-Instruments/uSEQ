@@ -204,6 +204,44 @@ python scripts/serve_wasm.py
    - Supports lists, symbols, numbers, strings, lambdas, macros
    - Generated builtins from EDN specifications
 
+## Error Handling and Diagnostics
+
+The bytecode VM compiler produces structured diagnostics that flow through to the browser editor as inline annotations. Full spec: `docs/ERROR_HANDLING_SPEC.md`.
+
+### Key files
+
+- `uSEQ/src/modulisp/diagnostic.h` — `SourceSpan`, `Diagnostic`, `DiagnosticSeverity`, `DiagnosticCategory` types, plus `severity_to_cstr()`/`category_to_cstr()` helpers
+- `uSEQ/src/modulisp/bytecode_vm.cpp` — compiler uses `report()` (fatal) and `report_and_continue()` (non-fatal, emits placeholder and continues). Checkpoint/rollback truncates speculative diagnostics. `warn_if_non_numeric()` catches type errors at compile time. `find_fuzzy_match()` suggests corrections for typos.
+- `uSEQ/src/modulisp/modulisp_interpreter.h` — interpreter owns `std::vector<Diagnostic> m_diagnostics`, accessed via `get_diagnostics()`, `clear_diagnostics()`, `has_diagnostics_error()`
+- `uSEQ/src/modulisp/lisp/parser.cpp` — populates `SourceSpan` on every `Value` node during parsing; reports syntax errors as `Diagnostic` objects
+- `uSEQ/src/modulisp/lisp/value.h` — `Value` has a `SourceSpan span` field (in the padding gap, zero size overhead)
+- `wasm/wasm_wrapper.cpp` — `useq_last_diagnostics()` (JSON array from last eval) and `useq_active_diagnostics()` (per-output health state)
+- `uSEQ/src/uSEQ.cpp` — firmware includes diagnostics in serial JSON eval responses
+
+### Diagnostic flow
+
+```
+User code → Parser (spans) → VM Compiler (diagnostics) → Interpreter (m_diagnostics)
+  → WASM useq_last_diagnostics() → Frontend JSON parse → CodeMirror inline annotations
+```
+
+### Adding a new error
+
+1. In the compiler (`bytecode_vm.cpp`), call `report_and_continue()` for non-fatal or `report()` for fatal:
+   ```cpp
+   return report_and_continue(DiagnosticCategory::Arity,
+          expr.span, "fn needs N values", "Try: (fn arg1 arg2)");
+   ```
+2. Use plain language — no "Numeric VM", no "arity", no jargon
+3. Always include a `suggestion` with working example code
+4. The diagnostic will automatically propagate through the WASM ABI to the editor
+
+### Important constraints
+
+- `ninja -j4` — never compile with full parallelism (bricks the machine)
+- Diagnostics are compile-time only — never allocated on the per-sample hot path
+- `Value::error()` still exists as an internal sentinel; the `is_error()` check at the `CALL_INTRINSIC` boundary converts it to a structured diagnostic
+
 ## Development Workflows
 
 ### Adding New LISP Functions

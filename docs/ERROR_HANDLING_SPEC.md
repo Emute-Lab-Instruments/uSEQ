@@ -2,9 +2,33 @@
 
 ## Status
 
-**Draft** | March 2026 | Companion to `BYTECODE_VM_SPEC.md`
+**Implemented** | March 2026 | Companion to `BYTECODE_VM_SPEC.md`
 
-Supersedes `error_handling_design.md`, which described an aspirational `Response` class that was never implemented. This spec describes the error handling system we are building into the bytecode VM compiler, integrated with the browser-based editor in `useq-perform`.
+This spec describes the error handling system in the bytecode VM compiler, integrated with the browser-based editor in `useq-perform`. All phases are implemented. Supersedes the deleted `error_handling_design.md`.
+
+### Implementation summary
+
+| Component | Status | Key files |
+|---|---|---|
+| SourceSpan on Value | Done | `lisp/value.h` (span field in padding gap) |
+| Diagnostic struct | Done | `diagnostic.h` (severity, category, span, message, suggestion, example, triggered_by) |
+| Parser span tracking | Done | `lisp/parser.cpp` (span_start recorded at every parse site) |
+| ErrorManager replaced | Done | Removed `error_context.h/cpp`, parser uses `std::vector<Diagnostic>*` |
+| Compiler diagnostics | Done | `bytecode_vm.cpp` — 26 `report_and_continue()`, 7 `report()`, checkpoint/rollback |
+| Compile-time type checking | Done | `warn_if_non_numeric()` catches strings in arithmetic |
+| Human-readable messages | Done | All 28+ messages rewritten, no jargon |
+| Fuzzy name matching | Done | Levenshtein + case-insensitive + prefix matching |
+| WASM `useq_last_diagnostics()` | Done | `wasm_wrapper.cpp`, JSON via JsonBuilder |
+| WASM `useq_active_diagnostics()` | Done | Per-output compile+runtime state |
+| Frontend CodeMirror integration | Done | `editors/extensions/diagnostics.ts`, persistent squiggles |
+| Frontend output health store | Done | `utils/outputHealthStore.ts` |
+| Firmware serial diagnostics | Done | `uSEQ.cpp`, optional field in eval response |
+| Runtime error categories | Done | `DiagnosticCategory` on execution results |
+| Per-output deduplication | Done | Frame stamping in `modulisp_api.cpp` |
+| Batch eval isolation | Done | Failed outputs use LKG/fallback, batch continues |
+| Chain-of-blame | Done | `triggered_by` via `find_dirty_dependency()` |
+| Output assignment arity | Done | `(d1)` etc. with no args produce diagnostic |
+| Diagnostic propagation | Done | Compile + runtime diagnostics flow to `m_diagnostics` |
 
 ---
 
