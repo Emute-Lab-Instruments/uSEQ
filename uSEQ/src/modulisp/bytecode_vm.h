@@ -119,14 +119,16 @@ struct NumericVmExecutionResult
 {
     bool ok = false;
     double value = 0.0;
-    String error;
+    String error;  // backward compat
+    DiagnosticCategory error_category = DiagnosticCategory::Runtime;
 };
 
 struct TaggedVmExecutionResult
 {
     bool ok = false;
     Value value;
-    String error;
+    String error;  // backward compat
+    DiagnosticCategory error_category = DiagnosticCategory::Runtime;
 };
 
 NumericVmCompileResult compile_numeric_program(const Value& expr,

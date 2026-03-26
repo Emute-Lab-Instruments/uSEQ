@@ -399,6 +399,9 @@ public:
         bool numericProgramDirty     = false;
         bool fallbackToLkg = false;
         String lastDiagnostic;
+        DiagnosticCategory lastDiagnosticCategory = DiagnosticCategory::Runtime;
+        uint32_t diagnosticFrameStamp = 0;  // frame counter for rate-limiting
+        String lastInvalidatedBy;  // symbol that caused dependency-triggered recompilation
     };
 
     // Collect active diagnostics across all output slots.
@@ -410,6 +413,9 @@ public:
     // Performance monitoring
     int ts          = 0;
     int updateSpeed = 0;
+
+    // Diagnostic dedup frame counter — incremented each eval cycle
+    uint32_t m_diagnosticFrameCounter = 0;
 
 protected:
     // Core components (composition over inheritance)
@@ -461,6 +467,8 @@ protected:
     bool output_program_is_dirty(const StoredOutput& slot, const Environment& env) const;
     bool compiled_program_is_dirty(const CompiledOutputProgram& program,
                                    const Environment& env) const;
+    String find_dirty_dependency(const CompiledOutputProgram& program,
+                                const Environment& env) const;
     bool compile_output_program(const Value& expr, Environment& env,
                                 CompiledOutputProgram& out, String* error = nullptr) const;
     String snapshot_binding_state(const Environment& env, const String& symbol) const;

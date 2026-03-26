@@ -150,6 +150,8 @@ void ModuLispInterpreter::reset_output_slot(StoredOutput& slot, OutputType type)
     slot.numericProgramDirty = false;
     slot.fallbackToLkg = false;
     slot.lastDiagnostic = "";
+    slot.lastDiagnosticCategory = DiagnosticCategory::Runtime;
+    slot.diagnosticFrameStamp = 0;
 }
 
 void ModuLispInterpreter::clear_all_outputs()
@@ -176,6 +178,8 @@ void ModuLispInterpreter::clear_all_outputs()
             outputs[index].numericProgramDirty = false;
             outputs[index].fallbackToLkg = false;
             outputs[index].lastDiagnostic = "";
+            outputs[index].lastDiagnosticCategory = DiagnosticCategory::Runtime;
+            outputs[index].diagnosticFrameStamp = 0;
         }
     };
 
@@ -198,16 +202,18 @@ void ModuLispInterpreter::collect_active_diagnostics(
             String name(prefix);
             name += String(static_cast<int>(i) + 1);
 
-            // Determine category: compile error vs runtime error
-            DiagnosticCategory cat = DiagnosticCategory::Runtime;
+            // Use stored category when available; fall back to Syntax for
+            // compile failures that predate the category field.
+            DiagnosticCategory cat = slot.lastDiagnosticCategory;
             if (!slot.numericProgramSucceeded && slot.numericProgramAttempted)
-                cat = DiagnosticCategory::Syntax; // compile failure
+                cat = DiagnosticCategory::Syntax; // compile failure overrides
 
             Diagnostic d;
             d.severity = DiagnosticSeverity::Error;
             d.category = cat;
             d.span     = {0, 0};
             d.message  = slot.lastDiagnostic;
+            d.triggered_by = slot.lastInvalidatedBy;
 
             std::vector<Diagnostic> diags;
             diags.push_back(d);
@@ -317,6 +323,31 @@ bool ModuLispInterpreter::compiled_program_is_dirty(const CompiledOutputProgram&
     return false;
 }
 
+String ModuLispInterpreter::find_dirty_dependency(const CompiledOutputProgram& program,
+                                                  const Environment& env) const
+{
+    if (!program.program)
+    {
+        return "";
+    }
+
+    if (program.dependencies.size() != program.dependencySnapshots.size())
+    {
+        return "";
+    }
+
+    for (size_t i = 0; i < program.dependencies.size(); ++i)
+    {
+        if (snapshot_binding_state(env, program.dependencies[i]) !=
+            program.dependencySnapshots[i])
+        {
+            return program.dependencies[i];
+        }
+    }
+
+    return "";
+}
+
 bool ModuLispInterpreter::output_program_is_dirty(const StoredOutput& slot,
                                                   const Environment& env) const
 {
@@ -387,6 +418,7 @@ bool ModuLispInterpreter::refresh_output_program(StoredOutput& slot, Environment
     slot.numericProgramSucceeded = true;
     slot.fallbackToLkg = false;
     slot.lastDiagnostic = "";
+    slot.lastInvalidatedBy = "";  // successful recompile clears blame
 
     return true;
 }
@@ -470,6 +502,9 @@ Value ModuLispInterpreter::handle_output_assignment(const char* name,
     slot->numericProgramDirty = false;
     slot->fallbackToLkg = false;
     slot->lastDiagnostic = "";
+    slot->lastDiagnosticCategory = DiagnosticCategory::Runtime;
+    slot->diagnosticFrameStamp = 0;
+    slot->lastInvalidatedBy = "";  // fresh assignment, not dependency-triggered
     refresh_output_program(*slot, *get_environment());
 
     return Value::atom(lispName);
@@ -529,6 +564,8 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
                                                  double time_seconds,
                                                  bool* ok)
 {
+    ++m_diagnosticFrameCounter;
+
     const double defaultValue = default_output_value(type);
     if (ok)
     {
@@ -598,6 +635,11 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
         slot->activeProgram.exprSource != slot->expr.to_lisp_src() ||
         output_program_is_dirty(*slot, *get_environment()))
     {
+        // Before recompiling, identify which dependency changed (if any).
+        // This is empty for first-time compilation or source-change triggers.
+        String culprit = find_dirty_dependency(slot->activeProgram, *get_environment());
+        slot->lastInvalidatedBy = culprit;
+
         refresh_output_program(*slot, *get_environment());
         program_refreshed = true;
         if (!slot->numericProgramSucceeded && slot->lastDiagnostic.length() > 0)
@@ -655,9 +697,20 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
             return vm_result.value;
         }
 
-        slot->lastDiagnostic = vm_result.error;
-        report_generic_error("Output " + exprName + " runtime failed: " +
-                             vm_result.error);
+        // Deduplicate: only update and report if message changed or enough
+        // frames have elapsed since the last report (~100 frames ≈ 100ms at 1kHz).
+        constexpr uint32_t DIAG_DEDUP_FRAMES = 100;
+        const bool message_changed = (vm_result.error != slot->lastDiagnostic);
+        const bool cooldown_elapsed =
+            (m_diagnosticFrameCounter - slot->diagnosticFrameStamp) >= DIAG_DEDUP_FRAMES;
+        if (message_changed || cooldown_elapsed)
+        {
+            slot->lastDiagnostic = vm_result.error;
+            slot->lastDiagnosticCategory = vm_result.error_category;
+            slot->diagnosticFrameStamp = m_diagnosticFrameCounter;
+            report_generic_error("Output " + exprName + " runtime failed: " +
+                                 vm_result.error);
+        }
         permit_tree_fallback = false;
 
         if (program_to_run == &slot->activeProgram && slot->lkgProgram.program)
@@ -798,10 +851,11 @@ std::map<String, double> ModuLispInterpreter::eval_outputs(
         {
             bool ok = false;
             double value = eval_output_internal(type, index, time_seconds, &ok);
-            if (ok)
-            {
-                results[name] = value;
-            }
+            // Always include the value — eval_output_internal returns a usable
+            // fallback (LKG, lastValue, or default) even when ok is false.
+            // Dropping failed outputs here would cause the batch time-window
+            // path to substitute 0.0, losing the proper per-output fallback.
+            results[name] = value;
         }
     }
 

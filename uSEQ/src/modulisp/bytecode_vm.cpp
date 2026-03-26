@@ -2963,7 +2963,7 @@ bool validate_register_index(uint16_t index, size_t register_count, String& erro
 {
     if (static_cast<size_t>(index) >= register_count)
     {
-        error = String("Numeric VM ") + role + " register out of range";
+        error = String(role) + " register out of range";
         return false;
     }
     return true;
@@ -2975,7 +2975,7 @@ bool resolve_branch_target(size_t pc, int32_t offset, size_t instruction_count,
     const int64_t target = static_cast<int64_t>(pc) + 1 + static_cast<int64_t>(offset);
     if (target < 0 || target >= static_cast<int64_t>(instruction_count))
     {
-        error = "Numeric VM branch target out of range";
+        error = "branch target out of range";
         return false;
     }
 
@@ -2988,7 +2988,7 @@ bool load_data_segment(const NumericVmProgram& program, int32_t index,
 {
     if (index < 0 || static_cast<size_t>(index) >= program.data_segments.size())
     {
-        error = "Numeric VM data segment index out of range";
+        error = "data segment index out of range";
         return false;
     }
     data = &program.data_segments[static_cast<size_t>(index)];
@@ -3000,14 +3000,14 @@ bool load_phasor_value(const std::vector<Value>& registers, uint16_t index,
 {
     if (static_cast<size_t>(index) >= registers.size())
     {
-        error = "Numeric VM source register out of range";
+        error = "source register out of range";
         return false;
     }
 
     const Value& value = registers[index];
     if (!value.is_number())
     {
-        error = "Numeric VM vector opcode requires a numeric phasor";
+        error = "vector lookup requires a numeric phasor";
         return false;
     }
 
@@ -3025,12 +3025,14 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
     TaggedVmExecutionResult result;
     if (call_depth > VM_MAX_CALL_DEPTH)
     {
-        result.error = "Numeric VM call depth exceeded";
+        result.error = "too many nested function calls";
+        result.error_category = DiagnosticCategory::Runtime;
         return result;
     }
     if (program.register_count == 0 || program.instructions.empty())
     {
-        result.error = "Numeric VM program is empty";
+        result.error = "program is empty";
+        result.error_category = DiagnosticCategory::Runtime;
         return result;
     }
 
@@ -3108,7 +3110,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             if (insn.imm < 0 ||
                 static_cast<size_t>(insn.imm) >= program.constants.size())
             {
-                result.error = "Numeric VM constant index out of range";
+                result.error = "constant index out of range";
+                result.error_category = DiagnosticCategory::Runtime;
                 return result;
             }
             if (!validate_register_index(insn.rd, registers.size(), result.error,
@@ -3197,7 +3200,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             }
             if (!data || data->empty())
             {
-                result.error = "Numeric VM data segment is empty";
+                result.error = "data segment is empty";
+                result.error_category = DiagnosticCategory::Runtime;
                 return result;
             }
 
@@ -3266,7 +3270,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             const Value lhs = registers[insn.rs1];
             if (!lhs.is_number())
             {
-                result.error = "Numeric VM arithmetic requires numeric operands";
+                result.error = "expected a number but got a different type";
+                result.error_category = DiagnosticCategory::Type;
                 return result;
             }
 
@@ -3352,7 +3357,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             const Value rhs = registers[insn.rs2];
             if (!lhs.is_number() || !rhs.is_number())
             {
-                result.error = "Numeric VM arithmetic requires numeric operands";
+                result.error = "expected numbers but got a different type";
+                result.error_category = DiagnosticCategory::Type;
                 return result;
             }
 
@@ -3373,7 +3379,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             case NumericVmOpcode::DIV:
                 if (right == 0.0)
                 {
-                    result.error = "Numeric VM division by zero";
+                    result.error = "dividing by zero \xe2\x80\x94 the result is undefined";
+                    result.error_category = DiagnosticCategory::Arithmetic;
                     return result;
                 }
                 out = left / right;
@@ -3381,7 +3388,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             case NumericVmOpcode::MOD:
                 if (right == 0.0)
                 {
-                    result.error = "Numeric VM modulo by zero";
+                    result.error = "dividing by zero \xe2\x80\x94 the result is undefined";
+                    result.error_category = DiagnosticCategory::Arithmetic;
                     return result;
                 }
                 out = std::fmod(left, right);
@@ -3442,7 +3450,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             const Value high = registers[insn.rs3];
             if (!value.is_number() || !low.is_number() || !high.is_number())
             {
-                result.error = "Numeric VM clamp requires numeric operands";
+                result.error = "clamp expected numbers but got a different type";
+                result.error_category = DiagnosticCategory::Type;
                 return result;
             }
 
@@ -3461,7 +3470,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             }
             if (target <= pc && ++backward_branch_count > VM_MAX_BACKWARD_BRANCHES)
             {
-                result.error = "Numeric VM loop iteration budget exceeded";
+                result.error = "this loop ran too long and was stopped";
+                result.error_category = DiagnosticCategory::Runtime;
                 return result;
             }
             pc = target;
@@ -3488,7 +3498,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 if (target <= pc &&
                     ++backward_branch_count > VM_MAX_BACKWARD_BRANCHES)
                 {
-                    result.error = "Numeric VM loop iteration budget exceeded";
+                    result.error = "this loop ran too long and was stopped";
+                    result.error_category = DiagnosticCategory::Runtime;
                     return result;
                 }
                 pc = target;
@@ -3510,7 +3521,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             const size_t arg_count = static_cast<size_t>(insn.rs2);
             if (arg_start + arg_count > registers.size())
             {
-                result.error = "Numeric VM call arguments out of range";
+                result.error = "call arguments out of range";
+                result.error_category = DiagnosticCategory::Runtime;
                 return result;
             }
 
@@ -3527,7 +3539,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                     static_cast<size_t>(insn.imm) >= program.functions.size() ||
                     !program.functions[static_cast<size_t>(insn.imm)])
                 {
-                    result.error = "Numeric VM function index out of range";
+                    result.error = "function index out of range";
+                    result.error_category = DiagnosticCategory::Runtime;
                     return result;
                 }
 
@@ -3547,14 +3560,16 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                     static_cast<size_t>(insn.imm) >= program.intrinsics.size() ||
                     !program.intrinsics[static_cast<size_t>(insn.imm)])
                 {
-                    result.error = "Numeric VM intrinsic index out of range";
+                    result.error = "intrinsic index out of range";
+                    result.error_category = DiagnosticCategory::Runtime;
                     return result;
                 }
                 registers[insn.rd] =
                     program.intrinsics[static_cast<size_t>(insn.imm)](args, ctx);
                 if (registers[insn.rd].is_error())
                 {
-                    result.error = "Numeric VM intrinsic returned an error";
+                    result.error = "intrinsic function returned an error";
+                    result.error_category = DiagnosticCategory::Runtime;
                     return result;
                 }
             }
@@ -3646,7 +3661,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             const size_t count = static_cast<size_t>(insn.rs2);
             if (count > 0 && start + count > registers.size())
             {
-                result.error = "Numeric VM MAKE_LIST arguments out of range";
+                result.error = "list construction arguments out of range";
+                result.error_category = DiagnosticCategory::Runtime;
                 return result;
             }
 
@@ -3674,7 +3690,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             const Value& src = registers[insn.rs1];
             if (!src.is_sequential())
             {
-                result.error = "Numeric VM LIST_HEAD requires a sequential operand";
+                result.error = "head expected a list or vector";
+                result.error_category = DiagnosticCategory::Type;
                 return result;
             }
 
@@ -3702,7 +3719,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             const Value& src = registers[insn.rs1];
             if (!src.is_sequential())
             {
-                result.error = "Numeric VM LIST_TAIL requires a sequential operand";
+                result.error = "tail expected a list or vector";
+                result.error_category = DiagnosticCategory::Type;
                 return result;
             }
 
@@ -3760,7 +3778,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
 vm_loop_exit:
 #endif
 
-    result.error = "Numeric VM program terminated without RET";
+    result.error = "program terminated without returning a value";
+    result.error_category = DiagnosticCategory::Runtime;
     return result;
 
 #undef VM_DISPATCH
@@ -3794,19 +3813,22 @@ NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program
     if (!tagged_result.ok)
     {
         result.error = tagged_result.error;
+        result.error_category = tagged_result.error_category;
         return result;
     }
 
     if (!tagged_result.value.is_number())
     {
-        result.error = "Numeric VM did not produce a numeric result";
+        result.error = "expected a numeric result but got a different type";
+        result.error_category = DiagnosticCategory::Type;
         return result;
     }
 
     const double numeric_value = tagged_result.value.as_float();
     if (!std::isfinite(numeric_value))
     {
-        result.error = "Numeric VM produced a non-finite result";
+        result.error = "this produced an undefined number \xe2\x80\x94 check for division by zero or sqrt of a negative";
+        result.error_category = DiagnosticCategory::Arithmetic;
         return result;
     }
 
