@@ -463,6 +463,13 @@ Value ModuLispInterpreter::handle_output_assignment(const char* name,
 {
     if (args.empty())
     {
+        String outputName(name);
+        m_diagnostics.push_back({DiagnosticSeverity::Error,
+                                 DiagnosticCategory::Arity,
+                                 {0, 0},
+                                 outputName + " needs an expression to output",
+                                 "Try: (" + outputName + " (sin beat))",
+                                 "(" + outputName + " (usin beat))"});
         return Value::error();
     }
 
