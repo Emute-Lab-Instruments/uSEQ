@@ -5,6 +5,7 @@
 #include "value.h"
 #include <map>
 #include <optional>
+#include <vector>
 
 struct TemporalContext;
 
@@ -102,6 +103,9 @@ public:
     ValueMap& get_def_exprs() { return m_def_exprs; }
     const ValueMap& get_defs() const { return m_defs; }
     const ValueMap& get_def_exprs() const { return m_def_exprs; }
+
+    // Collect all symbol names reachable from this environment (for fuzzy matching)
+    void collect_symbol_names(std::vector<String>& out) const;
 
 protected:
     ValueMap m_defs;

@@ -697,13 +697,13 @@ TEST_CASE("Numeric VM rejects side-effectful signal forms at compile time",
         compile_numeric_program(interp.get_parser()->parse("(do (define x 1) (+ t 1))"),
                                 *interp.get_environment());
     REQUIRE_FALSE(define_result.ok);
-    REQUIRE(define_result.error.indexOf("Signal VM rejects side-effectful form") >= 0);
+    REQUIRE(define_result.error.indexOf("inside an output") >= 0);
 
     const auto eval_result =
         compile_numeric_program(interp.get_parser()->parse("(eval \"(+ t 1)\")"),
                                 *interp.get_environment());
     REQUIRE_FALSE(eval_result.ok);
-    REQUIRE(eval_result.error.indexOf("Signal VM rejects eval") >= 0);
+    REQUIRE(eval_result.error.indexOf("inside an output") >= 0);
 }
 
 TEST_CASE("Compile-time rejection keeps the current active output graph",

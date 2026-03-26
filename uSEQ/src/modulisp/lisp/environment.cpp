@@ -202,3 +202,27 @@ String Environment::toString()
     os += "}";
     return os;
 }
+
+void Environment::collect_symbol_names(std::vector<String>& out) const
+{
+    // Collect from local defs
+    for (const auto& kv : m_defs)
+    {
+        out.push_back(kv.first);
+    }
+    // Collect from local def_exprs (signal expressions)
+    for (const auto& kv : m_def_exprs)
+    {
+        out.push_back(kv.first);
+    }
+    // Collect from builtins
+    for (const auto& kv : Environment::builtindefs())
+    {
+        out.push_back(kv.first);
+    }
+    // Collect from parent scope
+    if (m_parent_env != nullptr)
+    {
+        m_parent_env->collect_symbol_names(out);
+    }
+}

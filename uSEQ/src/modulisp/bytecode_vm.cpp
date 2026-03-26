@@ -1,6 +1,7 @@
 #include "bytecode_vm.h"
 #include "modulisp_interpreter.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <functional>
 #include <set>
@@ -98,6 +99,91 @@ struct AffineTimeTransform
     double scale = 1.0;
     double offset = 0.0;
 };
+
+// --- Fuzzy name matching for undefined-symbol hints ---
+
+static int levenshtein(const String& a, const String& b)
+{
+    const int m = static_cast<int>(a.length());
+    const int n = static_cast<int>(b.length());
+    std::vector<int> prev(n + 1), curr(n + 1);
+    for (int j = 0; j <= n; j++) prev[j] = j;
+    for (int i = 1; i <= m; i++)
+    {
+        curr[0] = i;
+        for (int j = 1; j <= n; j++)
+        {
+            int cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+            curr[j] = std::min({prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost});
+        }
+        std::swap(prev, curr);
+    }
+    return prev[n];
+}
+
+static bool strings_equal_icase(const String& a, const String& b)
+{
+    if (a.length() != b.length()) return false;
+    for (size_t i = 0; i < a.length(); i++)
+    {
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i])))
+            return false;
+    }
+    return true;
+}
+
+static bool is_prefix_of(const String& prefix, const String& candidate)
+{
+    if (prefix.length() >= candidate.length() || prefix.length() < 2)
+        return false;
+    for (size_t i = 0; i < prefix.length(); i++)
+    {
+        if (prefix[i] != candidate[i]) return false;
+    }
+    return true;
+}
+
+static String find_fuzzy_match(const String& symbol, const Environment& env)
+{
+    std::vector<String> candidates;
+
+    static const char* temporals[] = {
+        "beat", "bar", "phrase", "section", "t", "time", "beat-num", "bar-num"
+    };
+    for (const auto& t : temporals) candidates.push_back(String(t));
+
+    env.collect_symbol_names(candidates);
+
+    String best_match;
+    int best_distance = 3; // Only suggest if distance <= 2
+
+    for (const auto& candidate : candidates)
+    {
+        if (candidate == symbol) continue;
+
+        if (strings_equal_icase(symbol, candidate))
+            return candidate;
+
+        if (is_prefix_of(symbol, candidate) && best_distance > 1)
+        {
+            best_distance = 1;
+            best_match = candidate;
+            continue;
+        }
+
+        int dist = levenshtein(symbol, candidate);
+        if (dist < best_distance)
+        {
+            best_distance = dist;
+            best_match = candidate;
+        }
+    }
+
+    return best_match;
+}
+
+// --- End fuzzy name matching ---
 
 struct LocalValueBinding
 {
@@ -318,7 +404,9 @@ private:
             if (callable_reg < 0 && m_error.length() == 0)
             {
                 report(DiagnosticSeverity::Error, DiagnosticCategory::Syntax,
-                       expr.span, "Numeric VM only supports builtin and inline-call forms");
+                       expr.span, "this expression can't be used inside an output",
+                       "Use a built-in function or a named value",
+                       "(a1 (sin beat))");
             }
             return -1;
         }
@@ -329,12 +417,14 @@ private:
             if (op == "eval")
             {
                 report(DiagnosticSeverity::Error, DiagnosticCategory::Boundary,
-                       items[0].span, "Signal VM rejects eval in signal context");
+                       items[0].span, "can't use eval inside an output",
+                       "Write the expression directly: (a1 (sin beat))");
             }
             else
             {
                 report(DiagnosticSeverity::Error, DiagnosticCategory::Boundary,
-                       items[0].span, "Signal VM rejects side-effectful form: " + op);
+                       items[0].span, "can't use " + op + " inside an output — " + op + " is a one-time action",
+                       "Use " + op + " at the top level");
             }
             return -1;
         }
@@ -496,7 +586,8 @@ private:
             if (items.size() != 2 || !items[1].is_number())
             {
                 return report_and_continue(DiagnosticCategory::Type,
-                       items[0].span, "Numeric VM input requires a compile-time constant integer slot index");
+                       items[0].span, "input needs a fixed channel number",
+                       "Try: (input 0)");
             }
             const int reg = allocate_register();
             NumericVmInstruction insn;
@@ -633,7 +724,8 @@ private:
         if (is_in_recursion_stack(symbol))
         {
             report(DiagnosticSeverity::Error, DiagnosticCategory::Runtime,
-                   SourceSpan{}, "Recursive numeric binding is not supported: " + symbol);
+                   SourceSpan{}, symbol + " refers back to itself — this would loop forever",
+                   "Check for accidental recursion");
             return -1;
         }
 
@@ -665,6 +757,18 @@ private:
             return emit_late_bound_symbol(symbol, transform);
         }
 
+        // Symbol not found at compile time — emit late-bound fallback
+        // and check for fuzzy matches to help catch typos
+        {
+            const String match = find_fuzzy_match(symbol, m_env);
+            if (match.length() > 0)
+            {
+                report(DiagnosticSeverity::Hint, DiagnosticCategory::UndefinedName,
+                       SourceSpan{},
+                       "I don't recognise \"" + symbol + "\"",
+                       "Did you mean " + match + "?");
+            }
+        }
         return emit_late_bound_symbol(symbol, transform);
     }
 
@@ -675,7 +779,8 @@ private:
         if (items.size() != 3)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, op + " expects exactly 2 arguments");
+                   items[0].span, op + " takes 2 values, but got " + String(items.size() - 1),
+                   "Try: (" + op + " 2 beat)");
         }
 
         const std::optional<double> factor_or_offset =
@@ -683,7 +788,8 @@ private:
         if (!factor_or_offset.has_value())
         {
             return report_and_continue(DiagnosticCategory::Type,
-                   items[0].span, op + " requires a compile-time numeric first argument");
+                   items[0].span, op + " needs a fixed number as its first value",
+                   "Try: (" + op + " 2 beat)");
         }
 
         AffineTimeTransform next = transform;
@@ -710,7 +816,8 @@ private:
         if (items.size() < 2)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "do expects at least one form");
+                   items[0].span, "do needs at least one expression inside it",
+                   "Try: (do (sin beat) (cos beat))");
         }
 
         int result = -1;
@@ -730,7 +837,8 @@ private:
         if (items.size() != 4)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "if expects exactly 3 arguments");
+                   items[0].span, "if needs exactly 3 parts: a condition, a then-value, and an else-value",
+                   "Try: (if (> beat 0.5) 1 0)");
         }
 
         const std::optional<double> constant_condition =
@@ -789,19 +897,22 @@ private:
         if (items.size() < 3)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "let expects a bindings vector and at least one body form");
+                   items[0].span, "let needs names and values paired together, plus a body",
+                   "Try: (let (x 1 y 2) (+ x y))");
         }
         if (!items[1].is_sequential())
         {
             return report_and_continue(DiagnosticCategory::Type,
-                   items[0].span, "let bindings must be a sequential collection");
+                   items[0].span, "let needs a list of names and values",
+                   "Try: (let (x 1 y 2) (+ x y))");
         }
 
         const std::vector<Value> bindings = items[1].as_sequential();
         if (bindings.size() % 2 != 0)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "let bindings must contain symbol/value pairs");
+                   items[0].span, "let needs names and values paired together",
+                   "Try: (let (x 1 y 2) (+ x y))");
         }
 
         push_local_scope();
@@ -811,7 +922,8 @@ private:
             {
                 pop_local_scope();
                 return report_and_continue(DiagnosticCategory::Type,
-                       bindings[i].span, "let binding names must be symbols");
+                       bindings[i].span, "let names must be words, not numbers or expressions",
+                       "Try: (let (x 1) x)");
             }
 
             const String name = bindings[i].as_atom();
@@ -858,7 +970,8 @@ private:
         if (items.size() < 3)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "while expects a condition and at least one body form");
+                   items[0].span, "while needs a condition and at least one body expression",
+                   "Try: (while (< x 10) (set! x (+ x 1)))");
         }
 
         const CompilerCheckpoint checkpoint = checkpoint_state();
@@ -919,7 +1032,8 @@ private:
         if (items.size() < 3)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "for expects a variable, a list, and at least one body form");
+                   items[0].span, "for needs a variable, a list, and at least one body expression",
+                   "Try: (for x [1 2 3] (* x 2))");
         }
         return emit_runtime_eval(Value(items), transform);
     }
@@ -932,7 +1046,8 @@ private:
         {
             return report_and_continue(DiagnosticCategory::Arity,
                    items[0].span, String(interpolate ? "interp" : "from-list") +
-                   " expects exactly 2 arguments");
+                   " needs a list and a timing signal",
+                   String("Try: (") + (interpolate ? "interp" : "from-list") + " [0 0.5 1] beat)");
         }
 
         return compile_vector_lookup(items[1], items[2], transform, interpolate);
@@ -944,7 +1059,8 @@ private:
         if (items.size() != 4)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "dm expects exactly 3 arguments");
+                   items[0].span, "dm needs 3 values: a condition, a default, and a value",
+                   "Try: (dm (> beat 0.5) 0 1)");
         }
 
         const int result_reg = allocate_register();
@@ -994,7 +1110,9 @@ private:
         if (items.size() < 4 || items.size() > 6)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "euclid expects 3 to 5 arguments");
+                   items[0].span, "euclid needs at least 3 values: hits, steps, and a timing signal",
+                   "Try: (euclid 3 8 beat)",
+                   "(euclid 3 8 beat)");
         }
 
         const std::optional<double> n_value =
@@ -1061,7 +1179,8 @@ private:
             return result;
         }
         return report_and_continue(DiagnosticCategory::Runtime,
-               items[0].span, "Failed to lower euclid builtin");
+               items[0].span, "something went wrong compiling euclid — try simplifying the expression",
+               "Try: (euclid 3 8 beat)");
     }
 
     int compile_vector_literal(const std::vector<Value>& elements,
@@ -1151,7 +1270,8 @@ private:
         if (items.size() <= arg_start)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "Not enough arguments for numeric VM fold");
+                   items[0].span, items[0].as_atom() + " needs at least 2 values",
+                   "Try: (" + items[0].as_atom() + " 1 2)");
         }
 
         if (items.size() == arg_start + 1)
@@ -1161,7 +1281,8 @@ private:
                 return compile_expr(items[arg_start], transform);
             }
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "Not enough arguments for numeric VM fold");
+                   items[0].span, items[0].as_atom() + " needs at least 2 values",
+                   "Try: (" + items[0].as_atom() + " 1 2)");
         }
 
         int acc = compile_expr(items[arg_start], transform);
@@ -1189,7 +1310,8 @@ private:
         if (items.size() != 3)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "Numeric VM binary builtin expects exactly 2 arguments");
+                   items[0].span, items[0].as_atom() + " needs exactly 2 values",
+                   "Try: (" + items[0].as_atom() + " 1 2)");
         }
 
         const int lhs = compile_expr(items[1], transform);
@@ -1207,7 +1329,8 @@ private:
         if (items.size() != 3)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "tri expects exactly 2 arguments");
+                   items[0].span, "tri needs a duty cycle and a signal",
+                   "Try: (tri 0.5 beat)");
         }
 
         const int duty = compile_expr(items[1], transform);
@@ -1233,7 +1356,8 @@ private:
         if (items.size() != 2)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "Numeric VM unary builtin expects exactly 1 argument");
+                   items[0].span, items[0].as_atom() + " needs a value to work with",
+                   "Try: (" + items[0].as_atom() + " beat)");
         }
 
         const int src = compile_expr(items[1], transform);
@@ -1250,7 +1374,8 @@ private:
         if (items.size() != 4)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "clamp expects exactly 3 arguments");
+                   items[0].span, "clamp needs exactly 3 values: a value, a minimum, and a maximum",
+                   "Try: (clamp beat 0 1)");
         }
 
         const int value = compile_expr(items[1], transform);
@@ -1280,7 +1405,8 @@ private:
         if (items.size() != 2)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "Range conversion expects exactly 1 argument");
+                   items[0].span, items[0].as_atom() + " needs a value to convert",
+                   "Try: (" + items[0].as_atom() + " beat)");
         }
 
         const int src = compile_expr(items[1], transform);
@@ -1347,7 +1473,9 @@ private:
         }
 
         return report_and_continue(DiagnosticCategory::Arity,
-               items[0].span, "scale expects 3 or 5 arguments");
+               items[0].span, "scale needs 3 or 5 values: output range and a signal",
+               "Try: (scale 0 5 beat)",
+               "(scale 0 5 beat)");
     }
 
     // Compile (lerp a b t lo hi) — the ModuLisp lerp takes 5 args.
@@ -1365,7 +1493,8 @@ private:
         if (items.size() != 4 && items.size() != 6)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "lerp expects 3 or 5 arguments");
+                   items[0].span, "lerp needs 3 or 5 values: start, end, and a position",
+                   "Try: (lerp 0 1 beat)");
         }
 
         const int a = compile_expr(items[1], transform);
@@ -1448,12 +1577,14 @@ private:
                 if (*side_effect == "eval")
                 {
                     report(DiagnosticSeverity::Error, DiagnosticCategory::Boundary,
-                           expr.span, "Signal VM rejects eval in signal context");
+                           expr.span, "can't use eval inside an output",
+                           "Write the expression directly: (a1 (sin beat))");
                 }
                 else
                 {
                     report(DiagnosticSeverity::Error, DiagnosticCategory::Boundary,
-                           expr.span, "Signal VM rejects side-effectful form: " + *side_effect);
+                           expr.span, "can't use " + *side_effect + " inside an output — " + *side_effect + " is a one-time action",
+                           "Use " + *side_effect + " at the top level");
                 }
                 return -1;
             }
@@ -2189,7 +2320,8 @@ private:
         if (items.empty())
         {
             report(DiagnosticSeverity::Error, DiagnosticCategory::Syntax,
-                   SourceSpan{}, "Cannot compile empty call form");
+                   SourceSpan{}, "empty parentheses () — did you forget the function name?",
+                   "Try: (sin beat)");
             return false;
         }
 
@@ -2334,7 +2466,8 @@ private:
         if (params.size() != arg_exprs.size())
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   body.span, "Inline lambda call arity mismatch");
+                   body.span, "this function takes " + String(params.size()) + " values, but got " + String(arg_exprs.size()),
+                   "Check that you're passing the right number of values");
         }
 
         std::vector<int> arg_regs;
@@ -2356,7 +2489,8 @@ private:
             {
                 pop_local_scope();
                 return report_and_continue(DiagnosticCategory::Type,
-                       params[i].span, "Lambda parameters must be symbols");
+                       params[i].span, "function parameter names must be words, not numbers or expressions",
+                       "Try: (fn (x y) (+ x y))");
             }
             bind_local_value(params[i].as_atom(), arg_regs[i]);
         }
