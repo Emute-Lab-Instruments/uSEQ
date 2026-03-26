@@ -44,6 +44,18 @@ ModuLisp expressions are signals — pure functions of time. An expression can b
 
 A signal sampled 100 times per frame that produces an error every sample must not produce 100 diagnostics. Runtime errors are **deduplicated by (output, error category)** and rate-limited to at most one report per output per frame. The diagnostic may note "occurring frequently" if the error persists across multiple frames.
 
+### 1.7 Silence on success is also a bug
+
+A beginner typing `(a1 (sin beat))` needs to know it *worked*. If nothing visibly changes, they don't know whether their code was received, compiled, or is running. Success feedback is as important as error feedback — it closes the loop.
+
+Success should be communicated through the same channels as errors but more subtly:
+
+- **Brief confirmation** — a transient flash or label ("a1 updated") that fades after ~1 second
+- **Output indicator state change** — the output slot transitions from "idle" or "error" to "running"
+- **Visualisation** — if the output is being visualised, seeing the waveform change is itself confirmation
+
+Success feedback must not be noisy. It should be visible enough for a beginner to notice, quiet enough that an expert performing on stage never thinks about it.
+
 ---
 
 ## 2. Diagnostic Data Model
@@ -61,7 +73,19 @@ struct SourceSpan {
 
 Character offsets rather than line/column because the editor (CodeMirror) works natively with character positions. Line/column can be derived for display.
 
+**Limit**: `uint16_t` gives a maximum offset of 65535 characters. This is sufficient for live-coding (individual expressions are short), but if a source string exceeds this limit, spans clamp to `{0, 0}` (no span information) rather than wrapping. The diagnostic is still produced; it just can't point at a specific location.
+
 Every AST node (`Value`) must carry an optional `SourceSpan`. The parser populates spans during parsing; the compiler reads them when generating diagnostics.
+
+#### Span coordinate spaces
+
+Spans exist in two coordinate spaces and the system must not conflate them:
+
+1. **Eval-relative spans**: offsets into the code string passed to `useq_eval()`. These are what the frontend receives for top-level eval errors. The frontend knows the full eval string and can map these directly to editor positions.
+
+2. **Expression-relative spans**: offsets into the inner expression stored by an output assignment. When the user evals `(a1 (sin (* x beat)))`, the output stores `(sin (* x beat))` — a substring starting at offset 4 in the original eval. If this expression is later recompiled (due to a dependency change), its spans are relative to this inner substring, not the original eval string.
+
+The interpreter must track the **eval-time offset** of each stored expression so the frontend can reconstruct the original position: `editor_position = expression_span + stored_offset`. This offset is recorded at assignment time and does not change until the expression is reassigned.
 
 ### 2.2 Diagnostic
 
@@ -125,7 +149,9 @@ struct RuntimeDiagnostic {
 };
 ```
 
-Runtime diagnostics are not attached to source spans because the VM executes compiled bytecode, not source text. However, the output slot identifies *which expression* is failing, and the frontend can map that back to the editor pane.
+Runtime diagnostics are not attached to source spans in the initial implementation because the VM executes compiled bytecode, not source text. However, the output slot identifies *which expression* is failing, and the frontend can map that back to the editor pane.
+
+**Future enhancement — instruction-level source maps**: The compiler could emit a debug info table mapping instruction indices to source spans (analogous to JavaScript source maps or DWARF debug info). When a runtime error occurs at instruction N, the VM would look up the corresponding source span and attach it to the diagnostic. This would let the frontend highlight the exact subexpression that caused a division by zero, not just the output slot. Deferred from the initial implementation to keep the first pass simple, but the `Diagnostic` struct is already span-capable so no data model changes would be needed.
 
 ### 2.5 WASM ABI Extension
 
@@ -148,12 +174,41 @@ JSON schema for the wire format:
     "end": 12,
     "message": "sin needs exactly 1 value to work with",
     "suggestion": "Try: (sin beat)",
-    "example": "(sin (* 6.28 beat))"
+    "example": "(sin (* 6.28 beat))",
+    "triggered_by": null
   }
 ]
 ```
 
+The `triggered_by` field is `null` for direct eval errors and a symbol name string for dependency-triggered recompilation errors (see §5.4).
+
 This replaces the current `useq_last_error()` string export. The old export can remain as a compatibility shim that returns the first error's `message` field.
+
+#### Diagnostic persistence and clearing
+
+`useq_last_diagnostics()` returns diagnostics from the most recent `useq_eval()` call only. But the system must also track **persistent per-output diagnostics** — errors from background recompilation triggered by dependency changes, not by a user eval.
+
+A third export provides this:
+
+```cpp
+// All currently active diagnostics across all outputs.
+// Includes compile errors from dependency-triggered recompilation
+// and runtime errors from the current frame.
+// Returns JSON object keyed by output name:
+// { "a1": [...diagnostics...], "d3": [...diagnostics...] }
+// Outputs with no active diagnostics are omitted.
+EMSCRIPTEN_KEEPALIVE
+const char* useq_active_diagnostics();
+```
+
+**Clearing policy**:
+
+- Per-output compile diagnostics are cleared when the output is successfully recompiled (new expression assigned, or dependency change triggers a clean recompile)
+- Per-output runtime diagnostics are cleared when the output runs a full sample batch without errors
+- `useq_last_diagnostics()` is cleared at the start of each `useq_eval()` call
+- `useq_active_diagnostics()` is the union of all per-output state and is never explicitly cleared — it reflects the live state of the system
+
+The frontend should poll `useq_active_diagnostics()` once per animation frame to keep the UI in sync, and read `useq_last_diagnostics()` immediately after each eval for responsive inline feedback.
 
 ---
 
@@ -325,6 +380,14 @@ The compiler currently calls `fail(msg)` and returns `-1` on the first error. Th
 
 4. The final `NumericVmCompileResult.ok` is `false` if any diagnostic has severity `Error`. The program may still be partially compiled but should not be executed.
 
+**Cascade noise policy**: The report-and-continue approach can produce misleading secondary errors. When `(sni beat)` is unknown and replaced with a placeholder `0`, downstream expressions that consume the placeholder may generate their own spurious diagnostics.
+
+Mitigation rules:
+
+- **Placeholder values are typed correctly**: use `0.0` (not `nil`) as the placeholder for numeric contexts so that downstream arithmetic doesn't produce additional type errors.
+- **Mark placeholder registers**: the compiler tracks which registers hold placeholder values. Errors whose *only* failing input is a placeholder register are suppressed — they are consequences of the primary error, not independent problems.
+- **Frontend cap**: even if the compiler produces many diagnostics, the frontend shows at most **5 errors per eval** to avoid overwhelming the user. Additional diagnostics are available via "show all" but are hidden by default. Warnings are shown separately and do not count against this cap.
+
 ```cpp
 // Revised compiler internals (sketch)
 class NumericVmCompiler {
@@ -384,9 +447,46 @@ Editor shows output-level indicator
     │  Tooltip: "a1 is falling back to the previous version — dividing by zero"
 ```
 
-### 5.4 WASM boundary
+### 5.4 Dependency-triggered recompilation errors
 
-Two new exports added to the WASM ABI:
+When a binding changes (e.g. `(define x "hello")`), all output graphs that depend on `x` are recompiled. If recompilation fails, the error is *caused by* the define but *manifests in* the output expression.
+
+The diagnostic must communicate the causal chain:
+
+```
+a1: compile error — "can't do maths with text — * needs numbers"
+     caused by: x was redefined (previously a number, now text)
+```
+
+**Implementation**: When recompilation is triggered by dependency invalidation, the compiler records the invalidating symbol name and its new value type. The resulting diagnostic includes a `triggered_by` field:
+
+```cpp
+struct Diagnostic {
+    // ... existing fields ...
+    String triggered_by;  // symbol name that caused recompilation (empty for direct eval)
+};
+```
+
+The frontend displays this as context: "this broke because *x* changed". This helps the user understand that the fix is to change `x`, not the output expression.
+
+**Span attribution**: The diagnostic span points at the location where `x` is *used* in the output expression (the reference site), not where `x` was redefined. The user needs to see which part of their signal expression is affected.
+
+### 5.5 REPL errors vs editor-pane errors
+
+The spec so far focuses on output-assignment errors displayed as editor annotations. But the user also types arbitrary expressions in the REPL/console — things like `(+ 1 2)`, `(define foo 42)`, or exploratory `(sin 0.5)`.
+
+REPL errors have different characteristics:
+
+- **Synchronous**: the error is the direct response to the user's input, not a background recompilation
+- **No output slot**: the expression isn't assigned to an output, so there's no persistent state
+- **No LKG**: there's no fallback behaviour — the expression either works or doesn't
+- **Inline in console**: errors appear in the console output stream, not as editor annotations
+
+For REPL errors, `useq_last_diagnostics()` is the correct API — the frontend reads it immediately after `useq_eval()` and renders the diagnostics inline in the console. Source spans still apply (they reference the eval string) and can be used to underline the problematic part of the expression in the console output.
+
+### 5.6 WASM boundary
+
+Three new exports added to the WASM ABI (two described in §2.5, repeated here for the full picture):
 
 ```cpp
 // Diagnostics from the most recent useq_eval() call.
@@ -403,9 +503,16 @@ EMSCRIPTEN_KEEPALIVE
 const char* useq_output_diagnostics();
 ```
 
-The frontend calls `useq_last_diagnostics()` immediately after each `useq_eval()` call to get compile-time feedback. It polls `useq_output_diagnostics()` once per animation frame to track runtime health.
+```cpp
+// All currently active diagnostics across all outputs (compile + runtime).
+// See §2.5 for clearing policy.
+EMSCRIPTEN_KEEPALIVE
+const char* useq_active_diagnostics();
+```
 
-### 5.5 Frontend integration (CodeMirror)
+The frontend calls `useq_last_diagnostics()` immediately after each `useq_eval()` call for responsive inline feedback. It polls `useq_active_diagnostics()` once per animation frame to keep output health indicators in sync (this catches background recompilation errors and runtime errors that `useq_last_diagnostics()` would miss).
+
+### 5.7 Frontend integration (CodeMirror)
 
 The editor integration uses CodeMirror's diagnostic infrastructure:
 
@@ -442,14 +549,31 @@ setDiagnostics(editorView, cmDiagnostics);
 
 For runtime diagnostics (per-output health), the visualisation layer already knows which output is assigned to which editor pane. A subtle indicator (border colour change, gutter icon) shows when an output is in fallback mode.
 
-### 5.6 Firmware path
+### 5.8 Firmware path
 
 On the RP2040 firmware (no browser, no editor), diagnostics are delivered differently:
 
 - **LED colour**: amber flash on compile error, red flash on persistent runtime error
-- **Serial JSON**: diagnostics are included in the JSON response to `eval` requests, using the same schema as the WASM path
+- **Serial JSON**: diagnostics are included in the JSON response to `eval` requests. The existing serial protocol (`uSEQ/src/utils/log.cpp`, `json_builder.h`) uses a `meta` field in eval responses for state changes. Diagnostics are added as a `diagnostics` array in the response:
 
-The diagnostic data model is the same on both targets. Only the delivery mechanism differs.
+```json
+{
+  "id": "req-42",
+  "result": "...",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "category": "arity",
+      "start": 1,
+      "end": 5,
+      "message": "sin needs a value to work with",
+      "suggestion": "Try: (sin beat)"
+    }
+  ]
+}
+```
+
+The diagnostic data model is the same on both targets. Only the delivery mechanism differs. The serial protocol's existing `JsonBuilder` is used to construct the response — no external JSON library is needed.
 
 ---
 
