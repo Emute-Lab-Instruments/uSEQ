@@ -180,7 +180,7 @@ JSON schema for the wire format:
 ]
 ```
 
-The `triggered_by` field is `null` for direct eval errors and a symbol name string for dependency-triggered recompilation errors (see §5.4).
+The `triggered_by` field is `null` for direct eval errors and a symbol name string for dependency-triggered recompilation errors (see §6.4).
 
 This replaces the current `useq_last_error()` string export. The old export can remain as a compatibility shim that returns the first error's `message` field.
 
@@ -234,16 +234,37 @@ Inner nodes:
 
 ### 3.2 Value extension
 
-Add an optional span field to the `Value` class:
+Add a span field to the `Value` class, placed in the existing 4-byte padding gap between `symbol_id` (offset 48) and `list` (offset 56):
 
 ```cpp
 // In value.h
-SourceSpan span = {0, 0};  // {0,0} means "no span information"
+uint32_t symbol_id;                    // offset 48, 4 bytes
+SourceSpan span = {0, 0};              // offset 52, 4 bytes (was padding)
+std::vector<Value> list;               // offset 56, 24 bytes
+
+// Enforce zero size increase
+static_assert(sizeof(Value) == 104, "Value size must not change");
 ```
 
-This is a 4-byte addition per `Value`. On the firmware (RP2040), where typical programs have 10–50 AST nodes, this costs 40–200 bytes — negligible against the 264KB SRAM budget.
+This exploits an alignment gap in the existing layout. `Value` remains at 104 bytes — **zero overhead** on firmware or in hot-loop list operations. If future field reordering breaks this, fall back to appending the field (108 bytes, ~4% copy overhead, acceptable).
 
-### 3.3 Span propagation
+### 3.3 Parser already tracks position
+
+The parser's `parse(String s, int& ptr)` method advances an integer pointer through the input string. This `ptr` **is** the character offset needed for `SourceSpan.start`. The infrastructure is half-built: we just need to record `ptr` into each `Value`'s span at parse time.
+
+```cpp
+// Sketch: recording spans during parse
+int start = ptr;
+Value result = parse_atom_or_list(s, ptr);
+result.span = {static_cast<uint16_t>(start), static_cast<uint16_t>(ptr)};
+return result;
+```
+
+### 3.4 Synthesised nodes
+
+When the parser receives multiple top-level forms, it wraps them in a synthesised `(do ...)` node that was never in the source text. Synthesised nodes use `{0, 0}` (no span). Diagnostics on synthesised nodes should point at the first child's span, not at a nonexistent location.
+
+### 3.5 Span propagation
 
 The compiler must propagate spans through transformations:
 
@@ -253,7 +274,25 @@ The compiler must propagate spans through transformations:
 
 ---
 
-## 4. Compiler Diagnostics
+## 4. Replacing ErrorManager
+
+The existing `ErrorManager` class (in `lisp/error_context.h`) is used by the parser (4 call sites) and owned by `ModuLispInterpreter`. It produces `ErrorContext` objects with categories, locations, suggestions, and did-you-mean lists.
+
+**Decision**: Replace `ErrorManager` entirely with the `Diagnostic` system. The parser produces `Diagnostic` objects directly, same as the compiler. One error type everywhere.
+
+**Migration**:
+
+1. Remove `ErrorManager` and `ErrorContext` classes
+2. Give the parser a `std::vector<Diagnostic>*` instead of `ErrorManager*`
+3. Convert the 4 parser error-reporting call sites to emit `Diagnostic` objects
+4. Update `ModuLispInterpreter` to own a `std::vector<Diagnostic>` instead of `ErrorManager`
+5. Update tests in `test_parser_error_reporting.cpp` to assert on `Diagnostic` fields
+
+The `ErrorManager` API was well-designed but never fully integrated. The `Diagnostic` struct captures the same information (category, message, suggestion, examples) in a simpler, flatter structure that crosses the WASM boundary cleanly as JSON.
+
+---
+
+## 5. Compiler Diagnostics
 
 ### 4.1 Error messages by category
 
@@ -337,7 +376,7 @@ Warnings compile successfully but flag suspicious patterns:
 
 ---
 
-## 5. Dataflow: Compiler to Editor
+## 6. Dataflow: Compiler to Editor
 
 ### 5.1 Compilation path
 
@@ -387,6 +426,24 @@ Mitigation rules:
 - **Placeholder values are typed correctly**: use `0.0` (not `nil`) as the placeholder for numeric contexts so that downstream arithmetic doesn't produce additional type errors.
 - **Mark placeholder registers**: the compiler tracks which registers hold placeholder values. Errors whose *only* failing input is a placeholder register are suppressed — they are consequences of the primary error, not independent problems.
 - **Frontend cap**: even if the compiler produces many diagnostics, the frontend shows at most **5 errors per eval** to avoid overwhelming the user. Additional diagnostics are available via "show all" but are hidden by default. Warnings are shown separately and do not count against this cap.
+
+**Checkpoint/rollback must include diagnostics**: The compiler does speculative compilation in two places (`compile_symbol` and `compile_while`). It takes a checkpoint, tries to compile, and rolls back on failure. **Diagnostics emitted during speculative compilation must be discarded on rollback.** The `CompilerCheckpoint` struct must include `diagnostic_count`, and `rollback()` must truncate the diagnostics vector to the checkpoint size. Without this, the user sees error messages about bytecode that was discarded.
+
+```cpp
+struct CompilerCheckpoint {
+    // ... existing fields ...
+    size_t diagnostic_count = 0;  // NEW: track diagnostic vector size
+};
+
+void rollback(const CompilerCheckpoint& cp) {
+    // ... existing rollbacks ...
+    m_diagnostics.resize(cp.diagnostic_count);  // discard speculative diagnostics
+}
+```
+
+**fail() site audit**: The compiler has 25 `fail()` call sites. Of these, **21 are non-fatal** (arity/type/syntax errors in builtins) and safe for report-and-continue. **8 are fatal** (constraint violations: side-effects in signal context, recursion, structural errors) and must abort. The `report()` method replaces both — non-fatal sites call `report_and_continue()`, fatal sites call `report()` followed by returning `-1`.
+
+**Diagnostics are compile-time only**: Diagnostic objects (with their `String` fields, which are heap-allocated `arduino::String` on firmware) are never produced on the per-sample hot path. They are created during compilation (runs once per eval or recompilation) and at runtime only on error (which triggers LKG fallback, ending the sample loop for that output).
 
 ```cpp
 // Revised compiler internals (sketch)
@@ -446,6 +503,24 @@ Editor shows output-level indicator
     │  e.g. amber dot on the line where (a1 ...) was defined
     │  Tooltip: "a1 is falling back to the previous version — dividing by zero"
 ```
+
+#### Batch eval error isolation
+
+`useq_eval_outputs_time_window()` evaluates multiple outputs in a single call. A runtime error on one output must **not** abort the others. Each output is independent — errors are recorded per-output, and healthy outputs continue producing samples. This matches the "never stop the music" principle.
+
+When an output errors during batch eval:
+
+1. Record the runtime diagnostic for that output
+2. Use LKG or default value for the remaining samples in the batch
+3. Continue evaluating the next output
+
+The batch function's return value indicates overall success. Individual output errors are retrieved via `useq_active_diagnostics()`.
+
+#### Relationship to `Value::error()`
+
+The tree-walker returns `Value::error()` (type `ERROR`, displayed as `"{error}"`) from 100+ sites across builtins, interpreter core, and I/O code. This internal sentinel remains — it is the mechanism by which `CALL_INTRINSIC` lambdas signal failure to the VM executor.
+
+The `is_error()` check added to the `CALL_INTRINSIC` handler converts `Value::error()` into a structured runtime diagnostic at the VM boundary. As the VM takes over more evaluation and the tree-walker recedes, fewer code paths will produce `Value::error()`. The diagnostic system does not replace it — it translates it into user-facing information at the point where bytecode execution meets the output sampling loop.
 
 ### 5.4 Dependency-triggered recompilation errors
 
@@ -577,7 +652,7 @@ The diagnostic data model is the same on both targets. Only the delivery mechani
 
 ---
 
-## 6. Fuzzy Name Matching
+## 7. Fuzzy Name Matching
 
 ### 6.1 Algorithm
 
@@ -604,7 +679,7 @@ Levenshtein on the full symbol table is O(n × m) where n is the number of candi
 
 ---
 
-## 7. Interaction with LKG Fallback
+## 8. Interaction with LKG Fallback
 
 The LKG system (§6.3 of `BYTECODE_VM_SPEC.md`) handles *continuity* — keeping the output alive when something breaks. The diagnostic system handles *communication* — telling the user what broke and how to fix it.
 
@@ -630,11 +705,11 @@ Clicking "view error" expands to show the compile diagnostic from the failed att
 
 ---
 
-## 8. Testing
+## 9. Testing
 
 ### 8.1 Diagnostic content tests
 
-Every error category in §4 should have at least one test that asserts:
+Every error category in §5 should have at least one test that asserts:
 
 1. The diagnostic is produced (not silently swallowed)
 2. The `category` field is correct
@@ -718,43 +793,59 @@ A meta-test: for every diagnostic that includes a `suggestion`, compile the sugg
 
 ---
 
-## 9. Implementation Phases
+## 10. Implementation Phases
 
-### Phase 1: Source spans in the parser
-- Add `SourceSpan` to `Value`
-- Track character position during parsing
-- Populate spans for all node types
-- Unit tests for span accuracy
+### Phase 1: Source spans + structured diagnostics
 
-### Phase 2: Structured diagnostics in the compiler
+The parser already tracks character position via `int& ptr`, and spans without diagnostics are useless. Ship them together.
+
+**Parser**:
+- Add `SourceSpan` field to `Value` (in the padding gap, verify with `static_assert`)
+- Record `ptr` into each `Value`'s span during parsing
+- Replace `ErrorManager` with `std::vector<Diagnostic>*` in the parser
+- Convert the 4 parser error-reporting sites to emit `Diagnostic` objects
+- Handle synthesised nodes (`do` wrapper) with `{0, 0}` spans
+
+**Compiler**:
 - Replace `m_error` string with `std::vector<Diagnostic>`
-- Replace `fail()` calls with `report()` calls that include category, span, message, suggestion
-- Continue past non-fatal errors (report-and-continue pattern)
-- Revise `NumericVmCompileResult` to carry `diagnostics[]`
-- Unit tests for each error category
+- Replace `fail()` calls with `report()` / `report_and_continue()` (21 non-fatal, 8 fatal)
+- Add `diagnostic_count` to `CompilerCheckpoint`; rollback truncates diagnostics
+- Track placeholder registers to suppress cascade noise
+- Revise `NumericVmCompileResult` to carry `diagnostics[]` instead of `String error`
 
-### Phase 3: Human-readable messages
-- Write message templates for every error path in the compiler
-- Implement fuzzy name matching for undefined symbols
-- Write suggestion text and examples for common errors
-- Test that all suggestions compile successfully
+**Tests**:
+- Span accuracy tests (correct subexpression, not whole expression)
+- Multi-diagnostic tests (two errors in one expression)
+- Checkpoint/rollback diagnostic isolation tests
+- Every error category produces the correct `DiagnosticCategory`
 
-### Phase 4: WASM ABI and frontend integration
-- Add `useq_last_diagnostics()` export
-- Add `useq_output_diagnostics()` export
-- Frontend: parse diagnostic JSON after eval
-- Frontend: push diagnostics to CodeMirror inline decorations
-- Frontend: output health indicators for runtime errors
+### Phase 2: Human-readable messages and fuzzy matching
+- Write message templates for every error path (see §11 appendix)
+- Implement Levenshtein-based fuzzy name matching for undefined symbols
+- Write suggestion text and examples for all common errors
+- Meta-test: compile every suggestion and assert it succeeds
+- Test did-you-mean candidates against the full builtin + temporal symbol pool
 
-### Phase 5: Runtime diagnostics
-- VM executor reports structured errors (category + message)
-- Per-output diagnostic buffer with deduplication and rate limiting
-- LKG fallback indicator in the editor
-- Firmware: LED colour coding for error state
+### Phase 3: WASM ABI and frontend integration
+- Add `useq_last_diagnostics()` WASM export (JSON array)
+- Add `useq_active_diagnostics()` WASM export (per-output state)
+- Implement clearing policy (per-output on successful recompile, per-eval on new eval)
+- Frontend: parse diagnostic JSON after eval, push to `@codemirror/lint`
+- Frontend: output health indicators for runtime errors and LKG fallback
+- Frontend: success feedback (brief "updated" flash on successful output assignment)
+- Firmware: include `diagnostics` array in serial JSON eval responses via `JsonBuilder`
+
+### Phase 4: Runtime diagnostics
+- VM executor reports structured `RuntimeDiagnostic` (category + message + output)
+- Per-output diagnostic buffer with deduplication and rate limiting (one per output per frame)
+- Batch eval error isolation: one output's error doesn't abort the batch
+- `Value::error()` → structured diagnostic conversion at the `CALL_INTRINSIC` boundary
+- LKG fallback indicator ("using previous version") in the editor
+- Firmware: LED colour coding for error state (amber = compile, red = persistent runtime)
 
 ---
 
-## 10. Appendix: Complete Error Message Table
+## 11. Appendix: Complete Error Message Table
 
 Reference table of all compiler error paths and their user-facing messages. This table is the source of truth for message wording — implementations should match these strings exactly or improve upon them, but never use more technical language.
 
