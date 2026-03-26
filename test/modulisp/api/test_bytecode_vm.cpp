@@ -412,7 +412,7 @@ TEST_CASE("Numeric VM compiler inlines defn callables without CALL opcodes",
     REQUIRE(has_dependency(compile_result.program, "add1"));
 }
 
-TEST_CASE("Numeric VM compiler lowers unsupported numeric builtins via CALL_INTRINSIC",
+TEST_CASE("Numeric VM compiler lowers tri using language builtin semantics",
           "[modulisp][vm]")
 {
     ModuLispInterpreter interp;
@@ -423,7 +423,8 @@ TEST_CASE("Numeric VM compiler lowers unsupported numeric builtins via CALL_INTR
                                 *interp.get_environment());
 
     REQUIRE(compile_result.ok);
-    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::CALL_INTRINSIC));
+    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::TRI));
+    REQUIRE_FALSE(has_opcode(compile_result.program, NumericVmOpcode::CALL_INTRINSIC));
 
     TemporalContext ctx;
     ctx.t = 0.125;
@@ -436,6 +437,57 @@ TEST_CASE("Numeric VM compiler lowers unsupported numeric builtins via CALL_INTR
         execute_numeric_program(compile_result.program, ctx);
     REQUIRE(result.ok);
     REQUIRE(result.value == Approx(0.5).epsilon(1e-9));
+}
+
+TEST_CASE("Numeric VM compiler lowers input to LOAD_INPUT instead of folding",
+          "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(input 2)"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::LOAD_INPUT));
+    REQUIRE_FALSE((compile_result.program.instructions.size() == 2 &&
+                   compile_result.program.instructions[0].opcode ==
+                       NumericVmOpcode::LOAD_CONST));
+}
+
+TEST_CASE("Numeric VM rejects invalid constant folds for runtime math errors",
+          "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto div_result =
+        compile_numeric_program(interp.get_parser()->parse("(/ 1 0)"),
+                                *interp.get_environment());
+    REQUIRE(div_result.ok);
+    REQUIRE(has_opcode(div_result.program, NumericVmOpcode::DIV));
+    REQUIRE_FALSE((div_result.program.instructions.size() == 2 &&
+                   div_result.program.instructions[0].opcode ==
+                       NumericVmOpcode::LOAD_CONST));
+
+    const auto mod_result =
+        compile_numeric_program(interp.get_parser()->parse("(% 1 0)"),
+                                *interp.get_environment());
+    REQUIRE(mod_result.ok);
+    REQUIRE(has_opcode(mod_result.program, NumericVmOpcode::MOD));
+    REQUIRE_FALSE((mod_result.program.instructions.size() == 2 &&
+                   mod_result.program.instructions[0].opcode ==
+                       NumericVmOpcode::LOAD_CONST));
+
+    const auto sqrt_result =
+        compile_numeric_program(interp.get_parser()->parse("(sqrt -1)"),
+                                *interp.get_environment());
+    REQUIRE(sqrt_result.ok);
+    REQUIRE(has_opcode(sqrt_result.program, NumericVmOpcode::SQRT));
+    REQUIRE_FALSE((sqrt_result.program.instructions.size() == 2 &&
+                   sqrt_result.program.instructions[0].opcode ==
+                       NumericVmOpcode::LOAD_CONST));
 }
 
 TEST_CASE("Numeric VM compiler flattens slow into LOAD_TIME scale", "[modulisp][vm]")
@@ -472,6 +524,44 @@ TEST_CASE("Numeric VM compiler lowers vector lookup into data segments",
     REQUIRE(compile_result.program.instructions[0].opcode == NumericVmOpcode::LOAD_TIME);
     REQUIRE(compile_result.program.instructions[1].opcode == NumericVmOpcode::VEC_INDEX);
     REQUIRE(compile_result.program.instructions[2].opcode == NumericVmOpcode::RET);
+}
+
+TEST_CASE("Tagged VM preserves runtime vector literals", "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("[1 2 3]"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::MAKE_VECTOR));
+
+    TemporalContext ctx;
+    const TaggedVmExecutionResult result =
+        execute_tagged_program(compile_result.program, ctx);
+    REQUIRE(result.ok);
+    REQUIRE(result.value == Value::vector({ Value(1), Value(2), Value(3) }));
+}
+
+TEST_CASE("Tagged VM aborts infinite while loops after iteration budget",
+          "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(while 1 1)"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+
+    TemporalContext ctx;
+    const TaggedVmExecutionResult result =
+        execute_tagged_program(compile_result.program, ctx);
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(result.error.indexOf("iteration budget exceeded") >= 0);
 }
 
 TEST_CASE("Output sampling handles let expressions through the VM path",
@@ -635,4 +725,140 @@ TEST_CASE("Compile-time rejection keeps the current active output graph",
     const double second_value = interp.eval_output_at_time("a1", 2.0, &ok);
     REQUIRE(ok);
     REQUIRE(second_value == Approx(3.0).epsilon(1e-6));
+}
+
+// ===== Closure compilation edge cases =====
+
+TEST_CASE("Closure captures multiple variables", "[modulisp][vm][closures]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define f (let [a 10 b 20] (lambda [x] (+ a b x))))");
+    interp.eval("(define a 999)");
+    interp.eval("(define b 999)");
+
+    const Value result = interp.eval_v("(f 3)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(33.0).epsilon(1e-9));
+}
+
+TEST_CASE("Closure captures a vector", "[modulisp][vm][closures]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define lookup (let [tbl [10 20 30]] (lambda [i] (tbl i))))");
+
+    const Value result = interp.eval_v("(lookup 0.5)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(20.0).epsilon(1e-6));
+}
+
+TEST_CASE("Nested let shadowing does not leak through closure capture",
+          "[modulisp][vm][closures]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    // Inner let shadows outer let; closure should capture inner x=5
+    interp.eval("(define f (let [x 1] (let [x 5] (lambda [y] (+ x y)))))");
+    interp.eval("(define x 999)");
+
+    const Value result = interp.eval_v("(f 2)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(7.0).epsilon(1e-9));
+}
+
+TEST_CASE("Let binding shadows global during constant folding",
+          "[modulisp][vm][closures]")
+{
+    // Regression: try_resolve_numeric_constant used to resolve symbols
+    // through the global env without checking local scopes first.
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define x 100)");
+
+    const Value result = interp.eval_v("(let [x 3] (+ x 1))");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(4.0).epsilon(1e-9));
+}
+
+TEST_CASE("Closure in output sampling with time-dependent argument",
+          "[modulisp][vm][closures][outputs]")
+{
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr, 8, 8, 8);
+    interp.init();
+
+    interp.eval("(define scale-sig (let [k 3] (lambda [x] (* k x))))");
+    interp.eval("(define k 999)");
+    interp.eval("(a1 (scale-sig t))");
+
+    bool ok = false;
+    const double value = interp.eval_output_at_time("a1", 2.0, &ok);
+    REQUIRE(ok);
+    REQUIRE(value == Approx(6.0).epsilon(1e-6));
+}
+
+TEST_CASE("Closure capturing another closure (nested call)",
+          "[modulisp][vm][closures]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    // inner captures add1; outer captures inner
+    interp.eval("(define add1 (let [n 1] (lambda [x] (+ x n))))");
+    interp.eval("(define double-add1 (let [f add1] (lambda [x] (f (f x)))))");
+    interp.eval("(define n 999)");
+
+    const Value result = interp.eval_v("(double-add1 5)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(7.0).epsilon(1e-9));
+}
+
+TEST_CASE("Closure compiles without CALL_INTRINSIC fallback",
+          "[modulisp][vm][closures]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define f (let [k 2] (lambda [x] (* k x))))");
+
+    const auto result =
+        compile_numeric_program(interp.get_parser()->parse("(f 5)"),
+                                *interp.get_environment(), false);
+    REQUIRE(result.ok);
+    REQUIRE_FALSE(has_opcode(result.program, NumericVmOpcode::CALL_INTRINSIC));
+}
+
+TEST_CASE("Closure captures eagerly evaluated let binding",
+          "[modulisp][vm][closures]")
+{
+    // let evaluates eagerly: (let [b base] ...) captures the value of
+    // base at eval time, not the expression. At eval time t=0, so
+    // base=(* 0 2)=0, and f(10) = 0 + 10 = 10.
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define base (* t 2))");
+    interp.eval("(define f (let [b base] (lambda [x] (+ b x))))");
+
+    const Value result = interp.eval_v("(f 10)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(10.0).epsilon(1e-9));
+}
+
+TEST_CASE("Immediate closure application compiles natively",
+          "[modulisp][vm][closures]")
+{
+    // ((let [x 5] (lambda [y] (+ x y))) 3) — closure created and called inline
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define x 999)");
+
+    const Value result = interp.eval_v("((let [x 5] (lambda [y] (+ x y))) 3)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(8.0).epsilon(1e-9));
 }
