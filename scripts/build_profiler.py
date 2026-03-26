@@ -88,7 +88,7 @@ class BuildProfiler:
             build_start = time.time()
             try:
                 result = subprocess.run(
-                    ["ninja", "-C", str(self.build_dir), "-v"],
+                    ["ninja", "-j4", "-C", str(self.build_dir), "-v"],
                     check=True, 
                     capture_output=True, 
                     text=True
@@ -96,7 +96,7 @@ class BuildProfiler:
             except subprocess.CalledProcessError as e:
                 # Try without -v if verbose fails
                 result = subprocess.run(
-                    ["ninja", "-C", str(self.build_dir)],
+                    ["ninja", "-j4", "-C", str(self.build_dir)],
                     check=True, 
                     capture_output=True, 
                     text=True

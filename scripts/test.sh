@@ -137,7 +137,7 @@ if [[ "$SKIP_BUILD" == "false" ]]; then
     fi
     
     print_status "Building all tests..."
-    if ninja -C "$BUILD_DIR"; then
+    if ninja -j4 -C "$BUILD_DIR"; then
         print_success "Build completed successfully"
     else
         print_error "Build failed"

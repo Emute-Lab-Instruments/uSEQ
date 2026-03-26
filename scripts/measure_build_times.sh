@@ -154,7 +154,7 @@ measure_clean_build() {
     
     # Measure build time
     local build_time
-    build_time=$(measure_build_time ninja -C "$BUILD_DIR")
+    build_time=$(measure_build_time ninja -j4 -C "$BUILD_DIR")
     
     local total_time=$((config_time + build_time))
     
@@ -178,7 +178,7 @@ measure_incremental_build() {
         [[ "$ccache" == "true" ]] && meson_args="$meson_args -Duse_ccache=true" || meson_args="$meson_args -Duse_ccache=false"
         
         meson setup "$BUILD_DIR" $meson_args > /dev/null 2>&1
-        ninja -C "$BUILD_DIR" > /dev/null 2>&1
+        ninja -j4 -C "$BUILD_DIR" > /dev/null 2>&1
     fi
     
     # Touch a source file to trigger rebuild
@@ -193,7 +193,7 @@ measure_incremental_build() {
     
     # Measure incremental build time
     local build_time
-    build_time=$(measure_build_time ninja -C "$BUILD_DIR")
+    build_time=$(measure_build_time ninja -j4 -C "$BUILD_DIR")
     
     echo "{\"type\":\"incremental\",\"config\":\"$config\",\"unity\":$unity,\"ccache\":$ccache,\"build_time\":$build_time,\"modified_file\":\"$test_file\"}"
 }

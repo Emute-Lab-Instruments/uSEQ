@@ -39,7 +39,7 @@ fi
 
 # Build the project
 echo -e "${GREEN}Building with ccache...${NC}"
-ninja -C build
+ninja -j4 -C build
 
 # Print ccache statistics after build
 echo -e "${GREEN}=== ccache statistics after build ===${NC}"
