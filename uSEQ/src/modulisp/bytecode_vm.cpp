@@ -12,6 +12,8 @@
 
 namespace
 {
+constexpr size_t VM_MAX_BACKWARD_BRANCHES = 100000;
+
 bool is_output_assignment_symbol(const String& symbol)
 {
     if (symbol.length() < 2)
@@ -102,14 +104,11 @@ struct LocalValueBinding
     int source_register = -1;
 };
 
-// Diagnostic counter: tracks how many times the VM compiler falls back to
-// the tree-walker because a callable has a captured scope (closure).
-// To compile closures natively, the VM would need to:
-//   1. Identify which variables the closure captures from its defining scope
-//   2. Pass those captured values as additional CALL arguments
-//   3. Bind them in the callee's local scope before executing the body
-// This is deferred to a future iteration. For now, we measure the frequency
-// to determine whether it's worth the complexity.
+// Diagnostic counter: tracks closure fallbacks to the tree-walker.
+// With compile-time capture substitution now implemented, this counter
+// should remain at zero for closures whose captured values are constants
+// or compilable expressions. Non-zero values indicate a closure pattern
+// the compiler cannot yet handle (e.g., recursive closures, HOFs).
 static int s_closure_fallback_count = 0;
 int get_closure_fallback_count() { return s_closure_fallback_count; }
 
@@ -152,6 +151,16 @@ double wrap_phase(double time_seconds, double duration_seconds);
 double time_to_count(double time_seconds, double duration_seconds);
 TemporalContext apply_time_transform(const TemporalContext& ctx,
                                      const AffineTimeTransform& transform);
+
+double tri_wave(double duty, double phase)
+{
+    duty = std::clamp(duty, 0.01, 0.99);
+    if (phase > duty)
+    {
+        phase = duty - ((phase - duty) * (duty / (1.0 - duty)));
+    }
+    return phase / duty;
+}
 
 class NumericVmCompiler
 {
@@ -261,7 +270,7 @@ private:
 
         if (expr.is_vector())
         {
-            return compile_vector_as_list(expr.as_vector(), transform);
+            return compile_vector_literal(expr.as_vector(), transform);
         }
 
         if (expr.type == Value::QUOTE)
@@ -463,7 +472,10 @@ private:
         }
         if (op == "tri")
         {
-            return compile_unary(items, NumericVmOpcode::TRI, transform);
+            if (items.size() == 3)
+            {
+                return compile_tri(items, transform);
+            }
         }
         if (op == "sqr")
         {
@@ -1045,10 +1057,7 @@ private:
         return -1;
     }
 
-    // Compile a vector literal [a b c] into a MAKE_LIST instruction.
-    // This avoids the tree-walker fallback that was previously used for
-    // vector-as-expression forms.
-    int compile_vector_as_list(const std::vector<Value>& elements,
+    int compile_vector_literal(const std::vector<Value>& elements,
                                const AffineTimeTransform& transform)
     {
         std::vector<int> element_regs;
@@ -1065,7 +1074,7 @@ private:
         const int first_reg = allocate_argument_window(element_regs);
         const int dst = allocate_register();
         NumericVmInstruction insn;
-        insn.opcode = NumericVmOpcode::MAKE_LIST;
+        insn.opcode = NumericVmOpcode::MAKE_VECTOR;
         insn.rd = static_cast<uint16_t>(dst);
         insn.rs1 = static_cast<uint16_t>(first_reg >= 0 ? first_reg : 0);
         insn.rs2 = static_cast<uint16_t>(element_regs.size());
@@ -1183,6 +1192,31 @@ private:
             return -1;
         }
         return emit_binary(opcode, lhs, rhs);
+    }
+
+    int compile_tri(const std::vector<Value>& items,
+                    const AffineTimeTransform& transform)
+    {
+        if (items.size() != 3)
+        {
+            fail("tri expects exactly 2 arguments");
+            return -1;
+        }
+
+        const int duty = compile_expr(items[1], transform);
+        const int phase = compile_expr(items[2], transform);
+        if (duty < 0 || phase < 0)
+        {
+            return -1;
+        }
+
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::TRI;
+        insn.rd = static_cast<uint16_t>(duty);
+        insn.rs1 = static_cast<uint16_t>(duty);
+        insn.rs2 = static_cast<uint16_t>(phase);
+        m_program.instructions.push_back(insn);
+        return duty;
     }
 
     int compile_unary(const std::vector<Value>& items,
@@ -1611,6 +1645,14 @@ private:
 
     std::optional<double> try_resolve_numeric_constant(const Value& expr)
     {
+        auto checked = [](double value) -> std::optional<double> {
+            if (!std::isfinite(value))
+            {
+                return std::nullopt;
+            }
+            return value;
+        };
+
         if (expr.is_number())
         {
             return expr.as_float();
@@ -1619,6 +1661,13 @@ private:
         if (expr.is_symbol())
         {
             const String symbol = expr.as_atom();
+            // Local bindings (let, lambda params, closure captures) shadow
+            // global definitions. If a local binding exists, the value is
+            // in a register — not a compile-time constant.
+            if (find_local_value_binding(symbol).has_value())
+            {
+                return std::nullopt;
+            }
             if (try_get_temporal_channel(symbol, m_unused_channel))
             {
                 return std::nullopt;
@@ -1669,7 +1718,7 @@ private:
             {
                 return std::nullopt;
             }
-            return fn(*arg);
+            return checked(fn(*arg));
         };
         auto binary = [&](const std::function<double(double, double)>& fn)
             -> std::optional<double> {
@@ -1683,7 +1732,7 @@ private:
             {
                 return std::nullopt;
             }
-            return fn(*lhs, *rhs);
+            return checked(fn(*lhs, *rhs));
         };
 
         if (op == "+")
@@ -1743,10 +1792,30 @@ private:
         }
         if (op == "/")
         {
+            if (items.size() != 3)
+            {
+                return std::nullopt;
+            }
+            const std::optional<double> rhs_value =
+                try_resolve_numeric_constant(items[2]);
+            if (!rhs_value.has_value() || *rhs_value == 0.0)
+            {
+                return std::nullopt;
+            }
             return binary([](double lhs, double rhs) { return lhs / rhs; });
         }
         if (op == "%")
         {
+            if (items.size() != 3)
+            {
+                return std::nullopt;
+            }
+            const std::optional<double> rhs_value =
+                try_resolve_numeric_constant(items[2]);
+            if (!rhs_value.has_value() || *rhs_value == 0.0)
+            {
+                return std::nullopt;
+            }
             return binary([](double lhs, double rhs) { return std::fmod(lhs, rhs); });
         }
         if (op == ">")
@@ -1812,7 +1881,19 @@ private:
         }
         if (op == "tri")
         {
-            return unary([](double x) { return 1.0 - std::fabs(2.0 * x - 1.0); });
+            if (items.size() != 3)
+            {
+                return std::nullopt;
+            }
+            const std::optional<double> duty =
+                try_resolve_numeric_constant(items[1]);
+            const std::optional<double> phase =
+                try_resolve_numeric_constant(items[2]);
+            if (!duty.has_value() || !phase.has_value())
+            {
+                return std::nullopt;
+            }
+            return checked(tri_wave(*duty, *phase));
         }
         if (op == "sqr")
         {
@@ -1836,7 +1917,7 @@ private:
         }
         if (op == "input")
         {
-            return 0.0;
+            return std::nullopt;
         }
         if (op == "floor")
         {
@@ -1848,6 +1929,15 @@ private:
         }
         if (op == "sqrt")
         {
+            if (items.size() != 2)
+            {
+                return std::nullopt;
+            }
+            const std::optional<double> arg = try_resolve_numeric_constant(items[1]);
+            if (!arg.has_value() || *arg < 0.0)
+            {
+                return std::nullopt;
+            }
             return unary([](double value) { return std::sqrt(value); });
         }
         if (op == "abs")
@@ -2101,43 +2191,48 @@ private:
             if (const std::optional<Value> local_callable =
                     find_local_callable_binding(op))
             {
-                if (lambda_has_captured_scope(*local_callable))
-                {
-                    // CLOSURE FALLBACK: local callable has captured scope.
-                    // Falls back to tree-walker because the VM cannot yet
-                    // pass captured variables as extra CALL arguments.
-                    ++s_closure_fallback_count;
-                    out_reg = emit_runtime_eval(Value(items), transform);
-                    return out_reg >= 0;
-                }
                 if (parse_lambda_value(*local_callable, params, body))
                 {
-                    out_reg = compile_inline_lambda(params, body,
-                                                    std::vector<Value>(items.begin() + 1,
-                                                                       items.end()),
-                                                    transform);
+                    if (lambda_has_captured_scope(*local_callable))
+                    {
+                        out_reg = compile_closure_inline(
+                            *local_callable, params, body,
+                            std::vector<Value>(items.begin() + 1,
+                                               items.end()),
+                            transform);
+                    }
+                    else
+                    {
+                        out_reg = compile_inline_lambda(
+                            params, body,
+                            std::vector<Value>(items.begin() + 1,
+                                               items.end()),
+                            transform);
+                    }
                     return out_reg >= 0;
                 }
             }
             if (const std::optional<Value> global_callable = m_env.get(op))
             {
-                if (lambda_has_captured_scope(*global_callable))
-                {
-                    // CLOSURE FALLBACK: global callable has captured scope.
-                    // Falls back to tree-walker because the VM cannot yet
-                    // pass captured variables as extra CALL arguments.
-                    ++s_closure_fallback_count;
-                    maybe_add_dependency(op);
-                    out_reg = emit_runtime_eval(Value(items), transform);
-                    return out_reg >= 0;
-                }
                 if (parse_lambda_value(*global_callable, params, body))
                 {
                     maybe_add_dependency(op);
-                    out_reg = compile_inline_lambda(params, body,
-                                                    std::vector<Value>(items.begin() + 1,
-                                                                       items.end()),
-                                                    transform);
+                    if (lambda_has_captured_scope(*global_callable))
+                    {
+                        out_reg = compile_closure_inline(
+                            *global_callable, params, body,
+                            std::vector<Value>(items.begin() + 1,
+                                               items.end()),
+                            transform);
+                    }
+                    else
+                    {
+                        out_reg = compile_inline_lambda(
+                            params, body,
+                            std::vector<Value>(items.begin() + 1,
+                                               items.end()),
+                            transform);
+                    }
                     return out_reg >= 0;
                 }
                 if (global_callable->is_builtin())
@@ -2160,6 +2255,65 @@ private:
         }
 
         return false;
+    }
+
+    // Compile a closure call by injecting captured bindings as locals,
+    // then inlining the lambda body. Works because signal context has no
+    // mutation — captured values are frozen at definition time.
+    int compile_closure_inline(const Value& callable,
+                               const std::vector<Value>& params,
+                               const Value& body,
+                               const std::vector<Value>& arg_exprs,
+                               const AffineTimeTransform& transform)
+    {
+        push_local_scope();
+
+        // Bind captured values as local constants or callables
+        for (const auto& entry : callable.lambda_scope->get_defs())
+        {
+            if (entry.second.is_builtin())
+            {
+                continue;
+            }
+
+            if (entry.second.type == Value::LAMBDA)
+            {
+                bind_local_callable(entry.first, entry.second);
+            }
+            else
+            {
+                const int reg = emit_const(entry.second);
+                bind_local_value(entry.first, reg);
+            }
+        }
+
+        // Bind captured expression bindings (signal expressions that
+        // reference time/inputs — compile them inline)
+        for (const auto& entry : callable.lambda_scope->get_def_exprs())
+        {
+            // If it's a callable expression, bind as callable
+            std::vector<Value> expr_params;
+            Value expr_body;
+            if (parse_lambda_value(entry.second, expr_params, expr_body))
+            {
+                bind_local_callable(entry.first, entry.second);
+                continue;
+            }
+
+            const int reg = compile_expr(entry.second, transform);
+            if (reg < 0)
+            {
+                pop_local_scope();
+                return -1;
+            }
+            bind_local_value(entry.first, reg);
+        }
+
+        // Now inline as normal — captures are visible as locals
+        const int result =
+            compile_inline_lambda(params, body, arg_exprs, transform);
+        pop_local_scope();
+        return result;
     }
 
     int compile_inline_lambda(const std::vector<Value>& params,
@@ -2723,6 +2877,7 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
     {
         registers[i] = initial_registers[i];
     }
+    size_t backward_branch_count = 0;
 // Computed-goto dispatch: enabled for GCC/Clang on non-WASM builds when
 // USE_COMPUTED_GOTO is defined.  Falls back to a normal switch otherwise.
 #if defined(__GNUC__) && !defined(WASM_BUILD) && defined(USE_COMPUTED_GOTO)
@@ -2732,7 +2887,7 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
 #endif
 
 #if VM_USE_COMPUTED_GOTO
-    // 53 opcodes: LOAD_CONST(0) through LOAD_INPUT(52)
+    // 54 opcodes: LOAD_CONST(0) through LOAD_INPUT(53)
     static const void* dispatch_table[] = {
         &&op_LOAD_CONST,    &&op_LOAD_TIME,     &&op_MOV,
         &&op_VEC_INDEX,     &&op_VEC_LERP,      &&op_ADD,
@@ -2748,18 +2903,18 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
         &&op_RET,           &&op_IS_NIL,        &&op_IS_NUMBER,
         &&op_IS_LIST,       &&op_IS_STRING,     &&op_NOT,
         &&op_AND,           &&op_OR,            &&op_MAKE_LIST,
-        &&op_LIST_HEAD,     &&op_LIST_TAIL,     &&op_LIST_LENGTH,
-        &&op_U_SIN,         &&op_U_COS,         &&op_U_SIN_BI,
-        &&op_U_COS_BI,      &&op_TRI,           &&op_SQR,
-        &&op_PULSE,         &&op_LOAD_INPUT
+        &&op_MAKE_VECTOR,   &&op_LIST_HEAD,     &&op_LIST_TAIL,
+        &&op_LIST_LENGTH,   &&op_U_SIN,         &&op_U_COS,
+        &&op_U_SIN_BI,      &&op_U_COS_BI,      &&op_TRI,
+        &&op_SQR,           &&op_PULSE,         &&op_LOAD_INPUT
     };
-    static_assert(sizeof(dispatch_table) / sizeof(dispatch_table[0]) == 53,
+    static_assert(sizeof(dispatch_table) / sizeof(dispatch_table[0]) == 54,
                   "dispatch_table must have one entry per NumericVmOpcode");
     #define VM_DISPATCH() do { \
         if (pc >= program.instructions.size()) goto vm_loop_exit; \
         insn = program.instructions[pc]; \
         if (static_cast<int>(insn.opcode) < 0 || \
-            static_cast<int>(insn.opcode) >= 53) goto vm_loop_exit; \
+            static_cast<int>(insn.opcode) >= 54) goto vm_loop_exit; \
         goto *dispatch_table[static_cast<int>(insn.opcode)]; \
     } while (0)
     #define VM_CASE(op) op_##op:
@@ -2936,7 +3091,6 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
         VM_CASE(U_COS)
         VM_CASE(U_SIN_BI)
         VM_CASE(U_COS_BI)
-        VM_CASE(TRI)
         VM_CASE(SQR)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
@@ -2997,9 +3151,6 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             case NumericVmOpcode::U_COS_BI:
                 out = std::cos(left * 2.0 * M_PI);
                 break;
-            case NumericVmOpcode::TRI:
-                out = 1.0 - std::fabs(2.0 * left - 1.0);
-                break;
             case NumericVmOpcode::SQR:
                 out = left < 0.5 ? 1.0 : 0.0;
                 break;
@@ -3022,6 +3173,7 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
         VM_CASE(MIN)
         VM_CASE(MAX)
         VM_CASE(POW)
+        VM_CASE(TRI)
         VM_CASE(PULSE)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
@@ -3097,6 +3249,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 // ModuLisp convention: (pow exponent base) → base^exponent
                 out = std::pow(right, left);
                 break;
+            case NumericVmOpcode::TRI:
+                out = tri_wave(left, right);
+                break;
             case NumericVmOpcode::PULSE:
                 out = left < right ? 1.0 : 0.0;
                 break;
@@ -3142,6 +3297,11 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             {
                 return result;
             }
+            if (target <= pc && ++backward_branch_count > VM_MAX_BACKWARD_BRANCHES)
+            {
+                result.error = "Numeric VM loop iteration budget exceeded";
+                return result;
+            }
             pc = target;
             VM_BRANCH_DONE();
         }
@@ -3161,6 +3321,12 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 if (!resolve_branch_target(pc, insn.imm, program.instructions.size(),
                                            target, result.error))
                 {
+                    return result;
+                }
+                if (target <= pc &&
+                    ++backward_branch_count > VM_MAX_BACKWARD_BRANCHES)
+                {
+                    result.error = "Numeric VM loop iteration budget exceeded";
                     return result;
                 }
                 pc = target;
@@ -3224,6 +3390,11 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 }
                 registers[insn.rd] =
                     program.intrinsics[static_cast<size_t>(insn.imm)](args, ctx);
+                if (registers[insn.rd].is_error())
+                {
+                    result.error = "Numeric VM intrinsic returned an error";
+                    return result;
+                }
             }
             VM_NEXT();
         }
@@ -3301,6 +3472,7 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             VM_NEXT();
         }
         VM_CASE(MAKE_LIST)
+        VM_CASE(MAKE_VECTOR)
         {
             if (!validate_register_index(insn.rd, registers.size(), result.error,
                                          "destination"))
@@ -3322,7 +3494,9 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             {
                 elements.push_back(registers[start + i]);
             }
-            registers[insn.rd] = Value(elements);
+            registers[insn.rd] = insn.opcode == NumericVmOpcode::MAKE_VECTOR
+                                     ? Value::vector(elements)
+                                     : Value(elements);
             VM_NEXT();
         }
         VM_CASE(LIST_HEAD)
@@ -3336,13 +3510,13 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             }
 
             const Value& src = registers[insn.rs1];
-            if (!src.is_list())
+            if (!src.is_sequential())
             {
-                result.error = "Numeric VM LIST_HEAD requires a list operand";
+                result.error = "Numeric VM LIST_HEAD requires a sequential operand";
                 return result;
             }
 
-            const std::vector<Value> items = src.as_list();
+            const std::vector<Value> items = src.as_sequential();
             if (items.empty())
             {
                 registers[insn.rd] = Value::nil();
@@ -3364,21 +3538,23 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             }
 
             const Value& src = registers[insn.rs1];
-            if (!src.is_list())
+            if (!src.is_sequential())
             {
-                result.error = "Numeric VM LIST_TAIL requires a list operand";
+                result.error = "Numeric VM LIST_TAIL requires a sequential operand";
                 return result;
             }
 
-            const std::vector<Value> items = src.as_list();
+            const std::vector<Value> items = src.as_sequential();
             if (items.size() <= 1)
             {
-                registers[insn.rd] = Value(std::vector<Value>{});
+                registers[insn.rd] = src.is_vector() ? Value::vector({})
+                                                     : Value(std::vector<Value>{});
             }
             else
             {
-                registers[insn.rd] = Value(
-                    std::vector<Value>(items.begin() + 1, items.end()));
+                const std::vector<Value> tail(items.begin() + 1, items.end());
+                registers[insn.rd] =
+                    src.is_vector() ? Value::vector(tail) : Value(tail);
             }
             VM_NEXT();
         }
@@ -3393,10 +3569,10 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             }
 
             const Value& src = registers[insn.rs1];
-            if (src.is_list())
+            if (src.is_sequential())
             {
                 registers[insn.rd] =
-                    Value(static_cast<double>(src.as_list().size()));
+                    Value(static_cast<double>(src.as_sequential().size()));
             }
             else
             {
