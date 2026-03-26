@@ -673,7 +673,7 @@ tests:
 
   - name: tri at midpoint
     output: a1
-    expr: "(tri 0.5)"
+    expr: "(tri 0.5 0.5)"
     tolerance: 1e-6
     samples:
       - t: 0.0
@@ -681,7 +681,7 @@ tests:
 
   - name: tri at quarter
     output: a1
-    expr: "(tri 0.25)"
+    expr: "(tri 0.5 0.25)"
     tolerance: 1e-6
     samples:
       - t: 0.0
