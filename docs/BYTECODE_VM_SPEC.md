@@ -2,13 +2,13 @@
 
 ## Status
 
-**Draft** | March 2026 | Relates to `useq-perform-q3q`
+**Implemented** | March 2026 | Relates to `useq-perform-q3q`
 
 ## 1. Motivation
 
 The ModuLisp interpreter currently uses a tree-walking evaluator. For every sample point, `eval_output_internal()` traverses the full AST — at 100 samples x N active channels, this means 300+ complete tree-walks per frame. Each walk allocates temporary `Value` objects, creates environment frames, and performs string-keyed lookups.
 
-A bytecode VM compiles expressions once and executes a flat instruction loop per sample. The long-term motivation is an unboxed fast path for tight arithmetic. The current tagged-register implementation is materially faster than the tree-walker on benchmark coverage, but still much closer to low-single-digit speedups than to the original 10-50x aspiration.
+A bytecode VM compiles expressions once and executes a flat instruction loop per sample. The VM now includes both a tagged-value executor for general evaluation and an **unboxed `double` fast path** for pure-numeric signal graphs that eliminates all `Value` boxing on the hot path. Combined with batch temporal execution (evaluating an entire time-point array in a single call), the VM delivers substantial speedups over the tree-walker, with the architecture designed for further gains via JIT compilation and SIMD vectorization.
 
 - No AST node allocation per sample
 - No environment frame creation per sample
@@ -87,9 +87,9 @@ Dedicated `keyword` and `bool` runtime tags are not implemented yet. Current tru
 The current language already contains looping and comprehension-like constructs, and the VM must at minimum describe which subset is native versus interpreter-bridged.
 
 - `while` has a native bytecode lowering for the subset the compiler can express, and the executor now applies a backward-branch budget so compiled infinite loops fail instead of stalling forever.
-- `for` remains part of the language but is still handled through the interpreter bridge rather than native VM lowering.
+- `for` has a native compile-time unrolling path for the common case `(for var [const-vector] body)` where the collection is a compile-time constant (numeric vector, literal vector with constant elements). The compiler unrolls up to 64 iterations, binding the loop variable as a local constant for each iteration and compiling the body inline. Collections that cannot be resolved at compile time (dynamic expressions, variables bound to non-constant values) or that exceed the unroll limit fall back to the interpreter bridge via `emit_runtime_eval()`.
 
-The arithmetic/vector fast path does not optimize loops in V1. General loop completeness is still a follow-up item, not a solved property of the current implementation.
+The arithmetic/vector fast path does not optimize loops beyond unrolling in V1. General loop completeness (e.g., dynamic iteration count, mutable loop variables) is still a follow-up item.
 
 ### 2.8 Dynamic `eval` in Signal Context
 
@@ -127,22 +127,61 @@ Same bytecode format and compiler for both targets. The dispatch is behind a `#i
 
 ### 3.3 Compilation Unit
 
-A **compiled graph** consists of:
+A **compiled graph** (`NumericVmProgram`) consists of:
 
 - **Instruction buffer**: flat array of bytecode instructions
-- **Data segment**: constant pool (tagged literals, scalars, vector data)
+- **Data segment**: constant pool (tagged literals, scalars, vector data), with hash-indexed deduplication for O(1) amortized lookups
 - **Register count**: number of registers used (for allocation)
 - **Dependency set**: set of symbol names this graph transitively references (for invalidation)
+- **Numeric-only flag** (`is_numeric_only`): set by post-compilation analysis when the program contains no type-polymorphic opcodes (`IS_NIL`, `MAKE_LIST`, `AND`, `OR`, etc.) and all constants are numeric. Programs with this flag use the unboxed `double` executor (section 3.6)
 
 ### 3.4 Register Allocation
 
-For V1, a simple linear-scan or tree-coloring allocator is sufficient. ModuLisp expressions are trees (or DAGs after CSE) with no complex control flow, making register allocation straightforward.
+The compiler uses a monotonically incrementing register allocator augmented with a **free-list recycling** mechanism. When a register becomes dead (e.g., the right-hand operand of a binary instruction after the result is written to the left-hand operand), it is returned to the free list for reuse by subsequent allocations. Registers bound to local variables (via `let`, lambda parameters) or preserved by the CSE cache are **pinned** and excluded from recycling.
+
+Argument windows for `CALL`/`CALL_INTRINSIC` always allocate fresh consecutive registers (bypassing the free list) to satisfy the contiguous-register calling convention.
+
+This reduces the register count (and thus the register-file allocation) for complex expressions without requiring full liveness analysis.
 
 ### 3.5 Instruction Encoding
 
 **Deferred decision**: V1 uses a struct-based instruction representation (e.g., `{opcode, rd, rs1, rs2, imm}` — ~12-16 bytes per instruction) for clarity and debuggability. Compact binary encoding (16-bit or 32-bit fixed-width) will be designed after V1 is functional and we have real bytecode to profile.
 
 This is acceptable because typical ModuLisp expressions compile to 10-50 instructions. Even at 16 bytes per instruction, a compiled graph is 160-800 bytes — negligible on both WASM and firmware (RP2040 has 264KB RAM).
+
+### 3.6 Unboxed Numeric Executor
+
+Programs flagged `is_numeric_only` (section 3.3) are executed by a dedicated fast-path executor (`execute_numeric_program_fast()`) that uses `std::vector<double>` as the register file instead of `std::vector<Value>`. This eliminates all tagging overhead on the per-sample hot path:
+
+- No `Value` construction or destruction per instruction
+- Branch conditions are `reg != 0.0` (no type-polymorphic truthiness)
+- Finiteness check at `RET` catches NaN/Inf early
+- `CALL_INTRINSIC` bridges to the `Value`-based intrinsic interface (the only point where `Value` objects are created); non-numeric intrinsic returns are runtime errors
+- `CALL` dispatches to the fast executor if the callee is also numeric-only; otherwise falls back to the tagged executor
+
+The fast executor mirrors the tagged executor's dispatch structure (both computed-goto and switch paths), backward-branch budget, and call-depth limit.
+
+`execute_numeric_program()` routes to the fast path when `program.is_numeric_only` is true; otherwise falls through to the existing tagged path.
+
+### 3.7 Batch Temporal Execution
+
+The dominant workload is sampling a signal across a time range (100+ points per channel per frame). Rather than calling the executor N times per channel, the batch API evaluates an entire time-point array in a single call:
+
+```cpp
+NumericVmBatchResult execute_numeric_program_batch(
+    const NumericVmProgram& program,
+    const TemporalContext& base_ctx,
+    const double* time_points,
+    double* results,
+    size_t count);
+```
+
+The batch executor:
+- Builds per-sample `TemporalContext` from each time point (recomputing phasors via `wrap_phase()` and `time_to_count()`)
+- On error, fills remaining outputs with the last valid sample and records the error index
+- Handles non-finite values by substituting the last valid sample
+
+The integration layer (`eval_output_batch()` in `modulisp_api.cpp`) pre-computes the time-point array once and shares it across all output channels. The WASM ABI (`useq_eval_outputs_time_window`) automatically uses the batch path with no additional changes.
 
 ## 4. Instruction Set
 
@@ -269,15 +308,19 @@ The compiler **prefers inlining** lambda bodies at call sites. `CALL` is emitted
 ```
 Source text → Parser → AST (Value tree)
     → Compiler frontend:
-        1. Symbol resolution (inline known bindings)
-        2. Constness analysis (propagate which nodes are compile-time constant)
-        3. Constant folding (evaluate constant subexpressions)
-        4. Builtin expansion (expand builtins with constant args to pre-computed results)
-        5. Time-warp flattening (compose affine transforms, bake into LOAD_TIME)
-        6. CSE (common subexpression elimination on the DAG)
-    → Register allocation
+        1. CSE pre-scan (count duplicate subexpression signatures)
+        2. Symbol resolution (inline known bindings)
+        3. Constness analysis (propagate which nodes are compile-time constant)
+        4. Constant folding (evaluate constant subexpressions)
+        5. Builtin expansion (expand builtins with constant args to pre-computed results)
+        6. Time-warp flattening (compose affine transforms, bake into LOAD_TIME)
+        7. Short-circuit logic (and/or compiled as branches, not eager evaluation)
+        8. For-loop unrolling (constant vectors unrolled at compile time, up to 64 iterations)
+        9. CSE caching (deduplicate subexpressions found in pre-scan)
+    → Register allocation (with free-list recycling)
     → Bytecode emission
-    → Compiled graph (instruction buffer + data segment + dependency set)
+    → Post-compilation: classify numeric-only, hash-indexed constant/data dedup
+    → Compiled graph (instruction buffer + data segment + dependency set + numeric-only flag)
 ```
 
 ### 5.2 Symbol Resolution and Inlining
@@ -336,32 +379,59 @@ Builtins fall into three tiers:
 
 The decision boundary is: **can the result be reduced to a constant data structure at compile time?** If yes, expand. If no, call intrinsic.
 
+### 5.6 Short-Circuit Logic Compilation
+
+`and` and `or` are compiled using **branches** rather than eager evaluation of both operands:
+
+- **`(and a b c ...)`**: Evaluates left-to-right. At each non-last operand, emits `BRANCH_UNLESS` to skip all remaining operands if the result is falsy. Returns the first falsy value or the last value.
+- **`(or a b c ...)`**: Evaluates left-to-right. At each non-last operand, emits `BRANCH_IF` to skip all remaining operands if the result is truthy. Returns the first truthy value or the last value.
+
+This matters when operands contain `CALL_INTRINSIC` (expensive tree-walker fallback) — the right-hand side is skipped entirely when the left-hand side determines the result. Edge cases: `(and)` returns `1.0` (truthy), `(or)` returns `0.0` (falsy), single-argument forms return the argument directly.
+
+The `AND`/`OR` opcodes remain in the instruction set and executor for backwards compatibility but the compiler no longer emits them.
+
+### 5.7 For-Loop Unrolling
+
+`(for var collection body...)` is compiled natively when the collection resolves to a compile-time constant:
+
+1. **Numeric sequences**: `try_resolve_numeric_sequence()` resolves vectors and symbol bindings to `std::vector<double>`. Each iteration binds `var` as a local constant and compiles the body inline.
+2. **General constant vectors**: Literal vectors with all-constant elements (numbers, strings, nil) are also unrolled.
+3. **Size guard**: Collections exceeding 64 elements fall back to the interpreter bridge.
+4. **Fallback**: Dynamic collections, compilation failures within the body, or oversized collections delegate to `emit_runtime_eval()`.
+
+### 5.8 Constant Pool and Data Segment Deduplication
+
+The constant pool (`store_constant()`) and data segment pool (`store_data_segment()`) use **hash-indexed deduplication** for O(1) amortized lookups. A hash function maps `Value` objects (using bit-level double hashing for numerics, character-level hashing for strings, size-based fallback for collections) to candidate indices; `Value::operator==` resolves collisions. The hash indices are rebuilt on compiler rollback to maintain consistency with surviving entries.
+
 ## 6. Runtime Integration
 
 ### 6.1 Compilation Trigger
 
-**Debounced eager compilation**:
+**Proactive dependency invalidation with lazy recompilation**:
 
-1. When `eval()` modifies a binding (via `define`, `defn`, output assignment, etc.), affected output graphs are marked **dirty**
-2. At the next frame boundary (or after a short debounce window), all dirty graphs are recompiled in a single pass
-3. Multiple rapid evals (e.g., pasting a code block) coalesce into one compilation
+1. When `Environment::set()` or `Environment::set_expr()` modifies a binding, a **symbol-changed callback** fires
+2. The callback (`ModuLispInterpreter::notify_symbol_changed()`) walks all compiled output slots and marks any slot **dirty** whose `activeProgram.dependencies` contains the changed symbol
+3. Temporal variables (`t`, `time`, `beat`, `bar`, `phrase`, `section`) are explicitly skipped — they change every frame and are handled by `LOAD_TIME` opcodes
+4. Dirty graphs are recompiled lazily at the next sampling boundary
 
-This ensures the sampling hot path never hits a cold compile.
+This ensures the sampling hot path never hits a cold compile while maintaining correct live-coding semantics.
 
 ### 6.2 Dependency Tracking and Invalidation
 
 Each compiled graph carries a **dependency set**: the symbols it inlined during compilation.
 
-When a symbol is redefined (via `define`, `defn`):
-1. Walk all compiled output graphs
-2. Any graph whose dependency set contains the redefined symbol is marked dirty
-3. Dirty graphs are recompiled at the next frame boundary (debounced)
+The invalidation path is implemented via an `Environment::SymbolChangedCallback` (a `std::function<void(const String&)>`) wired in the `ModuLispInterpreter` constructor. When any symbol is set or set_expr'd:
+1. The callback walks all analog, digital, and serial output slots
+2. Any slot whose `activeProgram.dependencies` contains the redefined symbol has its `numericProgramDirty` flag set and `lastInvalidatedBy` recorded
+3. On the next sampling pass, dirty slots are recompiled from the current environment
 
 This gives full inlining optimization with correct live-coding semantics — redefining `foo` propagates to all outputs that use `foo`, with minimal recompilation.
 
-**Note**: Redefinition can come from multiple sources — user REPL eval, `schedule`d code executing at bar boundaries, or programmatic `eval`. All sources trigger the same invalidation path.
+**Note**: Redefinition can come from multiple sources — user REPL eval, `schedule`d code executing at bar boundaries, or programmatic `eval`. All sources trigger the same callback path through `Environment::set()`/`set_expr()`.
 
 ### 6.3 Last-Known-Good Fallback
+
+> **Status**: Implemented. The `CompiledOutputProgram` struct in `modulisp_interpreter.h` holds active and LKG programs, and the `StoredOutput` slots track `observedGood`, `lastValue`, and `lastInvalidatedBy` state. The batch executor (`eval_output_batch()`) selects active or LKG programs and updates slot state on success.
 
 Each output slot maintains **two compiled graphs**:
 
@@ -393,7 +463,7 @@ We cannot prove in general that a graph which succeeded once will never fail lat
 
 The existing WASM ABI (`useq_eval_output`, `useq_eval_outputs_time_window`, etc.) remains unchanged from the frontend's perspective. The bytecode VM is an internal implementation detail of the C++ interpreter. The frontend continues to call the same C functions; those functions now execute compiled bytecode instead of tree-walking.
 
-No WASM ABI changes are needed for V1.
+No WASM ABI changes were needed. The `useq_eval_outputs_time_window()` and `useq_eval_outputs_time_window_into()` functions automatically use the batch execution path (section 3.7), which pre-computes the time-point array once and evaluates each output channel via `eval_output_batch()`. This replaced the previous per-sample loop with no frontend changes required.
 
 ### 6.5 Replacing the Tree-Walker
 
@@ -412,7 +482,7 @@ For REPL expressions, compiled bytecode may be ephemeral. For output assignments
 
 **Return values**: `useq_eval()` still returns a string representation at the API boundary, but that representation may come from any supported tagged value type, not only numbers. Strings, symbols, lists, vectors, lambdas/closures, and `nil` should round-trip through the general VM correctly.
 
-This design preserves one execution engine with two optimization tiers: a general tagged-value VM for language completeness and a specialized numeric fast path for arithmetic/vector-heavy signal evaluation.
+This design preserves one execution engine with two optimization tiers: a general tagged-value VM (registers are `std::vector<Value>`) for language completeness and a specialized unboxed numeric fast path (registers are `std::vector<double>`, section 3.6) for arithmetic/vector-heavy signal evaluation. The `is_numeric_only` flag on the compiled program selects the tier automatically.
 
 ## 7. Testing Strategy
 
@@ -702,7 +772,7 @@ One comparison per sample instead of full condition evaluation. Constant conditi
 
 ### 8.3 SIMD Vectorization
 
-Batch sampling evaluates the same bytecode at many time points. A future pass could vectorize the instruction stream to process 4 samples simultaneously (ARM NEON on RP2350, or WASM SIMD).
+The batch temporal executor (section 3.7) evaluates the same bytecode at many time points in a single call. A future pass could vectorize the inner dispatch loop to process 4 samples simultaneously (ARM NEON on RP2350, or WASM SIMD). The batch API provides the natural entry point — instead of looping over time points one at a time, process 4 at once using `v128` operations. The `is_numeric_only` flag guarantees type safety for the SIMD path. The main challenges are `VEC_INDEX` (gather operation) and branch divergence; branch-free arithmetic chains are nearly free to vectorize.
 
 ### 8.4 Web Worker Offloading
 
@@ -710,51 +780,56 @@ Move WASM evaluation to a Web Worker with SharedArrayBuffer for batch results. T
 
 ## 9. Implementation Phases
 
-### Phase 1: Core VM and instruction set
+### Phase 1: Core VM and instruction set ✅
 - Define bytecode instruction encoding (opcode + register operands)
 - Implement VM dispatch loop (switch-based initially)
 - Implement core instruction set: arithmetic, comparisons, math, transcendentals, tagged constant loading, LOAD_TIME, MOV
 - Unit tests for each instruction
 
-### Phase 2: Compiler frontend
+### Phase 2: Compiler frontend ✅
 - AST → bytecode compiler for simple expressions (arithmetic, temporals)
 - Establish the tagged-value execution path for strings, symbols, lists, vectors, nil, and closures
 - Register allocation (linear scan)
 - Constant folding pass
 - Integration with `eval_in()` — compile then execute instead of tree-walk
 
-### Phase 3: Vector and control flow
+### Phase 3: Vector and control flow ✅
 - Data segment allocation and management
 - VEC_INDEX and VEC_LERP instructions
 - Branch instructions (BRANCH, BRANCH_IF, BRANCH_UNLESS)
 - Compile `if`, `do`, `let` forms
 
-### Phase 4: Builtin expansion and time warps
+### Phase 4: Builtin expansion and time warps ✅
 - Time-warp flattening (affine transform composition)
 - Constness analysis pass
 - Builtin expansion for constant-arg cases (euclid, gates, etc.)
 - CALL_INTRINSIC for signal-arg cases
 
-### Phase 5: Functions and inlining
+### Phase 5: Functions and inlining ✅
 - Lambda/defn compilation with inlining
 - CALL/RET for non-inlinable cases
 - Symbol resolution and dependency tracking
 - Invalidation on rebinding
 
-### Phase 6: Error handling and live-coding integration
+### Phase 6: Error handling and live-coding integration ✅
 - Last-known-good graph management
-- Debounced eager compilation trigger
+- Proactive dependency invalidation via environment callback
 - Error reporting (web console, firmware LED)
 - Integration with output assignment (a1-a8, d1-d8, s1-s8)
 
-### Phase 7: Optimization and dispatch
-- CSE pass
-- Computed-goto dispatch for ARM (behind #ifdef)
-- Additional time-warp operators beyond affine composition (if we choose to add them later)
-- Benchmark vs tree-walking baseline
+### Phase 7: Optimization and dispatch ✅
+- CSE pass (with pre-scan, signature-based caching, scope-aware invalidation)
+- Computed-goto dispatch for ARM (behind `#ifdef USE_COMPUTED_GOTO`)
+- Short-circuit `and`/`or` compilation (branch-based, not eager)
+- Native `for`-loop unrolling for constant vectors
+- Hash-indexed constant pool and data segment deduplication
+- Register pressure reduction via free-list recycling with pinning
+- Unboxed `double` executor for numeric-only programs
+- Batch temporal execution (evaluate time-point arrays in a single call)
+- Benchmark vs tree-walking baseline (5.3x geometric mean speedup)
 
-### Phase 8: Cross-target validation
-- WASM build integration and testing
-- ARM firmware build integration and testing
-- Golden test suite across both targets
-- Performance benchmarks on both targets
+### Phase 8: Cross-target validation (partial)
+- WASM build integration and testing ✅
+- ARM firmware build integration — not yet validated on hardware
+- Golden test suite across both targets (desktop/WASM working, ARM pending)
+- Performance benchmarks on both targets (desktop benchmarks working, ARM pending)
