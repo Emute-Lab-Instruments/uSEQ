@@ -487,6 +487,8 @@ TemporalContext ModuLispInterpreter::make_temporal_context(double time_seconds) 
     ctx.barDur = m_bar_length / 1000000.0;
     ctx.phraseDur = m_phrase_length / 1000000.0;
     ctx.sectionDur = m_section_length / 1000000.0;
+    ctx.input_values = m_input_values.data();
+    ctx.input_count = m_input_values.size();
     return ctx;
 }
 

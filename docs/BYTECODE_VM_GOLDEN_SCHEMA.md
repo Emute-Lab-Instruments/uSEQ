@@ -55,3 +55,7 @@ Each sample supports:
 `scripts/run_bytecode_vm_golden.py` consumes one or more fixture files and executes
 them through the `bytecode_vm_probe` helper. The same script can also benchmark the
 fixtures by repeating the probe calls and reporting elapsed time.
+
+The benchmark numbers produced by the VM harness are for the public output path
+used by `eval_output_at_time()` and `eval_outputs(...)` plus the direct numeric VM
+path, not a legacy tree-walker baseline.

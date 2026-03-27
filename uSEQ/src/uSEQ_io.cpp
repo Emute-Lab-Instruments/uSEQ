@@ -142,6 +142,11 @@ void uSEQ::update_inputs()
     {
         m_io_manager->update_inputs();
 
+        for (size_t i = 0; i < 14; ++i)
+        {
+            m_interpreter.set_input_value(i, m_io_manager->get_input_value(i));
+        }
+
 #ifdef MUSICTHING
         // Update Music Thing input values as environment variables
         // This allows users to access them directly as 'knob', 'knobx', 'knoby',

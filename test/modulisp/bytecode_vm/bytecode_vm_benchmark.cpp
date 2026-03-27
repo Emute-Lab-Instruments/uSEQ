@@ -1,4 +1,4 @@
-// Bytecode VM vs tree-walking interpreter benchmark harness.
+// Bytecode VM vs public output-path benchmark harness.
 // Build via meson; run manually (not registered as a CI test).
 //
 //   ninja -C build && ./build/test/bytecode_vm_benchmark
@@ -57,16 +57,16 @@ static constexpr size_t NUM_CASES = sizeof(cases) / sizeof(cases[0]);
 
 using Clock = std::chrono::high_resolution_clock;
 
-static double bench_treewalker(ModuLispInterpreter& interp,
-                               const char* output, int iterations)
+static double bench_public_output_path(ModuLispInterpreter& interp,
+                                       const char* output, int iterations)
 {
     auto start   = Clock::now();
     volatile double sink = 0.0;
     for (int i = 0; i < iterations; ++i)
     {
-        double t = static_cast<double>(i) / static_cast<double>(iterations);
+        double sample_time = static_cast<double>(i) / static_cast<double>(iterations);
         bool ok  = false;
-        sink     = interp.eval_output_at_time(output, t, &ok);
+        sink     = interp.eval_output_at_time(output, sample_time, &ok);
     }
     auto end = Clock::now();
     (void)sink;
@@ -120,32 +120,32 @@ static bool verify_agreement(ModuLispInterpreter& interp,
 
     for (int i = 0; i < NUM_SAMPLES; ++i)
     {
-        double t = sample_times[i];
+        double sample_time = sample_times[i];
 
         bool tw_ok    = false;
-        double tw_val = interp.eval_output_at_time(output, t, &tw_ok);
+        double tw_val = interp.eval_output_at_time(output, sample_time, &tw_ok);
 
         TemporalContext ctx;
-        ctx.t           = t;
+        ctx.t           = sample_time;
         ctx.beatDur     = beat_dur;
         ctx.barDur      = bar_dur;
         ctx.phraseDur   = bar_dur * 4.0;
         ctx.sectionDur  = bar_dur * 16.0;
-        ctx.beat        = std::fmod(t / beat_dur, 1.0);
-        ctx.bar         = std::fmod(t / bar_dur, 1.0);
-        ctx.phrase      = std::fmod(t / ctx.phraseDur, 1.0);
-        ctx.section     = std::fmod(t / ctx.sectionDur, 1.0);
-        ctx.beatNum     = static_cast<int>(t / beat_dur);
-        ctx.barNum      = static_cast<int>(t / bar_dur);
-        ctx.time_since_boot = t;
+        ctx.beat        = std::fmod(sample_time / beat_dur, 1.0);
+        ctx.bar         = std::fmod(sample_time / bar_dur, 1.0);
+        ctx.phrase      = std::fmod(sample_time / ctx.phraseDur, 1.0);
+        ctx.section     = std::fmod(sample_time / ctx.sectionDur, 1.0);
+        ctx.beatNum     = static_cast<int>(sample_time / beat_dur);
+        ctx.barNum      = static_cast<int>(sample_time / bar_dur);
+        ctx.time_since_boot = sample_time;
 
         auto vm_res = execute_numeric_program(program, ctx);
 
         if (!tw_ok || !vm_res.ok)
         {
             std::cerr << "  WARNING: " << case_name
-                      << " -- evaluation failure at t=" << t
-                      << " (tree-walker ok=" << tw_ok
+                      << " -- evaluation failure at t=" << sample_time
+                      << " (public path ok=" << tw_ok
                       << ", vm ok=" << vm_res.ok << ")\n";
             return false;
         }
@@ -154,8 +154,8 @@ static bool verify_agreement(ModuLispInterpreter& interp,
         if (diff > TOLERANCE)
         {
             std::cerr << "  WARNING: " << case_name
-                      << " -- mismatch at t=" << t
-                      << " (tree-walker=" << tw_val
+                      << " -- mismatch at t=" << sample_time
+                      << " (public path=" << tw_val
                       << ", vm=" << vm_res.value
                       << ", diff=" << diff << ")\n";
             return false;
@@ -176,7 +176,7 @@ static void print_header(double bpm, double ts_num, double ts_den)
               << "/" << static_cast<int>(ts_den) << "\n\n";
 
     std::cout << std::left << std::setw(30) << "Expression"
-              << std::right << std::setw(16) << "Tree-walk (us)"
+              << std::right << std::setw(16) << "Public path (us)"
               << std::setw(14) << "VM (us)"
               << std::setw(12) << "Speedup" << "\n";
 
@@ -265,7 +265,7 @@ int main()
         }
 
         // 4. Benchmark
-        double tw_us = bench_treewalker(interp, "a1", bc.iterations);
+        double tw_us = bench_public_output_path(interp, "a1", bc.iterations);
         double vm_us = bench_vm(compiled.program, bc.iterations,
                                 BEAT_DUR, BAR_DUR);
 

@@ -53,6 +53,8 @@ struct ExecutionResult
 class ModuLispInterpreter
 {
 public:
+    static constexpr size_t kInputSlotCount = 32;
+
     struct CompiledOutputProgram
     {
         std::shared_ptr<NumericVmProgram> program;
@@ -231,6 +233,9 @@ public:
      * @todo Move serial input stream storage to ModuLispInterpreter (Phase 2)
      */
     void update_stream_value(size_t channel, double value);
+    void set_input_value(size_t channel, double value);
+    void set_input_values(const double* values, size_t count);
+    double get_input_value(size_t channel) const;
 
     // --- Absorbed Interpreter API ---
     // Evaluation API
@@ -506,6 +511,7 @@ private:
     static bool m_eval_expr_if_def_not_found;
     static bool m_update_loop_evaluation;
     static String m_atom_currently_being_evaluated;
+    std::array<double, kInputSlotCount> m_input_values{};
 };
 
 #endif // MODULISP_INTERPRETER_H_

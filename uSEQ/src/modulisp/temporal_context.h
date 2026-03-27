@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include "lisp/symbol_intern.h"
 #include "lisp/value.h"
 
@@ -17,9 +18,20 @@ struct TemporalContext
     double barDur         = 2.0;
     double phraseDur      = 8.0;
     double sectionDur     = 32.0;
+    const double* input_values = nullptr;
+    size_t input_count = 0;
 
     // Fast lookup by symbol ID — returns true if id is a temporal variable.
     bool tryGet(SymbolIntern::SymbolID id, Value& out) const;
+
+    double input_at(size_t index) const
+    {
+        if (!input_values || index >= input_count)
+        {
+            return 0.0;
+        }
+        return input_values[index];
+    }
 
     // Must be called once at startup to intern temporal variable names.
     static void initLookupTable();

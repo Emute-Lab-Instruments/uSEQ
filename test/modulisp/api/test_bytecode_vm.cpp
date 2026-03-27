@@ -5,6 +5,7 @@
 #include "../../../uSEQ/src/modulisp/modulisp_interpreter.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 
 namespace
@@ -59,6 +60,59 @@ TEST_CASE("Numeric VM executes direct bytecode", "[modulisp][vm]")
     const NumericVmExecutionResult result = execute_numeric_program(program, ctx);
     REQUIRE(result.ok);
     REQUIRE(result.value == Approx(5.5).epsilon(1e-9));
+}
+
+TEST_CASE("Numeric VM reads LOAD_INPUT from the temporal snapshot",
+          "[modulisp][vm]")
+{
+    NumericVmProgram program;
+    program.register_count = 2;
+    program.instructions = {
+        { NumericVmOpcode::LOAD_INPUT, 0, 0, 0, 0, 2, 0.0, 0.0 },
+        { NumericVmOpcode::LOAD_TIME, 1, 0, 0, 0,
+          static_cast<int32_t>(NumericVmTemporalChannel::T), 1.0, 0.0 },
+        { NumericVmOpcode::ADD, 0, 0, 1, 0, 0, 0.0, 0.0 },
+        { NumericVmOpcode::RET, 0, 0, 0, 0, 0, 0.0, 0.0 }
+    };
+
+    double inputs[ModuLispInterpreter::kInputSlotCount] = {};
+    inputs[2] = 7.25;
+
+    TemporalContext ctx;
+    ctx.t = 1.5;
+    ctx.beatDur = 0.5;
+    ctx.barDur = 2.0;
+    ctx.phraseDur = 8.0;
+    ctx.sectionDur = 32.0;
+    ctx.input_values = inputs;
+    ctx.input_count = ModuLispInterpreter::kInputSlotCount;
+
+    const NumericVmExecutionResult result = execute_numeric_program(program, ctx);
+    REQUIRE(result.ok);
+    REQUIRE(result.value == Approx(8.75).epsilon(1e-9));
+}
+
+TEST_CASE("Tagged VM reads LOAD_INPUT from the temporal snapshot",
+          "[modulisp][vm]")
+{
+    NumericVmProgram program;
+    program.register_count = 1;
+    program.instructions = {
+        { NumericVmOpcode::LOAD_INPUT, 0, 0, 0, 0, 5, 0.0, 0.0 },
+        { NumericVmOpcode::RET, 0, 0, 0, 0, 0, 0.0, 0.0 }
+    };
+
+    double inputs[ModuLispInterpreter::kInputSlotCount] = {};
+    inputs[5] = 3.5;
+
+    TemporalContext ctx;
+    ctx.input_values = inputs;
+    ctx.input_count = ModuLispInterpreter::kInputSlotCount;
+
+    const TaggedVmExecutionResult result = execute_tagged_program(program, ctx);
+    REQUIRE(result.ok);
+    REQUIRE(result.value.is_number());
+    REQUIRE(result.value.as_float() == Approx(3.5).epsilon(1e-9));
 }
 
 TEST_CASE("Tagged VM preserves vector constants", "[modulisp][vm]")
@@ -456,6 +510,112 @@ TEST_CASE("Numeric VM compiler lowers input to LOAD_INPUT instead of folding",
                        NumericVmOpcode::LOAD_CONST));
 }
 
+TEST_CASE("Numeric VM reads LOAD_INPUT from temporal context", "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(input 2)"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+
+    double input_values[ModuLispInterpreter::kInputSlotCount] = {};
+    input_values[2] = 0.75;
+
+    TemporalContext ctx;
+    ctx.input_values = input_values;
+    ctx.input_count = ModuLispInterpreter::kInputSlotCount;
+
+    const NumericVmExecutionResult result =
+        execute_numeric_program(compile_result.program, ctx);
+    REQUIRE(result.ok);
+    REQUIRE(result.value == Approx(0.75).epsilon(1e-9));
+}
+
+TEST_CASE("Numeric VM batch execution matches single-sample execution",
+          "[modulisp][vm][batch]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(+ (* t 2) 1)"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+    REQUIRE(compile_result.program.is_numeric_only);
+
+    constexpr double time_points[] = {0.0, 0.25, 0.5, 0.75, 1.0};
+    double batch_results[std::size(time_points)] = {};
+
+    TemporalContext base_ctx;
+    base_ctx.beatDur = 0.5;
+    base_ctx.barDur = 2.0;
+    base_ctx.phraseDur = 8.0;
+    base_ctx.sectionDur = 32.0;
+
+    const NumericVmBatchResult batch =
+        execute_numeric_program_batch(compile_result.program, base_ctx,
+                                      time_points, batch_results,
+                                      std::size(time_points));
+
+    REQUIRE(batch.ok);
+
+    for (size_t i = 0; i < std::size(time_points); ++i)
+    {
+        TemporalContext sample_ctx = base_ctx;
+        sample_ctx.t = time_points[i];
+        sample_ctx.beat = std::fmod(time_points[i] / base_ctx.beatDur, 1.0);
+        sample_ctx.bar = std::fmod(time_points[i] / base_ctx.barDur, 1.0);
+        sample_ctx.phrase = std::fmod(time_points[i] / base_ctx.phraseDur, 1.0);
+        sample_ctx.section = std::fmod(time_points[i] / base_ctx.sectionDur, 1.0);
+        sample_ctx.beatNum = static_cast<int>(time_points[i] / base_ctx.beatDur);
+        sample_ctx.barNum = static_cast<int>(time_points[i] / base_ctx.barDur);
+
+        const NumericVmExecutionResult single =
+            execute_numeric_program(compile_result.program, sample_ctx);
+        REQUIRE(single.ok);
+        REQUIRE(batch_results[i] == Approx(single.value).epsilon(1e-9));
+    }
+}
+
+TEST_CASE("Numeric VM batch execution reports error_at_index and holds last valid value",
+          "[modulisp][vm][batch]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(/ 1 t)"),
+                                *interp.get_environment());
+
+    REQUIRE(compile_result.ok);
+    REQUIRE(compile_result.program.is_numeric_only);
+
+    constexpr double time_points[] = {1.0, 0.5, 0.0, 0.25};
+    double batch_results[std::size(time_points)] = {};
+
+    TemporalContext base_ctx;
+    base_ctx.beatDur = 0.5;
+    base_ctx.barDur = 2.0;
+    base_ctx.phraseDur = 8.0;
+    base_ctx.sectionDur = 32.0;
+
+    const NumericVmBatchResult batch =
+        execute_numeric_program_batch(compile_result.program, base_ctx,
+                                      time_points, batch_results,
+                                      std::size(time_points));
+
+    REQUIRE_FALSE(batch.ok);
+    REQUIRE(batch.error_at_index == 2);
+    REQUIRE(batch_results[0] == Approx(1.0).epsilon(1e-9));
+    REQUIRE(batch_results[1] == Approx(2.0).epsilon(1e-9));
+    REQUIRE(batch_results[2] == Approx(2.0).epsilon(1e-9));
+    REQUIRE(batch_results[3] == Approx(2.0).epsilon(1e-9));
+}
+
 TEST_CASE("Numeric VM rejects invalid constant folds for runtime math errors",
           "[modulisp][vm]")
 {
@@ -591,6 +751,21 @@ TEST_CASE("Output sampling handles defn and lambda callables through the VM path
     const double first_value = interp.eval_output_at_time("a1", 2.0, &ok);
     REQUIRE(ok);
     REQUIRE(first_value == Approx(3.0).epsilon(1e-9));
+}
+
+TEST_CASE("Output sampling reads input snapshots through the VM path",
+          "[modulisp][vm][outputs]")
+{
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr, 8, 8, 8);
+    interp.init();
+
+    interp.set_input_value(2, 4.25);
+    interp.eval("(a1 (input 2))");
+
+    bool ok = false;
+    const double value = interp.eval_output_at_time("a1", 0.0, &ok);
+    REQUIRE(ok);
+    REQUIRE(value == Approx(4.25).epsilon(1e-9));
 }
 
 TEST_CASE("Public eval_v handles lambda callables directly", "[modulisp][vm]")

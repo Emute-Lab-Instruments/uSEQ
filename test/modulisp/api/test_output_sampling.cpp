@@ -189,6 +189,32 @@ TEST_CASE("Output time-window sampling", "[outputs][sampling]")
         }
     }
 
+    SECTION("Single-sample output evaluation reads interpreter input snapshots")
+    {
+        interp.set_input_value(2, 0.75);
+        interp.eval("(a1 (input 2))");
+
+        bool ok = false;
+        const double value = interp.eval_output_at_time("a1", 0.5, &ok);
+
+        REQUIRE(ok);
+        REQUIRE(value == Approx(0.75).epsilon(1e-6));
+    }
+
+    SECTION("Time-window sampling keeps input snapshots on the batch VM path")
+    {
+        interp.set_input_value(0, 0.25);
+        interp.eval("(a1 (+ (input 0) t))");
+
+        auto results = interp.eval_outputs(0.0, 1.0, 3, {"a1"});
+
+        REQUIRE(results.find("a1") != results.end());
+        REQUIRE(results["a1"].size() == 3);
+        REQUIRE(results["a1"][0] == Approx(0.25).epsilon(1e-6));
+        REQUIRE(results["a1"][1] == Approx(0.75).epsilon(1e-6));
+        REQUIRE(results["a1"][2] == Approx(1.25).epsilon(1e-6));
+    }
+
     SECTION("Time-window sampling reflects recompilation after dependency redefinition")
     {
         interp.eval("(define scale 2)");
@@ -229,5 +255,18 @@ TEST_CASE("Output time-window sampling", "[outputs][sampling]")
             REQUIRE(fallback_results["a1"][i] ==
                     Approx(healthy_results["a1"][i]).epsilon(1e-6));
         }
+    }
+
+    SECTION("Time-window sampling reads the input snapshot")
+    {
+        interp.set_input_value(2, 6.5);
+        interp.eval("(a1 (input 2))");
+
+        auto results = interp.eval_outputs(0.0, 2.0, 3, {"a1"});
+        REQUIRE(results.find("a1") != results.end());
+        REQUIRE(results["a1"].size() == 3);
+        REQUIRE(results["a1"][0] == Approx(6.5).epsilon(1e-9));
+        REQUIRE(results["a1"][1] == Approx(6.5).epsilon(1e-9));
+        REQUIRE(results["a1"][2] == Approx(6.5).epsilon(1e-9));
     }
 }

@@ -782,6 +782,39 @@ void ModuLispInterpreter::update_stream_value(size_t channel, double value)
     (void)value;    // Suppress unused parameter warning
 }
 
+void ModuLispInterpreter::set_input_value(size_t channel, double value)
+{
+    if (channel < m_input_values.size())
+    {
+        m_input_values[channel] = value;
+    }
+}
+
+void ModuLispInterpreter::set_input_values(const double* values, size_t count)
+{
+    m_input_values.fill(0.0);
+
+    if (!values)
+    {
+        return;
+    }
+
+    const size_t limit = std::min(count, m_input_values.size());
+    for (size_t i = 0; i < limit; ++i)
+    {
+        m_input_values[i] = values[i];
+    }
+}
+
+double ModuLispInterpreter::get_input_value(size_t channel) const
+{
+    if (channel < m_input_values.size())
+    {
+        return m_input_values[channel];
+    }
+    return 0.0;
+}
+
 void ModuLispInterpreter::run_scheduled_items()
 {
     DBG("ModuLispInterpreter::runScheduledItems");

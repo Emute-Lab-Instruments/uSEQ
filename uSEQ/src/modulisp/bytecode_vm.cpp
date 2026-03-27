@@ -3481,16 +3481,21 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                                                     const TemporalContext& ctx,
                                                     const std::vector<Value>& initial_registers = {},
                                                     int call_depth = 0);
+NumericVmExecutionResult execute_numeric_program_fast(
+    const NumericVmProgram& program,
+    const TemporalContext& ctx,
+    const std::vector<double>& initial_registers = {},
+    int call_depth = 0);
 
 // --- Unboxed double executor for numeric-only programs ---
 // This executor mirrors the tagged executor but uses std::vector<double> as the
 // register file, eliminating all Value boxing/unboxing on the hot sampling path.
 // It is only called when program.is_numeric_only is true (no type-polymorphic opcodes).
 
-NumericVmExecutionResult execute_numeric_program_fast(
+NumericVmExecutionResult execute_numeric_program_fast_impl(
     const NumericVmProgram& program,
     const TemporalContext& ctx,
-    const std::vector<double>& initial_registers = {},
+    std::vector<double>& registers,
     int call_depth = 0)
 {
     NumericVmExecutionResult result;
@@ -3506,11 +3511,11 @@ NumericVmExecutionResult execute_numeric_program_fast(
         result.error_category = DiagnosticCategory::Runtime;
         return result;
     }
-
-    std::vector<double> registers(program.register_count, 0.0);
-    for (size_t i = 0; i < initial_registers.size() && i < registers.size(); ++i)
+    if (registers.size() < program.register_count)
     {
-        registers[i] = initial_registers[i];
+        result.error = "register file is too small";
+        result.error_category = DiagnosticCategory::Runtime;
+        return result;
     }
     size_t backward_branch_count = 0;
 
@@ -3628,8 +3633,7 @@ NumericVmExecutionResult execute_numeric_program_fast(
         }
         VMF_CASE(LOAD_INPUT)
         {
-            // Stub: no physical inputs in standalone/WASM mode
-            registers[insn.rd] = 0.0;
+            registers[insn.rd] = ctx.input_at(static_cast<size_t>(std::max(insn.imm, 0)));
             VMF_NEXT();
         }
         VMF_CASE(MOV)
@@ -4045,6 +4049,21 @@ vm_fast_loop_exit:
 #undef VM_FAST_USE_COMPUTED_GOTO
 }
 
+NumericVmExecutionResult execute_numeric_program_fast(
+    const NumericVmProgram& program,
+    const TemporalContext& ctx,
+    const std::vector<double>& initial_registers,
+    int call_depth)
+{
+    std::vector<double> registers(program.register_count, 0.0);
+    for (size_t i = 0; i < initial_registers.size() && i < registers.size(); ++i)
+    {
+        registers[i] = initial_registers[i];
+    }
+
+    return execute_numeric_program_fast_impl(program, ctx, registers, call_depth);
+}
+
 // --- End unboxed double executor ---
 
 TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& program,
@@ -4198,8 +4217,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             {
                 return result;
             }
-            // Stub: no physical inputs in standalone/WASM mode
-            registers[insn.rd] = Value(0.0);
+            registers[insn.rd] =
+                Value(ctx.input_at(static_cast<size_t>(std::max(insn.imm, 0))));
             VM_NEXT();
         }
         VM_CASE(MOV)
@@ -4878,11 +4897,8 @@ NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program
 // Batch execution: run a compiled program at multiple time points
 // ---------------------------------------------------------------------------
 //
-// The key optimisation over calling execute_numeric_program() in a loop is
-// that the register file is allocated once and reused across all time points.
-// The initial version delegates to execute_tagged_program_impl per sample
-// for correctness; a follow-up can inline the dispatch loop to avoid
-// per-sample function-call overhead and vector allocation.
+// Numeric-only programs can reuse a single unboxed register file for the whole
+// batch. Typed programs still fall back to the tagged per-sample executor.
 // ---------------------------------------------------------------------------
 
 NumericVmBatchResult execute_numeric_program_batch(
@@ -4911,6 +4927,12 @@ NumericVmBatchResult execute_numeric_program_batch(
     }
 
     double last_valid = 0.0;
+    const bool use_numeric_fast_path = program.is_numeric_only;
+    std::vector<double> numeric_registers;
+    if (use_numeric_fast_path)
+    {
+        numeric_registers.resize(program.register_count, 0.0);
+    }
 
     for (size_t sample_idx = 0; sample_idx < count; ++sample_idx)
     {
@@ -4926,13 +4948,41 @@ NumericVmBatchResult execute_numeric_program_batch(
         sample_ctx.barNum =
             static_cast<int>(time_to_count(time_points[sample_idx], base_ctx.barDur));
 
-        // Execute the program -- delegates to existing impl for correctness
-        TaggedVmExecutionResult sample_result =
+        if (use_numeric_fast_path)
+        {
+            std::fill(numeric_registers.begin(), numeric_registers.end(), 0.0);
+            const NumericVmExecutionResult sample_result =
+                execute_numeric_program_fast_impl(program, sample_ctx,
+                                                  numeric_registers);
+            if (!sample_result.ok)
+            {
+                for (size_t j = sample_idx; j < count; ++j)
+                {
+                    results[j] = last_valid;
+                }
+                batch_result.error = sample_result.error;
+                batch_result.error_category = sample_result.error_category;
+                batch_result.error_at_index = sample_idx;
+                return batch_result;
+            }
+
+            if (std::isfinite(sample_result.value))
+            {
+                results[sample_idx] = sample_result.value;
+                last_valid = sample_result.value;
+            }
+            else
+            {
+                results[sample_idx] = last_valid;
+            }
+            continue;
+        }
+
+        const TaggedVmExecutionResult sample_result =
             execute_tagged_program_impl(program, sample_ctx);
 
         if (!sample_result.ok)
         {
-            // Fill remaining outputs with last valid value
             for (size_t j = sample_idx; j < count; ++j)
             {
                 results[j] = last_valid;
@@ -4945,11 +4995,11 @@ NumericVmBatchResult execute_numeric_program_batch(
 
         if (sample_result.value.is_number())
         {
-            double v = sample_result.value.as_float();
-            if (std::isfinite(v))
+            const double value = sample_result.value.as_float();
+            if (std::isfinite(value))
             {
-                results[sample_idx] = v;
-                last_valid = v;
+                results[sample_idx] = value;
+                last_valid = value;
             }
             else
             {

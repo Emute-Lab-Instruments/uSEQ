@@ -100,6 +100,16 @@ extern "C"
         useq_instance->set_time_from_external_source(micros);
     }
 
+    void useq_set_input_value(int channel, double value)
+    {
+        if (!useq_instance || channel < 0)
+        {
+            return;
+        }
+
+        useq_instance->set_input_value(static_cast<size_t>(channel), value);
+    }
+
     double useq_eval_output(const char* name, double time_seconds)
     {
         if (!useq_instance)
