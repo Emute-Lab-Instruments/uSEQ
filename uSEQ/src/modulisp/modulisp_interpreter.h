@@ -455,6 +455,13 @@ protected:
                                   std::vector<Value>& args, Environment& env);
     bool resolve_output(const char* name, OutputType& type, size_t& index) const;
     double eval_output_internal(OutputType type, size_t index, double time_seconds, bool* ok);
+
+    // Batch-evaluate a single output across multiple time points using the batch VM API.
+    // Returns true if the batch path was used, false if it fell back to per-sample eval.
+    // When batch path is used, results are written directly into the output vector.
+    bool eval_output_batch(OutputType type, size_t index,
+                           const double* time_points, double* results,
+                           size_t count);
     double default_output_value(OutputType type) const;
     void reset_output_slot(StoredOutput& slot, OutputType type);
     void clear_all_outputs();

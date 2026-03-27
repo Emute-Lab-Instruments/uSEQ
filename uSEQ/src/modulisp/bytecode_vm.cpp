@@ -3880,3 +3880,95 @@ NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program
     result.value = numeric_value;
     return result;
 }
+
+// ---------------------------------------------------------------------------
+// Batch execution: run a compiled program at multiple time points
+// ---------------------------------------------------------------------------
+//
+// The key optimisation over calling execute_numeric_program() in a loop is
+// that the register file is allocated once and reused across all time points.
+// The initial version delegates to execute_tagged_program_impl per sample
+// for correctness; a follow-up can inline the dispatch loop to avoid
+// per-sample function-call overhead and vector allocation.
+// ---------------------------------------------------------------------------
+
+NumericVmBatchResult execute_numeric_program_batch(
+    const NumericVmProgram& program,
+    const TemporalContext& base_ctx,
+    const double* time_points,
+    double* results,
+    size_t count)
+{
+    NumericVmBatchResult batch_result;
+
+    if (count == 0)
+    {
+        batch_result.ok = true;
+        return batch_result;
+    }
+
+    if (program.register_count == 0 || program.instructions.empty())
+    {
+        batch_result.error = "program is empty";
+        for (size_t i = 0; i < count; ++i)
+        {
+            results[i] = 0.0;
+        }
+        return batch_result;
+    }
+
+    double last_valid = 0.0;
+
+    for (size_t sample_idx = 0; sample_idx < count; ++sample_idx)
+    {
+        // Build per-sample temporal context -- only t and derived phasors change
+        TemporalContext sample_ctx = base_ctx;
+        sample_ctx.t = time_points[sample_idx];
+        sample_ctx.beat = wrap_phase(time_points[sample_idx], base_ctx.beatDur);
+        sample_ctx.bar = wrap_phase(time_points[sample_idx], base_ctx.barDur);
+        sample_ctx.phrase = wrap_phase(time_points[sample_idx], base_ctx.phraseDur);
+        sample_ctx.section = wrap_phase(time_points[sample_idx], base_ctx.sectionDur);
+        sample_ctx.beatNum =
+            static_cast<int>(time_to_count(time_points[sample_idx], base_ctx.beatDur));
+        sample_ctx.barNum =
+            static_cast<int>(time_to_count(time_points[sample_idx], base_ctx.barDur));
+
+        // Execute the program -- delegates to existing impl for correctness
+        TaggedVmExecutionResult sample_result =
+            execute_tagged_program_impl(program, sample_ctx);
+
+        if (!sample_result.ok)
+        {
+            // Fill remaining outputs with last valid value
+            for (size_t j = sample_idx; j < count; ++j)
+            {
+                results[j] = last_valid;
+            }
+            batch_result.error = sample_result.error;
+            batch_result.error_category = sample_result.error_category;
+            batch_result.error_at_index = sample_idx;
+            return batch_result;
+        }
+
+        if (sample_result.value.is_number())
+        {
+            double v = sample_result.value.as_float();
+            if (std::isfinite(v))
+            {
+                results[sample_idx] = v;
+                last_valid = v;
+            }
+            else
+            {
+                results[sample_idx] = last_valid;
+            }
+        }
+        else
+        {
+            results[sample_idx] = last_valid;
+        }
+    }
+
+    batch_result.ok = true;
+    return batch_result;
+}

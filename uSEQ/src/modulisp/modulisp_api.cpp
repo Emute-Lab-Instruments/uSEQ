@@ -813,6 +813,98 @@ double ModuLispInterpreter::eval_output_at_time(const char* name,
     return eval_output_internal(type, index, time_seconds, ok);
 }
 
+// ---------------------------------------------------------------------------
+// Batch-evaluate a single output across multiple time points using the VM
+// batch API. Returns true if the batch path was used successfully.
+// ---------------------------------------------------------------------------
+bool ModuLispInterpreter::eval_output_batch(OutputType type, size_t index,
+                                            const double* time_points,
+                                            double* results, size_t count)
+{
+    if (count == 0)
+    {
+        return true;
+    }
+
+    // Locate the output slot
+    StoredOutput* slot = nullptr;
+    switch (type)
+    {
+    case OutputType::ANALOG:
+        if (index < m_analog_outputs.size())
+            slot = &m_analog_outputs[index];
+        break;
+    case OutputType::DIGITAL:
+        if (index < m_digital_outputs.size())
+            slot = &m_digital_outputs[index];
+        break;
+    case OutputType::SERIAL:
+        if (index < m_serial_outputs.size())
+            slot = &m_serial_outputs[index];
+        break;
+    }
+
+    if (!slot || !slot->hasExpr)
+    {
+        // No expression assigned -- fill with default
+        const double def = default_output_value(type);
+        for (size_t i = 0; i < count; ++i)
+        {
+            results[i] = def;
+        }
+        return true;
+    }
+
+    // Ensure the compiled program is up to date
+    if (!slot->numericProgramAttempted ||
+        slot->activeProgram.exprSource != slot->expr.to_lisp_src() ||
+        output_program_is_dirty(*slot, *get_environment()))
+    {
+        String culprit = find_dirty_dependency(slot->activeProgram, *get_environment());
+        slot->lastInvalidatedBy = culprit;
+        refresh_output_program(*slot, *get_environment());
+    }
+
+    // Choose which compiled program to run
+    CompiledOutputProgram* program_to_run = nullptr;
+    if (slot->fallbackToLkg && slot->lkgProgram.program)
+    {
+        program_to_run = &slot->lkgProgram;
+    }
+    else if (slot->activeProgram.program)
+    {
+        program_to_run = &slot->activeProgram;
+    }
+
+    if (!program_to_run || !program_to_run->program)
+    {
+        // No compiled program available -- cannot use batch path
+        return false;
+    }
+
+    // Build the base temporal context (durations, time_since_boot -- shared across samples)
+    const TemporalContext base_ctx = make_temporal_context(time_points[0]);
+
+    const NumericVmBatchResult batch = execute_numeric_program_batch(
+        *program_to_run->program, base_ctx, time_points, results, count);
+
+    if (batch.ok)
+    {
+        if (program_to_run == &slot->activeProgram)
+        {
+            slot->activeProgram.observedGood = true;
+        }
+        slot->lastDiagnostic = "";
+        // Update lastValue/lastTimeSeconds to the final sample
+        slot->lastValue = results[count - 1];
+        slot->lastTimeSeconds = time_points[count - 1];
+        return true;
+    }
+
+    // Batch execution hit an error -- fall back to per-sample
+    return false;
+}
+
 // Evaluate all outputs at current time
 std::map<String, double> ModuLispInterpreter::eval_outputs()
 {
@@ -911,37 +1003,49 @@ std::map<String, std::vector<double>> ModuLispInterpreter::eval_outputs(
         }
     }
 
+    // Pre-compute linearly-spaced time points (shared across all channels)
+    const double time_step = (num_samples == 1)
+        ? 0.0
+        : (end_time_seconds - start_time_seconds) / (num_samples - 1);
+
+    std::vector<double> time_points(num_samples);
+    for (size_t i = 0; i < num_samples; ++i)
+    {
+        time_points[i] = start_time_seconds + (i * time_step);
+    }
+
     // Initialize result vectors for each output
     for (const auto& output_name : outputs_to_eval)
     {
-        results[output_name] = std::vector<double>();
-        results[output_name].reserve(num_samples);
+        results[output_name].resize(num_samples, 0.0);
     }
 
-    // Generate time points linearly spaced from start to end
-    double time_step = (num_samples == 1) ? 0.0 : (end_time_seconds - start_time_seconds) / (num_samples - 1);
-
-    // Sample each time point and populate channel vectors
-    for (size_t i = 0; i < num_samples; ++i)
+    // --- Fast path: batch-evaluate each channel using the VM batch API ---
+    // For each output, attempt the batch path first.  If it fails (no
+    // compiled program, runtime error, etc.) fall back to per-sample eval.
+    for (const auto& output_name : outputs_to_eval)
     {
-        double sample_time = start_time_seconds + (i * time_step);
-
-        // Evaluate all outputs at this time point
-        auto time_point_values = eval_outputs(outputs_to_eval, sample_time);
-
-        // Distribute values to their respective channel vectors
-        for (const auto& output_name : outputs_to_eval)
+        OutputType type;
+        size_t index;
+        if (!resolve_output(output_name.c_str(), type, index))
         {
-            auto it = time_point_values.find(output_name);
-            if (it != time_point_values.end())
-            {
-                results[output_name].push_back(it->second);
-            }
-            else
-            {
-                // If output not found, push default value
-                results[output_name].push_back(0.0);
-            }
+            // Unknown output -- leave zeroed
+            continue;
+        }
+
+        double* dest = results[output_name].data();
+
+        if (eval_output_batch(type, index, time_points.data(), dest, num_samples))
+        {
+            // Batch path succeeded -- this channel is complete
+            continue;
+        }
+
+        // --- Slow path: per-sample fallback ---
+        for (size_t i = 0; i < num_samples; ++i)
+        {
+            bool ok = false;
+            dest[i] = eval_output_internal(type, index, time_points[i], &ok);
         }
     }
 

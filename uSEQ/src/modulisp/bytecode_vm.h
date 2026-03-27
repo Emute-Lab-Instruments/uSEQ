@@ -138,3 +138,23 @@ TaggedVmExecutionResult execute_tagged_program(const NumericVmProgram& program,
                                                const TemporalContext& ctx);
 NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program,
                                                  const TemporalContext& ctx);
+
+struct NumericVmBatchResult
+{
+    bool ok = false;
+    String error;
+    DiagnosticCategory error_category = DiagnosticCategory::Runtime;
+    size_t error_at_index = 0;  // which time point caused the error
+};
+
+// Execute a compiled program at multiple time points, writing results to output array.
+// base_ctx provides BPM, time signature, durations -- only t varies per sample.
+// time_points[i] is the absolute time for the i-th sample.
+// results[i] receives the output value (must be pre-allocated with count elements).
+// On error, results up to error_at_index are valid; the rest are filled with last_valid.
+NumericVmBatchResult execute_numeric_program_batch(
+    const NumericVmProgram& program,
+    const TemporalContext& base_ctx,
+    const double* time_points,
+    double* results,
+    size_t count);
