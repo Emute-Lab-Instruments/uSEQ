@@ -1197,17 +1197,121 @@ private:
         return result_reg;
     }
 
-    // Compile (for var list body...) — delegates to tree-walker since
-    // list iteration requires dynamic variable binding beyond the numeric VM.
+    // Compile (for var collection body...) — unrolls at compile time when the
+    // collection resolves to a constant sequence; otherwise falls back to the
+    // tree-walker via emit_runtime_eval.
     int compile_for(const std::vector<Value>& items,
                     const AffineTimeTransform& transform)
     {
-        if (items.size() < 3)
+        // Form: (for var collection body...)
+        if (items.size() < 4)
         {
             return report_and_continue(DiagnosticCategory::Arity,
-                   items[0].span, "for needs a variable, a list, and at least one body expression",
+                   items[0].span, "for needs a variable, a collection, and a body",
                    "Try: (for x [1 2 3] (* x 2))");
         }
+
+        if (!items[1].is_symbol())
+        {
+            return report_and_continue(DiagnosticCategory::Type,
+                   items[1].span, "for needs a variable name as its first argument",
+                   "Try: (for x [1 2 3] (* x 2))");
+        }
+
+        const String var_name = items[1].as_atom();
+
+        // Maximum unroll size to avoid code explosion.
+        constexpr size_t MAX_FOR_UNROLL = 64;
+
+        // --- Try to resolve collection as an all-numeric sequence ---
+        std::optional<std::vector<double>> numeric_seq =
+            try_resolve_numeric_sequence(items[2]);
+
+        if (numeric_seq.has_value() && !numeric_seq->empty()
+            && numeric_seq->size() <= MAX_FOR_UNROLL)
+        {
+            int result_reg = -1;
+
+            for (size_t i = 0; i < numeric_seq->size(); ++i)
+            {
+                push_local_scope();
+                int val_reg = emit_const(Value((*numeric_seq)[i]));
+                bind_local_value(var_name, val_reg);
+
+                // Compile all body expressions; last one is the iteration result.
+                int body_result = -1;
+                for (size_t j = 3; j < items.size(); ++j)
+                {
+                    body_result = compile_expr(items[j], transform);
+                    if (body_result < 0)
+                    {
+                        pop_local_scope();
+                        // Body failed to compile — fall back to runtime.
+                        return emit_runtime_eval(Value(items), transform);
+                    }
+                }
+
+                if (result_reg < 0)
+                {
+                    result_reg = allocate_register();
+                }
+                emit_mov(result_reg, body_result);
+                pop_local_scope();
+            }
+
+            return result_reg;
+        }
+
+        // --- Try to resolve collection as a literal vector of constants ---
+        if (items[2].is_vector())
+        {
+            const std::vector<Value> elements = items[2].as_vector();
+            bool all_constant = true;
+            for (const Value& elem : elements)
+            {
+                if (!try_resolve_numeric_constant(elem).has_value()
+                    && !elem.is_string() && !elem.is_nil())
+                {
+                    all_constant = false;
+                    break;
+                }
+            }
+
+            if (all_constant && !elements.empty()
+                && elements.size() <= MAX_FOR_UNROLL)
+            {
+                int result_reg = -1;
+
+                for (const Value& elem : elements)
+                {
+                    push_local_scope();
+                    int val_reg = emit_const(elem);
+                    bind_local_value(var_name, val_reg);
+
+                    int body_result = -1;
+                    for (size_t j = 3; j < items.size(); ++j)
+                    {
+                        body_result = compile_expr(items[j], transform);
+                        if (body_result < 0)
+                        {
+                            pop_local_scope();
+                            return emit_runtime_eval(Value(items), transform);
+                        }
+                    }
+
+                    if (result_reg < 0)
+                    {
+                        result_reg = allocate_register();
+                    }
+                    emit_mov(result_reg, body_result);
+                    pop_local_scope();
+                }
+
+                return result_reg;
+            }
+        }
+
+        // Can't resolve at compile time — fall back to tree-walker.
         return emit_runtime_eval(Value(items), transform);
     }
 
