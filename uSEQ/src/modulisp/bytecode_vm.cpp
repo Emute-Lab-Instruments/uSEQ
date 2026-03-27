@@ -249,6 +249,56 @@ double tri_wave(double duty, double phase)
     return phase / duty;
 }
 
+// Classify whether a compiled program uses only numeric-safe opcodes.
+// Programs that avoid type-polymorphic opcodes (list/string/nil introspection,
+// boolean logic on arbitrary types, list construction) can execute with an
+// unboxed double register file for significantly lower overhead on the hot path.
+bool classify_numeric_only(const NumericVmProgram& program)
+{
+    // All constants must be numeric
+    for (const auto& c : program.constants)
+    {
+        if (!c.is_number())
+        {
+            return false;
+        }
+    }
+
+    // Scan instructions for type-polymorphic opcodes
+    for (const auto& insn : program.instructions)
+    {
+        switch (insn.opcode)
+        {
+        case NumericVmOpcode::IS_NIL:
+        case NumericVmOpcode::IS_NUMBER:
+        case NumericVmOpcode::IS_LIST:
+        case NumericVmOpcode::IS_STRING:
+        case NumericVmOpcode::NOT:
+        case NumericVmOpcode::AND:
+        case NumericVmOpcode::OR:
+        case NumericVmOpcode::MAKE_LIST:
+        case NumericVmOpcode::MAKE_VECTOR:
+        case NumericVmOpcode::LIST_HEAD:
+        case NumericVmOpcode::LIST_TAIL:
+        case NumericVmOpcode::LIST_LENGTH:
+            return false;
+        default:
+            break;
+        }
+    }
+
+    // Recursively check sub-programs (callees)
+    for (const auto& fn : program.functions)
+    {
+        if (fn && !classify_numeric_only(*fn))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 class NumericVmCompiler
 {
 public:
@@ -296,6 +346,14 @@ public:
         {
             result.error = m_diagnostics[0].message;
         }
+
+        // Determine if the program is numeric-only (no type-polymorphic opcodes).
+        // A numeric-only program can use unboxed double registers for faster execution.
+        if (result.ok)
+        {
+            result.program.is_numeric_only = classify_numeric_only(result.program);
+        }
+
         return result;
     }
 
@@ -3060,11 +3118,582 @@ bool load_phasor_value(const std::vector<Value>& registers, uint16_t index,
 }
 static constexpr int VM_MAX_CALL_DEPTH = 64;
 
+// Forward declaration: the fast executor may need to fall back to the tagged
+// executor for CALL instructions targeting non-numeric-only sub-programs.
 TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& program,
                                                     const TemporalContext& ctx,
-                                                    const std::vector<Value>& initial_registers =
-                                                        {},
-                                                    int call_depth = 0)
+                                                    const std::vector<Value>& initial_registers = {},
+                                                    int call_depth = 0);
+
+// --- Unboxed double executor for numeric-only programs ---
+// This executor mirrors the tagged executor but uses std::vector<double> as the
+// register file, eliminating all Value boxing/unboxing on the hot sampling path.
+// It is only called when program.is_numeric_only is true (no type-polymorphic opcodes).
+
+NumericVmExecutionResult execute_numeric_program_fast(
+    const NumericVmProgram& program,
+    const TemporalContext& ctx,
+    const std::vector<double>& initial_registers = {},
+    int call_depth = 0)
+{
+    NumericVmExecutionResult result;
+    if (call_depth > VM_MAX_CALL_DEPTH)
+    {
+        result.error = "too many nested function calls";
+        result.error_category = DiagnosticCategory::Runtime;
+        return result;
+    }
+    if (program.register_count == 0 || program.instructions.empty())
+    {
+        result.error = "program is empty";
+        result.error_category = DiagnosticCategory::Runtime;
+        return result;
+    }
+
+    std::vector<double> registers(program.register_count, 0.0);
+    for (size_t i = 0; i < initial_registers.size() && i < registers.size(); ++i)
+    {
+        registers[i] = initial_registers[i];
+    }
+    size_t backward_branch_count = 0;
+
+#if defined(__GNUC__) && !defined(WASM_BUILD) && defined(USE_COMPUTED_GOTO)
+#define VM_FAST_USE_COMPUTED_GOTO 1
+#else
+#define VM_FAST_USE_COMPUTED_GOTO 0
+#endif
+
+#if VM_FAST_USE_COMPUTED_GOTO
+    // Dispatch table for numeric-only opcodes (same opcode indices as tagged executor).
+    // Opcodes that should never appear in numeric-only programs (IS_NIL, etc.) fall
+    // through to vm_fast_loop_exit via op_fast_INVALID.
+    static const void* fast_dispatch_table[] = {
+        &&op_fast_LOAD_CONST,    &&op_fast_LOAD_TIME,     &&op_fast_MOV,
+        &&op_fast_VEC_INDEX,     &&op_fast_VEC_LERP,      &&op_fast_ADD,
+        &&op_fast_SUB,           &&op_fast_MUL,           &&op_fast_DIV,
+        &&op_fast_MOD,           &&op_fast_NEG,           &&op_fast_CMP_GT,
+        &&op_fast_CMP_LT,       &&op_fast_CMP_GE,       &&op_fast_CMP_LE,
+        &&op_fast_CMP_EQ,       &&op_fast_FLOOR,         &&op_fast_CEIL,
+        &&op_fast_FRAC,          &&op_fast_ABS,           &&op_fast_MIN,
+        &&op_fast_MAX,           &&op_fast_POW,           &&op_fast_SQRT,
+        &&op_fast_CLAMP,         &&op_fast_SIN,           &&op_fast_COS,
+        &&op_fast_TAN,           &&op_fast_BRANCH,        &&op_fast_BRANCH_IF,
+        &&op_fast_BRANCH_UNLESS, &&op_fast_CALL,          &&op_fast_CALL_INTRINSIC,
+        &&op_fast_RET,           &&op_fast_INVALID,       &&op_fast_INVALID,
+        &&op_fast_INVALID,       &&op_fast_INVALID,       &&op_fast_INVALID,
+        &&op_fast_INVALID,       &&op_fast_INVALID,       &&op_fast_INVALID,
+        &&op_fast_INVALID,       &&op_fast_INVALID,       &&op_fast_INVALID,
+        &&op_fast_INVALID,       &&op_fast_U_SIN,         &&op_fast_U_COS,
+        &&op_fast_U_SIN_BI,      &&op_fast_U_COS_BI,      &&op_fast_TRI,
+        &&op_fast_SQR,           &&op_fast_PULSE,         &&op_fast_LOAD_INPUT
+    };
+    static_assert(sizeof(fast_dispatch_table) / sizeof(fast_dispatch_table[0]) == 54,
+                  "fast_dispatch_table must have one entry per NumericVmOpcode");
+    #define VMF_DISPATCH() do { \
+        if (pc >= program.instructions.size()) goto vm_fast_loop_exit; \
+        insn = program.instructions[pc]; \
+        if (static_cast<int>(insn.opcode) < 0 || \
+            static_cast<int>(insn.opcode) >= 54) goto vm_fast_loop_exit; \
+        goto *fast_dispatch_table[static_cast<int>(insn.opcode)]; \
+    } while (0)
+    #define VMF_CASE(op) op_fast_##op:
+    #define VMF_NEXT() do { ++pc; VMF_DISPATCH(); } while (0)
+    #define VMF_BREAK VMF_NEXT()
+    #define VMF_BRANCH_DONE() VMF_DISPATCH()
+#else
+    #define VMF_DISPATCH() continue
+    #define VMF_CASE(op) case NumericVmOpcode::op:
+    #define VMF_NEXT() { ++pc; continue; }
+    #define VMF_BREAK break
+    #define VMF_BRANCH_DONE() break
+#endif
+
+    for (size_t pc = 0; pc < program.instructions.size();)
+    {
+#if VM_FAST_USE_COMPUTED_GOTO
+        NumericVmInstruction insn{};
+        VMF_DISPATCH();
+
+        VMF_CASE(INVALID)
+        {
+            result.error = "unexpected opcode in numeric-only program";
+            result.error_category = DiagnosticCategory::Runtime;
+            return result;
+        }
+#else
+        const NumericVmInstruction& insn = program.instructions[pc];
+        switch (insn.opcode)
+        {
+#endif
+        VMF_CASE(LOAD_CONST)
+            if (insn.imm < 0 ||
+                static_cast<size_t>(insn.imm) >= program.constants.size())
+            {
+                result.error = "constant index out of range";
+                result.error_category = DiagnosticCategory::Runtime;
+                return result;
+            }
+            registers[insn.rd] = program.constants[static_cast<size_t>(insn.imm)].as_float();
+            VMF_NEXT();
+        VMF_CASE(LOAD_TIME)
+        {
+            const NumericVmTemporalChannel channel =
+                static_cast<NumericVmTemporalChannel>(insn.imm);
+            const double warped_t = (ctx.t * insn.imm0) + insn.imm1;
+            double value = 0.0;
+            switch (channel)
+            {
+            case NumericVmTemporalChannel::T:
+            case NumericVmTemporalChannel::TIME:
+                value = warped_t;
+                break;
+            case NumericVmTemporalChannel::BEAT:
+                value = wrap_phase(warped_t, ctx.beatDur);
+                break;
+            case NumericVmTemporalChannel::BAR:
+                value = wrap_phase(warped_t, ctx.barDur);
+                break;
+            case NumericVmTemporalChannel::PHRASE:
+                value = wrap_phase(warped_t, ctx.phraseDur);
+                break;
+            case NumericVmTemporalChannel::SECTION:
+                value = wrap_phase(warped_t, ctx.sectionDur);
+                break;
+            case NumericVmTemporalChannel::BEAT_NUM:
+                value = time_to_count(warped_t, ctx.beatDur);
+                break;
+            case NumericVmTemporalChannel::BAR_NUM:
+                value = time_to_count(warped_t, ctx.barDur);
+                break;
+            }
+            registers[insn.rd] = value;
+            VMF_NEXT();
+        }
+        VMF_CASE(LOAD_INPUT)
+        {
+            // Stub: no physical inputs in standalone/WASM mode
+            registers[insn.rd] = 0.0;
+            VMF_NEXT();
+        }
+        VMF_CASE(MOV)
+            registers[insn.rd] = registers[insn.rs1];
+            VMF_NEXT();
+        VMF_CASE(VEC_INDEX)
+        VMF_CASE(VEC_LERP)
+        {
+            const std::vector<double>* data = nullptr;
+            if (!load_data_segment(program, insn.imm, data, result.error))
+            {
+                return result;
+            }
+            if (!data || data->empty())
+            {
+                result.error = "data segment is empty";
+                result.error_category = DiagnosticCategory::Runtime;
+                return result;
+            }
+
+            const double phasor = registers[insn.rs1];
+            const double clamped_phasor = std::clamp(phasor, 0.0, 1.0);
+            const double scaled = clamped_phasor * static_cast<double>(data->size());
+            const size_t index =
+                std::min(static_cast<size_t>(std::floor(scaled)), data->size() - 1);
+
+            if (insn.opcode == NumericVmOpcode::VEC_INDEX)
+            {
+                registers[insn.rd] = (*data)[index];
+            }
+            else
+            {
+                if (data->size() == 1)
+                {
+                    registers[insn.rd] = (*data)[0];
+                }
+                else
+                {
+                    const double scaled_lerp =
+                        clamped_phasor * static_cast<double>(data->size() - 1);
+                    size_t base = static_cast<size_t>(std::floor(scaled_lerp));
+                    if (base >= data->size() - 1)
+                    {
+                        base = data->size() - 2;
+                    }
+                    const double fraction =
+                        scaled_lerp - static_cast<double>(base);
+                    registers[insn.rd] =
+                        (*data)[base] +
+                        (((*data)[base + 1] - (*data)[base]) * fraction);
+                }
+            }
+            VMF_NEXT();
+        }
+        VMF_CASE(NEG)
+        VMF_CASE(FLOOR)
+        VMF_CASE(CEIL)
+        VMF_CASE(FRAC)
+        VMF_CASE(ABS)
+        VMF_CASE(SQRT)
+        VMF_CASE(SIN)
+        VMF_CASE(COS)
+        VMF_CASE(TAN)
+        VMF_CASE(U_SIN)
+        VMF_CASE(U_COS)
+        VMF_CASE(U_SIN_BI)
+        VMF_CASE(U_COS_BI)
+        VMF_CASE(SQR)
+        {
+            const double left = registers[insn.rs1];
+            double out = 0.0;
+            switch (insn.opcode)
+            {
+            case NumericVmOpcode::NEG:
+                out = -left;
+                break;
+            case NumericVmOpcode::FLOOR:
+                out = std::floor(left);
+                break;
+            case NumericVmOpcode::CEIL:
+                out = std::ceil(left);
+                break;
+            case NumericVmOpcode::FRAC:
+                out = left - std::floor(left);
+                break;
+            case NumericVmOpcode::ABS:
+                out = std::fabs(left);
+                break;
+            case NumericVmOpcode::SQRT:
+                out = std::sqrt(left);
+                break;
+            case NumericVmOpcode::SIN:
+                out = std::sin(left);
+                break;
+            case NumericVmOpcode::COS:
+                out = std::cos(left);
+                break;
+            case NumericVmOpcode::TAN:
+                out = std::tan(left);
+                break;
+            case NumericVmOpcode::U_SIN:
+                out = (std::sin(left * 2.0 * M_PI) + 1.0) / 2.0;
+                break;
+            case NumericVmOpcode::U_COS:
+                out = (std::cos(left * 2.0 * M_PI) + 1.0) / 2.0;
+                break;
+            case NumericVmOpcode::U_SIN_BI:
+                out = std::sin(left * 2.0 * M_PI);
+                break;
+            case NumericVmOpcode::U_COS_BI:
+                out = std::cos(left * 2.0 * M_PI);
+                break;
+            case NumericVmOpcode::SQR:
+                out = left < 0.5 ? 1.0 : 0.0;
+                break;
+            default:
+                break;
+            }
+            registers[insn.rd] = out;
+            VMF_NEXT();
+        }
+        VMF_CASE(ADD)
+        VMF_CASE(SUB)
+        VMF_CASE(MUL)
+        VMF_CASE(DIV)
+        VMF_CASE(MOD)
+        VMF_CASE(CMP_GT)
+        VMF_CASE(CMP_LT)
+        VMF_CASE(CMP_GE)
+        VMF_CASE(CMP_LE)
+        VMF_CASE(CMP_EQ)
+        VMF_CASE(MIN)
+        VMF_CASE(MAX)
+        VMF_CASE(POW)
+        VMF_CASE(TRI)
+        VMF_CASE(PULSE)
+        {
+            const double left = registers[insn.rs1];
+            const double right = registers[insn.rs2];
+            double out = 0.0;
+            switch (insn.opcode)
+            {
+            case NumericVmOpcode::ADD:
+                out = left + right;
+                break;
+            case NumericVmOpcode::SUB:
+                out = left - right;
+                break;
+            case NumericVmOpcode::MUL:
+                out = left * right;
+                break;
+            case NumericVmOpcode::DIV:
+                if (right == 0.0)
+                {
+                    result.error = "dividing by zero \xe2\x80\x94 the result is undefined";
+                    result.error_category = DiagnosticCategory::Arithmetic;
+                    return result;
+                }
+                out = left / right;
+                break;
+            case NumericVmOpcode::MOD:
+                if (right == 0.0)
+                {
+                    result.error = "dividing by zero \xe2\x80\x94 the result is undefined";
+                    result.error_category = DiagnosticCategory::Arithmetic;
+                    return result;
+                }
+                out = std::fmod(left, right);
+                break;
+            case NumericVmOpcode::CMP_GT:
+                out = left > right ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::CMP_LT:
+                out = left < right ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::CMP_GE:
+                out = left >= right ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::CMP_LE:
+                out = left <= right ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::CMP_EQ:
+                out = left == right ? 1.0 : 0.0;
+                break;
+            case NumericVmOpcode::MIN:
+                out = std::fmin(left, right);
+                break;
+            case NumericVmOpcode::MAX:
+                out = std::fmax(left, right);
+                break;
+            case NumericVmOpcode::POW:
+                // ModuLisp convention: (pow exponent base) -> base^exponent
+                out = std::pow(right, left);
+                break;
+            case NumericVmOpcode::TRI:
+                out = tri_wave(left, right);
+                break;
+            case NumericVmOpcode::PULSE:
+                out = left < right ? 1.0 : 0.0;
+                break;
+            default:
+                break;
+            }
+            registers[insn.rd] = out;
+            VMF_NEXT();
+        }
+        VMF_CASE(CLAMP)
+        {
+            const double val = registers[insn.rs1];
+            const double low = registers[insn.rs2];
+            const double high = registers[insn.rs3];
+            registers[insn.rd] = std::fmin(std::fmax(val, low), high);
+            VMF_NEXT();
+        }
+        VMF_CASE(BRANCH)
+        {
+            size_t target = 0;
+            if (!resolve_branch_target(pc, insn.imm, program.instructions.size(), target,
+                                       result.error))
+            {
+                return result;
+            }
+            if (target <= pc && ++backward_branch_count > VM_MAX_BACKWARD_BRANCHES)
+            {
+                result.error = "this loop ran too long and was stopped";
+                result.error_category = DiagnosticCategory::Runtime;
+                return result;
+            }
+            pc = target;
+            VMF_BRANCH_DONE();
+        }
+        VMF_CASE(BRANCH_IF)
+        VMF_CASE(BRANCH_UNLESS)
+        {
+            // In numeric-only mode, truthiness is simply reg != 0.0
+            const bool cond = registers[insn.rs1] != 0.0;
+            if ((insn.opcode == NumericVmOpcode::BRANCH_IF && cond) ||
+                (insn.opcode == NumericVmOpcode::BRANCH_UNLESS && !cond))
+            {
+                size_t target = 0;
+                if (!resolve_branch_target(pc, insn.imm, program.instructions.size(),
+                                           target, result.error))
+                {
+                    return result;
+                }
+                if (target <= pc &&
+                    ++backward_branch_count > VM_MAX_BACKWARD_BRANCHES)
+                {
+                    result.error = "this loop ran too long and was stopped";
+                    result.error_category = DiagnosticCategory::Runtime;
+                    return result;
+                }
+                pc = target;
+            }
+            else
+            {
+                ++pc;
+            }
+            VMF_BRANCH_DONE();
+        }
+        VMF_CASE(CALL)
+        VMF_CASE(CALL_INTRINSIC)
+        {
+            const size_t arg_start = static_cast<size_t>(insn.rs1);
+            const size_t arg_count = static_cast<size_t>(insn.rs2);
+            if (arg_start + arg_count > registers.size())
+            {
+                result.error = "call arguments out of range";
+                result.error_category = DiagnosticCategory::Runtime;
+                return result;
+            }
+
+            if (insn.opcode == NumericVmOpcode::CALL)
+            {
+                if (insn.imm < 0 ||
+                    static_cast<size_t>(insn.imm) >= program.functions.size() ||
+                    !program.functions[static_cast<size_t>(insn.imm)])
+                {
+                    result.error = "function index out of range";
+                    result.error_category = DiagnosticCategory::Runtime;
+                    return result;
+                }
+
+                const NumericVmProgram& callee =
+                    *program.functions[static_cast<size_t>(insn.imm)];
+
+                if (callee.is_numeric_only)
+                {
+                    // Fast path: callee is also numeric-only
+                    std::vector<double> args(
+                        registers.begin() + arg_start,
+                        registers.begin() + arg_start + arg_count);
+                    const NumericVmExecutionResult callee_result =
+                        execute_numeric_program_fast(callee, ctx, args,
+                                                     call_depth + 1);
+                    if (!callee_result.ok)
+                    {
+                        return callee_result;
+                    }
+                    registers[insn.rd] = callee_result.value;
+                }
+                else
+                {
+                    // Fallback: callee uses typed opcodes, use tagged executor
+                    std::vector<Value> args;
+                    args.reserve(arg_count);
+                    for (size_t i = 0; i < arg_count; ++i)
+                    {
+                        args.push_back(Value(registers[arg_start + i]));
+                    }
+                    const TaggedVmExecutionResult callee_result =
+                        execute_tagged_program_impl(callee, ctx, args,
+                                                    call_depth + 1);
+                    if (!callee_result.ok)
+                    {
+                        result.error = callee_result.error;
+                        result.error_category = callee_result.error_category;
+                        return result;
+                    }
+                    if (!callee_result.value.is_number())
+                    {
+                        result.error = "function returned a non-numeric value in numeric context";
+                        result.error_category = DiagnosticCategory::Type;
+                        return result;
+                    }
+                    registers[insn.rd] = callee_result.value.as_float();
+                }
+            }
+            else
+            {
+                // CALL_INTRINSIC: must bridge through Value for the intrinsic interface
+                if (insn.imm < 0 ||
+                    static_cast<size_t>(insn.imm) >= program.intrinsics.size() ||
+                    !program.intrinsics[static_cast<size_t>(insn.imm)])
+                {
+                    result.error = "intrinsic index out of range";
+                    result.error_category = DiagnosticCategory::Runtime;
+                    return result;
+                }
+                std::vector<Value> args;
+                args.reserve(arg_count);
+                for (size_t i = 0; i < arg_count; ++i)
+                {
+                    args.push_back(Value(registers[arg_start + i]));
+                }
+                const Value intrinsic_result =
+                    program.intrinsics[static_cast<size_t>(insn.imm)](args, ctx);
+                if (intrinsic_result.is_error())
+                {
+                    result.error = "intrinsic function returned an error";
+                    result.error_category = DiagnosticCategory::Runtime;
+                    return result;
+                }
+                if (!intrinsic_result.is_number())
+                {
+                    result.error = "intrinsic returned a non-numeric value in numeric context";
+                    result.error_category = DiagnosticCategory::Type;
+                    return result;
+                }
+                registers[insn.rd] = intrinsic_result.as_float();
+            }
+            VMF_NEXT();
+        }
+        VMF_CASE(RET)
+        {
+            const double rv = registers[insn.rs1];
+            if (!std::isfinite(rv))
+            {
+                result.error = "this produced an undefined number \xe2\x80\x94 check for division by zero or sqrt of a negative";
+                result.error_category = DiagnosticCategory::Arithmetic;
+                return result;
+            }
+            result.ok = true;
+            result.value = rv;
+            return result;
+        }
+
+        // Type-polymorphic opcodes should never appear in numeric-only programs.
+        // Handle them gracefully in switch mode.
+#if !VM_FAST_USE_COMPUTED_GOTO
+        case NumericVmOpcode::IS_NIL:
+        case NumericVmOpcode::IS_NUMBER:
+        case NumericVmOpcode::IS_LIST:
+        case NumericVmOpcode::IS_STRING:
+        case NumericVmOpcode::NOT:
+        case NumericVmOpcode::AND:
+        case NumericVmOpcode::OR:
+        case NumericVmOpcode::MAKE_LIST:
+        case NumericVmOpcode::MAKE_VECTOR:
+        case NumericVmOpcode::LIST_HEAD:
+        case NumericVmOpcode::LIST_TAIL:
+        case NumericVmOpcode::LIST_LENGTH:
+            result.error = "unexpected opcode in numeric-only program";
+            result.error_category = DiagnosticCategory::Runtime;
+            return result;
+        } // end switch
+#endif
+    } // end for
+
+#if VM_FAST_USE_COMPUTED_GOTO
+vm_fast_loop_exit:
+#endif
+
+    result.error = "program terminated without returning a value";
+    result.error_category = DiagnosticCategory::Runtime;
+    return result;
+
+#undef VMF_DISPATCH
+#undef VMF_CASE
+#undef VMF_NEXT
+#undef VMF_BREAK
+#undef VMF_BRANCH_DONE
+#undef VM_FAST_USE_COMPUTED_GOTO
+}
+
+// --- End unboxed double executor ---
+
+TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& program,
+                                                    const TemporalContext& ctx,
+                                                    const std::vector<Value>& initial_registers,
+                                                    int call_depth)
 {
     TaggedVmExecutionResult result;
     if (call_depth > VM_MAX_CALL_DEPTH)
@@ -3852,6 +4481,13 @@ TaggedVmExecutionResult execute_tagged_program(const NumericVmProgram& program,
 NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program,
                                                  const TemporalContext& ctx)
 {
+    // Fast path: numeric-only programs use unboxed double registers
+    if (program.is_numeric_only)
+    {
+        return execute_numeric_program_fast(program, ctx);
+    }
+
+    // Fallback: tagged execution with numeric extraction
     NumericVmExecutionResult result;
     const TaggedVmExecutionResult tagged_result = execute_tagged_program(program, ctx);
     if (!tagged_result.ok)

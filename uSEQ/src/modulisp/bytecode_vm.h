@@ -105,6 +105,7 @@ struct NumericVmProgram
     std::vector<std::shared_ptr<NumericVmProgram>> functions;
     std::vector<TaggedVmIntrinsic> intrinsics;
     size_t register_count = 0;
+    bool is_numeric_only = false;
 };
 
 struct NumericVmCompileResult
