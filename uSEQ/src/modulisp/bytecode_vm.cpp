@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <set>
 #include <unordered_map>
@@ -219,6 +220,59 @@ bool lambda_has_captured_scope(const Value& value)
     }
 
     return false;
+}
+
+static uint64_t hash_value(const Value& v)
+{
+    uint64_t h = static_cast<uint64_t>(v.type);
+
+    switch (v.type)
+    {
+    case Value::FLOAT:
+    case Value::INT:
+    {
+        double d = v.as_float();
+        uint64_t bits;
+        std::memcpy(&bits, &d, sizeof(bits));
+        // Normalize -0.0 to +0.0
+        if (bits == 0x8000000000000000ULL)
+            bits = 0;
+        h ^= bits * 0x9e3779b97f4a7c15ULL;
+        break;
+    }
+    case Value::STRING:
+    case Value::ATOM:
+    {
+        const String& s = v.str;
+        for (size_t i = 0; i < s.length(); ++i)
+        {
+            h = h * 31 + static_cast<unsigned char>(s[i]);
+        }
+        break;
+    }
+    case Value::NIL:
+    case Value::UNIT:
+        break;
+    default:
+        // For lists, vectors, lambdas etc. — use a simple hash based on size.
+        // These are less common as constants; linear fallback is fine.
+        h ^= v.list.size() * 0x517cc1b727220a95ULL;
+        break;
+    }
+
+    return h;
+}
+
+static uint64_t hash_double_vector(const std::vector<double>& values)
+{
+    uint64_t h = values.size();
+    for (double v : values)
+    {
+        uint64_t bits;
+        std::memcpy(&bits, &v, sizeof(bits));
+        h ^= bits * 0x9e3779b97f4a7c15ULL + 0x9e3779b9 + (h << 6) + (h >> 2);
+    }
+    return h;
 }
 
 struct CompilerCheckpoint
@@ -2003,30 +2057,44 @@ private:
 
     size_t store_constant(const Value& value)
     {
-        for (size_t i = 0; i < m_program.constants.size(); ++i)
+        const uint64_t h = hash_value(value);
+        auto it = m_constant_hash_index.find(h);
+        if (it != m_constant_hash_index.end())
         {
-            if (m_program.constants[i] == value)
+            for (size_t idx : it->second)
             {
-                return i;
+                if (m_program.constants[idx] == value)
+                {
+                    return idx;
+                }
             }
         }
 
+        const size_t new_idx = m_program.constants.size();
         m_program.constants.push_back(value);
-        return m_program.constants.size() - 1;
+        m_constant_hash_index[h].push_back(new_idx);
+        return new_idx;
     }
 
     size_t store_data_segment(const std::vector<double>& values)
     {
-        for (size_t i = 0; i < m_program.data_segments.size(); ++i)
+        const uint64_t h = hash_double_vector(values);
+        auto it = m_data_segment_hash_index.find(h);
+        if (it != m_data_segment_hash_index.end())
         {
-            if (m_program.data_segments[i] == values)
+            for (size_t idx : it->second)
             {
-                return i;
+                if (m_program.data_segments[idx] == values)
+                {
+                    return idx;
+                }
             }
         }
 
+        const size_t new_idx = m_program.data_segments.size();
         m_program.data_segments.push_back(values);
-        return m_program.data_segments.size() - 1;
+        m_data_segment_hash_index[h].push_back(new_idx);
+        return new_idx;
     }
 
     void add_dependency(const String& symbol)
@@ -3145,6 +3213,29 @@ private:
         {
             m_cse_cache.clear();
         }
+        // Rebuild hash indices after truncation — they are append-only
+        // so stale entries would point past the resized vectors.
+        rebuild_constant_hash_index();
+        rebuild_data_segment_hash_index();
+    }
+
+    void rebuild_constant_hash_index()
+    {
+        m_constant_hash_index.clear();
+        for (size_t i = 0; i < m_program.constants.size(); ++i)
+        {
+            m_constant_hash_index[hash_value(m_program.constants[i])].push_back(i);
+        }
+    }
+
+    void rebuild_data_segment_hash_index()
+    {
+        m_data_segment_hash_index.clear();
+        for (size_t i = 0; i < m_program.data_segments.size(); ++i)
+        {
+            m_data_segment_hash_index[hash_double_vector(m_program.data_segments[i])]
+                .push_back(i);
+        }
     }
 
     std::vector<std::pair<String, int>> collect_active_local_values() const
@@ -3211,6 +3302,10 @@ private:
     // Saved CSE cache sizes at each scope boundary, used to invalidate
     // entries that reference locals from inner scopes.
     std::vector<size_t> m_cse_scope_stack;
+
+    // Hash-based indices for O(1) average-case constant/data-segment dedup.
+    std::unordered_map<uint64_t, std::vector<size_t>> m_constant_hash_index;
+    std::unordered_map<uint64_t, std::vector<size_t>> m_data_segment_hash_index;
 };
 
 double wrap_phase(double time_seconds, double duration_seconds)
