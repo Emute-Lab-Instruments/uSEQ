@@ -286,6 +286,8 @@ struct CompilerCheckpoint
     int next_register = 0;
     size_t cse_cache_size = 0;
     size_t diagnostic_count = 0;
+    size_t free_register_count = 0;
+    size_t pinned_register_count = 0;
 };
 
 double wrap_phase(double time_seconds, double duration_seconds);
@@ -464,6 +466,8 @@ private:
                 const int preserved = allocate_register();
                 emit_mov(preserved, result);
                 m_cse_cache[cse_sig] = preserved;
+                // Pin so the preserved register cannot be recycled
+                pin_register(preserved);
             }
         }
 
@@ -2041,12 +2045,38 @@ private:
         insn.rs1 = static_cast<uint16_t>(lhs);
         insn.rs2 = static_cast<uint16_t>(rhs);
         m_program.instructions.push_back(insn);
+        // rhs is dead after the binary op — result lives in lhs
+        if (rhs != lhs)
+        {
+            release_register(rhs);
+        }
         return lhs;
     }
 
     int allocate_register()
     {
+        if (!m_free_registers.empty())
+        {
+            int reg = m_free_registers.back();
+            m_free_registers.pop_back();
+            return reg;
+        }
         return m_next_register++;
+    }
+
+    void release_register(int reg)
+    {
+        if (reg < 0) return;
+        if (m_pinned_registers.count(reg)) return;
+        m_free_registers.push_back(reg);
+    }
+
+    void pin_register(int reg)
+    {
+        if (reg >= 0)
+        {
+            m_pinned_registers.insert(reg);
+        }
     }
 
     size_t store_intrinsic(const TaggedVmIntrinsic& intrinsic)
@@ -2929,11 +2959,13 @@ private:
             return -1;
         }
 
-        const int first = allocate_register();
+        // Argument windows need consecutive registers, so always
+        // allocate fresh from the top — the free list may have gaps.
+        const int first = m_next_register++;
         emit_mov(first, arg_regs[0]);
         for (size_t i = 1; i < arg_regs.size(); ++i)
         {
-            const int dst = allocate_register();
+            const int dst = m_next_register++;
             emit_mov(dst, arg_regs[i]);
         }
         return first;
@@ -2948,8 +2980,13 @@ private:
 
     void pop_local_scope()
     {
+        // Unpin registers bound to locals in the scope being popped
         if (!m_local_value_scopes.empty())
         {
+            for (const auto& entry : m_local_value_scopes.back())
+            {
+                m_pinned_registers.erase(entry.second.source_register);
+            }
             m_local_value_scopes.pop_back();
         }
         if (!m_local_callable_scopes.empty())
@@ -2964,6 +3001,12 @@ private:
             m_cse_scope_stack.pop_back();
             if (m_cse_cache.size() > target_size)
             {
+                // Unpin CSE-preserved registers from entries being evicted,
+                // since their cached values are no longer reachable.
+                for (auto it = m_cse_cache.begin(); it != m_cse_cache.end(); ++it)
+                {
+                    m_pinned_registers.erase(it->second);
+                }
                 // Rebuild cache keeping only entries that existed before
                 // this scope was pushed. The simple approach: clear all
                 // entries added during this scope. Since unordered_map
@@ -2983,6 +3026,8 @@ private:
             push_local_scope();
         }
         m_local_value_scopes.back()[symbol] = { source_register };
+        // Pin so the register cannot be recycled while the binding is live
+        pin_register(source_register);
     }
 
     void bind_local_callable(const String& symbol, const Value& callable)
@@ -3194,6 +3239,8 @@ private:
         checkpoint.next_register = m_next_register;
         checkpoint.cse_cache_size = m_cse_cache.size();
         checkpoint.diagnostic_count = m_diagnostics.size();
+        checkpoint.free_register_count = m_free_registers.size();
+        checkpoint.pinned_register_count = m_pinned_registers.size();
         return checkpoint;
     }
 
@@ -3207,6 +3254,15 @@ private:
         m_program.intrinsics.resize(checkpoint.intrinsic_count);
         m_next_register = checkpoint.next_register;
         m_diagnostics.resize(checkpoint.diagnostic_count);
+        // Restore free list to checkpointed state
+        m_free_registers.resize(checkpoint.free_register_count);
+        // Conservatively clear all pins added since checkpoint —
+        // the pinned set doesn't support ordered rollback, so
+        // rebuild from scratch if pins were added.
+        if (m_pinned_registers.size() > checkpoint.pinned_register_count)
+        {
+            m_pinned_registers.clear();
+        }
         // CSE entries added since checkpoint may reference rolled-back
         // registers/instructions — clear them conservatively.
         if (m_cse_cache.size() > checkpoint.cse_cache_size)
@@ -3284,6 +3340,8 @@ private:
     bool m_signal_context = false;
     NumericVmProgram m_program;
     int m_next_register = 0;
+    std::vector<int> m_free_registers;
+    std::set<int> m_pinned_registers;
     String m_error;
     std::vector<Diagnostic> m_diagnostics;
     std::vector<String> m_recursion_stack;
