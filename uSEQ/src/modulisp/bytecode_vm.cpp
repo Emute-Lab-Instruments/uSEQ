@@ -712,11 +712,11 @@ private:
         }
         if (op == "and")
         {
-            return compile_binary(items, NumericVmOpcode::AND, transform);
+            return compile_and(items, transform);
         }
         if (op == "or")
         {
-            return compile_binary(items, NumericVmOpcode::OR, transform);
+            return compile_or(items, transform);
         }
         if (op == "head" || op == "car")
         {
@@ -961,6 +961,106 @@ private:
 
         const size_t end_index = m_program.instructions.size();
         patch_branch(branch_to_end_index, end_index);
+        return result_reg;
+    }
+
+    int compile_and(const std::vector<Value>& items,
+                    const AffineTimeTransform& transform)
+    {
+        // (and) with no args → truthy (1.0)
+        if (items.size() == 1)
+        {
+            return emit_const(Value(1.0));
+        }
+
+        // (and x) with one arg → just return x
+        if (items.size() == 2)
+        {
+            return compile_expr(items[1], transform);
+        }
+
+        // Variadic: (and a b c ...)
+        // Evaluate left-to-right, short-circuit at the first falsy value.
+        const int result_reg = allocate_register();
+        std::vector<size_t> branch_to_end_indices;
+
+        for (size_t i = 1; i < items.size(); ++i)
+        {
+            const int operand_reg = compile_expr(items[i], transform);
+            if (operand_reg < 0)
+            {
+                return -1;
+            }
+            emit_mov(result_reg, operand_reg);
+
+            // For all operands except the last, branch to end if falsy.
+            if (i < items.size() - 1)
+            {
+                NumericVmInstruction branch;
+                branch.opcode = NumericVmOpcode::BRANCH_UNLESS;
+                branch.rs1 = static_cast<uint16_t>(result_reg);
+                branch.imm = 0;
+                branch_to_end_indices.push_back(m_program.instructions.size());
+                m_program.instructions.push_back(branch);
+            }
+        }
+
+        // Patch all forward branches to point here (past the last operand).
+        const size_t end_index = m_program.instructions.size();
+        for (const size_t idx : branch_to_end_indices)
+        {
+            patch_branch(idx, end_index);
+        }
+        return result_reg;
+    }
+
+    int compile_or(const std::vector<Value>& items,
+                   const AffineTimeTransform& transform)
+    {
+        // (or) with no args → falsy (0.0)
+        if (items.size() == 1)
+        {
+            return emit_const(Value(0.0));
+        }
+
+        // (or x) with one arg → just return x
+        if (items.size() == 2)
+        {
+            return compile_expr(items[1], transform);
+        }
+
+        // Variadic: (or a b c ...)
+        // Evaluate left-to-right, short-circuit at the first truthy value.
+        const int result_reg = allocate_register();
+        std::vector<size_t> branch_to_end_indices;
+
+        for (size_t i = 1; i < items.size(); ++i)
+        {
+            const int operand_reg = compile_expr(items[i], transform);
+            if (operand_reg < 0)
+            {
+                return -1;
+            }
+            emit_mov(result_reg, operand_reg);
+
+            // For all operands except the last, branch to end if truthy.
+            if (i < items.size() - 1)
+            {
+                NumericVmInstruction branch;
+                branch.opcode = NumericVmOpcode::BRANCH_IF;
+                branch.rs1 = static_cast<uint16_t>(result_reg);
+                branch.imm = 0;
+                branch_to_end_indices.push_back(m_program.instructions.size());
+                m_program.instructions.push_back(branch);
+            }
+        }
+
+        // Patch all forward branches to point here (past the last operand).
+        const size_t end_index = m_program.instructions.size();
+        for (const size_t idx : branch_to_end_indices)
+        {
+            patch_branch(idx, end_index);
+        }
         return result_reg;
     }
 
