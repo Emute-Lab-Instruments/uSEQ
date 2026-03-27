@@ -484,6 +484,11 @@ protected:
     std::optional<Value> lookup_expr_without_error(const Environment& env,
                                                    const String& symbol) const;
 
+    // Proactive dependency invalidation: called when a symbol is rebound
+    // (via define, defn, set, etc.). Walks all output slots and marks
+    // any whose active_dependencies contain the changed symbol as dirty.
+    void notify_symbol_changed(const String& symbol_name);
+
 private:
     // Absorbed Interpreter state
     bool m_builtindefs_init = false;

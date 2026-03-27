@@ -3,6 +3,7 @@
 
 #include "../../utils/string.h"
 #include "value.h"
+#include <functional>
 #include <map>
 #include <optional>
 #include <vector>
@@ -89,6 +90,13 @@ public:
     void set_temporal_context(TemporalContext* ctx) { m_temporal_ctx = ctx; }
     TemporalContext* get_temporal_context() const { return m_temporal_ctx; }
 
+    // Callback invoked whenever a symbol is set (value or expr).
+    // Used by ModuLispInterpreter to proactively invalidate compiled output
+    // programs whose dependency sets mention the changed symbol.
+    using SymbolChangedCallback = std::function<void(const String& symbol_name)>;
+    void set_symbol_changed_callback(SymbolChangedCallback cb) { m_on_symbol_changed = std::move(cb); }
+    const SymbolChangedCallback& get_symbol_changed_callback() const { return m_on_symbol_changed; }
+
     // Output this scope in readable form to a stream.
     friend std::ostream& operator<<(std::ostream& os, Environment const& v);
 
@@ -114,6 +122,7 @@ protected:
     // The definitions in the scope.
     Environment* m_parent_env;
     TemporalContext* m_temporal_ctx = nullptr;
+    SymbolChangedCallback m_on_symbol_changed;
     // Environment* m_child_env;
 };
 

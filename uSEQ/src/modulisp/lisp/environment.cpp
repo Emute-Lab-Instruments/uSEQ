@@ -134,6 +134,10 @@ void Environment::set(const String& name, Value value)
     // for multicore
     //  mutex_enter_blocking(&write_mutex);
     m_defs[name] = value;
+    if (m_on_symbol_changed)
+    {
+        m_on_symbol_changed(name);
+    }
     // debug("Environment::set setting...DONE");
     // mutex_exit(&write_mutex);
 }
@@ -141,6 +145,10 @@ void Environment::set(const String& name, Value value)
 void Environment::set_expr(const String& name, Value value)
 {
     m_def_exprs[name] = value;
+    if (m_on_symbol_changed)
+    {
+        m_on_symbol_changed(name);
+    }
 }
 
 void Environment::unset(const String& name) { m_defs.erase(name); }

@@ -138,6 +138,12 @@ ModuLispInterpreter::ModuLispInterpreter(IClock* clk, ILogger* log,
     // Point the global environment at our temporal context struct
     m_environment.set_temporal_context(&m_global_temporal_ctx);
 
+    // Register symbol-change callback for proactive dependency invalidation.
+    // When define/defn/set modify the environment, this marks output slots
+    // dirty so they are recompiled at the next frame boundary.
+    m_environment.set_symbol_changed_callback(
+        [this](const String& symbol_name) { notify_symbol_changed(symbol_name); });
+
     // Initialize time variables with default values (0.0)
     // This ensures they always exist in the environment
     m_environment.set("t", Value(0.0));

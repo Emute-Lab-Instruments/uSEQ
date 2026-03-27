@@ -88,6 +88,10 @@ output_sync_test_src = [
   'modulisp/api/test_output_sync.cpp'
 ]
 
+dependency_invalidation_test_src = [
+  'modulisp/api/test_dependency_invalidation.cpp'
+]
+
 output_sampling_test_src = [
   'modulisp/api/test_output_sampling.cpp'
 ]
@@ -330,6 +334,18 @@ output_sync_exe = executable(
 )
 
 test('output_sync_test', output_sync_exe)
+
+# Dependency invalidation test executable
+dependency_invalidation_exe = executable(
+  'test_dependency_invalidation',
+  sources : dependency_invalidation_test_src,
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [modulisp_dep, math_dep]
+)
+
+test('dependency_invalidation_test', dependency_invalidation_exe)
 
 # Output sampling test executable
 output_sampling_exe = executable(

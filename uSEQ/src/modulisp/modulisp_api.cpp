@@ -395,6 +395,41 @@ bool ModuLispInterpreter::compile_output_program(const Value& expr,
     return true;
 }
 
+void ModuLispInterpreter::notify_symbol_changed(const String& symbol_name)
+{
+    // Skip temporal variable names -- these change every frame and are never
+    // recorded as dependencies by the compiler (they get LOAD_TIME opcodes).
+    if (symbol_name == "t" || symbol_name == "time" ||
+        symbol_name == "beat" || symbol_name == "bar" ||
+        symbol_name == "phrase" || symbol_name == "section")
+    {
+        return;
+    }
+
+    auto mark_dirty = [&](std::vector<StoredOutput>& slots) {
+        for (auto& slot : slots)
+        {
+            if (!slot.hasExpr || !slot.activeProgram.program)
+            {
+                continue;
+            }
+            for (const String& dep : slot.activeProgram.dependencies)
+            {
+                if (dep == symbol_name)
+                {
+                    slot.numericProgramDirty = true;
+                    slot.lastInvalidatedBy = symbol_name;
+                    break;
+                }
+            }
+        }
+    };
+
+    mark_dirty(m_analog_outputs);
+    mark_dirty(m_digital_outputs);
+    mark_dirty(m_serial_outputs);
+}
+
 bool ModuLispInterpreter::refresh_output_program(StoredOutput& slot, Environment& env)
 {
     slot.numericProgramAttempted = true;
