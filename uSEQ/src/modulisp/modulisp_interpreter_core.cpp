@@ -596,6 +596,7 @@ void ModuLispInterpreter::loadBuiltinDefs()
     Environment::builtindefs()["eval"]     = Value("eval", builtin::eval);
     Environment::builtindefs()["defn"]     = Value("defn", builtin::defn);
     Environment::builtindefs()["lambda"]   = Value("lambda", builtin::lambda);
+    Environment::builtindefs()["fn"]       = Value("fn", builtin::lambda);
     Environment::builtindefs()["def"]      = Value("def", builtin::def);
     Environment::builtindefs()["defun"]    = Value("defun", builtin::defun);
     Environment::builtindefs()["defs"]     = Value("defs", builtin::defs);

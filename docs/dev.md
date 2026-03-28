@@ -21,6 +21,13 @@
 - `uSEQ/src/io`: Functionality relating to hardware and/or software IO (NOTE: not currently used).
 - `uSEQ/src/ml`: Functionality for Machine Learning, e.g. input analysis or pattern generation.
 
+## VM Runtime Notes
+
+- `eval_v()`, `eval_output_at_time()`, and `eval_outputs()` now run through the bytecode VM path directly. Public evaluation no longer silently falls back to the tree-walking evaluator.
+- Higher-order builtins such as `map`, `filter`, and `reduce` route lambda application through the VM callable helper so returned closures and other dynamic callables stay on the VM runtime path.
+- `ModuLispInterpreter::eval_in()` is still present, but only as a legacy/helper entry point. It is no longer the production path for public eval or output sampling.
+- `fn` is now a direct alias of `lambda`, and VM docs/examples should treat them as equivalent forms.
+
 ## JSON Serial Protocol
 
 When connected to the web editor (firmware v1.2.0+), the module can operate in a structured JSON protocol mode instead of the legacy text-based protocol.

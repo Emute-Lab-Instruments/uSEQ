@@ -314,7 +314,13 @@ bool try_parse_lambda_expr(const Value& value,
     }
 
     const std::vector<Value> items = value.as_list();
-    if (items.empty() || !items[0].is_symbol() || items[0].as_atom() != "lambda")
+    if (items.empty() || !items[0].is_symbol())
+    {
+        return false;
+    }
+
+    const String op = items[0].as_atom();
+    if (op != "lambda" && op != "fn")
     {
         return false;
     }
@@ -3019,7 +3025,7 @@ private:
             return false;
         }
         const String op = items[0].as_atom();
-        if (op != "lambda")
+        if (op != "lambda" && op != "fn")
         {
             return false;
         }

@@ -281,6 +281,9 @@ Real branches rather than branchless SELECT. This enables future symbolic interv
 CALL        #func_id, rd, rs_first, rs_count
     ; call compiled function, result in rd
     ; arguments are in consecutive registers starting at rs_first (rs_count args)
+CALL        dynamic, rd, rs_callable, rs_first, rs_count
+    ; call a callable value held in a register (returned closure, local closure, vector callable)
+    ; rs_callable holds the callable Value, rs_first/rs_count hold the argument window
 RET         rs                        ; return value from function
 CALL_INTRINSIC  #intrinsic_id, rd, rs_first, rs_count
     ; call opaque C++ intrinsic (for complex builtins with signal args)
@@ -289,7 +292,7 @@ CALL_INTRINSIC  #intrinsic_id, rd, rs_first, rs_count
 
 Arguments are passed in a contiguous register range. The compiler allocates argument registers consecutively before emitting `CALL`/`CALL_INTRINSIC`. This keeps instructions fixed-width while supporting variable arity.
 
-The compiler **prefers inlining** lambda bodies at call sites. `CALL` is emitted only when inlining is not possible (recursion, very large bodies, explicit opt-out). `CALL_INTRINSIC` is the escape hatch for builtins that can't be expressed as primitives (or whose args are signals, preventing compile-time pre-computation).
+The compiler **prefers inlining** lambda bodies at call sites. `CALL` is emitted when inlining is not possible or not desirable: recursion, very large bodies, returned closures, and dynamic callable values captured in registers. `CALL_INTRINSIC` remains the escape hatch for builtins that can't be expressed as primitives, for builtin error-checking fallbacks, and for unresolved late-bound runtime names.
 
 ### 4.6 Error Handling
 
@@ -328,9 +331,10 @@ Source text → Parser → AST (Value tree)
 The compiler walks the AST and resolves symbols to their current bindings:
 
 - **Builtin functions**: inlined as dedicated instructions or intrinsic calls
-- **User-defined functions** (`defn`, `lambda`): body is inlined at the call site with parameter substitution
+- **User-defined functions** (`defn`, `lambda`, `fn`): body is inlined at the call site when possible; otherwise lowered to `CALL`
 - **User-defined variables** (`define`): binding expression is inlined (transitively)
-- **Unresolvable symbols**: currently emit an intrinsic bridge for late-bound runtime lookup
+- **Returned/local callable values**: compiled as dynamic callable dispatch through `CALL` with a callable register
+- **Unresolvable symbols**: emit an intrinsic bridge for late-bound runtime lookup
 
 A **dependency set** is recorded: the set of all user-defined symbols that were inlined. This set drives invalidation (section 6.2).
 
@@ -577,12 +581,30 @@ Each bytecode instruction tested in isolation. These are C++ tests that construc
 **Instruction count tests** (Catch2 only) — assert upper bounds for complex optimizations:
 - CSE: `(+ (sin beat) (sin beat))` → at most 1 `SIN` instruction
 - Inlining: `(define f (fn [x] (sin x))) (f beat)` → no `CALL` instruction, inlined
+- Returned closure: `((fn [x] (fn [y] (+ x y))) 2)` → outer function may inline or `CALL`, inner callable dispatch uses dynamic `CALL`
 - Builtin expansion: `(euclid 3 8 beat)` with constant args → no `CALL_INTRINSIC`
 
 **Semantic correctness** (YAML golden suite):
 - Constant folding produces correct values
 - Time-warp flattening: `(fast k (slow k expr))` ≡ `expr` for various `k`
 - Inlined symbols resolve correctly: `(define x 3) (+ x 1)` → `4.0`
+
+## Runtime Status
+
+Public evaluation and output sampling paths now run through VM compilation/execution rather than silently dropping back to the tree-walker:
+
+- `eval_v()`
+- `eval_output_at_time()`
+- `eval_outputs()`
+- batched output sampling (`eval_outputs(start, end, count, ...)`)
+
+`ModuLispInterpreter::eval_in()` still exists, but it is a legacy/helper entry point for command handling and compatibility code, not a normal production evaluation path.
+
+The remaining expected `CALL_INTRINSIC` cases are:
+
+- bare builtin symbols used as values
+- builtin arity/type/error-checking fallback paths that are not expressible as fixed VM opcodes
+- unresolved late-bound names at compile time
 
 #### Category 3: Semantic property tests (RapidCheck + generated YAML)
 

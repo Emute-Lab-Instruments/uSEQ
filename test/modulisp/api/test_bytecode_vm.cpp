@@ -794,6 +794,22 @@ TEST_CASE("Public eval_v handles lambda callables directly", "[modulisp][vm]")
     REQUIRE(result.as_float() == Approx(5.0).epsilon(1e-9));
 }
 
+TEST_CASE("Public eval_v handles fn shorthand directly", "[modulisp][vm]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const Value result = interp.eval_v("((fn [x] (+ x 3)) 2)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(5.0).epsilon(1e-9));
+
+    const auto compiled =
+        compile_numeric_program(interp.get_parser()->parse("((fn [x] (+ x 3)) 2)"),
+                                *interp.get_environment(), false);
+    REQUIRE(compiled.ok);
+    REQUIRE_FALSE(has_opcode(compiled.program, NumericVmOpcode::CALL_INTRINSIC));
+}
+
 TEST_CASE("Top-level define stays on the explicit command path",
           "[modulisp][vm][commands]")
 {

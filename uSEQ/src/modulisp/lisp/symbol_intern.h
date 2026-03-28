@@ -64,6 +64,7 @@ public:
     void preinternCommonSymbols() {
         // Common LISP symbols
         intern("lambda");
+        intern("fn");
         intern("if");
         intern("def");
         intern("let");
