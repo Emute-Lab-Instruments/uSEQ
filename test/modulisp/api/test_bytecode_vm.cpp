@@ -826,6 +826,68 @@ TEST_CASE("Top-level do mixes command forms and VM-native pure forms",
     REQUIRE(result.as_float() == Approx(8.0).epsilon(1e-9));
 }
 
+TEST_CASE("Late-bound symbol programs pick up live rebinding at runtime",
+          "[modulisp][vm][late-binding]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(+ live-scale 1)"),
+                                *interp.get_environment(), false);
+    REQUIRE(compile_result.ok);
+    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::CALL_INTRINSIC));
+
+    TemporalContext ctx;
+    const auto missing_result = execute_tagged_program(compile_result.program, ctx);
+    REQUIRE_FALSE(missing_result.ok);
+
+    interp.eval("(define live-scale 4)");
+
+    const auto first_bound_result =
+        execute_tagged_program(compile_result.program, ctx);
+    REQUIRE(first_bound_result.ok);
+    REQUIRE(first_bound_result.value.is_number());
+    REQUIRE(first_bound_result.value.as_float() == Approx(5.0).epsilon(1e-9));
+
+    interp.eval("(define live-scale 9)");
+
+    const auto rebound_result =
+        execute_tagged_program(compile_result.program, ctx);
+    REQUIRE(rebound_result.ok);
+    REQUIRE(rebound_result.value.is_number());
+    REQUIRE(rebound_result.value.as_float() == Approx(10.0).epsilon(1e-9));
+}
+
+TEST_CASE("Runtime VM bridge evaluates dynamic for collections without tree-walker",
+          "[modulisp][vm][late-binding]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define items (list 1 2 3))");
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(for x items (+ x 1))"),
+                                *interp.get_environment(), false);
+    REQUIRE(compile_result.ok);
+    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::CALL_INTRINSIC));
+
+    TemporalContext ctx;
+    const auto first_result = execute_tagged_program(compile_result.program, ctx);
+    REQUIRE(first_result.ok);
+    REQUIRE(first_result.value.is_number());
+    REQUIRE(first_result.value.as_float() == Approx(4.0).epsilon(1e-9));
+
+    interp.eval("(define items (list 10 20))");
+
+    const auto rebound_result =
+        execute_tagged_program(compile_result.program, ctx);
+    REQUIRE(rebound_result.ok);
+    REQUIRE(rebound_result.value.is_number());
+    REQUIRE(rebound_result.value.as_float() == Approx(21.0).epsilon(1e-9));
+}
+
 TEST_CASE("Compiled eval preserves lambda_scope for captured closures",
           "[modulisp][vm]")
 {

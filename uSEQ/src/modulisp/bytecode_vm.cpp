@@ -294,6 +294,228 @@ double wrap_phase(double time_seconds, double duration_seconds);
 double time_to_count(double time_seconds, double duration_seconds);
 TemporalContext apply_time_transform(const TemporalContext& ctx,
                                      const AffineTimeTransform& transform);
+bool is_truthy(const Value& value);
+
+namespace
+{
+constexpr int kRuntimeVmBridgeMaxDepth = 32;
+constexpr int kRuntimeVmWhileMaxIterations = 1024;
+
+bool try_parse_lambda_expr(const Value& value,
+                           std::vector<Value>& params,
+                           Value& body)
+{
+    if (!value.is_list())
+    {
+        return false;
+    }
+
+    const std::vector<Value> items = value.as_list();
+    if (items.empty() || !items[0].is_symbol() || items[0].as_atom() != "lambda")
+    {
+        return false;
+    }
+    if (items.size() < 3 || !items[1].is_vector())
+    {
+        return false;
+    }
+
+    params = items[1].as_vector();
+    if (items.size() == 3)
+    {
+        body = items[2];
+    }
+    else
+    {
+        std::vector<Value> body_items;
+        body_items.push_back(Value::atom("do"));
+        for (size_t i = 2; i < items.size(); ++i)
+        {
+            body_items.push_back(items[i]);
+        }
+        body = Value(body_items);
+    }
+
+    return true;
+}
+
+Value execute_runtime_expr_with_vm_impl(const Value& expr,
+                                        const Environment& env,
+                                        bool signal_context,
+                                        const TemporalContext& ctx,
+                                        int depth);
+
+Value execute_runtime_symbol_with_vm(const String& symbol,
+                                     const Environment& env,
+                                     bool signal_context,
+                                     const TemporalContext& ctx,
+                                     int depth)
+{
+    if (const std::optional<Value> expr_binding = env.get_expr(symbol))
+    {
+        return execute_runtime_expr_with_vm_impl(*expr_binding, env, signal_context,
+                                                 ctx, depth + 1);
+    }
+
+    if (const std::optional<Value> value_binding = env.get(symbol))
+    {
+        return *value_binding;
+    }
+
+    return Value::error();
+}
+
+Value execute_runtime_for_with_vm(const std::vector<Value>& items,
+                                  const Environment& env,
+                                  bool signal_context,
+                                  const TemporalContext& ctx,
+                                  int depth)
+{
+    if (items.size() < 4 || !items[1].is_symbol())
+    {
+        return Value::error();
+    }
+
+    const Value collection =
+        execute_runtime_expr_with_vm_impl(items[2], env, signal_context, ctx,
+                                          depth + 1);
+    if (collection.is_error() || !collection.is_sequential())
+    {
+        return Value::error();
+    }
+
+    Value result = Value::nil();
+    for (const Value& element : collection.as_sequential())
+    {
+        Environment loop_env(env);
+        TemporalContext loop_ctx = ctx;
+        loop_env.set_temporal_context(&loop_ctx);
+        loop_env.set(items[1].as_atom(), element);
+        loop_env.unset_expr(items[1].as_atom());
+
+        for (size_t i = 3; i < items.size(); ++i)
+        {
+            result = execute_runtime_expr_with_vm_impl(items[i], loop_env,
+                                                       signal_context, loop_ctx,
+                                                       depth + 1);
+            if (result.is_error())
+            {
+                return result;
+            }
+        }
+    }
+
+    return result;
+}
+
+Value execute_runtime_while_with_vm(const std::vector<Value>& items,
+                                    const Environment& env,
+                                    bool signal_context,
+                                    const TemporalContext& ctx,
+                                    int depth)
+{
+    if (items.size() < 3)
+    {
+        return Value::error();
+    }
+
+    Environment loop_env(env);
+    TemporalContext loop_ctx = ctx;
+    loop_env.set_temporal_context(&loop_ctx);
+
+    Value result = Value::nil();
+    for (int iteration = 0; iteration < kRuntimeVmWhileMaxIterations; ++iteration)
+    {
+        const Value condition =
+            execute_runtime_expr_with_vm_impl(items[1], loop_env, signal_context,
+                                              loop_ctx, depth + 1);
+        if (condition.is_error())
+        {
+            return condition;
+        }
+        if (!is_truthy(condition))
+        {
+            return result;
+        }
+
+        for (size_t i = 2; i < items.size(); ++i)
+        {
+            result = execute_runtime_expr_with_vm_impl(items[i], loop_env,
+                                                       signal_context, loop_ctx,
+                                                       depth + 1);
+            if (result.is_error())
+            {
+                return result;
+            }
+        }
+    }
+
+    return Value::error();
+}
+
+Value execute_runtime_expr_with_vm_impl(const Value& expr,
+                                        const Environment& env,
+                                        bool signal_context,
+                                        const TemporalContext& ctx,
+                                        int depth)
+{
+    if (depth > kRuntimeVmBridgeMaxDepth)
+    {
+        return Value::error();
+    }
+
+    if (expr.is_symbol())
+    {
+        return execute_runtime_symbol_with_vm(expr.as_atom(), env, signal_context,
+                                              ctx, depth);
+    }
+
+    std::vector<Value> lambda_params;
+    Value lambda_body;
+    if (try_parse_lambda_expr(expr, lambda_params, lambda_body))
+    {
+        Environment lambda_env(env);
+        TemporalContext lambda_ctx = ctx;
+        lambda_env.set_temporal_context(&lambda_ctx);
+        return Value(lambda_params, lambda_body, lambda_env);
+    }
+
+    if (expr.is_list())
+    {
+        const std::vector<Value> items = expr.as_list();
+        if (!items.empty() && items[0].is_symbol())
+        {
+            const String op = items[0].as_atom();
+            if (op == "for")
+            {
+                return execute_runtime_for_with_vm(items, env, signal_context, ctx,
+                                                   depth);
+            }
+            if (op == "while")
+            {
+                return execute_runtime_while_with_vm(items, env, signal_context,
+                                                     ctx, depth);
+            }
+        }
+    }
+
+    const NumericVmCompileResult compile_result =
+        compile_numeric_program(expr, env, signal_context);
+    if (!compile_result.ok)
+    {
+        return Value::error();
+    }
+
+    const TaggedVmExecutionResult execution_result =
+        execute_tagged_program(compile_result.program, ctx);
+    if (!execution_result.ok)
+    {
+        return Value::error();
+    }
+
+    return execution_result.value;
+}
+} // namespace
 
 double tri_wave(double duty, double phase)
 {
@@ -1900,23 +2122,13 @@ private:
     {
         maybe_add_dependency(symbol);
         const size_t intrinsic_index = store_intrinsic(
-            [env = &m_env, symbol](const std::vector<Value>&,
+            [env = &m_env, symbol, signal_context = m_signal_context](const std::vector<Value>&,
                                    const TemporalContext& ctx) -> Value {
+                Environment exec_env(*env);
                 TemporalContext exec_ctx = ctx;
-                Environment exec_env;
-                exec_env.set_parent_scope(const_cast<Environment*>(env));
                 exec_env.set_temporal_context(&exec_ctx);
-
-                if (const std::optional<Value> expr = env->get_expr(symbol))
-                {
-                    Value mutable_expr = *expr;
-                    return ModuLispInterpreter::eval_in(mutable_expr, exec_env);
-                }
-                if (const std::optional<Value> value = env->get(symbol))
-                {
-                    return *value;
-                }
-                return Value::error();
+                return execute_runtime_symbol_with_vm(symbol, exec_env, signal_context,
+                                                      exec_ctx, 0);
             });
 
         const int dst = allocate_register();
@@ -1970,33 +2182,38 @@ private:
         const int first_arg_reg = allocate_argument_window(arg_regs);
 
         const size_t intrinsic_index = store_intrinsic(
-            [env = &m_env, runtime_expr = expr, transform, local_values,
+            [env = &m_env, runtime_expr = expr, transform, signal_context = m_signal_context, local_values,
              local_callables](const std::vector<Value>& args,
                               const TemporalContext& ctx) -> Value {
                 TemporalContext exec_ctx = apply_time_transform(ctx, transform);
-                Environment exec_env;
-                exec_env.set_parent_scope(const_cast<Environment*>(env));
+                Environment exec_env(*env);
                 exec_env.set_temporal_context(&exec_ctx);
 
                 for (size_t i = 0; i < local_values.size() && i < args.size(); ++i)
                 {
                     exec_env.set(local_values[i].first, args[i]);
+                    exec_env.unset_expr(local_values[i].first);
                 }
 
                 for (const auto& callable : local_callables)
                 {
-                    Value callable_expr = callable.second;
-                    Value callable_value =
-                        ModuLispInterpreter::eval_in(callable_expr, exec_env);
-                    if (callable_value.is_error())
+                    if (callable.second.type == Value::LAMBDA)
                     {
-                        return callable_value;
+                        exec_env.set(callable.first, callable.second);
+                        continue;
                     }
-                    exec_env.set(callable.first, callable_value);
+
+                    std::vector<Value> params;
+                    Value body;
+                    if (try_parse_lambda_expr(callable.second, params, body))
+                    {
+                        exec_env.set(callable.first, Value(params, body, exec_env));
+                        continue;
+                    }
                 }
 
-                Value mutable_expr = runtime_expr;
-                return ModuLispInterpreter::eval_in(mutable_expr, exec_env);
+                return execute_runtime_expr_with_vm_impl(runtime_expr, exec_env,
+                                                         signal_context, exec_ctx, 0);
             });
 
         const int dst = allocate_register();
