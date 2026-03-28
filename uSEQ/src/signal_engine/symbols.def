@@ -1,0 +1,145 @@
+// symbols.def — X-macro symbol table for the signal engine graph builder.
+// Each line: SYM(field_name, "lisp-string", category)
+//
+// Categories:
+//   none        — bare symbol, no special dispatch
+//   arith       — variadic arithmetic operator
+//   cmp         — comparison operator
+//   logic       — logic operator
+//   unary       — unary math function
+//   binary      — binary math function
+//   ternary     — ternary math function
+//   time_warp   — time transform
+//   control     — control flow
+//   signal      — domain signal function with custom compilation
+//   side_effect — side-effect forms (error in signal context)
+//   waveform    — waveform generators with special 1-or-2-arg handling
+
+// ── Temporal / time symbols ────────────────────────────────────────────────
+SYM(t,                   "t",                    none)
+SYM(beat,                "beat",                 none)
+SYM(bar,                 "bar",                  none)
+SYM(phrase,              "phrase",               none)
+SYM(section,             "section",              none)
+SYM(beat_num,            "beat-num",             none)
+SYM(bar_num,             "bar-num",              none)
+
+// ── Timing parameters ──────────────────────────────────────────────────────
+SYM(bpm,                 "bpm",                  none)
+SYM(beats_per_bar,       "beats-per-bar",        none)
+SYM(bars_per_phrase,     "bars-per-phrase",       none)
+SYM(phrases_per_section, "phrases-per-section",  none)
+
+// ── Arithmetic operators ───────────────────────────────────────────────────
+SYM(plus,                "+",                    arith)
+SYM(minus,               "-",                    arith)
+SYM(star,                "*",                    arith)
+SYM(slash,               "/",                    arith)
+SYM(mod_pct,             "%",                    arith)
+
+// ── Comparison operators ───────────────────────────────────────────────────
+SYM(gt,                  ">",                    cmp)
+SYM(lt,                  "<",                    cmp)
+SYM(ge,                  ">=",                   cmp)
+SYM(le,                  "<=",                   cmp)
+SYM(eq,                  "=",                    cmp)
+
+// ── Logic operators ────────────────────────────────────────────────────────
+SYM(not_,                "not",                  logic)
+SYM(and_,                "and",                  logic)
+SYM(or_,                 "or",                   logic)
+
+// ── Time transforms ────────────────────────────────────────────────────────
+SYM(fast,                "fast",                 time_warp)
+SYM(slow,                "slow",                 time_warp)
+SYM(offset,              "offset",               time_warp)
+SYM(shift,               "shift",                time_warp)
+
+// ── Control flow ───────────────────────────────────────────────────────────
+SYM(if_,                 "if",                   control)
+SYM(let_,                "let",                  control)
+SYM(do_,                 "do",                   control)
+SYM(for_,                "for",                  control)
+SYM(while_,              "while",                control)
+SYM(fn,                  "fn",                   control)
+SYM(lambda,              "lambda",               control)
+SYM(scope,               "scope",                control)
+
+// ── Unary math functions ───────────────────────────────────────────────────
+SYM(sin_,                "sin",                  unary)
+SYM(cos_,                "cos",                  unary)
+SYM(tan_,                "tan",                  unary)
+SYM(abs_,                "abs",                  unary)
+SYM(floor_,              "floor",                unary)
+SYM(ceil_,               "ceil",                 unary)
+SYM(sqrt_,               "sqrt",                 unary)
+SYM(neg,                 "neg",                  unary)
+SYM(frac_,               "frac",                 unary)
+SYM(usin,                "usin",                 unary)
+SYM(ucos,                "ucos",                 unary)
+SYM(bi_to_uni,           "bi-to-uni",            unary)
+SYM(b_to_u,              "b>u",                  unary)
+SYM(uni_to_bi,           "uni-to-bi",            unary)
+SYM(u_to_b,              "u>b",                  unary)
+
+// ── Binary math functions ──────────────────────────────────────────────────
+SYM(min_,                "min",                  binary)
+SYM(max_,                "max",                  binary)
+SYM(pow_,                "pow",                  binary)
+SYM(expt,                "expt",                 binary)
+SYM(mod_,                "mod",                  binary)
+SYM(pulse,               "pulse",                binary)
+
+// ── Ternary math functions ─────────────────────────────────────────────────
+SYM(clamp,               "clamp",                ternary)
+SYM(lerp,                "lerp",                 ternary)
+SYM(scale,               "scale",                ternary)
+
+// ── Waveform generators (1-or-2-arg special handling) ──────────────────────
+SYM(tri,                 "tri",                  waveform)
+SYM(sqr,                 "sqr",                  waveform)
+
+// ── Domain signal functions ────────────────────────────────────────────────
+SYM(step,                "step",                 signal)
+SYM(gates,               "gates",                signal)
+SYM(trigs,               "trigs",                signal)
+SYM(euclid,              "euclid",               signal)
+SYM(eu,                  "eu",                   signal)
+SYM(seq,                 "seq",                  signal)
+SYM(from_list,           "from-list",            signal)
+SYM(interp,              "interp",               signal)
+SYM(flatseq,             "flatseq",              signal)
+SYM(dm,                  "dm",                   signal)
+SYM(range,               "range",                signal)
+SYM(gatesw,              "gatesw",               signal)
+SYM(random_,             "random",               signal)
+SYM(index_rand,          "index-rand",           signal)
+SYM(loop_at,             "loop-at",              signal)
+SYM(eval_at_time,        "eval-at-time",         signal)
+SYM(rpulse,              "rpulse",               signal)
+SYM(rstep,               "rstep",                signal)
+SYM(ridx,                "ridx",                 signal)
+SYM(rwarp,               "rwarp",                signal)
+
+// ── Side-effect forms (error in signal context) ────────────────────────────
+SYM(define,              "define",               side_effect)
+SYM(def,                 "def",                  side_effect)
+SYM(defn,                "defn",                 side_effect)
+SYM(defun,               "defun",                side_effect)
+SYM(defs,                "defs",                 side_effect)
+SYM(set,                 "set",                  side_effect)
+SYM(zeros_,              "zeros",                side_effect)
+SYM(get_expr,            "get-expr",             side_effect)
+SYM(set_bpm,             "set-bpm",              side_effect)
+SYM(set_time_sig,        "set-time-sig",         side_effect)
+SYM(useq_clear,          "useq-clear",           side_effect)
+SYM(set_time_offset,     "useq-set-time-offset", side_effect)
+SYM(nudge_time,          "useq-nudge-time",      side_effect)
+SYM(useq_play,           "useq-play",            side_effect)
+SYM(useq_pause,          "useq-pause",           side_effect)
+SYM(useq_stop,           "useq-stop",            side_effect)
+SYM(useq_rewind,         "useq-rewind",          side_effect)
+
+// ── Misc ───────────────────────────────────────────────────────────────────
+SYM(input,               "input",                none)
+SYM(quote,               "quote",                none)

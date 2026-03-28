@@ -17,7 +17,7 @@ enum class NodeOp : uint8_t {
     PrevOutputLoad, // imm = output_index; previous tick's value
 
     // Binary arithmetic
-    Add, Sub, Mul, Div, Mod, Pow, Min, Max,
+    Add, Sub, Mul, Div, Mod, Pow, Expt, Min, Max,
 
     // Unary math
     Neg, Abs, Floor, Ceil, Frac, Sqrt, Clamp,

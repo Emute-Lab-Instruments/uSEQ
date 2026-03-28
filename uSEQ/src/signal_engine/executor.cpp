@@ -43,7 +43,8 @@ static inline double eval_node(
         case NodeOp::Mul:  return a * b;
         case NodeOp::Div:  return (b != 0.0) ? a / b : 0.0;
         case NodeOp::Mod:  return (b != 0.0) ? fmod(a, b) : 0.0;
-        case NodeOp::Pow:  return pow(b, a);
+        case NodeOp::Pow:  return pow(b, a);  // legacy reversed: (pow a b) = b^a
+        case NodeOp::Expt: return pow(a, b);  // standard order: (expt a b) = a^b
         case NodeOp::Min:  return (a < b) ? a : b;
         case NodeOp::Max:  return (a > b) ? a : b;
 

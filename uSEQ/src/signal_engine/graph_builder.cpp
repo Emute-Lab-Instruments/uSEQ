@@ -2,6 +2,7 @@
 #include "../modulisp/lisp/symbol_intern.h"
 #include <cstring>
 #include <cmath>
+#include <algorithm>
 
 namespace sig {
 
@@ -10,119 +11,72 @@ namespace sig {
 GraphBuilder::Symbols GraphBuilder::sym = {};
 bool GraphBuilder::symbols_initialized = false;
 
+// ── Form dispatch table statics ─────────────────────────────────────────────
+
+GraphBuilder::FormEntry GraphBuilder::form_table[FORM_TABLE_CAPACITY] = {};
+uint16_t GraphBuilder::form_table_count = 0;
+bool GraphBuilder::form_table_sorted = false;
+
 void GraphBuilder::init_symbols() {
     if (symbols_initialized) return;
     auto& si = SymbolIntern::getInstance();
-
-    sym.t = si.intern("t");
-    sym.beat = si.intern("beat");
-    sym.bar = si.intern("bar");
-    sym.phrase = si.intern("phrase");
-    sym.section = si.intern("section");
-    sym.beat_num = si.intern("beat-num");
-    sym.bar_num = si.intern("bar-num");
-
-    sym.bpm = si.intern("bpm");
-    sym.beats_per_bar = si.intern("beats-per-bar");
-    sym.bars_per_phrase = si.intern("bars-per-phrase");
-    sym.phrases_per_section = si.intern("phrases-per-section");
-
-    sym.fast = si.intern("fast");
-    sym.slow = si.intern("slow");
-    sym.offset = si.intern("offset");
-    sym.shift = si.intern("shift");
-
-    sym.if_ = si.intern("if");
-    sym.let_ = si.intern("let");
-    sym.do_ = si.intern("do");
-    sym.for_ = si.intern("for");
-    sym.while_ = si.intern("while");
-    sym.fn = si.intern("fn");
-    sym.lambda = si.intern("lambda");
-
-    sym.define = si.intern("define");
-    sym.def = si.intern("def");
-    sym.defn = si.intern("defn");
-    sym.defun = si.intern("defun");
-    sym.defs = si.intern("defs");
-    sym.set = si.intern("set");
-
-    sym.step = si.intern("step");
-    sym.gates = si.intern("gates");
-    sym.trigs = si.intern("trigs");
-    sym.euclid = si.intern("euclid");
-    sym.eu = si.intern("eu");
-    sym.seq = si.intern("seq");
-    sym.from_list = si.intern("from-list");
-    sym.interp = si.intern("interp");
-    sym.flatseq = si.intern("flatseq");
-    sym.dm = si.intern("dm");
-    sym.range = si.intern("range");
-
-    sym.sin_ = si.intern("sin");
-    sym.cos_ = si.intern("cos");
-    sym.tan_ = si.intern("tan");
-    sym.abs_ = si.intern("abs");
-    sym.floor_ = si.intern("floor");
-    sym.ceil_ = si.intern("ceil");
-    sym.sqrt_ = si.intern("sqrt");
-    sym.neg = si.intern("neg");
-    sym.min_ = si.intern("min");
-    sym.max_ = si.intern("max");
-    sym.pow_ = si.intern("pow");
-    sym.mod_ = si.intern("mod");
-    sym.clamp = si.intern("clamp");
-    sym.frac_ = si.intern("frac");
-    sym.mod_pct = si.intern("%");
-    sym.input = si.intern("input");
-
-    sym.not_ = si.intern("not");
-    sym.and_ = si.intern("and");
-    sym.or_ = si.intern("or");
-
-    sym.tri = si.intern("tri");
-    sym.sqr = si.intern("sqr");
-    sym.pulse = si.intern("pulse");
-    sym.usin = si.intern("usin");
-    sym.ucos = si.intern("ucos");
-
-    sym.bi_to_uni = si.intern("bi-to-uni");
-    sym.b_to_u = si.intern("b>u");
-    sym.uni_to_bi = si.intern("uni-to-bi");
-    sym.u_to_b = si.intern("u>b");
-
-    sym.scale = si.intern("scale");
-    sym.lerp = si.intern("lerp");
-
-    sym.random_ = si.intern("random");
-    sym.index_rand = si.intern("index-rand");
-
-    sym.quote = si.intern("quote");
-    sym.scope = si.intern("scope");
-
-    sym.loop_at = si.intern("loop-at");
-    sym.eval_at_time = si.intern("eval-at-time");
-    sym.gatesw = si.intern("gatesw");
-    sym.zeros_ = si.intern("zeros");
-    sym.get_expr = si.intern("get-expr");
-
-    sym.rpulse = si.intern("rpulse");
-    sym.rstep = si.intern("rstep");
-    sym.ridx = si.intern("ridx");
-    sym.rwarp = si.intern("rwarp");
-
-    // Transport / time management (cold-path only)
-    sym.set_bpm = si.intern("set-bpm");
-    sym.set_time_sig = si.intern("set-time-sig");
-    sym.useq_clear = si.intern("useq-clear");
-    sym.set_time_offset = si.intern("useq-set-time-offset");
-    sym.nudge_time = si.intern("useq-nudge-time");
-    sym.useq_play = si.intern("useq-play");
-    sym.useq_pause = si.intern("useq-pause");
-    sym.useq_stop = si.intern("useq-stop");
-    sym.useq_rewind = si.intern("useq-rewind");
-
+    #define SYM(f, s, c) sym.f = si.intern(s);
+    #include "symbols.def"
+    #undef SYM
     symbols_initialized = true;
+    init_form_table();
+}
+
+void GraphBuilder::init_form_table() {
+    if (form_table_sorted) return;
+    form_table_count = 0;
+
+    auto add = [](SymbolID s, uint16_t (GraphBuilder::*h)(TokenStream&, Scope&, TimeContext&)) {
+        if (form_table_count < FORM_TABLE_CAPACITY) {
+            form_table[form_table_count++] = {s, h};
+        }
+    };
+
+    // Time transforms
+    add(sym.fast,         &GraphBuilder::compile_fast);
+    add(sym.slow,         &GraphBuilder::compile_slow);
+    add(sym.offset,       &GraphBuilder::compile_offset);
+    add(sym.shift,        &GraphBuilder::compile_offset);   // alias
+    add(sym.loop_at,      &GraphBuilder::compile_loop_at);
+    add(sym.eval_at_time, &GraphBuilder::compile_eval_at_time);
+
+    // Control flow
+    add(sym.if_,          &GraphBuilder::compile_if);
+    add(sym.let_,         &GraphBuilder::compile_let);
+    add(sym.do_,          &GraphBuilder::compile_do);
+    add(sym.scope,        &GraphBuilder::compile_do);       // alias
+    add(sym.for_,         &GraphBuilder::compile_for);
+    add(sym.while_,       &GraphBuilder::compile_while_gate);
+
+    // Domain signal functions
+    add(sym.step,         &GraphBuilder::compile_step);
+    add(sym.seq,          &GraphBuilder::compile_seq);
+    add(sym.from_list,    &GraphBuilder::compile_seq);      // alias
+    add(sym.euclid,       &GraphBuilder::compile_euclid);
+    add(sym.eu,           &GraphBuilder::compile_euclid);   // alias
+    add(sym.interp,       &GraphBuilder::compile_interp);
+    add(sym.flatseq,      &GraphBuilder::compile_interp);   // alias
+    add(sym.dm,           &GraphBuilder::compile_dm);
+    add(sym.range,        &GraphBuilder::compile_range);
+    add(sym.gatesw,       &GraphBuilder::compile_gatesw);
+    add(sym.random_,      &GraphBuilder::compile_random);
+    add(sym.index_rand,   &GraphBuilder::compile_index_rand);
+
+    // Ratio-rhythm functions
+    add(sym.rpulse,       &GraphBuilder::compile_rpulse);
+    add(sym.rstep,        &GraphBuilder::compile_rstep);
+    add(sym.ridx,         &GraphBuilder::compile_ridx);
+    add(sym.rwarp,        &GraphBuilder::compile_rwarp);
+
+    // Sort by SymbolID for binary search
+    std::sort(form_table, form_table + form_table_count,
+              [](const FormEntry& a, const FormEntry& b) { return a.sym < b.sym; });
+    form_table_sorted = true;
 }
 
 // ── Scope ───────────────────────────────────────────────────────────────────
@@ -144,7 +98,7 @@ const Scope::Binding* Scope::find(SymbolID name) const {
 
 // ── GraphBuilder Construction ───────────────────────────────────────────────
 
-GraphBuilder::GraphBuilder(NodePool& p, const CellStore& c, const SourceArena& s)
+GraphBuilder::GraphBuilder(NodePool& p, CellStore& c, const SourceArena& s)
     : pool(p), cells(c), source(s)
 {
     init_symbols();
@@ -226,6 +180,7 @@ uint16_t GraphBuilder::report_warning(uint16_t span_start, uint16_t span_len,
 }
 
 // ── Side-effect detection ───────────────────────────────────────────────────
+// All symbols tagged "side_effect" in symbols.def.
 
 bool GraphBuilder::is_side_effect_form(SymbolID op) const {
     return op == sym.define || op == sym.def || op == sym.defn ||
@@ -239,20 +194,16 @@ bool GraphBuilder::is_side_effect_form(SymbolID op) const {
 }
 
 // ── Operator classification ─────────────────────────────────────────────────
+// Uses cached symbol IDs from init_symbols() — no intern() calls at runtime.
 
 bool GraphBuilder::is_arithmetic_op(SymbolID op) const {
-    return op == SymbolIntern::getInstance().intern("+") ||
-           op == SymbolIntern::getInstance().intern("-") ||
-           op == SymbolIntern::getInstance().intern("*") ||
-           op == SymbolIntern::getInstance().intern("/") ||
-           op == sym.mod_pct;
+    return op == sym.plus || op == sym.minus || op == sym.star ||
+           op == sym.slash || op == sym.mod_pct;
 }
 
 bool GraphBuilder::is_comparison_op(SymbolID op) const {
-    auto& si = SymbolIntern::getInstance();
-    return op == si.intern(">") || op == si.intern("<") ||
-           op == si.intern(">=") || op == si.intern("<=") ||
-           op == si.intern("=");
+    return op == sym.gt || op == sym.lt || op == sym.ge ||
+           op == sym.le || op == sym.eq;
 }
 
 bool GraphBuilder::is_logic_op(SymbolID op) const {
@@ -270,7 +221,7 @@ bool GraphBuilder::is_unary_math(SymbolID op) const {
 
 bool GraphBuilder::is_binary_math(SymbolID op) const {
     return op == sym.min_ || op == sym.max_ || op == sym.pow_ ||
-           op == sym.mod_ || op == sym.pulse;
+           op == sym.expt || op == sym.mod_ || op == sym.pulse;
 }
 
 bool GraphBuilder::is_ternary_math(SymbolID op) const {
@@ -278,22 +229,20 @@ bool GraphBuilder::is_ternary_math(SymbolID op) const {
 }
 
 NodeOp GraphBuilder::arithmetic_sym_to_op(SymbolID op) const {
-    auto& si = SymbolIntern::getInstance();
-    if (op == si.intern("+")) return NodeOp::Add;
-    if (op == si.intern("-")) return NodeOp::Sub;
-    if (op == si.intern("*")) return NodeOp::Mul;
-    if (op == si.intern("/")) return NodeOp::Div;
+    if (op == sym.plus)    return NodeOp::Add;
+    if (op == sym.minus)   return NodeOp::Sub;
+    if (op == sym.star)    return NodeOp::Mul;
+    if (op == sym.slash)   return NodeOp::Div;
     if (op == sym.mod_pct) return NodeOp::Mod;
     return NodeOp::Add;
 }
 
 NodeOp GraphBuilder::comparison_sym_to_op(SymbolID op) const {
-    auto& si = SymbolIntern::getInstance();
-    if (op == si.intern(">"))  return NodeOp::CmpGt;
-    if (op == si.intern("<"))  return NodeOp::CmpLt;
-    if (op == si.intern(">=")) return NodeOp::CmpGe;
-    if (op == si.intern("<=")) return NodeOp::CmpLe;
-    if (op == si.intern("="))  return NodeOp::CmpEq;
+    if (op == sym.gt) return NodeOp::CmpGt;
+    if (op == sym.lt) return NodeOp::CmpLt;
+    if (op == sym.ge) return NodeOp::CmpGe;
+    if (op == sym.le) return NodeOp::CmpLe;
+    if (op == sym.eq) return NodeOp::CmpEq;
     return NodeOp::CmpEq;
 }
 
@@ -420,7 +369,17 @@ uint16_t GraphBuilder::expand_bar_num(TimeContext& ctx) {
 // ── Expression Compilation ──────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_expr(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    if (has_error) return NODE_NONE;
+    // If already in error state, still consume one expression to keep the
+    // token stream advancing (prevents infinite loops in variadic callers).
+    if (has_error) {
+        Token tok = ts.peek();
+        if (tok.kind == TokenKind::LParen) {
+            skip_form(ts);
+        } else if (tok.kind != TokenKind::RParen && tok.kind != TokenKind::Eof) {
+            ts.consume();
+        }
+        return NODE_NONE;
+    }
 
     Token tok = ts.peek();
 
@@ -578,60 +537,81 @@ uint16_t GraphBuilder::inline_expression_cell(SymbolID sym_id, const CallableInf
 
 uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
                                      Scope& scope, TimeContext& ctx, Token op_tok) {
-    // Time transforms
-    if (op == sym.fast)   return compile_fast(ts, scope, ctx);
-    if (op == sym.slow)   return compile_slow(ts, scope, ctx);
-    if (op == sym.offset || op == sym.shift) return compile_offset(ts, scope, ctx);
-    if (op == sym.loop_at) return compile_loop_at(ts, scope, ctx);
-    if (op == sym.eval_at_time) return compile_eval_at_time(ts, scope, ctx);
-
-    // Control flow
-    if (op == sym.if_)    return compile_if(ts, scope, ctx);
-    if (op == sym.let_)   return compile_let(ts, scope, ctx);
-    if (op == sym.do_ || op == sym.scope) return compile_do(ts, scope, ctx);
-    if (op == sym.for_)   return compile_for(ts, scope, ctx);
-    if (op == sym.while_) return compile_while_gate(ts, scope, ctx);
-    if (op == sym.fn || op == sym.lambda) return compile_lambda(ts, scope, ctx);
-
-    // Side effects → compile-time error in signal context
+    // 1. Side effects → compile-time error in signal context
+    //    (compile_expr drains remaining tokens to RParen after we return)
     if (is_side_effect_form(op)) {
-        // Skip remaining args so the parser doesn't hang
-        while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
-            if (ts.peek().kind == TokenKind::LParen) {
-                skip_form(ts);
-            } else {
-                ts.consume();
-            }
-        }
         return report_error(op_tok,
             "This can't be used inside an output expression",
             "Use it at the top level instead");
     }
 
-    // Variadic arithmetic
+    // 2. Table lookup — binary search in sorted form_table
+    {
+        uint16_t lo = 0, hi = form_table_count;
+        while (lo < hi) {
+            uint16_t mid = (lo + hi) / 2;
+            if (form_table[mid].sym < op) lo = mid + 1;
+            else hi = mid;
+        }
+        if (lo < form_table_count && form_table[lo].sym == op) {
+            return (this->*form_table[lo].handler)(ts, scope, ctx);
+        }
+    }
+
+    // 3. Variadic arithmetic (left-fold, not in table)
     if (is_arithmetic_op(op)) return compile_variadic_arithmetic(op, ts, scope, ctx);
 
-    // Comparison
+    // 4. Comparison (binary, needs op-to-nodeop mapping)
     if (is_comparison_op(op)) return compile_comparison(op, ts, scope, ctx);
 
-    // Logic
+    // 5. Logic
     if (is_logic_op(op)) return compile_logic(op, ts, scope, ctx);
 
-    // tri and sqr: accept 1 or 2 arguments
-    // With 2 args, use the second as the phase (ignore first).
-    // With 1 arg, use it as the phase.
+    // 6. Unary / binary / ternary math
+    if (is_unary_math(op)) return compile_unary_math(unary_sym_to_op(op), ts, scope, ctx);
+
+    if (is_binary_math(op)) {
+        NodeOp nop = NodeOp::Min;
+        if (op == sym.min_)  nop = NodeOp::Min;
+        if (op == sym.max_)  nop = NodeOp::Max;
+        // pow: legacy reversed order — (pow a b) computes b^a
+        if (op == sym.pow_)  nop = NodeOp::Pow;
+        // expt: standard math order — (expt a b) computes a^b
+        if (op == sym.expt)  nop = NodeOp::Expt;
+        if (op == sym.mod_)  nop = NodeOp::Mod;
+        if (op == sym.pulse) nop = NodeOp::Pulse;
+        return compile_binary_math(nop, ts, scope, ctx);
+    }
+
+    if (is_ternary_math(op)) {
+        NodeOp nop = NodeOp::Clamp;
+        if (op == sym.clamp) nop = NodeOp::Clamp;
+        if (op == sym.lerp)  nop = NodeOp::Lerp;
+        if (op == sym.scale) nop = NodeOp::Scale;
+        return compile_ternary_math(nop, ts, scope, ctx);
+    }
+
+    // 7. Special forms with non-standard signatures
+    if (op == sym.gates || op == sym.trigs) return compile_gates(op, ts, scope, ctx);
+
     if (op == sym.tri || op == sym.sqr) {
         NodeOp nop = (op == sym.tri) ? NodeOp::Tri : NodeOp::Sqr;
         uint16_t first = compile_expr(ts, scope, ctx);
         if (ts.peek().kind != TokenKind::RParen) {
-            // Two arguments: ignore first, use second as phase
             uint16_t second = compile_expr(ts, scope, ctx);
             return pool.make_unary(nop, second);
         }
         return pool.make_unary(nop, first);
     }
 
-    // (input N) — hardware input channel
+    if (op == sym.fn || op == sym.lambda) return compile_lambda(ts, scope, ctx);
+
+    if (op == sym.quote) {
+        return report_error(op_tok,
+            "'quote' can't be used inside an output expression",
+            "Use a literal vector instead: [1 0 1 0]");
+    }
+
     if (op == sym.input) {
         uint16_t arg = compile_expr(ts, scope, ctx);
         if (is_const(arg)) {
@@ -643,67 +623,7 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
             "Try: (input 0) or (input 1)");
     }
 
-    // Unary math
-    if (is_unary_math(op)) return compile_unary_math(unary_sym_to_op(op), ts, scope, ctx);
-
-    // Binary math
-    if (is_binary_math(op)) {
-        NodeOp nop = NodeOp::Min;
-        if (op == sym.min_)  nop = NodeOp::Min;
-        if (op == sym.max_)  nop = NodeOp::Max;
-        if (op == sym.pow_)  nop = NodeOp::Pow;
-        if (op == sym.mod_)  nop = NodeOp::Mod;
-        if (op == sym.pulse) nop = NodeOp::Pulse;
-        return compile_binary_math(nop, ts, scope, ctx);
-    }
-
-    // Ternary math
-    if (is_ternary_math(op)) {
-        NodeOp nop = NodeOp::Clamp;
-        if (op == sym.clamp) nop = NodeOp::Clamp;
-        if (op == sym.lerp)  nop = NodeOp::Lerp;
-        if (op == sym.scale) nop = NodeOp::Scale;
-        return compile_ternary_math(nop, ts, scope, ctx);
-    }
-
-    // Range
-    if (op == sym.range) return compile_range(ts, scope, ctx);
-
-    // Domain-specific signal functions
-    if (op == sym.step) return compile_step(ts, scope, ctx);
-    if (op == sym.gates || op == sym.trigs) return compile_gates(op, ts, scope, ctx);
-    if (op == sym.euclid || op == sym.eu) return compile_euclid(ts, scope, ctx);
-    if (op == sym.seq || op == sym.from_list) return compile_seq(ts, scope, ctx);
-    if (op == sym.interp || op == sym.flatseq) return compile_interp(ts, scope, ctx);
-    if (op == sym.dm) return compile_dm(ts, scope, ctx);
-    if (op == sym.gatesw) return compile_gatesw(ts, scope, ctx);
-
-    // Ratio-rhythm functions
-    if (op == sym.rpulse) return compile_rpulse(ts, scope, ctx);
-    if (op == sym.rstep) return compile_rstep(ts, scope, ctx);
-    if (op == sym.ridx) return compile_ridx(ts, scope, ctx);
-    if (op == sym.rwarp) return compile_rwarp(ts, scope, ctx);
-
-    // Random / hash
-    if (op == sym.random_) return compile_random(ts, scope, ctx);
-    if (op == sym.index_rand) return compile_index_rand(ts, scope, ctx);
-
-    // Quote in signal context
-    if (op == sym.quote) {
-        // Skip the quoted form
-        while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
-            if (ts.peek().kind == TokenKind::LParen) {
-                skip_form(ts);
-            } else {
-                ts.consume();
-            }
-        }
-        return report_error(op_tok,
-            "'quote' can't be used inside an output expression",
-            "Use a literal vector instead: [1 0 1 0]");
-    }
-
-    // User-defined function call
+    // 8. User-defined function call (fallback)
     return compile_call(op, ts, scope, ctx, op_tok);
 }
 
@@ -1496,10 +1416,8 @@ uint16_t GraphBuilder::compile_vector_literal(TokenStream& ts, Scope& scope, Tim
     }
     ts.expect(TokenKind::RBracket);
 
-    // Store as data table
-    // HACK: we need mutable access to the cell store for data tables
-    // For now, return the length as a constant (the data table should be
-    // set up by the cold path before the graph builder runs)
+    // Store as data table and return the length as a constant
+    cells.store_data_table(values, count);
     return pool.make_const((double)count);
 }
 
@@ -1636,9 +1554,8 @@ GraphBuilder::DataRef GraphBuilder::resolve_data_table(TokenStream& ts, Scope& s
         }
         ts.expect(TokenKind::RBracket);
 
-        // Store in data pool (needs mutable CellStore — cast away const for now)
-        CellStore& mut_cells = const_cast<CellStore&>(cells);
-        uint16_t table_id = mut_cells.store_data_table(values, count);
+        // Store in data pool
+        uint16_t table_id = cells.store_data_table(values, count);
         if (table_id != UINT8_MAX) {
             ref.table_id = table_id;
             ref.length = count;
@@ -1681,7 +1598,7 @@ GraphBuilder::DataRef GraphBuilder::resolve_data_table(TokenStream& ts, Scope& s
 GraphBuildResult build_output_graph(
     NodePool& pool,
     TokenStream& ts,
-    const CellStore& cells,
+    CellStore& cells,
     const SourceArena& source
 ) {
     GraphBuilder builder(pool, cells, source);

@@ -2711,3 +2711,28 @@ TEST_CASE("Transport ops error in signal context", "[signal_engine][transport][n
         REQUIRE(eval_has_error("(useq-set-time-offset 1.0)"));
     }
 }
+
+// ── Error recovery tests ───────────────────────────────────────────────────
+
+TEST_CASE("Error recovery: nested errors don't hang", "[signal_engine][negative][recovery]") {
+    // Multiple error forms in sequence
+    REQUIRE(eval_has_error("(do (define x 1) (+ x 2))"));  // define in signal ctx
+    REQUIRE(eval_has_error("(+ (define x 1) 2)"));         // define nested in +
+    REQUIRE(eval_has_error("(let [x (define y 1)] x)"));   // define in let binding
+    REQUIRE(eval_has_error("(if (quote 1) 2 3)"));         // quote in condition
+}
+
+// ── expt (standard-order power) ────────────────────────────────────────────
+
+TEST_CASE("expt: standard-order power", "[signal_engine][graph_builder][expt]") {
+    // expt(a, b) = a^b (standard math order)
+    REQUIRE(eval_at("(expt 2 10)", 0.0) == Approx(1024.0));
+    REQUIRE(eval_at("(expt 10 2)", 0.0) == Approx(100.0));
+    REQUIRE(eval_at("(expt 3 3)", 0.0) == Approx(27.0));
+
+    // Compare with pow (reversed)
+    // (pow 2 10) = 10^2 = 100 (legacy)
+    // (expt 2 10) = 2^10 = 1024 (standard)
+    REQUIRE(eval_at("(pow 2 10)", 0.0) == Approx(100.0));
+    REQUIRE(eval_at("(expt 2 10)", 0.0) == Approx(1024.0));
+}

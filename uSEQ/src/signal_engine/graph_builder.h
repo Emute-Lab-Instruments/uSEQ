@@ -47,7 +47,7 @@ struct GraphBuildResult {
 
 struct GraphBuilder {
     NodePool& pool;
-    const CellStore& cells;
+    CellStore& cells;
     const SourceArena& source;
 
     // Diagnostics output
@@ -64,48 +64,30 @@ struct GraphBuilder {
     uint8_t inline_depth = 0;
 
     // ── Well-known symbol IDs (populated at init) ───────────────────────
-    // These are cached lookups to avoid repeated intern() calls.
+    // Generated from symbols.def — do not edit by hand.
     struct Symbols {
-        SymbolID t, beat, bar, phrase, section, beat_num, bar_num;
-        SymbolID bpm, beats_per_bar, bars_per_phrase, phrases_per_section;
-        SymbolID fast, slow, offset, shift;
-        SymbolID if_, let_, do_, for_, while_, fn, lambda;
-        SymbolID define, def, defn, defun, defs, set;
-        SymbolID step, gates, trigs, euclid, eu;
-        SymbolID seq, from_list, interp, flatseq, dm;
-        SymbolID range;
-        SymbolID sin_, cos_, tan_, abs_, floor_, ceil_, sqrt_, neg, frac_;
-        SymbolID min_, max_, pow_, mod_, clamp;
-        SymbolID mod_pct;
-        SymbolID input;
-        SymbolID not_, and_, or_;
-        SymbolID tri, sqr, pulse, usin, ucos;
-        SymbolID bi_to_uni, b_to_u, uni_to_bi, u_to_b;
-        SymbolID scale, lerp;
-        SymbolID random_, index_rand;
-        SymbolID quote;
-        SymbolID scope;
-        SymbolID loop_at, eval_at_time, gatesw, zeros_, get_expr;
-        SymbolID rpulse, rstep, ridx, rwarp;
-
-        // Transport / time management (cold-path only)
-        SymbolID set_bpm;
-        SymbolID set_time_sig;
-        SymbolID useq_clear;
-        SymbolID set_time_offset;
-        SymbolID nudge_time;
-        SymbolID useq_play;
-        SymbolID useq_pause;
-        SymbolID useq_stop;
-        SymbolID useq_rewind;
+        #define SYM(field, str, cat) SymbolID field;
+        #include "symbols.def"
+        #undef SYM
     };
     static Symbols sym;
     static void init_symbols();
     static bool symbols_initialized;
 
+    // ── Form dispatch table ─────────────────────────────────────────────
+    struct FormEntry {
+        SymbolID sym;
+        uint16_t (GraphBuilder::*handler)(TokenStream&, Scope&, TimeContext&);
+    };
+    static constexpr uint16_t FORM_TABLE_CAPACITY = 64;
+    static FormEntry form_table[FORM_TABLE_CAPACITY];
+    static uint16_t form_table_count;
+    static bool form_table_sorted;
+    static void init_form_table();
+
     // ── Construction ────────────────────────────────────────────────────
 
-    GraphBuilder(NodePool& pool, const CellStore& cells, const SourceArena& source);
+    GraphBuilder(NodePool& pool, CellStore& cells, const SourceArena& source);
 
     // ── Compilation entry points ────────────────────────────────────────
 
@@ -253,7 +235,7 @@ struct GraphBuilder {
 GraphBuildResult build_output_graph(
     NodePool& pool,
     TokenStream& ts,
-    const CellStore& cells,
+    CellStore& cells,
     const SourceArena& source
 );
 
