@@ -888,6 +888,48 @@ TEST_CASE("Runtime VM bridge evaluates dynamic for collections without tree-walk
     REQUIRE(rebound_result.value.as_float() == Approx(21.0).epsilon(1e-9));
 }
 
+TEST_CASE("Recursive functions compile and execute through CALL",
+          "[modulisp][vm][call]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval(
+        "(defn fact (n) (if (<= n 1) 1 (* n (fact (- n 1)))))");
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(fact 5)"),
+                                *interp.get_environment(), false);
+    REQUIRE(compile_result.ok);
+    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::CALL));
+    REQUIRE_FALSE(has_opcode(compile_result.program, NumericVmOpcode::CALL_INTRINSIC));
+
+    const Value result = interp.eval_v("(fact 5)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(120.0).epsilon(1e-9));
+}
+
+TEST_CASE("Large lambdas lower to CALL instead of full inlining",
+          "[modulisp][vm][call]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval(
+        "(defn big-step (x) (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ x 1) 2) 3) 4) 5) 6) 7) 8) 9) 10) 11) 12))");
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("(big-step 1)"),
+                                *interp.get_environment(), false);
+    REQUIRE(compile_result.ok);
+    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::CALL));
+    REQUIRE_FALSE(has_opcode(compile_result.program, NumericVmOpcode::CALL_INTRINSIC));
+
+    const Value result = interp.eval_v("(big-step 1)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(79.0).epsilon(1e-9));
+}
+
 TEST_CASE("Compiled eval preserves lambda_scope for captured closures",
           "[modulisp][vm]")
 {

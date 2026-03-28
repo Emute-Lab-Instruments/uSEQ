@@ -198,6 +198,7 @@ struct LocalValueBinding
 // the compiler cannot yet handle (e.g., recursive closures, HOFs).
 static int s_closure_fallback_count = 0;
 int get_closure_fallback_count() { return s_closure_fallback_count; }
+constexpr size_t kInlineLambdaNodeThreshold = 24;
 
 bool lambda_has_captured_scope(const Value& value)
 {
@@ -2951,11 +2952,25 @@ private:
         if (items[0].is_symbol())
         {
             const String op = items[0].as_atom();
+            if (m_current_function_name.has_value() && op == *m_current_function_name)
+            {
+                return emit_recursive_self_call(
+                    std::vector<Value>(items.begin() + 1, items.end()),
+                    transform, out_reg);
+            }
             if (const std::optional<Value> local_callable =
                     find_local_callable_binding(op))
             {
                 if (parse_lambda_value(*local_callable, params, body))
                 {
+                    if (should_compile_lambda_as_function(std::nullopt,
+                                                          *local_callable, body))
+                    {
+                        return emit_compiled_lambda_call(
+                            std::nullopt, *local_callable, params, body,
+                            std::vector<Value>(items.begin() + 1, items.end()),
+                            transform, out_reg);
+                    }
                     if (lambda_has_captured_scope(*local_callable))
                     {
                         out_reg = compile_closure_inline(
@@ -2980,6 +2995,19 @@ private:
                 if (parse_lambda_value(*global_callable, params, body))
                 {
                     maybe_add_dependency(op);
+                    const std::set<String> used_atoms = body.get_used_atoms();
+                    const std::optional<String> function_name =
+                        used_atoms.find(op) != used_atoms.end()
+                            ? std::optional<String>(op)
+                            : std::nullopt;
+                    if (should_compile_lambda_as_function(function_name, *global_callable,
+                                                          body))
+                    {
+                        return emit_compiled_lambda_call(
+                            function_name, *global_callable, params, body,
+                            std::vector<Value>(items.begin() + 1, items.end()),
+                            transform, out_reg);
+                    }
                     if (lambda_has_captured_scope(*global_callable))
                     {
                         out_reg = compile_closure_inline(
@@ -3010,6 +3038,15 @@ private:
 
         if (parse_lambda_value(items[0], params, body))
         {
+            Value callable_value(params, body, m_env);
+            if (should_compile_lambda_as_function(std::nullopt, callable_value,
+                                                  body))
+            {
+                return emit_compiled_lambda_call(
+                    std::nullopt, callable_value, params, body,
+                    std::vector<Value>(items.begin() + 1, items.end()),
+                    transform, out_reg);
+            }
             out_reg = compile_inline_lambda(params, body,
                                             std::vector<Value>(items.begin() + 1,
                                                                items.end()),
@@ -3077,6 +3114,281 @@ private:
             compile_inline_lambda(params, body, arg_exprs, transform);
         pop_local_scope();
         return result;
+    }
+
+    size_t count_expr_nodes(const Value& expr) const
+    {
+        if (expr.is_list())
+        {
+            size_t total = 1;
+            for (const Value& item : expr.as_list())
+            {
+                total += count_expr_nodes(item);
+            }
+            return total;
+        }
+        if (expr.is_vector())
+        {
+            size_t total = 1;
+            for (const Value& item : expr.as_vector())
+            {
+                total += count_expr_nodes(item);
+            }
+            return total;
+        }
+        if (expr.type == Value::QUOTE && !expr.list.empty())
+        {
+            return 1 + count_expr_nodes(expr.list[0]);
+        }
+        return 1;
+    }
+
+    bool should_compile_lambda_as_function(const std::optional<String>& self_name,
+                                           const Value& callable,
+                                           const Value& body) const
+    {
+        const std::set<String> used_atoms = body.get_used_atoms();
+        const bool recursive =
+            self_name.has_value() && used_atoms.find(*self_name) != used_atoms.end();
+        if (recursive)
+        {
+            return true;
+        }
+
+        if (count_expr_nodes(body) > kInlineLambdaNodeThreshold)
+        {
+            return true;
+        }
+
+        if (lambda_has_captured_scope(callable) &&
+            count_expr_nodes(body) > (kInlineLambdaNodeThreshold / 2))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    bool collect_function_capture_arguments(
+        const Value& callable,
+        const AffineTimeTransform& transform,
+        std::vector<String>& capture_names,
+        std::vector<int>& capture_regs,
+        std::vector<std::pair<String, Value>>& callable_captures)
+    {
+        if (callable.type != Value::LAMBDA || !callable.lambda_scope)
+        {
+            return true;
+        }
+
+        for (const auto& entry : callable.lambda_scope->get_defs())
+        {
+            if (entry.second.is_builtin())
+            {
+                continue;
+            }
+
+            if (entry.second.type == Value::LAMBDA)
+            {
+                callable_captures.push_back(entry);
+                continue;
+            }
+
+            capture_names.push_back(entry.first);
+            capture_regs.push_back(emit_const(entry.second));
+        }
+
+        for (const auto& entry : callable.lambda_scope->get_def_exprs())
+        {
+            std::vector<Value> expr_params;
+            Value expr_body;
+            if (parse_lambda_value(entry.second, expr_params, expr_body))
+            {
+                callable_captures.push_back(entry);
+                continue;
+            }
+
+            const int reg = compile_expr(entry.second, transform);
+            if (reg < 0)
+            {
+                return false;
+            }
+
+            capture_names.push_back(entry.first);
+            capture_regs.push_back(reg);
+        }
+
+        return true;
+    }
+
+    std::shared_ptr<NumericVmProgram> compile_lambda_function_program(
+        const std::optional<String>& self_name,
+        const std::vector<String>& capture_names,
+        const std::vector<std::pair<String, Value>>& callable_captures,
+        const std::vector<Value>& params,
+        const Value& body,
+        const AffineTimeTransform& transform)
+    {
+        auto function_program = std::make_shared<NumericVmProgram>();
+
+        NumericVmCompiler child(m_env, m_signal_context);
+        child.push_local_scope();
+
+        int next_param_reg = 0;
+        for (const String& capture_name : capture_names)
+        {
+            child.bind_local_value(capture_name, next_param_reg++);
+        }
+        for (const auto& callable_capture : callable_captures)
+        {
+            child.bind_local_callable(callable_capture.first, callable_capture.second);
+        }
+        for (const Value& param : params)
+        {
+            if (!param.is_symbol())
+            {
+                report(DiagnosticSeverity::Error, DiagnosticCategory::Type,
+                       param.span,
+                       "function parameter names must be words, not numbers or expressions",
+                       "Try: (fn (x y) (+ x y))");
+                return nullptr;
+            }
+            child.bind_local_value(param.as_atom(), next_param_reg++);
+        }
+
+        if (self_name.has_value())
+        {
+            child.m_current_function_name = *self_name;
+            child.m_current_function_capture_names = capture_names;
+        }
+
+        child.m_next_register = std::max(child.m_next_register, next_param_reg);
+        const int result_reg = child.compile_expr(body, transform);
+        child.pop_local_scope();
+        if (result_reg < 0)
+        {
+            if (m_error.length() == 0)
+            {
+                m_error = child.m_error;
+            }
+            m_diagnostics.insert(m_diagnostics.end(), child.m_diagnostics.begin(),
+                                 child.m_diagnostics.end());
+            return nullptr;
+        }
+
+        NumericVmInstruction ret;
+        ret.opcode = NumericVmOpcode::RET;
+        ret.rs1 = static_cast<uint16_t>(result_reg);
+        child.m_program.instructions.push_back(ret);
+        child.m_program.register_count = child.m_next_register;
+        child.m_program.is_numeric_only = classify_numeric_only(child.m_program);
+
+        *function_program = child.m_program;
+        return function_program;
+    }
+
+    bool emit_compiled_lambda_call(const std::optional<String>& self_name,
+                                   const Value& callable,
+                                   const std::vector<Value>& params,
+                                   const Value& body,
+                                   const std::vector<Value>& arg_exprs,
+                                   const AffineTimeTransform& transform,
+                                   int& out_reg)
+    {
+        if (params.size() != arg_exprs.size())
+        {
+            out_reg = report_and_continue(
+                DiagnosticCategory::Arity, body.span,
+                "this function takes " + String(params.size()) + " values, but got " +
+                    String(arg_exprs.size()),
+                "Check that you're passing the right number of values");
+            return true;
+        }
+
+        std::vector<String> capture_names;
+        std::vector<int> capture_regs;
+        std::vector<std::pair<String, Value>> callable_captures;
+        if (!collect_function_capture_arguments(callable, transform, capture_names,
+                                                capture_regs, callable_captures))
+        {
+            return false;
+        }
+
+        std::vector<int> arg_regs = capture_regs;
+        for (const Value& arg_expr : arg_exprs)
+        {
+            const int arg_reg = compile_expr(arg_expr, transform);
+            if (arg_reg < 0)
+            {
+                return false;
+            }
+            arg_regs.push_back(arg_reg);
+        }
+
+        auto function_program = compile_lambda_function_program(
+            self_name, capture_names, callable_captures, params, body, transform);
+        if (!function_program)
+        {
+            return false;
+        }
+
+        const int first_arg_reg = allocate_argument_window(arg_regs);
+        const size_t function_index = m_program.functions.size();
+        m_program.functions.push_back(function_program);
+
+        out_reg = allocate_register();
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::CALL;
+        insn.rd = static_cast<uint16_t>(out_reg);
+        insn.rs1 = static_cast<uint16_t>(first_arg_reg >= 0 ? first_arg_reg : 0);
+        insn.rs2 = static_cast<uint16_t>(arg_regs.size());
+        insn.imm = static_cast<int32_t>(function_index);
+        m_program.instructions.push_back(insn);
+        return true;
+    }
+
+    bool emit_recursive_self_call(const std::vector<Value>& arg_exprs,
+                                  const AffineTimeTransform& transform,
+                                  int& out_reg)
+    {
+        if (!m_current_function_name.has_value())
+        {
+            return false;
+        }
+
+        std::vector<int> arg_regs;
+        for (const String& capture_name : m_current_function_capture_names)
+        {
+            const std::optional<int> capture_reg =
+                find_local_value_binding(capture_name);
+            if (!capture_reg.has_value())
+            {
+                return false;
+            }
+            arg_regs.push_back(*capture_reg);
+        }
+
+        for (const Value& arg_expr : arg_exprs)
+        {
+            const int arg_reg = compile_expr(arg_expr, transform);
+            if (arg_reg < 0)
+            {
+                return false;
+            }
+            arg_regs.push_back(arg_reg);
+        }
+
+        const int first_arg_reg = allocate_argument_window(arg_regs);
+        out_reg = allocate_register();
+
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::CALL;
+        insn.rd = static_cast<uint16_t>(out_reg);
+        insn.rs1 = static_cast<uint16_t>(first_arg_reg >= 0 ? first_arg_reg : 0);
+        insn.rs2 = static_cast<uint16_t>(arg_regs.size());
+        insn.imm = -1;
+        m_program.instructions.push_back(insn);
+        return true;
     }
 
     int compile_inline_lambda(const std::vector<Value>& params,
@@ -3564,6 +3876,8 @@ private:
     std::vector<String> m_recursion_stack;
     std::vector<std::map<String, LocalValueBinding>> m_local_value_scopes;
     std::vector<std::map<String, Value>> m_local_callable_scopes;
+    std::optional<String> m_current_function_name;
+    std::vector<String> m_current_function_capture_names;
     mutable NumericVmTemporalChannel m_unused_channel = NumericVmTemporalChannel::T;
 
     // Pre-scan: how many times each list-expression signature appears.
@@ -4125,26 +4439,33 @@ NumericVmExecutionResult execute_numeric_program_fast_impl(
 
             if (insn.opcode == NumericVmOpcode::CALL)
             {
-                if (insn.imm < 0 ||
-                    static_cast<size_t>(insn.imm) >= program.functions.size() ||
-                    !program.functions[static_cast<size_t>(insn.imm)])
+                const NumericVmProgram* callee = nullptr;
+                if (insn.imm == -1)
+                {
+                    callee = &program;
+                }
+                else if (insn.imm >= 0 &&
+                         static_cast<size_t>(insn.imm) < program.functions.size() &&
+                         program.functions[static_cast<size_t>(insn.imm)])
+                {
+                    callee = program.functions[static_cast<size_t>(insn.imm)].get();
+                }
+
+                if (!callee)
                 {
                     result.error = "function index out of range";
                     result.error_category = DiagnosticCategory::Runtime;
                     return result;
                 }
 
-                const NumericVmProgram& callee =
-                    *program.functions[static_cast<size_t>(insn.imm)];
-
-                if (callee.is_numeric_only)
+                if (callee->is_numeric_only)
                 {
                     // Fast path: callee is also numeric-only
                     std::vector<double> args(
                         registers.begin() + arg_start,
                         registers.begin() + arg_start + arg_count);
                     const NumericVmExecutionResult callee_result =
-                        execute_numeric_program_fast(callee, ctx, args,
+                        execute_numeric_program_fast(*callee, ctx, args,
                                                      call_depth + 1);
                     if (!callee_result.ok)
                     {
@@ -4162,7 +4483,7 @@ NumericVmExecutionResult execute_numeric_program_fast_impl(
                         args.push_back(Value(registers[arg_start + i]));
                     }
                     const TaggedVmExecutionResult callee_result =
-                        execute_tagged_program_impl(callee, ctx, args,
+                        execute_tagged_program_impl(*callee, ctx, args,
                                                     call_depth + 1);
                     if (!callee_result.ok)
                     {
@@ -4801,9 +5122,19 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
 
             if (insn.opcode == NumericVmOpcode::CALL)
             {
-                if (insn.imm < 0 ||
-                    static_cast<size_t>(insn.imm) >= program.functions.size() ||
-                    !program.functions[static_cast<size_t>(insn.imm)])
+                const NumericVmProgram* callee = nullptr;
+                if (insn.imm == -1)
+                {
+                    callee = &program;
+                }
+                else if (insn.imm >= 0 &&
+                         static_cast<size_t>(insn.imm) < program.functions.size() &&
+                         program.functions[static_cast<size_t>(insn.imm)])
+                {
+                    callee = program.functions[static_cast<size_t>(insn.imm)].get();
+                }
+
+                if (!callee)
                 {
                     result.error = "function index out of range";
                     result.error_category = DiagnosticCategory::Runtime;
@@ -4811,9 +5142,7 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                 }
 
                 const TaggedVmExecutionResult callee_result =
-                    execute_tagged_program_impl(
-                        *program.functions[static_cast<size_t>(insn.imm)], ctx, args,
-                        call_depth + 1);
+                    execute_tagged_program_impl(*callee, ctx, args, call_depth + 1);
                 if (!callee_result.ok)
                 {
                     return callee_result;
