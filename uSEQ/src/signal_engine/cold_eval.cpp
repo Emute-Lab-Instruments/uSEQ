@@ -1,18 +1,29 @@
 #include "cold_eval.h"
 #include "token.h"
 #include "graph_builder.h"
+#include "executor.h"
 #include "../modulisp/lisp/symbol_intern.h"
 #include <cstring>
 
 namespace sig {
 
-// ── Global engine state ────────────────────────────────────────────────────
+// ── Global engine state (legacy) ──────────────────────────────────────────
 
 EngineState g_engine_state = {};
 
-// ── Output source storage ───────────────────────────────────────────────────
+// ── Output source storage (legacy) ─────────────────────────────────────────
 
 OutputSource output_sources[MAX_OUTPUTS] = {};
+
+// ── SignalEngine::init_defaults ────────────────────────────────────────────
+
+void SignalEngine::init_defaults(double bpm, int beats_per_bar,
+                                 int bars_per_phrase, int phrases_per_section) {
+    GraphBuilder::init_symbols();
+    cells.init_timing_defaults(bpm, beats_per_bar, bars_per_phrase,
+                               phrases_per_section);
+    state = EngineState{};
+}
 
 // ── Helper constructors ─────────────────────────────────────────────────────
 
@@ -43,20 +54,16 @@ static EvalResult make_error(const char* message, const char* suggestion) {
 
 // ── Cold-path form evaluation ───────────────────────────────────────────────
 
-static EvalResult eval_form(TokenStream& ts, CellStore& cells,
-                            SourceArena& arena, NodePool& pool,
+static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                             const char* source, uint32_t source_length);
 
 // ── Source span helpers ─────────────────────────────────────────────────────
-// Extract the byte range of a token-stream region from the original source.
-// Uses the span_start of the first token and span_start+span_len of the last.
 
 static uint32_t span_begin(const TokenStream& ts, uint16_t token_pos) {
     return ts.tokens[token_pos].span_start;
 }
 
 static uint32_t span_end_of(const TokenStream& ts, uint16_t token_pos) {
-    // End of the last consumed token (one before current pos)
     if (token_pos == 0) return 0;
     const Token& last = ts.tokens[token_pos - 1];
     return last.span_start + last.span_len;
@@ -64,8 +71,7 @@ static uint32_t span_end_of(const TokenStream& ts, uint16_t token_pos) {
 
 // ── define ──────────────────────────────────────────────────────────────────
 
-static EvalResult do_define(TokenStream& ts, CellStore& cells,
-                            SourceArena& arena, NodePool& pool,
+static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
                             const char* source, uint32_t source_length) {
     Token name_tok = ts.consume();
     if (name_tok.kind != TokenKind::Symbol) {
@@ -78,9 +84,9 @@ static EvalResult do_define(TokenStream& ts, CellStore& cells,
     if (val_tok.kind == TokenKind::Number) {
         // Simple numeric constant
         ts.consume();
-        cells.cells[sym].kind = CellKind::Number;
-        cells.cells[sym].revision++;
-        cells.cells[sym].value = val_tok.number;
+        engine.cells.cells[sym].kind = CellKind::Number;
+        engine.cells.cells[sym].revision++;
+        engine.cells.cells[sym].value = val_tok.number;
     }
     else if (val_tok.kind == TokenKind::LBracket) {
         // Vector data: [1 2 3 4]
@@ -95,11 +101,11 @@ static EvalResult do_define(TokenStream& ts, CellStore& cells,
         }
         ts.expect(TokenKind::RBracket);
 
-        uint16_t table_id = cells.store_data_table(values, count);
-        cells.cells[sym].kind = CellKind::Data;
-        cells.cells[sym].data_table_id = table_id;
-        cells.cells[sym].revision++;
-        cells.cells[sym].value = (double)count;
+        uint16_t table_id = engine.cells.store_data_table(values, count);
+        engine.cells.cells[sym].kind = CellKind::Data;
+        engine.cells.cells[sym].data_table_id = table_id;
+        engine.cells.cells[sym].revision++;
+        engine.cells.cells[sym].value = (double)count;
     }
     else {
         // Expression — store source text as callable with 0 params
@@ -110,31 +116,30 @@ static EvalResult do_define(TokenStream& ts, CellStore& cells,
         GraphBuilder::skip_form(ts);
         uint32_t byte_end = span_end_of(ts, ts.pos);
 
-        cells.cells[sym].kind = CellKind::Callable;
-        cells.cells[sym].revision++;
-        cells.callables[sym].param_count = 0;
+        engine.cells.cells[sym].kind = CellKind::Callable;
+        engine.cells.cells[sym].revision++;
+        engine.cells.callables[sym].param_count = 0;
 
         // Copy the expression source text into the arena
         if (source && byte_end > byte_start && byte_end <= source_length) {
             uint32_t len = byte_end - byte_start;
-            uint32_t offset = arena.store(source + byte_start, len);
+            uint32_t offset = engine.arena.store(source + byte_start, len);
             if (offset != UINT32_MAX) {
-                cells.callables[sym].source_offset = offset;
-                cells.callables[sym].source_length = len;
+                engine.cells.callables[sym].source_offset = offset;
+                engine.cells.callables[sym].source_length = len;
             }
         }
     }
 
     // Notify dependents
-    on_cell_changed(sym, cells, arena, pool);
+    on_cell_changed(sym, engine);
 
     return make_ok();
 }
 
 // ── defn ────────────────────────────────────────────────────────────────────
 
-static EvalResult do_defn(TokenStream& ts, CellStore& cells,
-                          SourceArena& arena, NodePool& pool,
+static EvalResult do_defn(TokenStream& ts, SignalEngine& engine,
                           const char* source, uint32_t source_length) {
     Token name_tok = ts.consume();
     if (name_tok.kind != TokenKind::Symbol) {
@@ -148,7 +153,7 @@ static EvalResult do_defn(TokenStream& ts, CellStore& cells,
                           "Try: (defn osc [f ph] (sin (* ph f)))");
     }
 
-    CallableInfo& info = cells.callables[sym];
+    CallableInfo& info = engine.cells.callables[sym];
     info.param_count = 0;
     while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
         Token param = ts.consume();
@@ -165,28 +170,27 @@ static EvalResult do_defn(TokenStream& ts, CellStore& cells,
     GraphBuilder::skip_form(ts);
     uint32_t byte_end = span_end_of(ts, ts.pos);
 
-    cells.cells[sym].kind = CellKind::Callable;
-    cells.cells[sym].revision++;
+    engine.cells.cells[sym].kind = CellKind::Callable;
+    engine.cells.cells[sym].revision++;
 
     // Copy the body source text into the arena
     if (source && byte_end > byte_start && byte_end <= source_length) {
         uint32_t len = byte_end - byte_start;
-        uint32_t offset = arena.store(source + byte_start, len);
+        uint32_t offset = engine.arena.store(source + byte_start, len);
         if (offset != UINT32_MAX) {
             info.source_offset = offset;
             info.source_length = len;
         }
     }
 
-    on_cell_changed(sym, cells, arena, pool);
+    on_cell_changed(sym, engine);
 
     return make_ok();
 }
 
 // ── set ─────────────────────────────────────────────────────────────────────
 
-static EvalResult do_set(TokenStream& ts, CellStore& cells,
-                         SourceArena& arena, NodePool& pool) {
+static EvalResult do_set(TokenStream& ts, SignalEngine& engine) {
     Token name_tok = ts.consume();
     if (name_tok.kind != TokenKind::Symbol) {
         return make_error("set needs a name", "Try: (set x 42)");
@@ -196,41 +200,77 @@ static EvalResult do_set(TokenStream& ts, CellStore& cells,
     Token val_tok = ts.peek();
     if (val_tok.kind == TokenKind::Number) {
         ts.consume();
-        cells.cells[sym].kind = CellKind::Number;
-        cells.cells[sym].revision++;
-        cells.cells[sym].value = val_tok.number;
-        // set does NOT store source expression
+        engine.cells.cells[sym].kind = CellKind::Number;
+        engine.cells.cells[sym].revision++;
+        engine.cells.cells[sym].value = val_tok.number;
     } else {
-        // For non-numeric set, evaluate the expression and store result
-        // TODO: evaluate expression on cold path
-        return make_error("set currently only supports numbers",
-                          "Try: (set x 42)");
+        // Non-numeric: compile expression, evaluate once, store scalar result
+        GraphBuildResult gr = build_output_graph(engine.pool, ts,
+                                                  engine.cells, engine.arena);
+        if (gr.has_error) {
+            return make_error("set: expression could not be evaluated",
+                              "Try: (set x 42)");
+        }
+
+        // If the graph root is a compile-time constant, just read imm
+        if (engine.pool.nodes[gr.root_node].op == NodeOp::Const) {
+            engine.cells.cells[sym].kind = CellKind::Number;
+            engine.cells.cells[sym].value = engine.pool.nodes[gr.root_node].imm;
+            engine.cells.cells[sym].revision++;
+        } else {
+            // Non-constant expression: execute at t=0 to get a scalar value.
+            // Temporarily install as output 0, execute, then restore.
+            uint16_t saved_root = engine.pool.outputs[0].root_node;
+            bool saved_valid = engine.pool.outputs[0].valid;
+
+            engine.pool.outputs[0].root_node = gr.root_node;
+            engine.pool.outputs[0].valid = true;
+            engine.pool.rebuild_execution_order();
+
+            double cell_vals[MAX_CELLS];
+            engine.cells.snapshot_values(cell_vals, MAX_CELLS);
+            double hw_inputs[32] = {};
+            double workspace[MAX_TOTAL_NODES] = {};
+            double outputs[MAX_OUTPUTS] = {};
+
+            execute_all_outputs(engine.pool, 0.0, cell_vals, hw_inputs,
+                                engine.cells.data_pool, engine.cells.data_offsets,
+                                engine.cells.data_lengths,
+                                engine.pool.prev_output_values, outputs, workspace);
+
+            engine.cells.cells[sym].kind = CellKind::Number;
+            engine.cells.cells[sym].value = outputs[0];
+            engine.cells.cells[sym].revision++;
+
+            // Restore previous output 0
+            engine.pool.outputs[0].root_node = saved_root;
+            engine.pool.outputs[0].valid = saved_valid;
+            engine.pool.rebuild_execution_order();
+        }
     }
 
-    on_cell_changed(sym, cells, arena, pool);
+    on_cell_changed(sym, engine);
 
     return make_ok();
 }
 
 // ── Transport / time management ─────────────────────────────────────────────
 
-static EvalResult do_set_bpm(TokenStream& ts, CellStore& cells,
-                             SourceArena& arena, NodePool& pool) {
+static EvalResult do_set_bpm(TokenStream& ts, SignalEngine& engine) {
     Token val = ts.consume();
     if (val.kind != TokenKind::Number) {
         return make_error("set-bpm needs a number", "Try: (set-bpm 120)");
     }
     auto& si = SymbolIntern::getInstance();
     SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym].kind = CellKind::Number;
-    cells.cells[bpm_sym].value = val.number;
-    cells.cells[bpm_sym].revision++;
-    on_cell_changed(bpm_sym, cells, arena, pool);
+    engine.cells.cells[bpm_sym].kind = CellKind::Number;
+    engine.cells.cells[bpm_sym].value = val.number;
+    engine.cells.cells[bpm_sym].revision++;
+    on_cell_changed(bpm_sym, engine);
     return make_ok();
 }
 
-static EvalResult do_set_time_sig(TokenStream& ts, CellStore& cells,
-                                  SourceArena& arena, NodePool& pool) {
+static EvalResult do_set_time_sig(TokenStream& ts, SignalEngine& engine) {
     Token beats_tok = ts.consume();
     if (beats_tok.kind != TokenKind::Number) {
         return make_error("set-time-sig needs two numbers",
@@ -244,58 +284,51 @@ static EvalResult do_set_time_sig(TokenStream& ts, CellStore& cells,
 
     auto& si = SymbolIntern::getInstance();
     SymbolID bpb_sym = si.intern("beats-per-bar");
-    cells.cells[bpb_sym].kind = CellKind::Number;
-    cells.cells[bpb_sym].value = beats_tok.number;
-    cells.cells[bpb_sym].revision++;
-    on_cell_changed(bpb_sym, cells, arena, pool);
+    engine.cells.cells[bpb_sym].kind = CellKind::Number;
+    engine.cells.cells[bpb_sym].value = beats_tok.number;
+    engine.cells.cells[bpb_sym].revision++;
+    on_cell_changed(bpb_sym, engine);
 
-    // Second argument optionally sets bars-per-phrase
-    // (interpret as "numerator = beats-per-bar" primarily)
-    (void)subdivision_tok; // subdivision is informational for now
+    (void)subdivision_tok;
 
     return make_ok();
 }
 
-static EvalResult do_useq_clear(CellStore& cells, SourceArena& /*arena*/,
-                                NodePool& pool) {
-    // Reset all output roots to defaults
+static EvalResult do_useq_clear(SignalEngine& engine) {
     for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
-        pool.outputs[i].root_node = NODE_NONE;
-        pool.outputs[i].valid = false;
-        // Analog outputs (0-7) default to 0.5, digital (8+) default to 0.0
-        pool.outputs[i].lkg_value = (i < 8) ? 0.5 : 0.0;
-        output_sources[i].has_source = false;
+        engine.pool.outputs[i].root_node = NODE_NONE;
+        engine.pool.outputs[i].valid = false;
+        engine.pool.outputs[i].lkg_value = (i < 8) ? 0.5 : 0.0;
+        engine.output_sources[i].has_source = false;
     }
-    // Clear execution order since all outputs are now empty
-    pool.exec_count = 0;
+    engine.pool.exec_count = 0;
     return make_ok();
 }
 
-static EvalResult do_set_time_offset(TokenStream& ts) {
+static EvalResult do_set_time_offset(TokenStream& ts, EngineState& state) {
     Token val = ts.consume();
     if (val.kind != TokenKind::Number) {
         return make_error("useq-set-time-offset needs a number in seconds",
                           "Try: (useq-set-time-offset 1.0)");
     }
-    g_engine_state.time_offset = val.number;
+    state.time_offset = val.number;
     return make_ok();
 }
 
-static EvalResult do_nudge_time(TokenStream& ts) {
+static EvalResult do_nudge_time(TokenStream& ts, EngineState& state) {
     Token val = ts.consume();
     if (val.kind != TokenKind::Number) {
         return make_error("useq-nudge-time needs a number in seconds",
                           "Try: (useq-nudge-time 0.1)");
     }
-    g_engine_state.time_offset += val.number;
+    state.time_offset += val.number;
     return make_ok();
 }
 
 // ── Output assignment ───────────────────────────────────────────────────────
 
 static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
-                                    CellStore& cells, SourceArena& arena,
-                                    NodePool& pool,
+                                    SignalEngine& engine,
                                     const char* source, uint32_t source_length) {
     uint16_t output_index = GraphBuilder::resolve_output_index(output_sym);
     if (output_index == NODE_NONE) {
@@ -306,7 +339,6 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
     uint16_t expr_start_pos = ts.pos;
     uint32_t byte_start = span_begin(ts, expr_start_pos);
     {
-        // Peek ahead to find end of expression without consuming
         uint16_t saved = ts.pos;
         GraphBuilder::skip_form(ts);
         uint32_t byte_end = span_end_of(ts, ts.pos);
@@ -314,20 +346,21 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
 
         if (source && byte_end > byte_start && byte_end <= source_length) {
             uint32_t len = byte_end - byte_start;
-            uint32_t offset = arena.store(source + byte_start, len);
+            uint32_t offset = engine.arena.store(source + byte_start, len);
             if (offset != UINT32_MAX) {
-                output_sources[output_index].arena_offset = offset;
-                output_sources[output_index].arena_length = len;
-                output_sources[output_index].has_source = true;
+                engine.output_sources[output_index].arena_offset = offset;
+                engine.output_sources[output_index].arena_length = len;
+                engine.output_sources[output_index].has_source = true;
             }
         }
     }
 
     // Build the signal graph
-    GraphBuildResult result = build_output_graph(pool, ts, cells, arena);
+    GraphBuildResult result = build_output_graph(engine.pool, ts,
+                                                 engine.cells, engine.arena);
 
     if (result.has_error) {
-        pool.outputs[output_index].valid = false;
+        engine.pool.outputs[output_index].valid = false;
         EvalResult r;
         r.kind = EvalResult::Error;
         memcpy(r.diagnostics, result.diagnostics,
@@ -337,25 +370,27 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
     }
 
     // Install the new graph root
-    pool.outputs[output_index].root_node = result.root_node;
-    pool.outputs[output_index].valid = true;
+    engine.pool.outputs[output_index].root_node = result.root_node;
+    engine.pool.outputs[output_index].valid = true;
 
     // Store cell dependencies for this output
-    pool.output_deps[output_index].clear();
+    engine.pool.output_deps[output_index].clear();
     for (uint8_t d = 0; d < result.dep_count; d++) {
-        pool.output_deps[output_index].add(result.dep_cells[d]);
+        engine.pool.output_deps[output_index].add(result.dep_cells[d]);
     }
 
+    // Reclaim nodes no longer reachable from any output root
+    engine.pool.gc_unreachable_nodes();
+
     // Re-sort execution order
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
 
     return make_ok();
 }
 
 // ── Top-level eval ──────────────────────────────────────────────────────────
 
-static EvalResult eval_form(TokenStream& ts, CellStore& cells,
-                            SourceArena& arena, NodePool& pool,
+static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                             const char* source, uint32_t source_length) {
     Token tok = ts.peek();
 
@@ -367,9 +402,8 @@ static EvalResult eval_form(TokenStream& ts, CellStore& cells,
     if (tok.kind == TokenKind::Symbol) {
         ts.consume();
         SymbolID sym = tok.symbol;
-        // Look up in cell table
-        if (sym < MAX_CELLS && cells.cells[sym].kind == CellKind::Number) {
-            return make_number(cells.cells[sym].value);
+        if (sym < MAX_CELLS && engine.cells.cells[sym].kind == CellKind::Number) {
+            return make_number(engine.cells.cells[sym].value);
         }
         return make_ok();
     }
@@ -388,65 +422,65 @@ static EvalResult eval_form(TokenStream& ts, CellStore& cells,
 
         // Cell mutations
         if (op == sym.define || op == sym.def) {
-            EvalResult r = do_define(ts, cells, arena, pool, source, source_length);
+            EvalResult r = do_define(ts, engine, source, source_length);
             ts.expect(TokenKind::RParen);
             return r;
         }
         if (op == sym.defn || op == sym.defun) {
-            EvalResult r = do_defn(ts, cells, arena, pool, source, source_length);
+            EvalResult r = do_defn(ts, engine, source, source_length);
             ts.expect(TokenKind::RParen);
             return r;
         }
         if (op == sym.set) {
-            EvalResult r = do_set(ts, cells, arena, pool);
+            EvalResult r = do_set(ts, engine);
             ts.expect(TokenKind::RParen);
             return r;
         }
 
         // Transport / time management
         if (op == sym.set_bpm) {
-            EvalResult r = do_set_bpm(ts, cells, arena, pool);
+            EvalResult r = do_set_bpm(ts, engine);
             ts.expect(TokenKind::RParen);
             return r;
         }
         if (op == sym.set_time_sig) {
-            EvalResult r = do_set_time_sig(ts, cells, arena, pool);
+            EvalResult r = do_set_time_sig(ts, engine);
             ts.expect(TokenKind::RParen);
             return r;
         }
         if (op == sym.useq_clear) {
-            EvalResult r = do_useq_clear(cells, arena, pool);
+            EvalResult r = do_useq_clear(engine);
             ts.expect(TokenKind::RParen);
             return r;
         }
         if (op == sym.set_time_offset) {
-            EvalResult r = do_set_time_offset(ts);
+            EvalResult r = do_set_time_offset(ts, engine.state);
             ts.expect(TokenKind::RParen);
             return r;
         }
         if (op == sym.nudge_time) {
-            EvalResult r = do_nudge_time(ts);
+            EvalResult r = do_nudge_time(ts, engine.state);
             ts.expect(TokenKind::RParen);
             return r;
         }
         if (op == sym.useq_play) {
-            g_engine_state.is_playing = true;
+            engine.state.is_playing = true;
             ts.expect(TokenKind::RParen);
             return make_ok();
         }
         if (op == sym.useq_pause) {
-            g_engine_state.is_playing = false;
+            engine.state.is_playing = false;
             ts.expect(TokenKind::RParen);
             return make_ok();
         }
         if (op == sym.useq_stop) {
-            g_engine_state.is_playing = false;
-            g_engine_state.time_offset = 0.0;
+            engine.state.is_playing = false;
+            engine.state.time_offset = 0.0;
             ts.expect(TokenKind::RParen);
             return make_ok();
         }
         if (op == sym.useq_rewind) {
-            g_engine_state.time_offset = 0.0;
+            engine.state.time_offset = 0.0;
             ts.expect(TokenKind::RParen);
             return make_ok();
         }
@@ -463,7 +497,7 @@ static EvalResult eval_form(TokenStream& ts, CellStore& cells,
             if (n < 1) n = 1;
             if (n > 64) n = 64;
             double values[64] = {};
-            uint16_t table_id = cells.store_data_table(values, (uint16_t)n);
+            uint16_t table_id = engine.cells.store_data_table(values, (uint16_t)n);
             ts.expect(TokenKind::RParen);
             EvalResult r;
             r.kind = EvalResult::DataRef;
@@ -481,14 +515,15 @@ static EvalResult eval_form(TokenStream& ts, CellStore& cells,
             }
             SymbolID name_sym = name_tok.symbol;
             if (name_sym < MAX_CELLS &&
-                cells.cells[name_sym].kind == CellKind::Callable &&
-                cells.callables[name_sym].source_length > 0) {
-                const char* src = arena.read(cells.callables[name_sym].source_offset);
+                engine.cells.cells[name_sym].kind == CellKind::Callable &&
+                engine.cells.callables[name_sym].source_length > 0) {
+                const char* src = engine.arena.read(
+                    engine.cells.callables[name_sym].source_offset);
                 if (src) {
                     EvalResult r;
                     r.kind = EvalResult::Text;
                     r.text = src;
-                    r.text_length = (uint16_t)cells.callables[name_sym].source_length;
+                    r.text_length = (uint16_t)engine.cells.callables[name_sym].source_length;
                     return r;
                 }
             }
@@ -498,7 +533,7 @@ static EvalResult eval_form(TokenStream& ts, CellStore& cells,
 
         // Output assignment
         if (GraphBuilder::is_output_symbol(op)) {
-            EvalResult r = do_output_assign(op, ts, cells, arena, pool,
+            EvalResult r = do_output_assign(op, ts, engine,
                                             source, source_length);
             ts.expect(TokenKind::RParen);
             return r;
@@ -508,14 +543,13 @@ static EvalResult eval_form(TokenStream& ts, CellStore& cells,
         if (op == sym.do_ || op == sym.scope) {
             EvalResult last = make_ok();
             while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
-                last = eval_form(ts, cells, arena, pool, source, source_length);
+                last = eval_form(ts, engine, source, source_length);
             }
             ts.expect(TokenKind::RParen);
             return last;
         }
 
-        // Unknown form at top level — try to evaluate as expression
-        // Skip and return ok for now
+        // Unknown form at top level — skip and return ok
         while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
             ts.consume();
         }
@@ -526,10 +560,9 @@ static EvalResult eval_form(TokenStream& ts, CellStore& cells,
     return make_error("Unexpected input", "Try: (define name value) or (a1 expression)");
 }
 
-// ── eval_cold entry point ───────────────────────────────────────────────────
+// ── eval_cold entry point (SignalEngine version) ───────────────────────────
 
-EvalResult eval_cold(const char* source, uint32_t length,
-                     CellStore& cells, SourceArena& arena, NodePool& pool) {
+EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) {
     Token tokens[MAX_TOKENS];
     Diagnostic parse_errors[8];
     uint8_t parse_error_count = 0;
@@ -554,29 +587,114 @@ EvalResult eval_cold(const char* source, uint32_t length,
     // Handle multiple forms (implicit do)
     EvalResult last = make_ok();
     while (!ts.at_end() && ts.peek().kind != TokenKind::Eof) {
-        last = eval_form(ts, cells, arena, pool, source, length);
+        last = eval_form(ts, engine, source, length);
         if (last.kind == EvalResult::Error) return last;
     }
 
     return last;
 }
 
-// ── Dependency tracking ─────────────────────────────────────────────────────
+// ── eval_cold legacy overload ──────────────────────────────────────────────
+// Wraps separate CellStore/SourceArena/NodePool into a heap-allocated
+// SignalEngine, runs eval, then copies the mutated state back.
+// This is a cold path, so the allocation overhead is acceptable.
+// The global g_engine_state and output_sources are synchronised.
+
+EvalResult eval_cold(const char* source, uint32_t length,
+                     CellStore& cells, SourceArena& arena, NodePool& pool) {
+    SignalEngine* tmp = new SignalEngine();
+    memcpy(&tmp->cells, &cells, sizeof(CellStore));
+    memcpy(&tmp->arena, &arena, sizeof(SourceArena));
+
+    // Copy NodePool fields individually (unique_ptr is not trivially copyable).
+    // batch_workspace is not needed for cold-path eval so we leave it null.
+    memcpy(tmp->pool.nodes, pool.nodes, sizeof(pool.nodes));
+    tmp->pool.node_count = pool.node_count;
+    memcpy(tmp->pool.cse_hashes, pool.cse_hashes, sizeof(pool.cse_hashes));
+    memcpy(tmp->pool.cse_indices, pool.cse_indices, sizeof(pool.cse_indices));
+    memcpy(tmp->pool.exec_order, pool.exec_order, sizeof(pool.exec_order));
+    tmp->pool.exec_count = pool.exec_count;
+    memcpy(tmp->pool.outputs, pool.outputs, sizeof(pool.outputs));
+    memcpy(tmp->pool.output_deps, pool.output_deps, sizeof(pool.output_deps));
+    memcpy(tmp->pool.prev_output_values, pool.prev_output_values,
+           sizeof(pool.prev_output_values));
+    tmp->pool.batch_chunk_size = pool.batch_chunk_size;
+
+    tmp->state = g_engine_state;
+    memcpy(tmp->output_sources, output_sources, sizeof(output_sources));
+
+    EvalResult result = eval_cold(source, length, *tmp);
+
+    memcpy(&cells, &tmp->cells, sizeof(CellStore));
+    memcpy(&arena, &tmp->arena, sizeof(SourceArena));
+
+    // Copy back NodePool fields
+    memcpy(pool.nodes, tmp->pool.nodes, sizeof(pool.nodes));
+    pool.node_count = tmp->pool.node_count;
+    memcpy(pool.cse_hashes, tmp->pool.cse_hashes, sizeof(pool.cse_hashes));
+    memcpy(pool.cse_indices, tmp->pool.cse_indices, sizeof(pool.cse_indices));
+    memcpy(pool.exec_order, tmp->pool.exec_order, sizeof(pool.exec_order));
+    pool.exec_count = tmp->pool.exec_count;
+    memcpy(pool.outputs, tmp->pool.outputs, sizeof(pool.outputs));
+    memcpy(pool.output_deps, tmp->pool.output_deps, sizeof(pool.output_deps));
+    memcpy(pool.prev_output_values, tmp->pool.prev_output_values,
+           sizeof(pool.prev_output_values));
+
+    g_engine_state = tmp->state;
+    memcpy(output_sources, tmp->output_sources, sizeof(output_sources));
+
+    delete tmp;
+    return result;
+}
+
+// ── Dependency tracking (SignalEngine version) ─────────────────────────────
+
+void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
+    for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
+        if (engine.pool.outputs[i].root_node == NODE_NONE) continue;
+        if (!engine.pool.output_deps[i].contains(cell_id)) continue;
+
+        // This output needs recompilation
+        if (engine.output_sources[i].has_source) {
+            const char* src = engine.arena.read(
+                engine.output_sources[i].arena_offset);
+            if (src) {
+                Token tokens[MAX_TOKENS];
+                uint8_t parse_errors = 0;
+                uint16_t count = TokenStream::tokenize(
+                    src, engine.output_sources[i].arena_length,
+                    tokens, MAX_TOKENS, nullptr, &parse_errors);
+
+                if (parse_errors == 0) {
+                    TokenStream ts;
+                    memcpy(ts.tokens, tokens, count * sizeof(Token));
+                    ts.count = count;
+                    ts.pos = 0;
+
+                    GraphBuildResult result = build_output_graph(
+                        engine.pool, ts, engine.cells, engine.arena);
+                    if (!result.has_error) {
+                        engine.pool.outputs[i].root_node = result.root_node;
+                        engine.pool.outputs[i].valid = true;
+                    } else {
+                        engine.pool.outputs[i].valid = false;
+                    }
+                }
+            }
+        }
+    }
+
+    engine.pool.rebuild_execution_order();
+}
+
+// ── Dependency tracking (legacy overload) ──────────────────────────────────
 
 void on_cell_changed(SymbolID cell_id, CellStore& cells,
                      SourceArena& arena, NodePool& pool) {
-    // Check which outputs depend on this cell
     for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
         if (pool.outputs[i].root_node == NODE_NONE) continue;
         if (!pool.output_deps[i].contains(cell_id)) continue;
 
-        // This output needs recompilation
-        // Save LKG value
-        if (pool.outputs[i].valid) {
-            // LKG is already stored from last execution
-        }
-
-        // Recompile from stored output source
         if (output_sources[i].has_source) {
             const char* src = arena.read(output_sources[i].arena_offset);
             if (src) {
@@ -598,7 +716,6 @@ void on_cell_changed(SymbolID cell_id, CellStore& cells,
                         pool.outputs[i].valid = true;
                     } else {
                         pool.outputs[i].valid = false;
-                        // Keep LKG
                     }
                 }
             }

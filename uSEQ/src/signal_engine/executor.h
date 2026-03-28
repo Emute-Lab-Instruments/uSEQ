@@ -6,9 +6,28 @@
 
 namespace sig {
 
+// ── Execution Context ──────────────────────────────────────────────────────
+// Bundles every per-tick datum the executor needs, replacing the previous
+// 10-parameter execute_all_outputs signature.
+
+struct ExecutionContext {
+    double t;
+    const double* cell_values;
+    const double* hw_inputs;
+    const double* data_pool;
+    const uint16_t* data_offsets;
+    const uint16_t* data_lengths;
+    const double* prev_outputs;
+    double* output_values;           // out  [MAX_OUTPUTS]
+    double* workspace;               // scratch [MAX_TOTAL_NODES]
+};
+
 // ── Single-Sample Execution ─────────────────────────────────────────────────
 // One forward pass through topologically-sorted nodes.
 
+void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx);
+
+// Legacy 10-parameter overload — delegates to the ExecutionContext version.
 void execute_all_outputs(
     const NodePool& pool,
     double t,

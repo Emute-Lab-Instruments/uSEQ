@@ -5,6 +5,9 @@
 
 namespace sig {
 
+// Forward declaration
+struct CellStore;
+
 // ── Diagnostic Types ────────────────────────────────────────────────────────
 // Compatible with the existing diagnostic.h types but using static strings
 // (no heap allocation for messages).
@@ -36,7 +39,8 @@ const char* category_to_cstr(DiagnosticCategory c);
 
 // ── Fuzzy matching ──────────────────────────────────────────────────────────
 // Returns the SymbolID of the closest match, or INVALID_ID if none is close enough.
-SymbolID find_fuzzy_match(SymbolID unknown_sym);
+// Searches defined cells and well-known built-in symbols.
+SymbolID find_fuzzy_match(SymbolID unknown_sym, const CellStore& cells);
 
 } // namespace sig
 

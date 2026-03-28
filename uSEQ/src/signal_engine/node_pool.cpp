@@ -193,7 +193,7 @@ uint16_t NodePool::make_prev_output_load(uint16_t output_index) {
 
 uint16_t NodePool::make_unary(NodeOp op, uint16_t a) {
     if (a == NODE_NONE) return NODE_NONE;
-    const Node& na = nodes[a];
+    const Node& na = get(a);
 
     // Constant folding
     if (na.op == NodeOp::Const) {
@@ -210,8 +210,8 @@ uint16_t NodePool::make_unary(NodeOp op, uint16_t a) {
 
 uint16_t NodePool::make_binop(NodeOp op, uint16_t a, uint16_t b) {
     if (a == NODE_NONE || b == NODE_NONE) return NODE_NONE;
-    const Node& na = nodes[a];
-    const Node& nb = nodes[b];
+    const Node& na = get(a);
+    const Node& nb = get(b);
 
     // Constant folding
     if (na.op == NodeOp::Const && nb.op == NodeOp::Const) {
@@ -244,9 +244,9 @@ uint16_t NodePool::make_binop(NodeOp op, uint16_t a, uint16_t b) {
 
 uint16_t NodePool::make_ternary(NodeOp op, uint16_t a, uint16_t b, uint16_t c) {
     if (a == NODE_NONE || b == NODE_NONE || c == NODE_NONE) return NODE_NONE;
-    const Node& na = nodes[a];
-    const Node& nb = nodes[b];
-    const Node& nc = nodes[c];
+    const Node& na = get(a);
+    const Node& nb = get(b);
+    const Node& nc = get(c);
 
     // Constant folding
     if (na.op == NodeOp::Const && nb.op == NodeOp::Const && nc.op == NodeOp::Const) {
@@ -295,12 +295,15 @@ void NodePool::rebuild_execution_order() {
 
     while (stack_top > 0) {
         uint16_t idx = stack[--stack_top];
-        if (idx >= node_count || reachable[idx]) continue;
+        if (idx == NODE_NONE || idx >= node_count || reachable[idx]) continue;
         reachable[idx] = true;
         const Node& n = nodes[idx];
-        if (n.input_a != NODE_NONE) stack[stack_top++] = n.input_a;
-        if (n.input_b != NODE_NONE) stack[stack_top++] = n.input_b;
-        if (n.input_c != NODE_NONE) stack[stack_top++] = n.input_c;
+        if (n.input_a != NODE_NONE && n.input_a < node_count)
+            stack[stack_top++] = n.input_a;
+        if (n.input_b != NODE_NONE && n.input_b < node_count)
+            stack[stack_top++] = n.input_b;
+        if (n.input_c != NODE_NONE && n.input_c < node_count)
+            stack[stack_top++] = n.input_c;
     }
 
     // Topological sort via Kahn's algorithm on reachable nodes
@@ -315,8 +318,67 @@ void NodePool::rebuild_execution_order() {
 }
 
 void NodePool::gc_unreachable_nodes() {
-    // For now, we don't compact — we just rely on rebuild_execution_order
-    // to exclude dead nodes from the exec list. Compaction is a Phase 4 concern.
+    // 1. Mark reachable from output roots
+    bool live[MAX_TOTAL_NODES] = {};
+    uint16_t stack[MAX_TOTAL_NODES];
+    uint16_t stack_top = 0;
+
+    for (uint16_t o = 0; o < MAX_OUTPUTS; o++) {
+        if (outputs[o].root_node != NODE_NONE)
+            stack[stack_top++] = outputs[o].root_node;
+    }
+    while (stack_top > 0) {
+        uint16_t idx = stack[--stack_top];
+        if (idx >= node_count || live[idx]) continue;
+        live[idx] = true;
+        const Node& n = nodes[idx];
+        if (n.input_a != NODE_NONE) stack[stack_top++] = n.input_a;
+        if (n.input_b != NODE_NONE) stack[stack_top++] = n.input_b;
+        if (n.input_c != NODE_NONE) stack[stack_top++] = n.input_c;
+    }
+
+    // 2. Build remap table and compact live nodes to front
+    uint16_t remap[MAX_TOTAL_NODES];
+    memset(remap, 0xFF, sizeof(remap)); // NODE_NONE default
+    uint16_t new_count = 0;
+    for (uint16_t i = 0; i < node_count; i++) {
+        if (live[i]) {
+            remap[i] = new_count;
+            if (new_count != i) nodes[new_count] = nodes[i];
+            new_count++;
+        }
+    }
+
+    // 3. Update references in compacted nodes
+    for (uint16_t i = 0; i < new_count; i++) {
+        if (nodes[i].input_a != NODE_NONE) nodes[i].input_a = remap[nodes[i].input_a];
+        if (nodes[i].input_b != NODE_NONE) nodes[i].input_b = remap[nodes[i].input_b];
+        if (nodes[i].input_c != NODE_NONE) nodes[i].input_c = remap[nodes[i].input_c];
+    }
+
+    // 4. Update output roots
+    for (uint16_t o = 0; o < MAX_OUTPUTS; o++) {
+        if (outputs[o].root_node != NODE_NONE)
+            outputs[o].root_node = remap[outputs[o].root_node];
+    }
+
+    node_count = new_count;
+
+    // 5. Rebuild CSE table from scratch (indices changed)
+    memset(cse_hashes, 0, sizeof(cse_hashes));
+    memset(cse_indices, 0, sizeof(cse_indices));
+    for (uint16_t i = 0; i < node_count; i++) {
+        uint32_t h = hash_node(nodes[i]);
+        uint32_t slot = h % CSE_TABLE_SIZE;
+        for (uint32_t probe = 0; probe < CSE_TABLE_SIZE; probe++) {
+            uint32_t idx = (slot + probe) % CSE_TABLE_SIZE;
+            if (cse_hashes[idx] == 0) {
+                cse_hashes[idx] = h | 1;
+                cse_indices[idx] = i;
+                break;
+            }
+        }
+    }
 }
 
 void NodePool::reset() {
@@ -333,13 +395,12 @@ void NodePool::reset() {
 
 void NodePool::allocate_batch_workspace() {
     if (!batch_workspace) {
-        batch_workspace = new double[MAX_TOTAL_NODES * batch_chunk_size];
+        batch_workspace.reset(new double[MAX_TOTAL_NODES * batch_chunk_size]);
     }
 }
 
 void NodePool::free_batch_workspace() {
-    delete[] batch_workspace;
-    batch_workspace = nullptr;
+    batch_workspace.reset();
 }
 
 } // namespace sig

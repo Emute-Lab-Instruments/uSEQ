@@ -124,6 +124,35 @@ static inline double eval_node(
 
 // ── Single-Sample Execution ─────────────────────────────────────────────────
 
+void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
+    for (uint16_t i = 0; i < pool.exec_count; i++) {
+        uint16_t idx = pool.exec_order[i];
+        const Node& n = pool.nodes[idx];
+
+        double a = (n.input_a != NODE_NONE) ? ctx.workspace[n.input_a] : 0.0;
+        double b = (n.input_b != NODE_NONE) ? ctx.workspace[n.input_b] : 0.0;
+        double c = (n.input_c != NODE_NONE) ? ctx.workspace[n.input_c] : 0.0;
+
+        double result = eval_node(n, a, b, c, ctx.t, ctx.cell_values, ctx.hw_inputs,
+                                  ctx.data_pool, ctx.data_offsets, ctx.data_lengths,
+                                  ctx.prev_outputs);
+
+        // NaN/Inf guard
+        if (!std::isfinite(result)) result = 0.0;
+
+        ctx.workspace[idx] = result;
+    }
+
+    // Read output values
+    for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
+        if (pool.outputs[i].root_node != NODE_NONE) {
+            ctx.output_values[i] = ctx.workspace[pool.outputs[i].root_node];
+        }
+    }
+}
+
+// Legacy 10-parameter overload
+
 void execute_all_outputs(
     const NodePool& pool,
     double t,
@@ -136,30 +165,17 @@ void execute_all_outputs(
     double* output_values,
     double* node_values
 ) {
-    for (uint16_t i = 0; i < pool.exec_count; i++) {
-        uint16_t idx = pool.exec_order[i];
-        const Node& n = pool.nodes[idx];
-
-        double a = (n.input_a != NODE_NONE) ? node_values[n.input_a] : 0.0;
-        double b = (n.input_b != NODE_NONE) ? node_values[n.input_b] : 0.0;
-        double c = (n.input_c != NODE_NONE) ? node_values[n.input_c] : 0.0;
-
-        double result = eval_node(n, a, b, c, t, cell_values, hw_inputs,
-                                  data_pool, data_offsets, data_lengths,
-                                  prev_output_values);
-
-        // NaN/Inf guard
-        if (!std::isfinite(result)) result = 0.0;
-
-        node_values[idx] = result;
-    }
-
-    // Read output values
-    for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
-        if (pool.outputs[i].root_node != NODE_NONE) {
-            output_values[i] = node_values[pool.outputs[i].root_node];
-        }
-    }
+    ExecutionContext ctx;
+    ctx.t             = t;
+    ctx.cell_values   = cell_values;
+    ctx.hw_inputs     = hw_inputs;
+    ctx.data_pool     = data_pool;
+    ctx.data_offsets  = data_offsets;
+    ctx.data_lengths  = data_lengths;
+    ctx.prev_outputs  = prev_output_values;
+    ctx.output_values = output_values;
+    ctx.workspace     = node_values;
+    execute_all_outputs(pool, ctx);
 }
 
 // ── Batched Execution ───────────────────────────────────────────────────────
@@ -179,7 +195,7 @@ void execute_batch(
     if (!pool.batch_workspace) return;
 
     const size_t CHUNK = pool.batch_chunk_size;
-    double* regs = pool.batch_workspace;
+    double* regs = pool.batch_workspace.get();
 
     for (size_t chunk_start = 0; chunk_start < sample_count; chunk_start += CHUNK) {
         size_t chunk_size = std::min(CHUNK, sample_count - chunk_start);

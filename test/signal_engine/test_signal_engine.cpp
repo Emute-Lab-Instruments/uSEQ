@@ -18,55 +18,44 @@ using namespace sig;
 
 // Helper: build graph from source, execute at time t, return output value
 static double eval_at(const char* src, double t, double bpm = 120.0) {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
-
-    // Init timing cells
-    auto& si = SymbolIntern::getInstance();
-    SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, bpm };
-    SymbolID bpb_sym = si.intern("beats-per-bar");
-    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
-    SymbolID bpp_sym = si.intern("bars-per-phrase");
-    cells.cells[bpp_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
-    SymbolID pps_sym = si.intern("phrases-per-section");
-    cells.cells[pps_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    SignalEngine engine;
+    engine.init_defaults(bpm);
 
     // Wrap as output assignment and eval
     char wrapped[4096];
     snprintf(wrapped, sizeof(wrapped), "(a1 %s)", src);
-    EvalResult r = eval_cold(wrapped, (uint32_t)strlen(wrapped), cells, arena, pool);
+    EvalResult r = eval_cold(wrapped, (uint32_t)strlen(wrapped), engine);
     if (r.kind == EvalResult::Error) return -99999.0; // sentinel for "error"
 
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
     double cell_vals[MAX_CELLS];
-    cells.snapshot_values(cell_vals, MAX_CELLS);
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
     double hw_inputs[32] = {};
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    execute_all_outputs(pool, t, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t             = t;
+    ctx.cell_values   = cell_vals;
+    ctx.hw_inputs     = hw_inputs;
+    ctx.data_pool     = engine.cells.data_pool;
+    ctx.data_offsets  = engine.cells.data_offsets;
+    ctx.data_lengths  = engine.cells.data_lengths;
+    ctx.prev_outputs  = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace     = workspace;
+    execute_all_outputs(engine.pool, ctx);
     return outputs[0];
 }
 
 // Helper: eval cold-path code and check it produces an error
 static bool eval_has_error(const char* src) {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
-
-    auto& si = SymbolIntern::getInstance();
-    SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    SignalEngine engine;
+    engine.init_defaults();
 
     char wrapped[4096];
     snprintf(wrapped, sizeof(wrapped), "(a1 %s)", src);
-    EvalResult r = eval_cold(wrapped, (uint32_t)strlen(wrapped), cells, arena, pool);
+    EvalResult r = eval_cold(wrapped, (uint32_t)strlen(wrapped), engine);
     return r.kind == EvalResult::Error;
 }
 
@@ -2735,4 +2724,204 @@ TEST_CASE("expt: standard-order power", "[signal_engine][graph_builder][expt]") 
     // (expt 2 10) = 2^10 = 1024 (standard)
     REQUIRE(eval_at("(pow 2 10)", 0.0) == Approx(100.0));
     REQUIRE(eval_at("(expt 2 10)", 0.0) == Approx(1024.0));
+}
+
+// ── Mutual recursion detection ────────────────────────────────────────────
+
+TEST_CASE("Mutual recursion detected", "[signal_engine][negative]") {
+    // A calls B, B calls A — should produce error, not hang
+    SignalEngine engine;
+    engine.init_defaults();
+
+    // Define A which calls B, and B which calls A
+    const char* setup = "(do (defn A [x] (B x)) (defn B [x] (A x)))";
+    EvalResult sr = eval_cold(setup, (uint32_t)strlen(setup), engine);
+    REQUIRE(sr.kind != EvalResult::Error); // defn itself should succeed
+
+    // Try to use A in an output — should produce error (mutual recursion)
+    const char* use_src = "(a1 (A 1))";
+    EvalResult r = eval_cold(use_src, (uint32_t)strlen(use_src), engine);
+    REQUIRE(r.kind == EvalResult::Error);
+}
+
+TEST_CASE("Three-way mutual recursion detected", "[signal_engine][negative]") {
+    // A calls B, B calls C, C calls A
+    SignalEngine engine;
+    engine.init_defaults();
+
+    const char* setup = "(do (defn A [x] (B x)) (defn B [x] (C x)) (defn C [x] (A x)))";
+    EvalResult sr = eval_cold(setup, (uint32_t)strlen(setup), engine);
+    REQUIRE(sr.kind != EvalResult::Error);
+
+    const char* use_src = "(a1 (A 1))";
+    EvalResult r = eval_cold(use_src, (uint32_t)strlen(use_src), engine);
+    REQUIRE(r.kind == EvalResult::Error);
+}
+
+TEST_CASE("Deep but non-recursive call chain succeeds", "[signal_engine][positive]") {
+    // f1 calls f2, f2 calls f3, ..., f8 calls (* x 2)
+    // Depth 8 < MAX_INLINE_DEPTH (16), should work fine.
+    const char* setup =
+        "(do "
+        "  (defn f8 [x] (* x 2))"
+        "  (defn f7 [x] (f8 x))"
+        "  (defn f6 [x] (f7 x))"
+        "  (defn f5 [x] (f6 x))"
+        "  (defn f4 [x] (f5 x))"
+        "  (defn f3 [x] (f4 x))"
+        "  (defn f2 [x] (f3 x))"
+        "  (defn f1 [x] (f2 x))"
+        ")";
+
+    // Use f1 in an output — should produce 10.0 (5 * 2)
+    double val = eval_with_setup(setup, "(f1 5)", 0.0);
+    REQUIRE(val == Approx(10.0));
+}
+
+// ── Bounds-checked node accessor ──────────────────────────────────────────
+
+TEST_CASE("NodePool::get returns null node for invalid indices", "[signal_engine][node_pool]") {
+    NodePool pool;
+
+    SECTION("NODE_NONE returns null node") {
+        const Node& n = pool.get(NODE_NONE);
+        REQUIRE(n.op == NodeOp::Const);
+        REQUIRE(n.imm == 0.0);
+        REQUIRE(n.input_a == NODE_NONE);
+    }
+
+    SECTION("Out of range returns null node") {
+        const Node& n = pool.get(999);
+        REQUIRE(n.op == NodeOp::Const);
+        REQUIRE(n.imm == 0.0);
+    }
+
+    SECTION("Valid index returns correct node") {
+        uint16_t idx = pool.make_const(42.0);
+        const Node& n = pool.get(idx);
+        REQUIRE(n.op == NodeOp::Const);
+        REQUIRE(n.imm == 42.0);
+    }
+}
+
+// ── GC tests ──────────────────────────────────────────────────────────────
+
+TEST_CASE("GC reclaims dead nodes", "[signal_engine][node_pool][gc]") {
+    SignalEngine engine;
+    engine.init_defaults();
+
+    // Assign a complex expression to a1
+    const char* complex_src = "(a1 (+ (* (sin beat) 0.5) (* (cos bar) 0.3)))";
+    EvalResult r1 = eval_cold(complex_src, (uint32_t)strlen(complex_src), engine);
+    REQUIRE(r1.kind != EvalResult::Error);
+    uint16_t count_after_complex = engine.pool.node_count;
+    REQUIRE(count_after_complex > 3); // should have multiple nodes
+
+    // Reassign a1 to a simple constant
+    const char* simple_src = "(a1 42)";
+    EvalResult r2 = eval_cold(simple_src, (uint32_t)strlen(simple_src), engine);
+    REQUIRE(r2.kind != EvalResult::Error);
+
+    // GC runs inside do_output_assign — node count should have decreased
+    REQUIRE(engine.pool.node_count < count_after_complex);
+
+    // The output should still work correctly
+    engine.pool.rebuild_execution_order();
+    double cell_vals[MAX_CELLS];
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    execute_all_outputs(engine.pool, 0.0, cell_vals, hw_inputs,
+                        engine.cells.data_pool, engine.cells.data_offsets,
+                        engine.cells.data_lengths,
+                        engine.pool.prev_output_values, outputs, workspace);
+    REQUIRE(outputs[0] == Approx(42.0));
+}
+
+// ── Fuzzy match tests ─────────────────────────────────────────────────────
+
+// Helper: eval and return the first diagnostic message (or empty string)
+static const char* eval_first_diagnostic(const char* src) {
+    SignalEngine engine;
+    engine.init_defaults();
+
+    char wrapped[4096];
+    snprintf(wrapped, sizeof(wrapped), "(a1 %s)", src);
+    EvalResult r = eval_cold(wrapped, (uint32_t)strlen(wrapped), engine);
+    if (r.kind == EvalResult::Error && r.diagnostic_count > 0 && r.diagnostics[0].message) {
+        return r.diagnostics[0].message;
+    }
+    return "";
+}
+
+TEST_CASE("Fuzzy match suggests corrections", "[signal_engine][diagnostics]") {
+    SECTION("Misspelled built-in 'sni' -> 'sin'") {
+        const char* msg = eval_first_diagnostic("(sni beat)");
+        REQUIRE(strstr(msg, "Did you mean") != nullptr);
+        REQUIRE(strstr(msg, "sin") != nullptr);
+    }
+
+    SECTION("Misspelled built-in 'bet' -> 'beat'") {
+        const char* msg = eval_first_diagnostic("bet");
+        REQUIRE(strstr(msg, "Did you mean") != nullptr);
+    }
+
+    SECTION("User-defined cell 'frq' -> 'freq'") {
+        SignalEngine engine;
+        engine.init_defaults();
+
+        // Define 'freq' first
+        const char* setup = "(define freq 440)";
+        eval_cold(setup, (uint32_t)strlen(setup), engine);
+
+        // Now try 'frq' in output context
+        const char* src = "(a1 frq)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
+        REQUIRE(r.kind == EvalResult::Error);
+        REQUIRE(r.diagnostic_count > 0);
+        REQUIRE(strstr(r.diagnostics[0].message, "Did you mean") != nullptr);
+        REQUIRE(strstr(r.diagnostics[0].message, "freq") != nullptr);
+    }
+
+    SECTION("Completely wrong name gives generic error") {
+        const char* msg = eval_first_diagnostic("zzzzzzzzz");
+        REQUIRE(strstr(msg, "Unknown name") != nullptr);
+    }
+}
+
+// ── set with expressions tests ────────────────────────────────────────────
+
+TEST_CASE("set with constant expression", "[signal_engine][cold_eval][set]") {
+    REQUIRE(eval_with_setup("(set x (+ 1 2))", "x", 0.0) == Approx(3.0));
+}
+
+TEST_CASE("set with nested expression", "[signal_engine][cold_eval][set]") {
+    REQUIRE(eval_with_setup("(set x (* 3 (+ 1 2)))", "x", 0.0) == Approx(9.0));
+}
+
+TEST_CASE("set with cell reference", "[signal_engine][cold_eval][set]") {
+    REQUIRE(eval_with_setup("(do (define y 10) (set x (* y 2)))", "x", 0.0) == Approx(20.0));
+}
+
+// ── unique_ptr batch workspace tests ──────────────────────────────────────
+
+TEST_CASE("Batch workspace lifecycle with unique_ptr", "[signal_engine][node_pool]") {
+    NodePool pool;
+    REQUIRE(!pool.batch_workspace); // null initially
+
+    pool.allocate_batch_workspace();
+    REQUIRE(pool.batch_workspace != nullptr);
+
+    // Double allocate should be safe (no-op)
+    pool.allocate_batch_workspace();
+    REQUIRE(pool.batch_workspace != nullptr);
+
+    pool.free_batch_workspace();
+    REQUIRE(!pool.batch_workspace);
+
+    // Double free should be safe
+    pool.free_batch_workspace();
+    REQUIRE(!pool.batch_workspace);
 }

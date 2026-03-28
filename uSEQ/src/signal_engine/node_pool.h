@@ -2,6 +2,7 @@
 #define SIGNAL_ENGINE_NODE_POOL_H
 
 #include "types.h"
+#include <memory>
 
 namespace sig {
 
@@ -97,6 +98,14 @@ struct NodePool {
     Node nodes[MAX_TOTAL_NODES]    = {};
     uint16_t node_count            = 0;
 
+    // Bounds-checked node accessor. Returns a static null node for
+    // NODE_NONE or out-of-range indices, avoiding undefined behaviour.
+    const Node& get(uint16_t idx) const {
+        static const Node null_node{};
+        if (idx == NODE_NONE || idx >= node_count) return null_node;
+        return nodes[idx];
+    }
+
     // Hash-cons CSE table
     uint32_t cse_hashes[CSE_TABLE_SIZE]  = {};
     uint16_t cse_indices[CSE_TABLE_SIZE] = {};
@@ -113,7 +122,7 @@ struct NodePool {
     double prev_output_values[MAX_OUTPUTS] = {};
 
     // WASM batch workspace (heap-allocated once at init, null on firmware)
-    double* batch_workspace   = nullptr;
+    std::unique_ptr<double[]> batch_workspace;
     uint16_t batch_chunk_size = BATCH_CHUNK_SIZE;
 
     // ── Node construction (with CSE + constant folding) ─────────────────

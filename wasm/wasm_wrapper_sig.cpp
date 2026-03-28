@@ -23,9 +23,7 @@
 
 // ── Static state ───────────────────────────────────────────────────────────
 
-static sig::CellStore*   g_cells = nullptr;
-static sig::SourceArena* g_arena = nullptr;
-static sig::NodePool*    g_pool  = nullptr;
+static sig::SignalEngine* g_engine = nullptr;
 
 static double  g_hw_inputs[32]   = {};
 static double  g_current_time    = 0.0;
@@ -90,23 +88,27 @@ static uint16_t resolve_output_name(const char* name) {
 // Execute all outputs at a given time, writing results into output_values.
 static void execute_at_time(double t, double* output_values) {
     double cell_values[sig::MAX_CELLS];
-    g_cells->snapshot_values(cell_values, sig::MAX_CELLS);
+    g_engine->cells.snapshot_values(cell_values, sig::MAX_CELLS);
 
     double node_values[sig::MAX_TOTAL_NODES];
 
-    sig::execute_all_outputs(
-        *g_pool, t,
-        cell_values, g_hw_inputs,
-        g_cells->data_pool, g_cells->data_offsets, g_cells->data_lengths,
-        g_pool->prev_output_values,
-        output_values, node_values
-    );
+    sig::ExecutionContext ctx;
+    ctx.t             = t;
+    ctx.cell_values   = cell_values;
+    ctx.hw_inputs     = g_hw_inputs;
+    ctx.data_pool     = g_engine->cells.data_pool;
+    ctx.data_offsets  = g_engine->cells.data_offsets;
+    ctx.data_lengths  = g_engine->cells.data_lengths;
+    ctx.prev_outputs  = g_engine->pool.prev_output_values;
+    ctx.output_values = output_values;
+    ctx.workspace     = node_values;
+    sig::execute_all_outputs(g_engine->pool, ctx);
 
     // Update previous output values for next tick
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-        if (g_pool->outputs[i].valid) {
-            g_pool->prev_output_values[i] = output_values[i];
-            g_pool->outputs[i].lkg_value = output_values[i];
+        if (g_engine->pool.outputs[i].valid) {
+            g_engine->pool.prev_output_values[i] = output_values[i];
+            g_engine->pool.outputs[i].lkg_value = output_values[i];
         }
     }
 }
@@ -119,50 +121,18 @@ extern "C"
     {
         if (g_init_called) return;
 
-        // Initialize symbol table for graph builder
-        sig::GraphBuilder::init_symbols();
-
-        g_cells = new sig::CellStore();
-        g_arena = new sig::SourceArena();
-        g_pool  = new sig::NodePool();
+        g_engine = new sig::SignalEngine();
+        g_engine->init_defaults();
 
         // Allocate batch workspace for WASM visualization
-        g_pool->allocate_batch_workspace();
-
-        // Init timing cells with defaults
-        auto& si = SymbolIntern::getInstance();
-        auto& sym = sig::GraphBuilder::sym;
-
-        // bpm = 120
-        sig::SymbolID bpm_id = sym.bpm;
-        g_cells->cells[bpm_id].kind = sig::CellKind::Number;
-        g_cells->cells[bpm_id].value = 120.0;
-        g_cells->cells[bpm_id].revision = 1;
-
-        // beats-per-bar = 4
-        sig::SymbolID bpb_id = sym.beats_per_bar;
-        g_cells->cells[bpb_id].kind = sig::CellKind::Number;
-        g_cells->cells[bpb_id].value = 4.0;
-        g_cells->cells[bpb_id].revision = 1;
-
-        // bars-per-phrase = 4
-        sig::SymbolID bpp_id = sym.bars_per_phrase;
-        g_cells->cells[bpp_id].kind = sig::CellKind::Number;
-        g_cells->cells[bpp_id].value = 4.0;
-        g_cells->cells[bpp_id].revision = 1;
-
-        // phrases-per-section = 4
-        sig::SymbolID pps_id = sym.phrases_per_section;
-        g_cells->cells[pps_id].kind = sig::CellKind::Number;
-        g_cells->cells[pps_id].value = 4.0;
-        g_cells->cells[pps_id].revision = 1;
+        g_engine->pool.allocate_batch_workspace();
 
         g_init_called = true;
     }
 
     char* useq_eval(const char* input)
     {
-        if (!g_cells) {
+        if (!g_engine) {
             return alloc_cstr("Error: uSEQ not initialized. Call useq_init() first.");
         }
 
@@ -171,8 +141,7 @@ extern "C"
             g_last_diagnostic_count = 0;
 
             uint32_t length = (uint32_t)strlen(input);
-            sig::EvalResult result = sig::eval_cold(input, length,
-                                                     *g_cells, *g_arena, *g_pool);
+            sig::EvalResult result = sig::eval_cold(input, length, *g_engine);
 
             // Copy diagnostics
             g_last_diagnostic_count = result.diagnostic_count;
@@ -236,13 +205,13 @@ extern "C"
 
     double useq_eval_output(const char* name, double time_seconds)
     {
-        if (!g_pool) {
+        if (!g_engine) {
             return std::numeric_limits<double>::quiet_NaN();
         }
 
         uint16_t output_index = resolve_output_name(name);
         if (output_index == sig::NODE_NONE ||
-            !g_pool->outputs[output_index].valid) {
+            !g_engine->pool.outputs[output_index].valid) {
             return std::numeric_limits<double>::quiet_NaN();
         }
 
@@ -300,7 +269,7 @@ extern "C"
         double end_time,
         int num_samples)
     {
-        if (!g_pool) {
+        if (!g_engine) {
             return alloc_cstr("{\"error\": \"uSEQ not initialized\"}");
         }
         if (num_samples < 1) {
@@ -327,18 +296,18 @@ extern "C"
 
             // Snapshot cell values once
             double cell_values[sig::MAX_CELLS];
-            g_cells->snapshot_values(cell_values, sig::MAX_CELLS);
+            g_engine->cells.snapshot_values(cell_values, sig::MAX_CELLS);
 
             // Use batch execution if workspace is available
             uint16_t num_active_outputs = 0;
             for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-                if (g_pool->outputs[i].valid) num_active_outputs++;
+                if (g_engine->pool.outputs[i].valid) num_active_outputs++;
             }
 
             // Allocate output buffer: all outputs x num_samples
             std::vector<double> batch_buf(num_active_outputs * num_samples, 0.0);
 
-            if (g_pool->batch_workspace) {
+            if (g_engine->pool.batch_workspace) {
                 // Build time array
                 std::vector<double> t_array(num_samples);
                 for (int i = 0; i < num_samples; i++) {
@@ -346,9 +315,9 @@ extern "C"
                 }
 
                 sig::execute_batch(
-                    *g_pool, t_array.data(), (size_t)num_samples,
+                    g_engine->pool, t_array.data(), (size_t)num_samples,
                     cell_values, g_hw_inputs,
-                    g_cells->data_pool, g_cells->data_offsets, g_cells->data_lengths,
+                    g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
                     batch_buf.data(), num_active_outputs
                 );
             } else {
@@ -360,17 +329,17 @@ extern "C"
                     double node_values[sig::MAX_TOTAL_NODES];
 
                     sig::execute_all_outputs(
-                        *g_pool, t,
+                        g_engine->pool, t,
                         cell_values, g_hw_inputs,
-                        g_cells->data_pool, g_cells->data_offsets, g_cells->data_lengths,
-                        g_pool->prev_output_values,
+                        g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
+                        g_engine->pool.prev_output_values,
                         output_values, node_values
                     );
 
                     // Extract requested outputs
                     uint16_t row = 0;
                     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-                        if (g_pool->outputs[i].valid) {
+                        if (g_engine->pool.outputs[i].valid) {
                             batch_buf[row * num_samples + s] = output_values[i];
                             row++;
                         }
@@ -386,7 +355,7 @@ extern "C"
             {
                 uint16_t row = 0;
                 for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-                    if (g_pool->outputs[i].valid) {
+                    if (g_engine->pool.outputs[i].valid) {
                         index_to_row[i] = row++;
                     } else {
                         index_to_row[i] = sig::NODE_NONE;
@@ -406,7 +375,7 @@ extern "C"
                 json_result += "\":[";
 
                 uint16_t idx = output_indices[c];
-                if (idx != sig::NODE_NONE && g_pool->outputs[idx].valid) {
+                if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
                     uint16_t row = index_to_row[idx];
                     for (int s = 0; s < num_samples; s++) {
                         if (s > 0) json_result += ",";
@@ -450,7 +419,7 @@ extern "C"
         int buffer_ptr,
         int buffer_length)
     {
-        if (!g_pool) {
+        if (!g_engine) {
             s_last_error = "uSEQ not initialized";
             return -1;
         }
@@ -491,20 +460,20 @@ extern "C"
 
             // Snapshot cell values
             double cell_values[sig::MAX_CELLS];
-            g_cells->snapshot_values(cell_values, sig::MAX_CELLS);
+            g_engine->cells.snapshot_values(cell_values, sig::MAX_CELLS);
 
             // Build active-output row mapping
             uint16_t index_to_row[sig::MAX_OUTPUTS];
             uint16_t num_active = 0;
             for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-                if (g_pool->outputs[i].valid) {
+                if (g_engine->pool.outputs[i].valid) {
                     index_to_row[i] = num_active++;
                 } else {
                     index_to_row[i] = sig::NODE_NONE;
                 }
             }
 
-            if (g_pool->batch_workspace && num_active > 0) {
+            if (g_engine->pool.batch_workspace && num_active > 0) {
                 // Use batch execution
                 std::vector<double> t_array(num_samples);
                 for (int i = 0; i < num_samples; i++) {
@@ -515,9 +484,9 @@ extern "C"
                 std::vector<double> batch_buf(num_active * num_samples, 0.0);
 
                 sig::execute_batch(
-                    *g_pool, t_array.data(), (size_t)num_samples,
+                    g_engine->pool, t_array.data(), (size_t)num_samples,
                     cell_values, g_hw_inputs,
-                    g_cells->data_pool, g_cells->data_offsets, g_cells->data_lengths,
+                    g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
                     batch_buf.data(), num_active
                 );
 
@@ -526,7 +495,7 @@ extern "C"
                     double* row = buf + (c * num_samples);
                     uint16_t idx = output_indices[c];
 
-                    if (idx != sig::NODE_NONE && g_pool->outputs[idx].valid) {
+                    if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
                         uint16_t active_row = index_to_row[idx];
                         memcpy(row, &batch_buf[active_row * num_samples],
                                num_samples * sizeof(double));
@@ -544,17 +513,17 @@ extern "C"
                     double node_values[sig::MAX_TOTAL_NODES];
 
                     sig::execute_all_outputs(
-                        *g_pool, t,
+                        g_engine->pool, t,
                         cell_values, g_hw_inputs,
-                        g_cells->data_pool, g_cells->data_offsets, g_cells->data_lengths,
-                        g_pool->prev_output_values,
+                        g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
+                        g_engine->pool.prev_output_values,
                         output_values, node_values
                     );
 
                     for (int c = 0; c < num_channels; c++) {
                         uint16_t idx = output_indices[c];
                         double* row = buf + (c * num_samples);
-                        if (idx != sig::NODE_NONE && g_pool->outputs[idx].valid) {
+                        if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
                             row[s] = output_values[idx];
                         } else {
                             row[s] = std::numeric_limits<double>::quiet_NaN();

@@ -1,4 +1,5 @@
 #include "cell_store.h"
+#include "../modulisp/lisp/symbol_intern.h"
 #include <cstring>
 
 namespace sig {
@@ -59,6 +60,31 @@ void CellStore::snapshot_values(double* out, size_t max_count) const {
     for (size_t i = 0; i < n; i++) {
         out[i] = cells[i].value;
     }
+}
+
+void CellStore::init_timing_defaults(double bpm, int beats_per_bar,
+                                     int bars_per_phrase, int phrases_per_section) {
+    auto& si = SymbolIntern::getInstance();
+
+    SymbolID bpm_sym = si.intern("bpm");
+    cells[bpm_sym].kind     = CellKind::Number;
+    cells[bpm_sym].value    = bpm;
+    cells[bpm_sym].revision = 1;
+
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    cells[bpb_sym].kind     = CellKind::Number;
+    cells[bpb_sym].value    = (double)beats_per_bar;
+    cells[bpb_sym].revision = 1;
+
+    SymbolID bpp_sym = si.intern("bars-per-phrase");
+    cells[bpp_sym].kind     = CellKind::Number;
+    cells[bpp_sym].value    = (double)bars_per_phrase;
+    cells[bpp_sym].revision = 1;
+
+    SymbolID pps_sym = si.intern("phrases-per-section");
+    cells[pps_sym].kind     = CellKind::Number;
+    cells[pps_sym].value    = (double)phrases_per_section;
+    cells[pps_sym].revision = 1;
 }
 
 } // namespace sig

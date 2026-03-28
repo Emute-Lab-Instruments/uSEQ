@@ -1,6 +1,7 @@
 #include "graph_builder.h"
 #include "../modulisp/lisp/symbol_intern.h"
 #include <cstring>
+#include <cstdio>
 #include <cmath>
 #include <algorithm>
 
@@ -159,10 +160,30 @@ uint16_t GraphBuilder::report_error_at(uint16_t span_start, uint16_t span_len,
     return NODE_NONE;
 }
 
+// Static buffers for fuzzy match error messages (avoids heap allocation).
+// These persist for the lifetime of the diagnostic, which is fine since
+// graph building is single-threaded and diagnostics are copied out.
+static char fuzzy_msg_buf[128];
+static char fuzzy_sug_buf[128];
+
 uint16_t GraphBuilder::report_error_with_fuzzy_match(SymbolID sym_id,
                                                       uint16_t span_start,
                                                       uint16_t span_len) {
-    // TODO: implement fuzzy matching
+    SymbolID match = find_fuzzy_match(sym_id, cells);
+    auto& si = SymbolIntern::getInstance();
+
+    if (match != SymbolIntern::INVALID_ID) {
+        const String& unknown_str = si.getString(sym_id);
+        const String& match_str = si.getString(match);
+        snprintf(fuzzy_msg_buf, sizeof(fuzzy_msg_buf),
+                 "Unknown '%s'. Did you mean '%s'?",
+                 unknown_str.c_str(), match_str.c_str());
+        snprintf(fuzzy_sug_buf, sizeof(fuzzy_sug_buf),
+                 "Try: %s", match_str.c_str());
+        return report_error_at(span_start, span_len,
+                               fuzzy_msg_buf, fuzzy_sug_buf);
+    }
+
     return report_error_at(span_start, span_len,
                            "Unknown name",
                            "Check your spelling");
@@ -614,6 +635,7 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
 
     if (op == sym.input) {
         uint16_t arg = compile_expr(ts, scope, ctx);
+        if (arg == NODE_NONE) return NODE_NONE;
         if (is_const(arg)) {
             uint16_t ch = (uint16_t)const_value(arg);
             return pool.make_input_load(ch);
@@ -631,30 +653,35 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
 
 uint16_t GraphBuilder::compile_fast(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t factor = compile_expr(ts, scope, ctx);
+    if (factor == NODE_NONE) return NODE_NONE;
     TimeContext inner = { pool.make_binop(NodeOp::Mul, ctx.t_node, factor) };
     return compile_expr(ts, scope, inner);
 }
 
 uint16_t GraphBuilder::compile_slow(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t factor = compile_expr(ts, scope, ctx);
+    if (factor == NODE_NONE) return NODE_NONE;
     TimeContext inner = { pool.make_binop(NodeOp::Div, ctx.t_node, factor) };
     return compile_expr(ts, scope, inner);
 }
 
 uint16_t GraphBuilder::compile_offset(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t amount = compile_expr(ts, scope, ctx);
+    if (amount == NODE_NONE) return NODE_NONE;
     TimeContext inner = { pool.make_binop(NodeOp::Add, ctx.t_node, amount) };
     return compile_expr(ts, scope, inner);
 }
 
 uint16_t GraphBuilder::compile_loop_at(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t duration = compile_expr(ts, scope, ctx);
+    if (duration == NODE_NONE) return NODE_NONE;
     TimeContext inner = { pool.make_binop(NodeOp::Fmod, ctx.t_node, duration) };
     return compile_expr(ts, scope, inner);
 }
 
 uint16_t GraphBuilder::compile_eval_at_time(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t time_node = compile_expr(ts, scope, ctx);
+    if (time_node == NODE_NONE) return NODE_NONE;
     TimeContext inner = { time_node };
     return compile_expr(ts, scope, inner);
 }
@@ -663,10 +690,13 @@ uint16_t GraphBuilder::compile_eval_at_time(TokenStream& ts, Scope& scope, TimeC
 
 uint16_t GraphBuilder::compile_if(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t cond = compile_expr(ts, scope, ctx);
+    if (cond == NODE_NONE) return NODE_NONE;
     uint16_t then_val = compile_expr(ts, scope, ctx);
+    if (then_val == NODE_NONE) return NODE_NONE;
     uint16_t else_val = pool.make_const(0.0);
     if (ts.peek().kind != TokenKind::RParen) {
         else_val = compile_expr(ts, scope, ctx);
+        if (else_val == NODE_NONE) return NODE_NONE;
     }
     return pool.make_select(cond, then_val, else_val);
 }
@@ -782,7 +812,9 @@ uint16_t GraphBuilder::compile_for(TokenStream& ts, Scope& scope, TimeContext& c
 uint16_t GraphBuilder::compile_while_gate(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     // (while cond body) — returns body when cond is true, 0.0 when false
     uint16_t cond = compile_expr(ts, scope, ctx);
+    if (cond == NODE_NONE) return NODE_NONE;
     uint16_t value = compile_expr(ts, scope, ctx);
+    if (value == NODE_NONE) return NODE_NONE;
     return pool.make_select(cond, value, pool.make_const(0.0));
 }
 
@@ -810,11 +842,17 @@ uint16_t GraphBuilder::compile_call(SymbolID fn_sym, TokenStream& ts,
     const CallableInfo& info = cells.callables[fn_sym];
     add_dependency(fn_sym);
 
-    // Recursion guard
+    // Recursion guard — detects both direct and mutual recursion
     if (is_in_inline_stack(fn_sym)) {
         return report_error(op_tok,
             "This function calls itself — recursive functions can't be used in outputs",
             "Try using 'for' over a fixed collection instead");
+    }
+    // Depth limit safety net — catches unbounded inlining chains
+    if (inline_depth >= MAX_INLINE_DEPTH) {
+        return report_error(op_tok,
+            "Function call chain is too deep",
+            "Simplify by reducing the number of nested function calls");
     }
     push_inline_stack(fn_sym);
 
@@ -822,7 +860,12 @@ uint16_t GraphBuilder::compile_call(SymbolID fn_sym, TokenStream& ts,
     uint16_t arg_nodes[MAX_CALLABLE_PARAMS];
     uint8_t arg_count = 0;
     while (ts.peek().kind != TokenKind::RParen && arg_count < info.param_count && !ts.at_end()) {
-        arg_nodes[arg_count++] = compile_expr(ts, scope, ctx);
+        uint16_t arg = compile_expr(ts, scope, ctx);
+        if (arg == NODE_NONE) {
+            pop_inline_stack();
+            return NODE_NONE;
+        }
+        arg_nodes[arg_count++] = arg;
     }
 
     if (arg_count != info.param_count) {
@@ -870,6 +913,7 @@ uint16_t GraphBuilder::compile_variadic_arithmetic(SymbolID op, TokenStream& ts,
 
     // First argument
     uint16_t result = compile_expr(ts, scope, ctx);
+    if (result == NODE_NONE) return NODE_NONE;
 
     // Handle unary minus: (- x) → negate
     if (ts.peek().kind == TokenKind::RParen && nop == NodeOp::Sub) {
