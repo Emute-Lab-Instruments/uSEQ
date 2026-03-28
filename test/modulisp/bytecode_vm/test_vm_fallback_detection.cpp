@@ -1,6 +1,6 @@
 // test_vm_fallback_detection.cpp
-// Detects silent tree-walker fallback by inspecting compiled bytecode programs
-// for unexpected CALL_INTRINSIC opcodes.
+// Detects unexpected runtime intrinsic calls by inspecting compiled bytecode
+// programs for CALL_INTRINSIC opcodes.
 
 #include "../../../uSEQ/src/modulisp/bytecode_vm.h"
 #include "../../../uSEQ/src/modulisp/modulisp_interpreter.h"

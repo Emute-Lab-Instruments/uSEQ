@@ -875,7 +875,7 @@ TEST_CASE("Late-bound symbol programs pick up live rebinding at runtime",
     REQUIRE(rebound_result.value.as_float() == Approx(10.0).epsilon(1e-9));
 }
 
-TEST_CASE("Runtime VM bridge evaluates dynamic for collections without tree-walker",
+TEST_CASE("Dynamic for collections evaluate through VM runtime recompilation",
           "[modulisp][vm][late-binding]")
 {
     ModuLispInterpreter interp;
@@ -1160,7 +1160,7 @@ TEST_CASE("Closure capturing another closure (nested call)",
     REQUIRE(result.as_float() == Approx(7.0).epsilon(1e-9));
 }
 
-TEST_CASE("Closure compiles without CALL_INTRINSIC fallback",
+TEST_CASE("Closure compiles without CALL_INTRINSIC dispatch",
           "[modulisp][vm][closures]")
 {
     ModuLispInterpreter interp;
@@ -1238,7 +1238,7 @@ TEST_CASE("Local bindings can store and call returned closures",
     REQUIRE(result.as_float() == Approx(5.0).epsilon(1e-9));
 }
 
-TEST_CASE("Higher-order builtins apply lambdas without tree-walker fallback",
+TEST_CASE("Higher-order builtins apply lambdas through VM call helper",
           "[modulisp][vm][closures][hof]")
 {
     ModuLispInterpreter interp;

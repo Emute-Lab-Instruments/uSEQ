@@ -249,7 +249,7 @@ Value ModuLispInterpreter::eval_form_with_vm(Value expr)
 
             std::vector<Value> args(expr.list.begin() + 1, expr.list.end());
             Value builtin = *command;
-            return execute_callable_with_vm(builtin, args, m_environment, false);
+            return call_with_vm(builtin, args, m_environment, false);
         }
     }
 

@@ -187,12 +187,12 @@ bool Value::is_builtin() const
 
 Value Value::apply(std::vector<Value>& args, Environment& env)
 {
-    return execute_callable_with_vm(*this, args, env, false);
+    return call_with_vm(*this, args, env, false);
 }
 
 Value Value::eval(Environment& env)
 {
-    return execute_expr_with_vm(*this, env, false);
+    return eval_with_vm(*this, env, false);
 }
 
 bool Value::is_number() const { return type == INT || type == FLOAT; }

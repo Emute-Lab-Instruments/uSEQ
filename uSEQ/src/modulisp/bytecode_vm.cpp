@@ -191,13 +191,6 @@ struct LocalValueBinding
     int source_register = -1;
 };
 
-// Diagnostic counter: tracks closure runtime bridge usage.
-// With compile-time capture substitution now implemented, this counter
-// should remain at zero for closures whose captured values are constants
-// or compilable expressions. Non-zero values indicate a closure pattern
-// the compiler cannot yet handle (e.g., recursive closures, HOFs).
-static int s_closure_fallback_count = 0;
-int get_closure_fallback_count() { return s_closure_fallback_count; }
 constexpr size_t kInlineLambdaNodeThreshold = 24;
 constexpr int32_t kCallCurrentProgramSentinel = -1;
 constexpr int32_t kDynamicCallableSentinel = -2;
@@ -353,12 +346,12 @@ Value execute_runtime_expr_with_vm_impl(const Value& expr,
                                         bool signal_context,
                                         const TemporalContext& ctx,
                                         int depth);
-Value execute_callable_with_vm_impl(const Value& callable,
-                                    const std::vector<Value>& args,
-                                    Environment& env,
-                                    bool signal_context,
-                                    const TemporalContext& ctx,
-                                    int depth);
+Value call_with_vm_impl(const Value& callable,
+                        const std::vector<Value>& args,
+                        Environment& env,
+                        bool signal_context,
+                        const TemporalContext& ctx,
+                        int depth);
 
 Value execute_runtime_symbol_with_vm(const String& symbol,
                                      const Environment& env,
@@ -532,10 +525,10 @@ Value execute_runtime_expr_with_vm_impl(const Value& expr,
 }
 } // namespace
 
-Value execute_callable_with_vm_bridge(const Value& callable,
-                                      const std::vector<Value>& args,
-                                      Environment& env,
-                                      bool signal_context)
+Value call_with_vm_in_env(const Value& callable,
+                          const std::vector<Value>& args,
+                          Environment& env,
+                          bool signal_context)
 {
     TemporalContext exec_ctx;
     if (const TemporalContext* existing_ctx = env.get_temporal_context())
@@ -545,18 +538,18 @@ Value execute_callable_with_vm_bridge(const Value& callable,
 
     Environment exec_env(env);
     exec_env.set_temporal_context(&exec_ctx);
-    return execute_callable_with_vm_impl(callable, args, exec_env, signal_context,
-                                         exec_ctx, 0);
+    return call_with_vm_impl(callable, args, exec_env, signal_context, exec_ctx,
+                             0);
 }
 
 namespace
 {
-Value execute_callable_with_vm_impl(const Value& callable,
-                                    const std::vector<Value>& args,
-                                    Environment& env,
-                                    bool signal_context,
-                                    const TemporalContext& ctx,
-                                    int depth)
+Value call_with_vm_impl(const Value& callable,
+                        const std::vector<Value>& args,
+                        Environment& env,
+                        bool signal_context,
+                        const TemporalContext& ctx,
+                        int depth)
 {
     if (depth > kRuntimeVmBridgeMaxDepth)
     {
@@ -5423,9 +5416,8 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
                     TemporalContext exec_ctx = ctx;
                     exec_env.set_temporal_context(&exec_ctx);
                     const Value call_result =
-                        execute_callable_with_vm_bridge(registers[insn.rs1], args,
-                                                       exec_env,
-                                                       program.signal_context);
+                        call_with_vm_in_env(registers[insn.rs1], args, exec_env,
+                                            program.signal_context);
                     if (call_result.is_error())
                     {
                         result.error = "dynamic callable returned an error";
@@ -5700,12 +5692,29 @@ vm_loop_exit:
 }
 } // namespace
 
-Value execute_callable_with_vm(const Value& callable,
-                               const std::vector<Value>& args,
-                               Environment& env,
-                               bool signal_context)
+Value call_with_vm(const Value& callable,
+                   const std::vector<Value>& args,
+                   Environment& env,
+                   bool signal_context)
 {
-    return execute_callable_with_vm_bridge(callable, args, env, signal_context);
+    TemporalContext local_ctx;
+    const TemporalContext* previous_ctx = env.get_temporal_context();
+    if (!previous_ctx)
+    {
+        env.set_temporal_context(&local_ctx);
+    }
+
+    const TemporalContext& active_ctx =
+        previous_ctx ? *previous_ctx : local_ctx;
+    const Value result =
+        call_with_vm_impl(callable, args, env, signal_context, active_ctx, 0);
+
+    if (!previous_ctx)
+    {
+        env.set_temporal_context(nullptr);
+    }
+
+    return result;
 }
 
 NumericVmCompileResult compile_numeric_program(const Value& expr,
@@ -5716,20 +5725,28 @@ NumericVmCompileResult compile_numeric_program(const Value& expr,
     return compiler.compile(expr);
 }
 
-Value execute_expr_with_vm(const Value& expr,
-                           Environment& env,
-                           bool signal_context)
+Value eval_with_vm(const Value& expr,
+                   Environment& env,
+                   bool signal_context)
 {
-    TemporalContext exec_ctx;
-    if (const TemporalContext* existing_ctx = env.get_temporal_context())
+    TemporalContext local_ctx;
+    const TemporalContext* previous_ctx = env.get_temporal_context();
+    if (!previous_ctx)
     {
-        exec_ctx = *existing_ctx;
+        env.set_temporal_context(&local_ctx);
     }
 
-    Environment exec_env(env);
-    exec_env.set_temporal_context(&exec_ctx);
-    return execute_runtime_expr_with_vm_impl(expr, exec_env, signal_context,
-                                             exec_ctx, 0);
+    const TemporalContext& active_ctx =
+        previous_ctx ? *previous_ctx : local_ctx;
+    const Value result =
+        execute_runtime_expr_with_vm_impl(expr, env, signal_context, active_ctx, 0);
+
+    if (!previous_ctx)
+    {
+        env.set_temporal_context(nullptr);
+    }
+
+    return result;
 }
 
 TaggedVmExecutionResult execute_tagged_program(const NumericVmProgram& program,

@@ -297,14 +297,14 @@ TEST_CASE("VM expression evaluation with environment",
 {
     Environment env;
 
-    Value result1 = execute_expr_with_vm(uLispParser::parse_static("42"), env);
+    Value result1 = eval_with_vm(uLispParser::parse_static("42"), env);
     REQUIRE(result1.is_int());
     REQUIRE(result1.as_int() == 42);
 
     env.set("x", Value(10));
     env.set("y", Value(20));
 
-    Value result2 = execute_expr_with_vm(uLispParser::parse_static("(+ x y)"), env);
+    Value result2 = eval_with_vm(uLispParser::parse_static("(+ x y)"), env);
     REQUIRE(result2.is_number());
     const double actual = result2.is_int() ? result2.as_int() : result2.as_float();
     REQUIRE(actual == Approx(30.0).epsilon(0.001));
@@ -316,20 +316,20 @@ TEST_CASE("VM value evaluation with environment",
     Environment env;
 
     Value int_val(100);
-    Value result1 = execute_expr_with_vm(int_val, env);
+    Value result1 = eval_with_vm(int_val, env);
     REQUIRE(result1.is_int());
     REQUIRE(result1.as_int() == 100);
 
     env.set("test-var", Value(42));
     Value symbol_val = Value::atom("test-var");
-    Value result2    = execute_expr_with_vm(symbol_val, env);
+    Value result2    = eval_with_vm(symbol_val, env);
     REQUIRE_FALSE(result2.is_error());
     REQUIRE(result2.is_int());
     REQUIRE(result2.as_int() == 42);
 
     std::vector<Value> expr = { Value::atom("+"), Value(5), Value(15) };
     Value list_val(expr);
-    Value result3 = execute_expr_with_vm(list_val, env);
+    Value result3 = eval_with_vm(list_val, env);
     REQUIRE_FALSE(result3.is_error());
     REQUIRE(result3.is_number());
     const double actual = result3.is_int() ? result3.as_int() : result3.as_float();
@@ -414,7 +414,7 @@ TEST_CASE("Function application with VM callable helper", "[interpreter][api][ap
     Value add_func              = Environment::builtindefs()["+"];
     std::vector<Value> add_args = { Value(10), Value(20) };
 
-    Value result1 = execute_callable_with_vm(add_func, add_args, env);
+    Value result1 = call_with_vm(add_func, add_args, env);
     REQUIRE_FALSE(result1.is_error());
     REQUIRE(result1.is_number());
     double actual = result1.is_int() ? result1.as_int() : result1.as_float();
@@ -423,7 +423,7 @@ TEST_CASE("Function application with VM callable helper", "[interpreter][api][ap
     Value mult_func              = Environment::builtindefs()["*"];
     std::vector<Value> mult_args = { Value(6), Value(7) };
 
-    Value result2 = execute_callable_with_vm(mult_func, mult_args, env);
+    Value result2 = call_with_vm(mult_func, mult_args, env);
     REQUIRE_FALSE(result2.is_error());
     REQUIRE(result2.is_number());
     actual = result2.is_int() ? result2.as_int() : result2.as_float();
@@ -432,7 +432,7 @@ TEST_CASE("Function application with VM callable helper", "[interpreter][api][ap
     Value eq_func              = Environment::builtindefs()["="];
     std::vector<Value> eq_args = { Value(5), Value(5) };
 
-    Value result3 = execute_callable_with_vm(eq_func, eq_args, env);
+    Value result3 = call_with_vm(eq_func, eq_args, env);
     REQUIRE_FALSE(result3.is_error());
     REQUIRE((result3.is_number() || result3.is_symbol()));
 }

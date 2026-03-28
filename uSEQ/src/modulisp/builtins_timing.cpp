@@ -102,7 +102,7 @@ Value ModuLispInterpreter::useq_fast(std::vector<Value>& args, Environment& env)
     Environment new_env;
     new_env.set_temporal_context(&ctx);
     new_env.set_parent_scope(&env);
-    return execute_expr_with_vm(args[1], new_env);
+    return eval_with_vm(args[1], new_env);
 }
 
 Value ModuLispInterpreter::useq_slow(std::vector<Value>& args, Environment& env)
@@ -136,7 +136,7 @@ Value ModuLispInterpreter::useq_slow(std::vector<Value>& args, Environment& env)
     Environment new_env;
     new_env.set_temporal_context(&ctx);
     new_env.set_parent_scope(&env);
-    return execute_expr_with_vm(args[1], new_env);
+    return eval_with_vm(args[1], new_env);
 }
 
 Value ModuLispInterpreter::useq_offset_time(std::vector<Value>& args,

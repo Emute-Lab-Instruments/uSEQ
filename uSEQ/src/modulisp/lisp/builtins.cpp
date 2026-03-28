@@ -2731,7 +2731,7 @@ Value map_list(std::vector<Value>& args, Environment& env)
     for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
     {
         tmp.push_back(l[i]);
-        result.push_back(execute_callable_with_vm(callable, tmp, env));
+        result.push_back(call_with_vm(callable, tmp, env));
         tmp.clear();
     }
     return Value(result);
@@ -2769,7 +2769,7 @@ Value filter_list(std::vector<Value>& args, Environment& env)
     for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
     {
         tmp.push_back(l[i]);
-        if (execute_callable_with_vm(callable, tmp, env).as_bool())
+        if (call_with_vm(callable, tmp, env).as_bool())
             result.push_back(l[i]);
         tmp.clear();
     }
@@ -2816,7 +2816,7 @@ Value reduce_list(std::vector<Value>& args, Environment& env)
     {
         tmp.push_back(acc);
         tmp.push_back(l[i]);
-        acc = execute_callable_with_vm(callable, tmp, env);
+        acc = call_with_vm(callable, tmp, env);
         tmp.clear();
     }
     return acc;

@@ -661,8 +661,6 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
         return defaultValue;
     }
 
-    const double time_micros = time_seconds * 1e6;
-
     char prefixChar = 'a';
     switch (type)
     {
@@ -681,7 +679,6 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
     exprName += String(static_cast<int>(index) + 1);
 
     bool program_refreshed = false;
-    bool permit_tree_fallback = true;
     if (!slot->numericProgramAttempted ||
         slot->activeProgram.exprSource != slot->expr.to_lisp_src() ||
         output_program_is_dirty(*slot, *get_environment()))
@@ -697,10 +694,6 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
         {
             report_generic_error("Output " + exprName + " compile failed: " +
                                  slot->lastDiagnostic);
-            if (slot->lastDiagnostic.startsWith("Signal VM rejects"))
-            {
-                permit_tree_fallback = false;
-            }
         }
     }
 
@@ -762,8 +755,6 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
             report_generic_error("Output " + exprName + " runtime failed: " +
                                  vm_result.error);
         }
-        permit_tree_fallback = false;
-
         if (program_to_run == &slot->activeProgram && slot->lkgProgram.program)
         {
             slot->fallbackToLkg = true;
@@ -791,45 +782,11 @@ double ModuLispInterpreter::eval_output_internal(OutputType type,
         }
     }
 
-    // Output sampling is VM-only. If no compiled program is available,
-    // fall back to the last-known-good/default output value rather than
-    // re-entering expression evaluation through a separate interpreter.
-    permit_tree_fallback = false;
-
-    if (!permit_tree_fallback)
-    {
-        slot->lastValue = defaultValue;
-        slot->lastTimeSeconds = time_seconds;
-        return std::isfinite(slot->lastValue) ? slot->lastValue : defaultValue;
-    }
-
-    Value expr_to_eval = slot->expr;
-
-    set_atom_currently_being_evaluated(exprName);
-    set_attempt_expr_eval_first(true);
-    Value result = eval_at_time(expr_to_eval, *get_environment(), time_micros);
-    set_attempt_expr_eval_first(false);
-    set_atom_currently_being_evaluated(String(""));
-
-    if (!result.is_number())
-    {
-        slot->lastValue       = defaultValue;
-        slot->lastTimeSeconds = time_seconds;
-        if (ok)
-        {
-            *ok = false;
-        }
-        return defaultValue;
-    }
-
-    const double numeric = result.as_float();
-    slot->lastValue       = numeric;
+    // Output sampling is VM-only. If no compiled program is available, keep the
+    // output stable by returning the default value.
+    slot->lastValue       = defaultValue;
     slot->lastTimeSeconds = time_seconds;
-    if (ok)
-    {
-        *ok = true;
-    }
-    return numeric;
+    return std::isfinite(slot->lastValue) ? slot->lastValue : defaultValue;
 }
 
 double ModuLispInterpreter::eval_output_at_time(const char* name,
