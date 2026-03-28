@@ -10,6 +10,7 @@
 #include "../../utils/logger_bridge.h"
 #include "environment.h"
 #include "symbol_intern.h"
+#include "../bytecode_vm.h"
 #include <cmath>
 #include <limits>
 
@@ -17,8 +18,6 @@
 
 // TODO do we care to support this some_value.apply() and .eval()
 // syntax and, if so, is there a better way?
-class Interpreter;
-#include "../modulisp_interpreter.h"
 
 ////DESTRUCTOR
 Value::~Value() {}
@@ -188,12 +187,12 @@ bool Value::is_builtin() const
 
 Value Value::apply(std::vector<Value>& args, Environment& env)
 {
-    return ModuLispInterpreter::apply(*this, args, env);
+    return execute_callable_with_vm(*this, args, env, false);
 }
 
 Value Value::eval(Environment& env)
 {
-    return ModuLispInterpreter::eval_in(*this, env);
+    return execute_expr_with_vm(*this, env, false);
 }
 
 bool Value::is_number() const { return type == INT || type == FLOAT; }
