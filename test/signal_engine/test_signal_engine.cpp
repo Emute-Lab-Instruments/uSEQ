@@ -1,15 +1,228 @@
-// Signal Engine smoke tests
-// Tests the core data structures, graph builder, and executor.
+// Signal Engine comprehensive test suite
+// Tests tokenizer, data structures, graph builder, executor, cold eval, and edge cases.
 
 #define CATCH_CONFIG_MAIN
 #include "../catch.hpp"
 
 #include "src/signal_engine/signal_engine.h"
 #include <cmath>
+#include <cstring>
 
 using namespace sig;
 
-// ── Data Structure Tests ────────────────────────────────────────────────────
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+// Helper: build graph from source, execute at time t, return output value
+static double eval_at(const char* src, double t, double bpm = 120.0) {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    // Init timing cells
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, bpm };
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    SymbolID bpp_sym = si.intern("bars-per-phrase");
+    cells.cells[bpp_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    SymbolID pps_sym = si.intern("phrases-per-section");
+    cells.cells[pps_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+
+    // Wrap as output assignment and eval
+    char wrapped[4096];
+    snprintf(wrapped, sizeof(wrapped), "(a1 %s)", src);
+    EvalResult r = eval_cold(wrapped, (uint32_t)strlen(wrapped), cells, arena, pool);
+    if (r.kind == EvalResult::Error) return -99999.0; // sentinel for "error"
+
+    pool.rebuild_execution_order();
+    double cell_vals[MAX_CELLS];
+    cells.snapshot_values(cell_vals, MAX_CELLS);
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    execute_all_outputs(pool, t, cell_vals, hw_inputs,
+                        cells.data_pool, cells.data_offsets, cells.data_lengths,
+                        pool.prev_output_values, outputs, workspace);
+    return outputs[0];
+}
+
+// Helper: eval cold-path code and check it produces an error
+static bool eval_has_error(const char* src) {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    char wrapped[4096];
+    snprintf(wrapped, sizeof(wrapped), "(a1 %s)", src);
+    EvalResult r = eval_cold(wrapped, (uint32_t)strlen(wrapped), cells, arena, pool);
+    return r.kind == EvalResult::Error;
+}
+
+// ── 1. Tokenizer Tests ─────────────────────────────────────────────────────
+
+TEST_CASE("Tokenizer: basic tokens", "[signal_engine][tokenizer]") {
+    Token tokens[MAX_TOKENS];
+    Diagnostic errors[8];
+    uint8_t error_count = 0;
+
+    SECTION("Number") {
+        const char* src = "42";
+        uint16_t count = TokenStream::tokenize(src, 2, tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(count >= 1);
+        REQUIRE(tokens[0].kind == TokenKind::Number);
+        REQUIRE(tokens[0].number == 42.0);
+    }
+
+    SECTION("Simple expression") {
+        const char* src = "(+ 1 2)";
+        TokenStream::tokenize(src, 7, tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(tokens[0].kind == TokenKind::LParen);
+        REQUIRE(tokens[1].kind == TokenKind::Symbol);
+        REQUIRE(tokens[2].kind == TokenKind::Number);
+        REQUIRE(tokens[2].number == 1.0);
+        REQUIRE(tokens[3].kind == TokenKind::Number);
+        REQUIRE(tokens[3].number == 2.0);
+        REQUIRE(tokens[4].kind == TokenKind::RParen);
+    }
+
+    SECTION("Vector literal") {
+        const char* src = "[1 2 3]";
+        TokenStream::tokenize(src, 7, tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(tokens[0].kind == TokenKind::LBracket);
+        REQUIRE(tokens[1].kind == TokenKind::Number);
+        REQUIRE(tokens[3].kind == TokenKind::Number);
+        REQUIRE(tokens[4].kind == TokenKind::RBracket);
+    }
+
+    SECTION("Negative number") {
+        const char* src = "-3.14";
+        TokenStream::tokenize(src, 5, tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(tokens[0].kind == TokenKind::Number);
+        REQUIRE(tokens[0].number == Approx(-3.14));
+    }
+
+    SECTION("Comment skipping") {
+        const char* src = "42 ; comment\n43";
+        TokenStream::tokenize(src, 15, tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(tokens[0].kind == TokenKind::Number);
+        REQUIRE(tokens[0].number == 42.0);
+        REQUIRE(tokens[1].kind == TokenKind::Number);
+        REQUIRE(tokens[1].number == 43.0);
+    }
+}
+
+TEST_CASE("Tokenizer: edge cases", "[signal_engine][tokenizer]") {
+    Token tokens[MAX_TOKENS];
+    Diagnostic errors[8];
+    uint8_t error_count = 0;
+
+    SECTION("Empty input") {
+        const char* src = "";
+        uint16_t count = TokenStream::tokenize(src, 0, tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        // Only EOF token
+        REQUIRE(count == 1);
+        REQUIRE(tokens[0].kind == TokenKind::Eof);
+    }
+
+    SECTION("Whitespace-only input") {
+        const char* src = "   \t  \n  ";
+        uint16_t count = TokenStream::tokenize(src, (uint32_t)strlen(src), tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(count == 1);
+        REQUIRE(tokens[0].kind == TokenKind::Eof);
+    }
+
+    SECTION("Multiple forms on one line") {
+        const char* src = "(+ 1 2) (* 3 4)";
+        uint16_t n = TokenStream::tokenize(src, (uint32_t)strlen(src), tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        // (+ 1 2) = 5 tokens, (* 3 4) = 5 tokens, + EOF = 11
+        REQUIRE(n == 11);
+    }
+
+    SECTION("Deeply nested parens") {
+        const char* src = "((((42))))";
+        TokenStream::tokenize(src, (uint32_t)strlen(src), tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(tokens[0].kind == TokenKind::LParen);
+        REQUIRE(tokens[1].kind == TokenKind::LParen);
+        REQUIRE(tokens[2].kind == TokenKind::LParen);
+        REQUIRE(tokens[3].kind == TokenKind::LParen);
+        REQUIRE(tokens[4].kind == TokenKind::Number);
+        REQUIRE(tokens[4].number == 42.0);
+        REQUIRE(tokens[5].kind == TokenKind::RParen);
+    }
+
+    SECTION("Unterminated string produces error") {
+        const char* src = "\"hello";
+        TokenStream::tokenize(src, (uint32_t)strlen(src), tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count > 0);
+    }
+
+    SECTION("String with escape") {
+        const char* src = "\"hello\\\"world\"";
+        TokenStream::tokenize(src, (uint32_t)strlen(src), tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(tokens[0].kind == TokenKind::String);
+    }
+
+    SECTION("Symbol with hyphens") {
+        const char* src = "beat-num";
+        TokenStream::tokenize(src, (uint32_t)strlen(src), tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(tokens[0].kind == TokenKind::Symbol);
+    }
+
+    SECTION("Symbols with special chars: b>u, >=") {
+        const char* src = "b>u >=";
+        TokenStream::tokenize(src, (uint32_t)strlen(src), tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(tokens[0].kind == TokenKind::Symbol);
+        REQUIRE(tokens[1].kind == TokenKind::Symbol);
+    }
+
+    SECTION("Number edge cases: 0, 0.0, .5") {
+        const char* src = "0 0.0 .5";
+        TokenStream::tokenize(src, (uint32_t)strlen(src), tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(tokens[0].kind == TokenKind::Number);
+        REQUIRE(tokens[0].number == 0.0);
+        REQUIRE(tokens[1].kind == TokenKind::Number);
+        REQUIRE(tokens[1].number == 0.0);
+        REQUIRE(tokens[2].kind == TokenKind::Number);
+        REQUIRE(tokens[2].number == Approx(0.5));
+    }
+
+    SECTION("Long symbol name") {
+        // 200-char symbol
+        char buf[256];
+        memset(buf, 'a', 200);
+        buf[200] = '\0';
+        TokenStream::tokenize(buf, 200, tokens, MAX_TOKENS, errors, &error_count);
+        REQUIRE(error_count == 0);
+        REQUIRE(tokens[0].kind == TokenKind::Symbol);
+    }
+}
+
+// ── 2. CellStore Tests ─────────────────────────────────────────────────────
 
 TEST_CASE("CellStore basic operations", "[signal_engine][cell_store]") {
     CellStore store;
@@ -49,6 +262,66 @@ TEST_CASE("CellStore basic operations", "[signal_engine][cell_store]") {
     }
 }
 
+TEST_CASE("CellStore: multiple data tables", "[signal_engine][cell_store]") {
+    CellStore store;
+
+    double a[] = {10.0, 20.0};
+    double b[] = {30.0, 40.0, 50.0};
+    uint16_t id_a = store.store_data_table(a, 2);
+    uint16_t id_b = store.store_data_table(b, 3);
+    REQUIRE(id_a != id_b);
+
+    uint16_t len_a, len_b;
+    const double* da = store.get_data_table(id_a, len_a);
+    const double* db = store.get_data_table(id_b, len_b);
+    REQUIRE(len_a == 2);
+    REQUIRE(len_b == 3);
+    REQUIRE(da[0] == 10.0);
+    REQUIRE(da[1] == 20.0);
+    REQUIRE(db[0] == 30.0);
+    REQUIRE(db[2] == 50.0);
+}
+
+TEST_CASE("CellStore: data table overflow", "[signal_engine][cell_store]") {
+    CellStore store;
+
+    // Fill up all data tables
+    double one_val[] = {1.0};
+    for (size_t i = 0; i < MAX_DATA_TABLES; i++) {
+        uint16_t id = store.store_data_table(one_val, 1);
+        REQUIRE(id != UINT8_MAX);
+    }
+    // Next should overflow
+    uint16_t overflow_id = store.store_data_table(one_val, 1);
+    REQUIRE(overflow_id == UINT8_MAX);
+}
+
+TEST_CASE("CellStore: cell revision counter increments", "[signal_engine][cell_store]") {
+    CellStore store;
+    REQUIRE(store.cells[5].revision == 0);
+    store.cells[5].revision++;
+    REQUIRE(store.cells[5].revision == 1);
+    store.cells[5].revision++;
+    REQUIRE(store.cells[5].revision == 2);
+}
+
+TEST_CASE("CellStore: snapshot handles sparse cells", "[signal_engine][cell_store]") {
+    CellStore store;
+    // Set only a few non-contiguous cells
+    store.cells[0].value = 100.0;
+    store.cells[100].value = 200.0;
+    store.cells[MAX_CELLS - 1].value = 300.0;
+
+    double snap[MAX_CELLS];
+    store.snapshot_values(snap, MAX_CELLS);
+    REQUIRE(snap[0] == 100.0);
+    REQUIRE(snap[50] == 0.0); // uninitialised cells default to 0
+    REQUIRE(snap[100] == 200.0);
+    REQUIRE(snap[MAX_CELLS - 1] == 300.0);
+}
+
+// ── SourceArena Tests ──────────────────────────────────────────────────────
+
 TEST_CASE("SourceArena", "[signal_engine][source_arena]") {
     SourceArena arena;
 
@@ -65,67 +338,29 @@ TEST_CASE("SourceArena", "[signal_engine][source_arena]") {
         REQUIRE(offset == 3);
         REQUIRE(strncmp(arena.read(offset), "def", 3) == 0);
     }
-}
 
-// ── Tokenizer Tests ─────────────────────────────────────────────────────────
-
-TEST_CASE("Tokenizer", "[signal_engine][tokenizer]") {
-    Token tokens[MAX_TOKENS];
-    Diagnostic errors[8];
-    uint8_t error_count = 0;
-
-    SECTION("Number") {
-        const char* src = "42";
-        uint16_t count = TokenStream::tokenize(src, 2, tokens, MAX_TOKENS, errors, &error_count);
-        REQUIRE(error_count == 0);
-        REQUIRE(count >= 1);
-        REQUIRE(tokens[0].kind == TokenKind::Number);
-        REQUIRE(tokens[0].number == 42.0);
+    SECTION("Reset clears write head") {
+        arena.store("hello", 5);
+        REQUIRE(arena.write_head == 5);
+        arena.reset();
+        REQUIRE(arena.write_head == 0);
+        uint32_t offset = arena.store("world", 5);
+        REQUIRE(offset == 0);
     }
 
-    SECTION("Simple expression") {
-        const char* src = "(+ 1 2)";
-        uint16_t count = TokenStream::tokenize(src, 7, tokens, MAX_TOKENS, errors, &error_count);
-        REQUIRE(error_count == 0);
-        REQUIRE(tokens[0].kind == TokenKind::LParen);
-        REQUIRE(tokens[1].kind == TokenKind::Symbol);
-        REQUIRE(tokens[2].kind == TokenKind::Number);
-        REQUIRE(tokens[2].number == 1.0);
-        REQUIRE(tokens[3].kind == TokenKind::Number);
-        REQUIRE(tokens[3].number == 2.0);
-        REQUIRE(tokens[4].kind == TokenKind::RParen);
-    }
-
-    SECTION("Vector literal") {
-        const char* src = "[1 2 3]";
-        uint16_t count = TokenStream::tokenize(src, 7, tokens, MAX_TOKENS, errors, &error_count);
-        REQUIRE(error_count == 0);
-        REQUIRE(tokens[0].kind == TokenKind::LBracket);
-        REQUIRE(tokens[1].kind == TokenKind::Number);
-        REQUIRE(tokens[3].kind == TokenKind::Number);
-        REQUIRE(tokens[4].kind == TokenKind::RBracket);
-    }
-
-    SECTION("Negative number") {
-        const char* src = "-3.14";
-        uint16_t count = TokenStream::tokenize(src, 5, tokens, MAX_TOKENS, errors, &error_count);
-        REQUIRE(error_count == 0);
-        REQUIRE(tokens[0].kind == TokenKind::Number);
-        REQUIRE(tokens[0].number == Approx(-3.14));
-    }
-
-    SECTION("Comment skipping") {
-        const char* src = "42 ; comment\n43";
-        uint16_t count = TokenStream::tokenize(src, 15, tokens, MAX_TOKENS, errors, &error_count);
-        REQUIRE(error_count == 0);
-        REQUIRE(tokens[0].kind == TokenKind::Number);
-        REQUIRE(tokens[0].number == 42.0);
-        REQUIRE(tokens[1].kind == TokenKind::Number);
-        REQUIRE(tokens[1].number == 43.0);
+    SECTION("Overflow returns UINT32_MAX") {
+        // Fill arena close to capacity
+        char big[SOURCE_ARENA_SIZE + 1];
+        memset(big, 'x', sizeof(big));
+        // Store exactly SOURCE_ARENA_SIZE bytes (should succeed)
+        arena.store(big, SOURCE_ARENA_SIZE);
+        // Now any additional store should fail
+        uint32_t overflow = arena.store("a", 1);
+        REQUIRE(overflow == UINT32_MAX);
     }
 }
 
-// ── Node Pool Tests ─────────────────────────────────────────────────────────
+// ── 3. NodePool Tests ──────────────────────────────────────────────────────
 
 TEST_CASE("NodePool constant folding", "[signal_engine][node_pool]") {
     NodePool pool;
@@ -140,7 +375,7 @@ TEST_CASE("NodePool constant folding", "[signal_engine][node_pool]") {
     SECTION("CSE deduplication") {
         uint16_t a = pool.make_const(42.0);
         uint16_t b = pool.make_const(42.0);
-        REQUIRE(a == b); // same node reused
+        REQUIRE(a == b);
     }
 
     SECTION("Different constants are different") {
@@ -171,10 +406,24 @@ TEST_CASE("NodePool constant folding", "[signal_engine][node_pool]") {
         REQUIRE(result == x);
     }
 
+    SECTION("Algebraic simplification: 0 + x = x") {
+        uint16_t x = pool.make_raw_time_load();
+        uint16_t zero = pool.make_const(0.0);
+        uint16_t result = pool.make_binop(NodeOp::Add, zero, x);
+        REQUIRE(result == x);
+    }
+
     SECTION("Algebraic simplification: x * 1 = x") {
         uint16_t x = pool.make_raw_time_load();
         uint16_t one = pool.make_const(1.0);
         uint16_t result = pool.make_binop(NodeOp::Mul, x, one);
+        REQUIRE(result == x);
+    }
+
+    SECTION("Algebraic simplification: 1 * x = x") {
+        uint16_t x = pool.make_raw_time_load();
+        uint16_t one = pool.make_const(1.0);
+        uint16_t result = pool.make_binop(NodeOp::Mul, one, x);
         REQUIRE(result == x);
     }
 
@@ -193,7 +442,21 @@ TEST_CASE("NodePool constant folding", "[signal_engine][node_pool]") {
         REQUIRE(pool.nodes[result].imm == 0.0);
     }
 
-    SECTION("Transitive constant folding: sin(pi) ≈ 0") {
+    SECTION("Algebraic simplification: x / x = 1") {
+        uint16_t x = pool.make_raw_time_load();
+        uint16_t result = pool.make_binop(NodeOp::Div, x, x);
+        REQUIRE(pool.nodes[result].op == NodeOp::Const);
+        REQUIRE(pool.nodes[result].imm == 1.0);
+    }
+
+    SECTION("Algebraic simplification: x / 1 = x") {
+        uint16_t x = pool.make_raw_time_load();
+        uint16_t one = pool.make_const(1.0);
+        uint16_t result = pool.make_binop(NodeOp::Div, x, one);
+        REQUIRE(result == x);
+    }
+
+    SECTION("Transitive constant folding: sin(pi) = 0") {
         uint16_t pi = pool.make_const(M_PI);
         uint16_t result = pool.make_unary(NodeOp::Sin, pi);
         REQUIRE(pool.nodes[result].op == NodeOp::Const);
@@ -201,27 +464,834 @@ TEST_CASE("NodePool constant folding", "[signal_engine][node_pool]") {
     }
 
     SECTION("Time-invariance propagation") {
-        uint16_t a = pool.make_const(2.0); // time-invariant
-        uint16_t b = pool.make_const(3.0); // time-invariant
-        // Folded to constant, which is time-invariant
+        uint16_t a = pool.make_const(2.0);
+        uint16_t b = pool.make_const(3.0);
         uint16_t sum = pool.make_binop(NodeOp::Add, a, b);
         REQUIRE(pool.nodes[sum].flags & FLAG_TIME_INVARIANT);
 
-        uint16_t t = pool.make_raw_time_load(); // NOT time-invariant
+        uint16_t t = pool.make_raw_time_load();
         uint16_t mul = pool.make_binop(NodeOp::Mul, sum, t);
         REQUIRE(!(pool.nodes[mul].flags & FLAG_TIME_INVARIANT));
     }
 
-    SECTION("Select with constant condition folds") {
-        uint16_t cond = pool.make_const(1.0); // truthy
+    SECTION("Select with constant true condition folds to then") {
+        uint16_t cond = pool.make_const(1.0);
         uint16_t then_val = pool.make_const(42.0);
         uint16_t else_val = pool.make_const(99.0);
         uint16_t result = pool.make_select(cond, then_val, else_val);
         REQUIRE(result == then_val);
     }
+
+    SECTION("Select with constant false condition folds to else") {
+        uint16_t cond = pool.make_const(0.0);
+        uint16_t then_val = pool.make_const(42.0);
+        uint16_t else_val = pool.make_const(99.0);
+        uint16_t result = pool.make_select(cond, then_val, else_val);
+        REQUIRE(result == else_val);
+    }
 }
 
-// ── Executor Tests ──────────────────────────────────────────────────────────
+TEST_CASE("NodePool: CSE for non-Const nodes", "[signal_engine][node_pool]") {
+    NodePool pool;
+
+    uint16_t t = pool.make_raw_time_load();
+    uint16_t two = pool.make_const(2.0);
+    uint16_t add1 = pool.make_binop(NodeOp::Add, t, two);
+    uint16_t add2 = pool.make_binop(NodeOp::Add, t, two);
+    REQUIRE(add1 == add2); // same node reused
+
+    // Different inputs produce different nodes
+    uint16_t three = pool.make_const(3.0);
+    uint16_t add3 = pool.make_binop(NodeOp::Add, t, three);
+    REQUIRE(add3 != add1);
+}
+
+TEST_CASE("NodePool: NODE_NONE propagation", "[signal_engine][node_pool]") {
+    NodePool pool;
+    uint16_t x = pool.make_const(5.0);
+
+    SECTION("make_binop with NODE_NONE input returns NODE_NONE") {
+        uint16_t result = pool.make_binop(NodeOp::Add, x, NODE_NONE);
+        REQUIRE(result == NODE_NONE);
+    }
+
+    SECTION("make_unary with NODE_NONE returns NODE_NONE") {
+        uint16_t result = pool.make_unary(NodeOp::Sin, NODE_NONE);
+        REQUIRE(result == NODE_NONE);
+    }
+
+    SECTION("make_ternary with NODE_NONE returns NODE_NONE") {
+        uint16_t result = pool.make_ternary(NodeOp::Clamp, NODE_NONE, x, x);
+        REQUIRE(result == NODE_NONE);
+    }
+}
+
+TEST_CASE("NodePool: rebuild_execution_order", "[signal_engine][node_pool]") {
+    NodePool pool;
+
+    SECTION("Empty pool — no outputs") {
+        pool.rebuild_execution_order();
+        REQUIRE(pool.exec_count == 0);
+    }
+
+    SECTION("Multiple outputs sharing nodes") {
+        uint16_t c = pool.make_const(5.0);
+        uint16_t t = pool.make_raw_time_load();
+        uint16_t sum = pool.make_binop(NodeOp::Add, c, t);
+
+        pool.outputs[0].root_node = sum;
+        pool.outputs[0].valid = true;
+        pool.outputs[1].root_node = sum;
+        pool.outputs[1].valid = true;
+        pool.rebuild_execution_order();
+
+        // Shared nodes should not be duplicated in exec order
+        REQUIRE(pool.exec_count > 0);
+        // Check no duplicates
+        for (uint16_t i = 0; i < pool.exec_count; i++) {
+            for (uint16_t j = i + 1; j < pool.exec_count; j++) {
+                REQUIRE(pool.exec_order[i] != pool.exec_order[j]);
+            }
+        }
+    }
+}
+
+TEST_CASE("NodePool: reset clears everything", "[signal_engine][node_pool]") {
+    NodePool pool;
+    pool.make_const(1.0);
+    pool.make_const(2.0);
+    pool.outputs[0].root_node = 0;
+    pool.outputs[0].valid = true;
+    pool.rebuild_execution_order();
+    REQUIRE(pool.node_count > 0);
+    REQUIRE(pool.exec_count > 0);
+
+    pool.reset();
+    REQUIRE(pool.node_count == 0);
+    REQUIRE(pool.exec_count == 0);
+    REQUIRE(pool.outputs[0].root_node == NODE_NONE);
+    REQUIRE(pool.outputs[0].valid == false);
+}
+
+// ── 4. Constant Folding (thorough) ─────────────────────────────────────────
+
+TEST_CASE("Constant folding: transitive chains", "[signal_engine][node_pool]") {
+    NodePool pool;
+
+    SECTION("(+ (* 2 3) (/ 12 4)) folds to Const(9)") {
+        uint16_t mul = pool.make_binop(NodeOp::Mul, pool.make_const(2.0), pool.make_const(3.0));
+        uint16_t div = pool.make_binop(NodeOp::Div, pool.make_const(12.0), pool.make_const(4.0));
+        uint16_t sum = pool.make_binop(NodeOp::Add, mul, div);
+        REQUIRE(pool.nodes[sum].op == NodeOp::Const);
+        REQUIRE(pool.nodes[sum].imm == 9.0);
+    }
+
+    SECTION("Deep chain: sin(cos(0)) folds") {
+        uint16_t zero = pool.make_const(0.0);
+        uint16_t cos_zero = pool.make_unary(NodeOp::Cos, zero);
+        REQUIRE(pool.nodes[cos_zero].imm == Approx(1.0));
+        uint16_t sin_cos_zero = pool.make_unary(NodeOp::Sin, cos_zero);
+        REQUIRE(pool.nodes[sin_cos_zero].op == NodeOp::Const);
+        REQUIRE(pool.nodes[sin_cos_zero].imm == Approx(sin(1.0)));
+    }
+
+    SECTION("Folding stops at time-varying: (+ 1 t) is NOT folded") {
+        uint16_t one = pool.make_const(1.0);
+        uint16_t t = pool.make_raw_time_load();
+        uint16_t sum = pool.make_binop(NodeOp::Add, one, t);
+        REQUIRE(pool.nodes[sum].op == NodeOp::Add);
+    }
+
+    SECTION("Folding stops at cell loads") {
+        uint16_t one = pool.make_const(1.0);
+        uint16_t cell = pool.make_cell_load(0);
+        uint16_t sum = pool.make_binop(NodeOp::Add, one, cell);
+        // CellLoad is time-invariant but not a Const, so no folding
+        REQUIRE(pool.nodes[sum].op != NodeOp::Const);
+    }
+}
+
+TEST_CASE("Constant folding: all unary ops", "[signal_engine][node_pool]") {
+    NodePool pool;
+
+    auto fold_unary = [&](NodeOp op, double input) -> double {
+        uint16_t c = pool.make_const(input);
+        uint16_t r = pool.make_unary(op, c);
+        REQUIRE(pool.nodes[r].op == NodeOp::Const);
+        return pool.nodes[r].imm;
+    };
+
+    REQUIRE(fold_unary(NodeOp::Neg, 5.0) == -5.0);
+    REQUIRE(fold_unary(NodeOp::Abs, -3.0) == 3.0);
+    REQUIRE(fold_unary(NodeOp::Floor, 2.7) == 2.0);
+    REQUIRE(fold_unary(NodeOp::Ceil, 2.3) == 3.0);
+    REQUIRE(fold_unary(NodeOp::Frac, 3.7) == Approx(0.7));
+    REQUIRE(fold_unary(NodeOp::Sqrt, 16.0) == 4.0);
+    REQUIRE(fold_unary(NodeOp::Sin, 0.0) == Approx(0.0));
+    REQUIRE(fold_unary(NodeOp::Cos, 0.0) == Approx(1.0));
+    REQUIRE(fold_unary(NodeOp::Tan, 0.0) == Approx(0.0));
+    REQUIRE(fold_unary(NodeOp::Not, 0.0) == 1.0);
+    REQUIRE(fold_unary(NodeOp::Not, 1.0) == 0.0);
+    REQUIRE(fold_unary(NodeOp::BiToUni, -1.0) == 0.0);
+    REQUIRE(fold_unary(NodeOp::BiToUni, 1.0) == 1.0);
+    REQUIRE(fold_unary(NodeOp::UniToBi, 0.0) == -1.0);
+    REQUIRE(fold_unary(NodeOp::UniToBi, 1.0) == 1.0);
+    REQUIRE(fold_unary(NodeOp::Tri, 0.0) == Approx(0.0));
+    REQUIRE(fold_unary(NodeOp::Tri, 0.5) == Approx(1.0));
+    REQUIRE(fold_unary(NodeOp::Sqr, 0.25) == 1.0);
+    REQUIRE(fold_unary(NodeOp::Sqr, 0.75) == 0.0);
+    // USin at 0.25 = sin(0.25*2*PI) = sin(PI/2) => (1+1)/2 = 1.0
+    REQUIRE(fold_unary(NodeOp::USin, 0.25) == Approx(1.0));
+    // UCos at 0.0 = cos(0) => (1+1)/2 = 1.0
+    REQUIRE(fold_unary(NodeOp::UCos, 0.0) == Approx(1.0));
+}
+
+TEST_CASE("Constant folding: all binary ops", "[signal_engine][node_pool]") {
+    NodePool pool;
+
+    auto fold_bin = [&](NodeOp op, double a, double b) -> double {
+        uint16_t ca = pool.make_const(a);
+        uint16_t cb = pool.make_const(b);
+        uint16_t r = pool.make_binop(op, ca, cb);
+        REQUIRE(pool.nodes[r].op == NodeOp::Const);
+        return pool.nodes[r].imm;
+    };
+
+    REQUIRE(fold_bin(NodeOp::Add, 3.0, 4.0) == 7.0);
+    REQUIRE(fold_bin(NodeOp::Sub, 10.0, 3.0) == 7.0);
+    REQUIRE(fold_bin(NodeOp::Mul, 3.0, 4.0) == 12.0);
+    REQUIRE(fold_bin(NodeOp::Div, 10.0, 4.0) == 2.5);
+    REQUIRE(fold_bin(NodeOp::Div, 1.0, 0.0) == 0.0); // guarded
+    REQUIRE(fold_bin(NodeOp::Mod, 7.0, 3.0) == Approx(1.0));
+    REQUIRE(fold_bin(NodeOp::Pow, 2.0, 10.0) == Approx(100.0)); // pow(b,a) = 10^2
+    REQUIRE(fold_bin(NodeOp::Min, 3.0, 7.0) == 3.0);
+    REQUIRE(fold_bin(NodeOp::Max, 3.0, 7.0) == 7.0);
+    REQUIRE(fold_bin(NodeOp::Fmod, 7.0, 3.0) == Approx(1.0));
+    REQUIRE(fold_bin(NodeOp::CmpGt, 5.0, 3.0) == 1.0);
+    REQUIRE(fold_bin(NodeOp::CmpGt, 3.0, 5.0) == 0.0);
+    REQUIRE(fold_bin(NodeOp::CmpLt, 3.0, 5.0) == 1.0);
+    REQUIRE(fold_bin(NodeOp::CmpGe, 5.0, 5.0) == 1.0);
+    REQUIRE(fold_bin(NodeOp::CmpLe, 5.0, 5.0) == 1.0);
+    REQUIRE(fold_bin(NodeOp::CmpEq, 5.0, 5.0) == 1.0);
+    REQUIRE(fold_bin(NodeOp::CmpEq, 5.0, 6.0) == 0.0);
+    REQUIRE(fold_bin(NodeOp::And, 1.0, 1.0) == 1.0);
+    REQUIRE(fold_bin(NodeOp::And, 1.0, 0.0) == 0.0);
+    REQUIRE(fold_bin(NodeOp::Or, 0.0, 1.0) == 1.0);
+    REQUIRE(fold_bin(NodeOp::Or, 0.0, 0.0) == 0.0);
+    REQUIRE(fold_bin(NodeOp::Pulse, 0.3, 0.5) == 1.0);
+    REQUIRE(fold_bin(NodeOp::Pulse, 0.7, 0.5) == 0.0);
+}
+
+TEST_CASE("Constant folding: all ternary ops", "[signal_engine][node_pool]") {
+    NodePool pool;
+
+    auto fold_ter = [&](NodeOp op, double a, double b, double c) -> double {
+        uint16_t ca = pool.make_const(a);
+        uint16_t cb = pool.make_const(b);
+        uint16_t cc = pool.make_const(c);
+        uint16_t r = pool.make_ternary(op, ca, cb, cc);
+        REQUIRE(pool.nodes[r].op == NodeOp::Const);
+        return pool.nodes[r].imm;
+    };
+
+    REQUIRE(fold_ter(NodeOp::Clamp, 5.0, 0.0, 3.0) == 3.0);
+    REQUIRE(fold_ter(NodeOp::Clamp, -1.0, 0.0, 3.0) == 0.0);
+    REQUIRE(fold_ter(NodeOp::Clamp, 1.5, 0.0, 3.0) == 1.5);
+    REQUIRE(fold_ter(NodeOp::Lerp, 0.0, 10.0, 0.5) == 5.0);
+    REQUIRE(fold_ter(NodeOp::Scale, 0.5, 100.0, 200.0) == 150.0);
+    REQUIRE(fold_ter(NodeOp::Select, 1.0, 42.0, 99.0) == 42.0);
+    REQUIRE(fold_ter(NodeOp::Select, 0.0, 42.0, 99.0) == 99.0);
+}
+
+// ── 5. Graph Builder — Arithmetic ──────────────────────────────────────────
+
+TEST_CASE("Graph builder: arithmetic via eval_at", "[signal_engine][graph_builder]") {
+    SECTION("Variadic +: (+ 1 2 3 4 5) = 15") {
+        REQUIRE(eval_at("(+ 1 2 3 4 5)", 0.0) == Approx(15.0));
+    }
+
+    SECTION("Variadic *: (* 1 2 3 4) = 24") {
+        REQUIRE(eval_at("(* 1 2 3 4)", 0.0) == Approx(24.0));
+    }
+
+    SECTION("Variadic -: (- 100 10 20 30) = 40") {
+        REQUIRE(eval_at("(- 100 10 20 30)", 0.0) == Approx(40.0));
+    }
+
+    SECTION("Unary -: (- 5) = -5") {
+        REQUIRE(eval_at("(- 5)", 0.0) == Approx(-5.0));
+    }
+
+    SECTION("Division by zero: (/ 1 0) = 0") {
+        REQUIRE(eval_at("(/ 1 0)", 0.0) == 0.0);
+    }
+
+    SECTION("Modulo: (% 7 3) = 1") {
+        REQUIRE(eval_at("(% 7 3)", 0.0) == Approx(1.0));
+    }
+
+    SECTION("Nested: (* (+ 1 2) (/ 10 (- 7 2))) = 6") {
+        REQUIRE(eval_at("(* (+ 1 2) (/ 10 (- 7 2)))", 0.0) == Approx(6.0));
+    }
+}
+
+// ── 6. Graph Builder — Comparisons & Logic ─────────────────────────────────
+
+TEST_CASE("Graph builder: comparisons", "[signal_engine][graph_builder]") {
+    REQUIRE(eval_at("(> 5 3)", 0.0) == 1.0);
+    REQUIRE(eval_at("(> 3 5)", 0.0) == 0.0);
+    REQUIRE(eval_at("(< 3 5)", 0.0) == 1.0);
+    REQUIRE(eval_at("(< 5 3)", 0.0) == 0.0);
+    REQUIRE(eval_at("(>= 5 5)", 0.0) == 1.0);
+    REQUIRE(eval_at("(>= 4 5)", 0.0) == 0.0);
+    REQUIRE(eval_at("(<= 5 5)", 0.0) == 1.0);
+    REQUIRE(eval_at("(<= 6 5)", 0.0) == 0.0);
+    REQUIRE(eval_at("(= 5 5)", 0.0) == 1.0);
+    REQUIRE(eval_at("(= 5 6)", 0.0) == 0.0);
+}
+
+TEST_CASE("Graph builder: logic", "[signal_engine][graph_builder]") {
+    REQUIRE(eval_at("(not 0)", 0.0) == 1.0);
+    REQUIRE(eval_at("(not 1)", 0.0) == 0.0);
+    REQUIRE(eval_at("(not 42)", 0.0) == 0.0);
+    REQUIRE(eval_at("(and 1 1)", 0.0) == 1.0);
+    REQUIRE(eval_at("(and 1 0)", 0.0) == 0.0);
+    REQUIRE(eval_at("(and 0 0)", 0.0) == 0.0);
+    REQUIRE(eval_at("(or 0 1)", 0.0) == 1.0);
+    REQUIRE(eval_at("(or 0 0)", 0.0) == 0.0);
+    REQUIRE(eval_at("(or 1 1)", 0.0) == 1.0);
+}
+
+// ── 7. Graph Builder — Math Functions ──────────────────────────────────────
+
+TEST_CASE("Graph builder: math functions", "[signal_engine][graph_builder]") {
+    SECTION("Trig") {
+        REQUIRE(eval_at("(sin 0)", 0.0) == Approx(0.0));
+        REQUIRE(eval_at("(cos 0)", 0.0) == Approx(1.0));
+        REQUIRE(eval_at("(tan 0)", 0.0) == Approx(0.0));
+    }
+
+    SECTION("Floor/Ceil/Frac") {
+        REQUIRE(eval_at("(floor -2.3)", 0.0) == Approx(-3.0));
+        REQUIRE(eval_at("(ceil -2.7)", 0.0) == Approx(-2.0));
+        REQUIRE(eval_at("(frac 3.7)", 0.0) == Approx(0.7));
+    }
+
+    SECTION("Abs") {
+        REQUIRE(eval_at("(abs -5)", 0.0) == 5.0);
+        REQUIRE(eval_at("(abs 5)", 0.0) == 5.0);
+        REQUIRE(eval_at("(abs 0)", 0.0) == 0.0);
+    }
+
+    SECTION("Sqrt (computes sqrt(abs(x)))") {
+        REQUIRE(eval_at("(sqrt 0)", 0.0) == 0.0);
+        REQUIRE(eval_at("(sqrt 1)", 0.0) == 1.0);
+        REQUIRE(eval_at("(sqrt 16)", 0.0) == 4.0);
+        REQUIRE(eval_at("(sqrt -1)", 0.0) == 1.0); // sqrt(abs(-1))
+    }
+
+    SECTION("Min/Max") {
+        REQUIRE(eval_at("(min 3 7)", 0.0) == 3.0);
+        REQUIRE(eval_at("(max 3 7)", 0.0) == 7.0);
+    }
+
+    SECTION("Pow: (pow exponent base) = base^exponent") {
+        REQUIRE(eval_at("(pow 2 10)", 0.0) == Approx(100.0));
+        REQUIRE(eval_at("(pow 0.5 9)", 0.0) == Approx(3.0));
+    }
+
+    SECTION("Clamp") {
+        REQUIRE(eval_at("(clamp 5 0 3)", 0.0) == 3.0);
+        REQUIRE(eval_at("(clamp -1 0 3)", 0.0) == 0.0);
+        REQUIRE(eval_at("(clamp 1.5 0 3)", 0.0) == 1.5);
+    }
+
+    SECTION("Lerp: (lerp a b t) = a + (b-a)*t") {
+        REQUIRE(eval_at("(lerp 0 10 0.5)", 0.0) == Approx(5.0));
+    }
+
+    SECTION("Scale: (scale val min max) = val*(max-min)+min") {
+        REQUIRE(eval_at("(scale 0.5 100 200)", 0.0) == Approx(150.0));
+    }
+}
+
+// ── 8. Graph Builder — Waveforms ───────────────────────────────────────────
+
+TEST_CASE("Graph builder: waveforms", "[signal_engine][graph_builder]") {
+    SECTION("usin") {
+        REQUIRE(eval_at("(usin 0)", 0.0) == Approx(0.5).margin(1e-9));
+        REQUIRE(eval_at("(usin 0.25)", 0.0) == Approx(1.0).margin(1e-9));
+        REQUIRE(eval_at("(usin 0.5)", 0.0) == Approx(0.5).margin(1e-9));
+        REQUIRE(eval_at("(usin 0.75)", 0.0) == Approx(0.0).margin(1e-9));
+    }
+
+    SECTION("ucos") {
+        REQUIRE(eval_at("(ucos 0)", 0.0) == Approx(1.0).margin(1e-9));
+        REQUIRE(eval_at("(ucos 0.25)", 0.0) == Approx(0.5).margin(1e-9));
+        REQUIRE(eval_at("(ucos 0.5)", 0.0) == Approx(0.0).margin(1e-9));
+    }
+
+    SECTION("tri") {
+        REQUIRE(eval_at("(tri 0)", 0.0) == Approx(0.0).margin(1e-9));
+        REQUIRE(eval_at("(tri 0.5)", 0.0) == Approx(1.0).margin(1e-9));
+        REQUIRE(eval_at("(tri 0.25)", 0.0) == Approx(0.5).margin(1e-9));
+        REQUIRE(eval_at("(tri 0.75)", 0.0) == Approx(0.5).margin(1e-9));
+    }
+
+    SECTION("sqr") {
+        REQUIRE(eval_at("(sqr 0.25)", 0.0) == 1.0);
+        REQUIRE(eval_at("(sqr 0.75)", 0.0) == 0.0);
+    }
+
+    SECTION("pulse") {
+        REQUIRE(eval_at("(pulse 0.3 0.5)", 0.0) == 1.0);
+        REQUIRE(eval_at("(pulse 0.7 0.5)", 0.0) == 0.0);
+    }
+
+    SECTION("bi-to-uni / b>u") {
+        REQUIRE(eval_at("(b>u -1)", 0.0) == Approx(0.0));
+        REQUIRE(eval_at("(b>u 0)", 0.0) == Approx(0.5));
+        REQUIRE(eval_at("(b>u 1)", 0.0) == Approx(1.0));
+        REQUIRE(eval_at("(bi-to-uni -1)", 0.0) == Approx(0.0));
+    }
+
+    SECTION("uni-to-bi / u>b") {
+        REQUIRE(eval_at("(u>b 0)", 0.0) == Approx(-1.0));
+        REQUIRE(eval_at("(u>b 0.5)", 0.0) == Approx(0.0));
+        REQUIRE(eval_at("(u>b 1)", 0.0) == Approx(1.0));
+        REQUIRE(eval_at("(uni-to-bi 0)", 0.0) == Approx(-1.0));
+    }
+}
+
+// ── 9. Graph Builder — Temporal Phasors ────────────────────────────────────
+
+TEST_CASE("Graph builder: beat phasor at 120 bpm", "[signal_engine][graph_builder]") {
+    // At 120bpm, one beat = 0.5s
+    REQUIRE(eval_at("beat", 0.0) == Approx(0.0).margin(1e-9));
+    REQUIRE(eval_at("beat", 0.25) == Approx(0.5).margin(1e-9));
+    REQUIRE(eval_at("beat", 0.5) == Approx(0.0).margin(1e-9)); // wraps
+}
+
+TEST_CASE("Graph builder: beat phasor at 60 bpm", "[signal_engine][graph_builder]") {
+    // At 60bpm, one beat = 1s
+    REQUIRE(eval_at("beat", 0.0, 60.0) == Approx(0.0).margin(1e-9));
+    REQUIRE(eval_at("beat", 0.5, 60.0) == Approx(0.5).margin(1e-9));
+    REQUIRE(eval_at("beat", 1.0, 60.0) == Approx(0.0).margin(1e-9)); // wraps
+}
+
+TEST_CASE("Graph builder: bar phasor at 120bpm 4/4", "[signal_engine][graph_builder]") {
+    // One bar = 4 beats = 2s at 120bpm
+    REQUIRE(eval_at("bar", 0.0) == Approx(0.0).margin(1e-9));
+    REQUIRE(eval_at("bar", 0.5) == Approx(0.25).margin(1e-9));
+    REQUIRE(eval_at("bar", 2.0) == Approx(0.0).margin(1e-9)); // wraps
+}
+
+TEST_CASE("Graph builder: beat-num at 120bpm", "[signal_engine][graph_builder]") {
+    // beat-num = floor(t * bpm/60)
+    REQUIRE(eval_at("beat-num", 0.0) == Approx(0.0).margin(1e-9));
+    REQUIRE(eval_at("beat-num", 0.25) == Approx(0.0).margin(1e-9));
+    REQUIRE(eval_at("beat-num", 0.5) == Approx(1.0).margin(1e-9));
+    REQUIRE(eval_at("beat-num", 1.0) == Approx(2.0).margin(1e-9));
+}
+
+// ── 10. Graph Builder — Time Transforms ────────────────────────────────────
+
+TEST_CASE("Graph builder: time transforms", "[signal_engine][graph_builder]") {
+    SECTION("fast 2 beat doubles rate") {
+        // (fast 2 beat) at 120bpm: effective rate = 240bpm
+        // At t=0.125s: beat phase = fmod(0.125 * 2 * 120/60, 1) = fmod(0.5, 1) = 0.5
+        double val = eval_at("(fast 2 beat)", 0.125);
+        REQUIRE(val == Approx(0.5).margin(1e-6));
+    }
+
+    SECTION("slow 2 beat halves rate") {
+        // (slow 2 beat) at 120bpm: effective rate = 60bpm
+        // At t=0.5s: beat phase = fmod(0.5/2 * 120/60, 1) = fmod(0.5, 1) = 0.5
+        double val = eval_at("(slow 2 beat)", 0.5);
+        REQUIRE(val == Approx(0.5).margin(1e-6));
+    }
+
+    SECTION("Nested: (fast 2 (slow 4 beat)) — net effect slow 2") {
+        // fast 2 of slow 4 = net slow 2
+        // At t=0.5: t_inner = 0.5*2/4 = 0.25, beat = fmod(0.25*120/60, 1) = fmod(0.5, 1) = 0.5
+        double val = eval_at("(fast 2 (slow 4 beat))", 0.5);
+        REQUIRE(val == Approx(0.5).margin(1e-6));
+    }
+
+    SECTION("offset shifts phase") {
+        // (offset 0.25 beat) at t=0, bpm=120: t_inner = 0+0.25
+        // beat = fmod(0.25 * 120/60, 1) = fmod(0.5, 1) = 0.5
+        double val = eval_at("(offset 0.25 beat)", 0.0);
+        REQUIRE(val == Approx(0.5).margin(1e-6));
+    }
+}
+
+// ── 11. Graph Builder — Control Flow ───────────────────────────────────────
+
+TEST_CASE("Graph builder: if", "[signal_engine][graph_builder]") {
+    REQUIRE(eval_at("(if 1 42 99)", 0.0) == 42.0);
+    REQUIRE(eval_at("(if 0 42 99)", 0.0) == 99.0);
+    // No else defaults to 0
+    REQUIRE(eval_at("(if 0 42)", 0.0) == 0.0);
+    REQUIRE(eval_at("(if 1 42)", 0.0) == 42.0);
+}
+
+TEST_CASE("Graph builder: let", "[signal_engine][graph_builder]") {
+    SECTION("let with vector brackets") {
+        REQUIRE(eval_at("(let [x 1] x)", 0.0) == 1.0);
+    }
+
+    SECTION("let with multiple bindings") {
+        REQUIRE(eval_at("(let [x 1 y 2] (+ x y))", 0.0) == 3.0);
+    }
+
+    SECTION("let with flat parens") {
+        REQUIRE(eval_at("(let (x 1) x)", 0.0) == 1.0);
+    }
+
+    SECTION("let shadowing") {
+        REQUIRE(eval_at("(let [x 1] (let [x 2] x))", 0.0) == 2.0);
+    }
+}
+
+TEST_CASE("Graph builder: do returns last", "[signal_engine][graph_builder]") {
+    REQUIRE(eval_at("(do 1 2 3)", 0.0) == 3.0);
+    REQUIRE(eval_at("(do 42)", 0.0) == 42.0);
+}
+
+TEST_CASE("Graph builder: while", "[signal_engine][graph_builder]") {
+    // while true condition returns body
+    REQUIRE(eval_at("(while 1 42)", 0.0) == 42.0);
+    // while false condition returns 0
+    REQUIRE(eval_at("(while 0 42)", 0.0) == 0.0);
+}
+
+TEST_CASE("Graph builder: for with literal vector", "[signal_engine][graph_builder]") {
+    // (for x [10 20 30] x) — returns last value
+    REQUIRE(eval_at("(for x [10 20 30] x)", 0.0) == 30.0);
+}
+
+TEST_CASE("Graph builder: for with range", "[signal_engine][graph_builder]") {
+    // (for x (range 1 4) x) — range produces [1,2,3], returns last = 3
+    REQUIRE(eval_at("(for x (range 1 4) x)", 0.0) == 3.0);
+}
+
+TEST_CASE("Graph builder: for with empty range", "[signal_engine][graph_builder]") {
+    // (for x (range 0 0) x) — empty range, returns 0
+    REQUIRE(eval_at("(for x (range 0 0) x)", 0.0) == 0.0);
+}
+
+TEST_CASE("Graph builder: empty parens", "[signal_engine][graph_builder]") {
+    // () should not crash — produces 0.0
+    REQUIRE(eval_at("()", 0.0) == 0.0);
+}
+
+// ── 12. Graph Builder — Domain Signal Functions ────────────────────────────
+
+TEST_CASE("Graph builder: step function", "[signal_engine][graph_builder]") {
+    // We need to use cold eval to set up data + output
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+    auto& si = SymbolIntern::getInstance();
+
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+
+    // Define data and assign output
+    eval_cold("(define data [10 20 30 40])", 27, cells, arena, pool);
+    EvalResult r = eval_cold("(a1 (step data beat))", 21, cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Ok);
+    pool.rebuild_execution_order();
+
+    auto exec_at = [&](double t) -> double {
+        double cell_vals[MAX_CELLS];
+        cells.snapshot_values(cell_vals, MAX_CELLS);
+        double hw_inputs[32] = {};
+        double outputs[MAX_OUTPUTS] = {};
+        double workspace[MAX_TOTAL_NODES] = {};
+        execute_all_outputs(pool, t, cell_vals, hw_inputs,
+                            cells.data_pool, cells.data_offsets, cells.data_lengths,
+                            pool.prev_output_values, outputs, workspace);
+        return outputs[0];
+    };
+
+    // At phase 0: index 0 => 10
+    REQUIRE(exec_at(0.0) == 10.0);
+    // At phase 0.25 (beat=0.5 at 120bpm): index floor(0.5*4) = 2 => 30
+    REQUIRE(exec_at(0.25) == 30.0);
+}
+
+TEST_CASE("Graph builder: gates function", "[signal_engine][graph_builder]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+    auto& si = SymbolIntern::getInstance();
+
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+
+    eval_cold("(define pat [1 0 1 0])", 22, cells, arena, pool);
+    EvalResult r = eval_cold("(a1 (gates pat beat))", 21, cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Ok);
+    pool.rebuild_execution_order();
+
+    auto exec_at = [&](double t) -> double {
+        double cell_vals[MAX_CELLS];
+        cells.snapshot_values(cell_vals, MAX_CELLS);
+        double hw_inputs[32] = {};
+        double outputs[MAX_OUTPUTS] = {};
+        double workspace[MAX_TOTAL_NODES] = {};
+        execute_all_outputs(pool, t, cell_vals, hw_inputs,
+                            cells.data_pool, cells.data_offsets, cells.data_lengths,
+                            pool.prev_output_values, outputs, workspace);
+        return outputs[0];
+    };
+
+    // At beat phase 0: index 0 => value 1 => gate 1.0
+    REQUIRE(exec_at(0.0) == 1.0);
+    // At beat phase ~0.25 (t=0.125): index floor(0.5*4)=2 => value 1 => 1.0... wait
+    // At t=0.125 at 120bpm: beat = fmod(0.125*2, 1) = 0.25
+    // index = floor(0.25*4) = 1 => value 0 => gate 0.0
+    REQUIRE(exec_at(0.125) == 0.0);
+}
+
+TEST_CASE("Graph builder: interp function", "[signal_engine][graph_builder]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+    auto& si = SymbolIntern::getInstance();
+
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+
+    eval_cold("(define ramp [0 1 0])", 21, cells, arena, pool);
+    EvalResult r = eval_cold("(a1 (interp ramp beat))", 23, cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Ok);
+    pool.rebuild_execution_order();
+
+    double cell_vals[MAX_CELLS];
+    cells.snapshot_values(cell_vals, MAX_CELLS);
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    // At beat=0: VecLerp phase=0 => data[0]=0
+    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
+                        cells.data_pool, cells.data_offsets, cells.data_lengths,
+                        pool.prev_output_values, outputs, workspace);
+    REQUIRE(outputs[0] == Approx(0.0).margin(1e-6));
+}
+
+TEST_CASE("Graph builder: dm function", "[signal_engine][graph_builder]") {
+    // (dm condition default value)
+    REQUIRE(eval_at("(dm 1 0 42)", 0.0) == 42.0);
+    REQUIRE(eval_at("(dm 0 0 42)", 0.0) == 0.0);
+    REQUIRE(eval_at("(dm 5 -1 99)", 0.0) == 99.0); // 5 > 0, so truthy
+}
+
+// ── 13. Graph Builder — Define/Defn/Set ────────────────────────────────────
+
+TEST_CASE("Cold eval: define number", "[signal_engine][cold_eval]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    SymbolID bpm_sym = internSymbol("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    EvalResult r = eval_cold("(define x 42)", 13, cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Ok);
+
+    SymbolID x_sym = SymbolIntern::getInstance().getID("x");
+    REQUIRE(x_sym != SymbolIntern::INVALID_ID);
+    REQUIRE(cells.cells[x_sym].kind == CellKind::Number);
+    REQUIRE(cells.cells[x_sym].value == 42.0);
+}
+
+TEST_CASE("Cold eval: define vector", "[signal_engine][cold_eval]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    SymbolID bpm_sym = internSymbol("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    EvalResult r = eval_cold("(define data [1 2 3])", 21, cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Ok);
+
+    SymbolID data_sym = SymbolIntern::getInstance().getID("data");
+    REQUIRE(data_sym != SymbolIntern::INVALID_ID);
+    REQUIRE(cells.cells[data_sym].kind == CellKind::Data);
+
+    uint16_t len;
+    const double* vals = cells.get_data_table(cells.cells[data_sym].data_table_id, len);
+    REQUIRE(len == 3);
+    REQUIRE(vals[0] == 1.0);
+    REQUIRE(vals[1] == 2.0);
+    REQUIRE(vals[2] == 3.0);
+}
+
+TEST_CASE("Cold eval: set stores number", "[signal_engine][cold_eval]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    SymbolID bpm_sym = internSymbol("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    EvalResult r = eval_cold("(set x 42)", 10, cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Ok);
+
+    SymbolID x_sym = SymbolIntern::getInstance().getID("x");
+    REQUIRE(cells.cells[x_sym].kind == CellKind::Number);
+    REQUIRE(cells.cells[x_sym].value == 42.0);
+}
+
+TEST_CASE("Cold eval: define and output", "[signal_engine][cold_eval]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    SymbolID bpm_sym = internSymbol("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    // Define a constant and use it in output
+    eval_cold("(define freq 440)", 17, cells, arena, pool);
+    eval_cold("(a1 (+ 1 2))", 12, cells, arena, pool);
+
+    pool.rebuild_execution_order();
+    double cell_vals[MAX_CELLS] = {};
+    cells.snapshot_values(cell_vals, MAX_CELLS);
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
+                        cells.data_pool, cells.data_offsets, cells.data_lengths,
+                        pool.prev_output_values, outputs, workspace);
+    REQUIRE(outputs[0] == 3.0);
+}
+
+TEST_CASE("Cold eval: redefine overwrites", "[signal_engine][cold_eval]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    SymbolID bpm_sym = internSymbol("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    eval_cold("(define x 1)", 12, cells, arena, pool);
+    SymbolID x_sym = SymbolIntern::getInstance().getID("x");
+    REQUIRE(cells.cells[x_sym].value == 1.0);
+
+    eval_cold("(define x 2)", 12, cells, arena, pool);
+    REQUIRE(cells.cells[x_sym].value == 2.0);
+}
+
+TEST_CASE("Cold eval: defn creates callable", "[signal_engine][cold_eval]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    SymbolID bpm_sym = internSymbol("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    EvalResult r = eval_cold("(defn add1 [x] (+ x 1))", 24, cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Ok);
+
+    SymbolID fn_sym = SymbolIntern::getInstance().getID("add1");
+    REQUIRE(fn_sym != SymbolIntern::INVALID_ID);
+    REQUIRE(cells.cells[fn_sym].kind == CellKind::Callable);
+    REQUIRE(cells.callables[fn_sym].param_count == 1);
+}
+
+TEST_CASE("Cold eval: multiple forms (implicit do)", "[signal_engine][cold_eval]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    SymbolID bpm_sym = internSymbol("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    const char* src = "(define x 5) (a1 x)";
+    EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Ok);
+    REQUIRE(pool.outputs[0].valid);
+}
+
+// ── 14. Negative Tests — Error Cases ───────────────────────────────────────
+
+TEST_CASE("Negative: side-effect in output is error", "[signal_engine][negative]") {
+    REQUIRE(eval_has_error("(define x 1)"));
+}
+
+TEST_CASE("Negative: quote in output is error", "[signal_engine][negative]") {
+    // Quote expansion inserts LParen + quote symbol, and quote is disallowed
+    // This may produce an error or handle gracefully depending on tokenizer
+    // The key is it should not crash
+    double val = eval_at("(quote 1)", 0.0);
+    // Should be error sentinel or graceful failure
+    REQUIRE(val == -99999.0);
+}
+
+TEST_CASE("Negative: unterminated expression is parse error", "[signal_engine][negative]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    // "(+ 1" is incomplete — tokenizer should not crash,
+    // the graph builder or eval should handle the missing RParen
+    const char* src = "(a1 (+ 1";
+    EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+    // It might succeed with 1.0 (unary +) or error — either is fine as long as no crash
+    (void)r;
+}
+
+TEST_CASE("Negative: recursive function is error", "[signal_engine][negative]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+
+    // Define recursive function
+    const char* defn_src = "(defn f [x] (f x))";
+    eval_cold(defn_src, (uint32_t)strlen(defn_src), cells, arena, pool);
+
+    // Try to use it in an output — should produce error
+    const char* use_src = "(a1 (f 1))";
+    EvalResult r = eval_cold(use_src, (uint32_t)strlen(use_src), cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Error);
+}
+
+// ── 15. Executor Tests ─────────────────────────────────────────────────────
 
 TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
     NodePool pool;
@@ -241,7 +1311,6 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
                             cells.data_pool, cells.data_offsets, cells.data_lengths,
                             pool.prev_output_values, outputs, workspace);
-
         REQUIRE(outputs[0] == 0.5);
     }
 
@@ -259,7 +1328,6 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         execute_all_outputs(pool, 1.5, cell_vals, hw_inputs,
                             cells.data_pool, cells.data_offsets, cells.data_lengths,
                             pool.prev_output_values, outputs, workspace);
-
         REQUIRE(outputs[0] == 1.5);
     }
 
@@ -282,21 +1350,11 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         execute_all_outputs(pool, 3.0, cell_vals, hw_inputs,
                             cells.data_pool, cells.data_offsets, cells.data_lengths,
                             pool.prev_output_values, outputs, workspace);
-
         REQUIRE(outputs[0] == 7.0);
     }
 
-    SECTION("NaN guard") {
-        // 0/0 = NaN → guarded to 0.0
-        uint16_t zero = pool.make_const(0.0);
-        // Can't fold 0/0 because we return 0.0 for div by zero in eval_binop
-        // So we need a runtime division by zero.
-        // Use time/something where something will be zero
+    SECTION("NaN guard: runtime div by zero") {
         uint16_t t = pool.make_raw_time_load();
-        uint16_t sqrt_neg = pool.make_unary(NodeOp::Sqrt, pool.make_const(-1.0));
-        // sqrt(-1) folds to sqrt(abs(-1)) = 1.0 in our impl... let's test differently
-
-        // Use a CellLoad that's 0 to force runtime div by zero
         pool.outputs[0].root_node = pool.make_binop(NodeOp::Div, t, pool.make_cell_load(0));
         pool.outputs[0].valid = true;
         pool.rebuild_execution_order();
@@ -310,15 +1368,13 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         execute_all_outputs(pool, 1.0, cell_vals, hw_inputs,
                             cells.data_pool, cells.data_offsets, cells.data_lengths,
                             pool.prev_output_values, outputs, workspace);
-
-        REQUIRE(outputs[0] == 0.0); // guarded to 0
+        REQUIRE(outputs[0] == 0.0);
     }
 
     SECTION("VecIndex") {
         double values[] = {10.0, 20.0, 30.0, 40.0};
         uint16_t table_id = cells.store_data_table(values, 4);
 
-        // Node: VecIndex with floor(phase * 4) where phase = 0.5 → index 2 → 30.0
         uint16_t phase = pool.make_const(0.5);
         uint16_t len = pool.make_const(4.0);
         uint16_t scaled = pool.make_binop(NodeOp::Mul, phase, len);
@@ -342,14 +1398,177 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
                             cells.data_pool, cells.data_offsets, cells.data_lengths,
                             pool.prev_output_values, outputs, workspace);
-
         REQUIRE(outputs[0] == 30.0);
+    }
+
+    SECTION("PrevOutputLoad reads previous tick value") {
+        // Set prev_output_values[1] manually
+        pool.prev_output_values[1] = 7.77;
+        uint16_t prev = pool.make_prev_output_load(1);
+        pool.outputs[0].root_node = prev;
+        pool.outputs[0].valid = true;
+        pool.rebuild_execution_order();
+
+        double cell_vals[MAX_CELLS] = {};
+        double hw_inputs[32] = {};
+        double outputs[MAX_OUTPUTS] = {};
+        double workspace[MAX_TOTAL_NODES] = {};
+
+        execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
+                            cells.data_pool, cells.data_offsets, cells.data_lengths,
+                            pool.prev_output_values, outputs, workspace);
+        REQUIRE(outputs[0] == 7.77);
     }
 }
 
-// ── Graph Builder Integration Tests ─────────────────────────────────────────
+TEST_CASE("Executor: two outputs produce correct values", "[signal_engine][executor]") {
+    NodePool pool;
+    CellStore cells;
 
-TEST_CASE("Graph builder: constant arithmetic", "[signal_engine][graph_builder]") {
+    uint16_t c1 = pool.make_const(1.0);
+    uint16_t c2 = pool.make_const(2.0);
+    pool.outputs[0].root_node = c1;
+    pool.outputs[0].valid = true;
+    pool.outputs[1].root_node = c2;
+    pool.outputs[1].valid = true;
+    pool.rebuild_execution_order();
+
+    double cell_vals[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
+                        cells.data_pool, cells.data_offsets, cells.data_lengths,
+                        pool.prev_output_values, outputs, workspace);
+    REQUIRE(outputs[0] == 1.0);
+    REQUIRE(outputs[1] == 2.0);
+}
+
+// ── 16. Batch Executor ─────────────────────────────────────────────────────
+
+TEST_CASE("Batch executor: matches single-sample for constants", "[signal_engine][batch]") {
+    NodePool pool;
+    CellStore cells;
+
+    uint16_t c = pool.make_const(3.14);
+    pool.outputs[0].root_node = c;
+    pool.outputs[0].valid = true;
+    pool.rebuild_execution_order();
+    pool.allocate_batch_workspace();
+
+    const size_t N = 8;
+    double t_array[N];
+    for (size_t i = 0; i < N; i++) t_array[i] = (double)i * 0.1;
+
+    double output_buffer[N] = {};
+    double cell_vals[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+
+    execute_batch(pool, t_array, N, cell_vals, hw_inputs,
+                  cells.data_pool, cells.data_offsets, cells.data_lengths,
+                  output_buffer, 1);
+
+    for (size_t i = 0; i < N; i++) {
+        REQUIRE(output_buffer[i] == 3.14);
+    }
+
+    pool.free_batch_workspace();
+}
+
+TEST_CASE("Batch executor: matches single-sample for time-varying", "[signal_engine][batch]") {
+    NodePool pool;
+    CellStore cells;
+
+    // Output = t * 2
+    uint16_t t = pool.make_raw_time_load();
+    uint16_t two = pool.make_const(2.0);
+    uint16_t mul = pool.make_binop(NodeOp::Mul, t, two);
+    pool.outputs[0].root_node = mul;
+    pool.outputs[0].valid = true;
+    pool.rebuild_execution_order();
+    pool.allocate_batch_workspace();
+
+    const size_t N = 8;
+    double t_array[N];
+    for (size_t i = 0; i < N; i++) t_array[i] = (double)i * 0.1;
+
+    double output_buffer[N] = {};
+    double cell_vals[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+
+    execute_batch(pool, t_array, N, cell_vals, hw_inputs,
+                  cells.data_pool, cells.data_offsets, cells.data_lengths,
+                  output_buffer, 1);
+
+    // Verify against single-sample results
+    double workspace[MAX_TOTAL_NODES] = {};
+    for (size_t i = 0; i < N; i++) {
+        double single_out[MAX_OUTPUTS] = {};
+        execute_all_outputs(pool, t_array[i], cell_vals, hw_inputs,
+                            cells.data_pool, cells.data_offsets, cells.data_lengths,
+                            pool.prev_output_values, single_out, workspace);
+        REQUIRE(output_buffer[i] == Approx(single_out[0]).margin(1e-12));
+    }
+
+    pool.free_batch_workspace();
+}
+
+// ── 17. Edge Cases ─────────────────────────────────────────────────────────
+
+TEST_CASE("Edge cases: large numbers", "[signal_engine][graph_builder]") {
+    REQUIRE(eval_at("(* 1000000 1000000)", 0.0) == Approx(1e12));
+}
+
+TEST_CASE("Edge cases: very small fractions", "[signal_engine][graph_builder]") {
+    double val = eval_at("(+ 0.1 0.2)", 0.0);
+    REQUIRE(val == Approx(0.3).margin(1e-10));
+}
+
+TEST_CASE("Edge cases: negative time", "[signal_engine][graph_builder]") {
+    // Should not crash — time is just a number
+    double val = eval_at("t", -1.0);
+    REQUIRE(std::isfinite(val));
+    REQUIRE(val == -1.0);
+}
+
+TEST_CASE("Edge cases: beat at negative time", "[signal_engine][graph_builder]") {
+    // fmod can produce negative results — should not crash
+    double val = eval_at("beat", -1.0);
+    REQUIRE(std::isfinite(val));
+}
+
+TEST_CASE("Edge cases: VecIndex with empty data table", "[signal_engine][executor]") {
+    NodePool pool;
+    CellStore cells;
+
+    // Don't store any data — data_lengths[0] will be 0
+    uint16_t idx = pool.make_const(0.0);
+    Node vec_node;
+    vec_node.op = NodeOp::VecIndex;
+    vec_node.input_a = idx;
+    vec_node.imm = 0.0; // table id 0
+    uint16_t vec = pool.intern_node(vec_node);
+
+    pool.outputs[0].root_node = vec;
+    pool.outputs[0].valid = true;
+    pool.rebuild_execution_order();
+
+    double cell_vals[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
+                        cells.data_pool, cells.data_offsets, cells.data_lengths,
+                        pool.prev_output_values, outputs, workspace);
+    // Empty table should return 0.0
+    REQUIRE(outputs[0] == 0.0);
+}
+
+// ── Graph Builder Integration (tokenize-build-check) ───────────────────────
+
+TEST_CASE("Graph builder: constant arithmetic via tokenizer", "[signal_engine][graph_builder]") {
     NodePool pool;
     CellStore cells;
     SourceArena arena;
@@ -367,8 +1586,6 @@ TEST_CASE("Graph builder: constant arithmetic", "[signal_engine][graph_builder]"
     GraphBuildResult result = build_output_graph(pool, ts, cells, arena);
     REQUIRE(!result.has_error);
     REQUIRE(result.root_node != NODE_NONE);
-
-    // Should be constant-folded to 3.0
     REQUIRE(pool.nodes[result.root_node].op == NodeOp::Const);
     REQUIRE(pool.nodes[result.root_node].imm == 3.0);
 }
@@ -394,7 +1611,7 @@ TEST_CASE("Graph builder: nested arithmetic folds", "[signal_engine][graph_build
     REQUIRE(pool.nodes[result.root_node].imm == 12.0);
 }
 
-TEST_CASE("Graph builder: time reference", "[signal_engine][graph_builder]") {
+TEST_CASE("Graph builder: time reference not folded", "[signal_engine][graph_builder]") {
     NodePool pool;
     CellStore cells;
     SourceArena arena;
@@ -411,49 +1628,7 @@ TEST_CASE("Graph builder: time reference", "[signal_engine][graph_builder]") {
 
     GraphBuildResult result = build_output_graph(pool, ts, cells, arena);
     REQUIRE(!result.has_error);
-
-    // Should NOT be constant-folded (contains t)
     REQUIRE(pool.nodes[result.root_node].op == NodeOp::Mul);
-}
-
-TEST_CASE("Cold eval: define and output", "[signal_engine][cold_eval]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-
-    // Initialize timing cells
-    SymbolID bpm_sym = internSymbol("bpm");
-    cells.cells[bpm_sym].kind = CellKind::Number;
-    cells.cells[bpm_sym].value = 120.0;
-
-    // Define a constant
-    EvalResult r1 = eval_cold("(define freq 440)", 17, cells, arena, pool);
-    REQUIRE(r1.kind == EvalResult::Ok);
-
-    SymbolID freq_sym = SymbolIntern::getInstance().getID("freq");
-    REQUIRE(freq_sym != SymbolIntern::INVALID_ID);
-    REQUIRE(cells.cells[freq_sym].kind == CellKind::Number);
-    REQUIRE(cells.cells[freq_sym].value == 440.0);
-
-    // Assign output
-    EvalResult r2 = eval_cold("(a1 (+ 1 2))", 12, cells, arena, pool);
-    REQUIRE(r2.kind == EvalResult::Ok);
-    REQUIRE(pool.outputs[0].root_node != NODE_NONE);
-    REQUIRE(pool.outputs[0].valid);
-
-    // Execute and check
-    pool.rebuild_execution_order();
-    double cell_vals[MAX_CELLS] = {};
-    cells.snapshot_values(cell_vals, MAX_CELLS);
-    double hw_inputs[32] = {};
-    double outputs[MAX_OUTPUTS] = {};
-    double workspace[MAX_TOTAL_NODES] = {};
-
-    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
-
-    REQUIRE(outputs[0] == 3.0);
 }
 
 TEST_CASE("Cold eval: beat phasor at 120 bpm", "[signal_engine][cold_eval]") {
@@ -461,39 +1636,32 @@ TEST_CASE("Cold eval: beat phasor at 120 bpm", "[signal_engine][cold_eval]") {
     CellStore cells;
     SourceArena arena;
 
-    // Set up timing cells
-    SymbolID bpm_sym = internSymbol("bpm");
-    cells.cells[bpm_sym].kind = CellKind::Number;
-    cells.cells[bpm_sym].value = 120.0;
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
 
-    SymbolID bpb_sym = internSymbol("beats-per-bar");
-    cells.cells[bpb_sym].kind = CellKind::Number;
-    cells.cells[bpb_sym].value = 4.0;
-
-    // Assign beat to output
     EvalResult r = eval_cold("(a1 beat)", 9, cells, arena, pool);
     REQUIRE(r.kind == EvalResult::Ok);
-
     pool.rebuild_execution_order();
+
     double cell_vals[MAX_CELLS] = {};
     cells.snapshot_values(cell_vals, MAX_CELLS);
     double hw_inputs[32] = {};
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    // At t=0, beat should be 0
     execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
                         cells.data_pool, cells.data_offsets, cells.data_lengths,
                         pool.prev_output_values, outputs, workspace);
     REQUIRE(outputs[0] == Approx(0.0).margin(1e-9));
 
-    // At t=0.25 (half a beat at 120bpm), beat should be 0.5
     execute_all_outputs(pool, 0.25, cell_vals, hw_inputs,
                         cells.data_pool, cells.data_offsets, cells.data_lengths,
                         pool.prev_output_values, outputs, workspace);
     REQUIRE(outputs[0] == Approx(0.5).margin(1e-9));
 
-    // At t=0.5 (one full beat at 120bpm), beat should wrap to 0
     execute_all_outputs(pool, 0.5, cell_vals, hw_inputs,
                         cells.data_pool, cells.data_offsets, cells.data_lengths,
                         pool.prev_output_values, outputs, workspace);
