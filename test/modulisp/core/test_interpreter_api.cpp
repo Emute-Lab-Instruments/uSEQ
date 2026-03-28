@@ -2,6 +2,7 @@
                           // one cpp file
 #include "catch.hpp"
 
+#include "../uSEQ/src/modulisp/bytecode_vm.h"
 #include "../uSEQ/src/modulisp/lisp/environment.h"
 #include "../uSEQ/src/modulisp/lisp/value.h"
 #include "../uSEQ/src/modulisp/modulisp_interpreter.h"
@@ -291,61 +292,48 @@ TEST_CASE("Parse and evaluate expressions (eval_v)",
 /// INTERPRETER STATIC EVALUATION API TESTS
 ////////////////////////////////////////////////////////////////////////////////
 
-TEST_CASE("Static string evaluation with environment",
-          "[interpreter][api][static_eval]")
+TEST_CASE("VM expression evaluation with environment",
+          "[interpreter][api][vm_eval]")
 {
     Environment env;
 
-    // Test static string evaluation with empty environment
-    String result1 = ModuLispInterpreter::eval_in("42", env);
-    REQUIRE_FALSE(result1.length() == 0);
-    REQUIRE(result1.indexOf("42") != -1);
+    Value result1 = execute_expr_with_vm(uLispParser::parse_static("42"), env);
+    REQUIRE(result1.is_int());
+    REQUIRE(result1.as_int() == 42);
 
-    // Add variables to environment and test evaluation
     env.set("x", Value(10));
     env.set("y", Value(20));
 
-    String result2 = ModuLispInterpreter::eval_in("(+ x y)", env);
-    if (!result2.length() == 0)
-    {
-        // Should contain result of 10 + 20 = 30
-        REQUIRE((result2.indexOf("30") != -1 || result2.indexOf("error") != -1));
-    }
+    Value result2 = execute_expr_with_vm(uLispParser::parse_static("(+ x y)"), env);
+    REQUIRE(result2.is_number());
+    const double actual = result2.is_int() ? result2.as_int() : result2.as_float();
+    REQUIRE(actual == Approx(30.0).epsilon(0.001));
 }
 
-TEST_CASE("Static value evaluation with environment",
-          "[interpreter][api][static_eval][values]")
+TEST_CASE("VM value evaluation with environment",
+          "[interpreter][api][vm_eval][values]")
 {
     Environment env;
 
-    // Test static Value evaluation
     Value int_val(100);
-    Value result1 = ModuLispInterpreter::eval_in(int_val, env);
+    Value result1 = execute_expr_with_vm(int_val, env);
     REQUIRE(result1.is_int());
     REQUIRE(result1.as_int() == 100);
 
-    // Test with variables in environment
     env.set("test-var", Value(42));
     Value symbol_val = Value::atom("test-var");
-    Value result2    = ModuLispInterpreter::eval_in(symbol_val, env);
+    Value result2    = execute_expr_with_vm(symbol_val, env);
+    REQUIRE_FALSE(result2.is_error());
+    REQUIRE(result2.is_int());
+    REQUIRE(result2.as_int() == 42);
 
-    if (!result2.is_error())
-    {
-        REQUIRE(result2.is_int());
-        REQUIRE(result2.as_int() == 42);
-    }
-
-    // Test list evaluation
     std::vector<Value> expr = { Value::atom("+"), Value(5), Value(15) };
     Value list_val(expr);
-    Value result3 = ModuLispInterpreter::eval_in(list_val, env);
-
-    if (result3.is_number() && !result3.is_error())
-    {
-        double expected = 20.0;
-        double actual   = result3.is_int() ? result3.as_int() : result3.as_float();
-        REQUIRE(actual == Approx(expected).epsilon(0.001));
-    }
+    Value result3 = execute_expr_with_vm(list_val, env);
+    REQUIRE_FALSE(result3.is_error());
+    REQUIRE(result3.is_number());
+    const double actual = result3.is_int() ? result3.as_int() : result3.as_float();
+    REQUIRE(actual == Approx(20.0).epsilon(0.001));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -418,44 +406,35 @@ TEST_CASE("Argument evaluation with expressions",
 /// INTERPRETER FUNCTION APPLICATION API TESTS
 ////////////////////////////////////////////////////////////////////////////////
 
-TEST_CASE("Function application with builtin functions", "[interpreter][api][apply]")
+TEST_CASE("Function application with VM callable helper", "[interpreter][api][apply]")
 {
     Environment env;
+    env.set_temporal_context(nullptr);
 
-    // Test applying builtin addition function
-    Value add_func              = Value::atom("+");
+    Value add_func              = Environment::builtindefs()["+"];
     std::vector<Value> add_args = { Value(10), Value(20) };
 
-    Value result1 = ModuLispInterpreter::apply(add_func, add_args, env);
-    if (result1.is_number() && !result1.is_error())
-    {
-        double expected = 30.0;
-        double actual   = result1.is_int() ? result1.as_int() : result1.as_float();
-        REQUIRE(actual == Approx(expected).epsilon(0.001));
-    }
+    Value result1 = execute_callable_with_vm(add_func, add_args, env);
+    REQUIRE_FALSE(result1.is_error());
+    REQUIRE(result1.is_number());
+    double actual = result1.is_int() ? result1.as_int() : result1.as_float();
+    REQUIRE(actual == Approx(30.0).epsilon(0.001));
 
-    // Test applying builtin multiplication function
-    Value mult_func              = Value::atom("*");
+    Value mult_func              = Environment::builtindefs()["*"];
     std::vector<Value> mult_args = { Value(6), Value(7) };
 
-    Value result2 = ModuLispInterpreter::apply(mult_func, mult_args, env);
-    if (result2.is_number() && !result2.is_error())
-    {
-        double expected = 42.0;
-        double actual   = result2.is_int() ? result2.as_int() : result2.as_float();
-        REQUIRE(actual == Approx(expected).epsilon(0.001));
-    }
+    Value result2 = execute_callable_with_vm(mult_func, mult_args, env);
+    REQUIRE_FALSE(result2.is_error());
+    REQUIRE(result2.is_number());
+    actual = result2.is_int() ? result2.as_int() : result2.as_float();
+    REQUIRE(actual == Approx(42.0).epsilon(0.001));
 
-    // Test applying comparison function
-    Value eq_func              = Value::atom("=");
+    Value eq_func              = Environment::builtindefs()["="];
     std::vector<Value> eq_args = { Value(5), Value(5) };
 
-    Value result3 = ModuLispInterpreter::apply(eq_func, eq_args, env);
-    // Should return truthy value for equal comparison
-    if (!result3.is_error())
-    {
-        REQUIRE((result3.is_number() || result3.is_symbol()));
-    }
+    Value result3 = execute_callable_with_vm(eq_func, eq_args, env);
+    REQUIRE_FALSE(result3.is_error());
+    REQUIRE((result3.is_number() || result3.is_symbol()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

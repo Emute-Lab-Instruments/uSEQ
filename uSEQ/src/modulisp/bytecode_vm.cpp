@@ -191,7 +191,7 @@ struct LocalValueBinding
     int source_register = -1;
 };
 
-// Diagnostic counter: tracks closure fallbacks to the tree-walker.
+// Diagnostic counter: tracks closure runtime bridge usage.
 // With compile-time capture substitution now implemented, this counter
 // should remain at zero for closures whose captured values are constants
 // or compilable expressions. Non-zero values indicate a closure pattern
@@ -1624,7 +1624,7 @@ private:
 
     // Compile (for var collection body...) — unrolls at compile time when the
     // collection resolves to a constant sequence; otherwise falls back to the
-    // tree-walker via emit_runtime_eval.
+    // runtime VM bridge via emit_runtime_eval().
     int compile_for(const std::vector<Value>& items,
                     const AffineTimeTransform& transform)
     {
@@ -1736,7 +1736,7 @@ private:
             }
         }
 
-        // Can't resolve at compile time — fall back to tree-walker.
+        // Can't resolve at compile time — bridge back through runtime VM evaluation.
         return emit_runtime_eval(Value(items), transform);
     }
 
@@ -2128,7 +2128,7 @@ private:
     }
 
     // Compile (b->u x) as x * scale + offset, or (u->b x) similarly.
-    // Avoids tree-walker fallback for these very common range conversions.
+    // Avoids runtime bridge overhead for these very common range conversions.
     int compile_range_conversion(const std::vector<Value>& items,
                                  const AffineTimeTransform& transform,
                                  double scale, double offset)
