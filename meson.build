@@ -154,6 +154,28 @@ lisp_core_dep = declare_dependency(
   dependencies : utils_dep
 )
 
+# Signal engine library - depends on lisp_core (for SymbolIntern)
+signal_engine_lib = static_library('useq_signal_engine',
+  'uSEQ/src/signal_engine/diagnostics.cpp',
+  'uSEQ/src/signal_engine/token.cpp',
+  'uSEQ/src/signal_engine/cell_store.cpp',
+  'uSEQ/src/signal_engine/node_pool.cpp',
+  'uSEQ/src/signal_engine/executor.cpp',
+  'uSEQ/src/signal_engine/graph_builder.cpp',
+  'uSEQ/src/signal_engine/cold_eval.cpp',
+  include_directories : src_inc,
+  cpp_args : standalone_args,
+  cpp_pch : pch_file,
+  dependencies : lisp_core_dep,
+  override_options : unity_override_options
+)
+
+signal_engine_dep = declare_dependency(
+  link_with : signal_engine_lib,
+  include_directories : src_inc,
+  dependencies : lisp_core_dep
+)
+
 # ModuLisp library - depends on lisp_core
 modulisp_lib = static_library('useq_modulisp',
   'uSEQ/src/modulisp/modulisp.cpp',

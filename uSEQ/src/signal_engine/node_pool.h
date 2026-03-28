@@ -1,0 +1,156 @@
+#ifndef SIGNAL_ENGINE_NODE_POOL_H
+#define SIGNAL_ENGINE_NODE_POOL_H
+
+#include "types.h"
+
+namespace sig {
+
+// ── Node Operations ─────────────────────────────────────────────────────────
+
+enum class NodeOp : uint8_t {
+    // Constants and loads
+    Const,          // imm = value
+    RawTimeLoad,    // loads the single 't' input
+    CellLoad,       // imm = cell_id
+    InputLoad,      // imm = input_index (hardware input channel)
+    DataLoad,       // input_a = index_node, imm = data_table_id
+    PrevOutputLoad, // imm = output_index; previous tick's value
+
+    // Binary arithmetic
+    Add, Sub, Mul, Div, Mod, Pow, Min, Max,
+
+    // Unary math
+    Neg, Abs, Floor, Ceil, Frac, Sqrt, Clamp,
+
+    // Trigonometry
+    Sin, Cos, Tan,
+
+    // Domain waveforms (operate on phase [0,1))
+    USin, UCos, USinBi, UCosBi,
+    Tri, Sqr, Pulse,
+
+    // Comparison (1.0 true, 0.0 false)
+    CmpGt, CmpLt, CmpGe, CmpLe, CmpEq,
+
+    // Logic
+    Not, And, Or,
+
+    // Control flow
+    Select,     // input_a=cond, input_b=true_val, input_c=false_val
+
+    // Vector/data
+    VecIndex,   // input_a=fractional_index, imm=table_id; floor, wrap
+    VecLerp,    // input_a=fractional_index, imm=table_id; lerp
+
+    // Modular arithmetic
+    Fmod,       // input_a=value, input_b=modulus
+
+    // Range conversion
+    BiToUni,    // [-1,1] → [0,1]
+    UniToBi,    // [0,1] → [-1,1]
+    Scale,      // 3 inputs: value, out_min, out_max ([0,1]→[min,max])
+    Scale5,     // 5 inputs: value, in_min, in_max, out_min, out_max
+    Lerp,       // 3 inputs: a, b, t → a + (b-a)*t
+};
+
+// ── Node ────────────────────────────────────────────────────────────────────
+
+struct Node {
+    NodeOp op         = NodeOp::Const;
+    uint8_t flags     = 0;         // FLAG_TIME_INVARIANT etc.
+    uint16_t input_a  = NODE_NONE;
+    uint16_t input_b  = NODE_NONE;
+    uint16_t input_c  = NODE_NONE;
+    double imm        = 0.0;       // immediate value
+    uint16_t span_start = 0;       // source location for diagnostics
+    uint16_t span_len   = 0;
+};
+// sizeof(Node) == 20 bytes
+
+// ── Output Slot ─────────────────────────────────────────────────────────────
+
+struct OutputSlot {
+    uint16_t root_node = NODE_NONE;
+    double lkg_value   = 0.0;      // last known good output value
+    bool valid         = false;
+    uint8_t pad[7]     = {};
+};
+
+// ── Per-Output Dependencies ─────────────────────────────────────────────────
+// Populated during graph construction. Used for dirty recompilation.
+
+struct OutputDeps {
+    SymbolID cells[MAX_OUTPUT_DEPS] = {};
+    uint8_t count = 0;
+
+    void clear();
+    void add(SymbolID sym);
+    bool contains(SymbolID sym) const;
+};
+
+// ── Node Pool ───────────────────────────────────────────────────────────────
+
+struct NodePool {
+    Node nodes[MAX_TOTAL_NODES]    = {};
+    uint16_t node_count            = 0;
+
+    // Hash-cons CSE table
+    uint32_t cse_hashes[CSE_TABLE_SIZE]  = {};
+    uint16_t cse_indices[CSE_TABLE_SIZE] = {};
+
+    // Topologically sorted execution order
+    uint16_t exec_order[MAX_TOTAL_NODES] = {};
+    uint16_t exec_count = 0;
+
+    // Per-output metadata
+    OutputSlot outputs[MAX_OUTPUTS] = {};
+    OutputDeps output_deps[MAX_OUTPUTS] = {};
+
+    // Cross-output reads use previous-tick values
+    double prev_output_values[MAX_OUTPUTS] = {};
+
+    // WASM batch workspace (heap-allocated once at init, null on firmware)
+    double* batch_workspace   = nullptr;
+    uint16_t batch_chunk_size = BATCH_CHUNK_SIZE;
+
+    // ── Node construction (with CSE + constant folding) ─────────────────
+
+    uint16_t make_const(double value);
+    uint16_t make_raw_time_load();
+    uint16_t make_cell_load(SymbolID cell_id);
+    uint16_t make_input_load(uint16_t input_index);
+    uint16_t make_prev_output_load(uint16_t output_index);
+
+    uint16_t make_unary(NodeOp op, uint16_t a);
+    uint16_t make_binop(NodeOp op, uint16_t a, uint16_t b);
+    uint16_t make_ternary(NodeOp op, uint16_t a, uint16_t b, uint16_t c);
+    uint16_t make_select(uint16_t cond, uint16_t true_val, uint16_t false_val);
+
+    // ── Pool operations ─────────────────────────────────────────────────
+
+    // Hash-cons: intern a node, return index (reuse if identical exists).
+    uint16_t intern_node(const Node& n);
+
+    // Rebuild topological execution order from live output roots.
+    void rebuild_execution_order();
+
+    // Remove nodes not reachable from any output root.
+    void gc_unreachable_nodes();
+
+    // Reset the entire pool.
+    void reset();
+
+    // Allocate batch workspace (call once at init for WASM builds).
+    void allocate_batch_workspace();
+    void free_batch_workspace();
+};
+
+// ── Constant folding helpers ────────────────────────────────────────────────
+
+double eval_unary(NodeOp op, double a);
+double eval_binop(NodeOp op, double a, double b);
+double eval_ternary(NodeOp op, double a, double b, double c);
+
+} // namespace sig
+
+#endif // SIGNAL_ENGINE_NODE_POOL_H

@@ -552,3 +552,38 @@ modulisp_end_to_end_exe = executable(
 )
 
 test('modulisp_end_to_end_test', modulisp_end_to_end_exe)
+
+# ===== Signal Engine Tests =====
+
+signal_engine_test_exe = executable(
+  'test_signal_engine',
+  sources : ['signal_engine/test_signal_engine.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('signal_engine_test', signal_engine_test_exe)
+
+signal_engine_probe_exe = executable(
+  'signal_engine_probe',
+  sources : ['signal_engine/signal_engine_probe.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('signal_engine_probe_smoke', signal_engine_probe_exe)
+
+test(
+  'signal_engine_golden_fixture',
+  python3,
+  args : [
+    files('../scripts/run_bytecode_vm_golden.py'),
+    files('modulisp/bytecode_vm/golden/basic_semantics.yaml'),
+    '--probe', signal_engine_probe_exe.full_path()
+  ],
+  depends : signal_engine_probe_exe
+)
