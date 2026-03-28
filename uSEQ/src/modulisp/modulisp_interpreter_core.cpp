@@ -54,14 +54,8 @@ bool is_output_assignment_symbol(const String& symbol)
     return true;
 }
 
-bool requires_tree_walk_eval(const Value& expr)
+bool is_top_level_command_symbol(const String& head)
 {
-    if (expr.type != Value::LIST || expr.list.empty() || !expr.list[0].is_symbol())
-    {
-        return false;
-    }
-
-    const String& head = expr.list[0].as_atom();
     if (is_output_assignment_symbol(head))
     {
         return true;
@@ -239,11 +233,25 @@ Value ModuLispInterpreter::eval_form_with_vm(Value expr)
         return result;
     }
 
-    // Imperative forms that mutate interpreter state must go through the
-    // tree-walker because the VM can't perform side-effects (define, set-bpm, etc.)
-    if (requires_tree_walk_eval(expr))
+    // Explicit command forms mutate interpreter state and are intentionally
+    // handled outside the VM rather than using the tree-walker as a generic
+    // fallback for all top-level evaluation.
+    if (expr.type == Value::LIST && !expr.list.empty() && expr.list[0].is_symbol())
     {
-        return eval_in(expr, m_environment);
+        const String& head = expr.list[0].as_atom();
+        if (is_top_level_command_symbol(head))
+        {
+            auto command = Environment::builtindefs().get(head);
+            if (!command.has_value())
+            {
+                report_generic_error("Function '" + head + "' is not defined");
+                return Value::error();
+            }
+
+            std::vector<Value> args(expr.list.begin() + 1, expr.list.end());
+            Value builtin = *command;
+            return apply(builtin, args, m_environment);
+        }
     }
 
     // Everything else: try the VM first

@@ -768,6 +768,22 @@ TEST_CASE("Output sampling reads input snapshots through the VM path",
     REQUIRE(value == Approx(4.25).epsilon(1e-9));
 }
 
+TEST_CASE("Top-level output assignment stays on the explicit command path",
+          "[modulisp][vm][commands][outputs]")
+{
+    ModuLispInterpreter interp(nullptr, nullptr, nullptr, 8, 8, 8);
+    interp.init();
+
+    const Value assign_result = interp.eval_v("(a1 (+ t 2))");
+    REQUIRE(assign_result.is_symbol());
+    REQUIRE(assign_result.as_atom() == "a1");
+
+    bool ok = false;
+    const double value = interp.eval_output_at_time("a1", 3.0, &ok);
+    REQUIRE(ok);
+    REQUIRE(value == Approx(5.0).epsilon(1e-9));
+}
+
 TEST_CASE("Public eval_v handles lambda callables directly", "[modulisp][vm]")
 {
     ModuLispInterpreter interp;
@@ -776,6 +792,38 @@ TEST_CASE("Public eval_v handles lambda callables directly", "[modulisp][vm]")
     const Value result = interp.eval_v("((lambda [x] (+ x 3)) 2)");
     REQUIRE(result.is_number());
     REQUIRE(result.as_float() == Approx(5.0).epsilon(1e-9));
+}
+
+TEST_CASE("Top-level define stays on the explicit command path",
+          "[modulisp][vm][commands]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const Value define_result = interp.eval_v("(define scale 4)");
+    REQUIRE(define_result.is_symbol());
+    REQUIRE(define_result.as_atom() == "scale");
+
+    const auto compiled =
+        compile_numeric_program(interp.get_parser()->parse("(* scale 2)"),
+                                *interp.get_environment(), false);
+    REQUIRE(compiled.ok);
+    REQUIRE_FALSE(has_opcode(compiled.program, NumericVmOpcode::CALL_INTRINSIC));
+
+    const Value result = interp.eval_v("(* scale 2)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(8.0).epsilon(1e-9));
+}
+
+TEST_CASE("Top-level do mixes command forms and VM-native pure forms",
+          "[modulisp][vm][commands]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const Value result = interp.eval_v("(do (define scale 4) (* scale 2))");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(8.0).epsilon(1e-9));
 }
 
 TEST_CASE("Compiled eval preserves lambda_scope for captured closures",
