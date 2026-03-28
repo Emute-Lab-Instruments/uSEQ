@@ -1,7 +1,9 @@
 #include "utils.h"
-#include "uSEQ/hardware_output.h"
 #include <algorithm>
-// #include <iterator>
+
+#if defined(ARDUINO)
+#include "uSEQ/hardware_output.h"
+#endif
 
 float scale_value(float x, float in_min, float in_max, float out_min, float out_max)
 {

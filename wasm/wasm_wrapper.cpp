@@ -1,395 +1,416 @@
 /**
- * @file wasm_wrapper.cpp
- * @brief WASM bindings for the ModuLisp interpreter
+ * @file wasm_wrapper_sig.cpp
+ * @brief WASM bindings for the signal engine (sig:: namespace)
+ *
+ * Drop-in replacement for wasm_wrapper.cpp using the new signal engine
+ * instead of the ModuLisp bytecode VM interpreter.
  *
  * Provides JavaScript-callable functions for:
- * - Initializing the interpreter
- * - Evaluating LISP expressions
+ * - Initializing the signal engine (cell store, node pool, source arena)
+ * - Evaluating LISP expressions via sig::eval_cold()
  * - Updating transport time
  * - Evaluating individual outputs at specific times
- * - Batch evaluating multiple outputs across time windows (NEW)
+ * - Batch evaluating multiple outputs across time windows
  */
 
-#include "../uSEQ/src/modulisp/modulisp_interpreter.h"
+#include "../uSEQ/src/signal_engine/signal_engine.h"
 #include "../uSEQ/src/utils/json_builder.h"
+#include "../uSEQ/src/modulisp/lisp/symbol_intern.h"
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
 #include <limits>
 
-// Static instance of ModuLisp interpreter (simpler than full uSEQ)
-static ModuLispInterpreter* useq_instance = nullptr;
-static bool init_called = false;
+// ── Static state ───────────────────────────────────────────────────────────
+
+static sig::SignalEngine* g_engine = nullptr;
+
+static double  g_hw_inputs[32]   = {};
+static double  g_current_time    = 0.0;
+
+static sig::Diagnostic g_last_diagnostics[16] = {};
+static uint8_t         g_last_diagnostic_count = 0;
+
+static String s_last_error;
+static bool   g_init_called = false;
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+static char* alloc_cstr(const char* s) {
+    size_t len = strlen(s);
+    char* buf = (char*)malloc(len + 1);
+    memcpy(buf, s, len + 1);
+    return buf;
+}
+
+static char* alloc_string(const String& s) {
+    char* buf = (char*)malloc(s.length() + 1);
+    memcpy(buf, s.c_str(), s.length() + 1);
+    return buf;
+}
+
+// Parse a JSON array of output names (e.g. ["a1","a2","d1"])
+static bool parse_output_names(const char* json, std::vector<String>& out) {
+    String json_str(json);
+    int start_pos = json_str.indexOf('[');
+    int end_pos   = json_str.indexOf(']');
+    if (start_pos < 0 || end_pos < 0 || end_pos <= start_pos)
+        return false;
+
+    String contents = json_str.substring(start_pos + 1, end_pos);
+    int pos = 0;
+    while (pos < (int)contents.length()) {
+        int quote1 = contents.indexOf('"', pos);
+        if (quote1 < 0) break;
+        int quote2 = contents.indexOf('"', quote1 + 1);
+        if (quote2 < 0) break;
+        out.push_back(contents.substring(quote1 + 1, quote2));
+        pos = quote2 + 1;
+    }
+    return true;
+}
+
+// Resolve an output name (e.g. "a1") to its index in the pool.
+static uint16_t resolve_output_name(const char* name) {
+    if (!name || strlen(name) != 2) return sig::NODE_NONE;
+    char prefix = name[0];
+    char digit  = name[1];
+    if (digit < '1' || digit > '8') return sig::NODE_NONE;
+    uint16_t num = (uint16_t)(digit - '1');
+    switch (prefix) {
+        case 'a': return num;
+        case 'd': return 8 + num;
+        case 's': return 16 + num;
+        default:  return sig::NODE_NONE;
+    }
+}
+
+// Execute all outputs at a given time, writing results into output_values.
+static void execute_at_time(double t, double* output_values) {
+    double cell_values[sig::MAX_CELLS];
+    g_engine->cells.snapshot_values(cell_values, sig::MAX_CELLS);
+
+    double node_values[sig::MAX_TOTAL_NODES];
+
+    sig::ExecutionContext ctx;
+    ctx.t             = t;
+    ctx.cell_values   = cell_values;
+    ctx.hw_inputs     = g_hw_inputs;
+    ctx.data_pool     = g_engine->cells.data_pool;
+    ctx.data_offsets  = g_engine->cells.data_offsets;
+    ctx.data_lengths  = g_engine->cells.data_lengths;
+    ctx.prev_outputs  = g_engine->pool.prev_output_values;
+    ctx.output_values = output_values;
+    ctx.workspace     = node_values;
+    sig::execute_all_outputs(g_engine->pool, ctx);
+
+    // Update previous output values for next tick
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+        if (g_engine->pool.outputs[i].valid) {
+            g_engine->pool.prev_output_values[i] = output_values[i];
+            g_engine->pool.outputs[i].lkg_value = output_values[i];
+        }
+    }
+}
+
+// ── Extern "C" ABI ────────────────────────────────────────────────────────
 
 extern "C"
 {
-    // Initialize the ModuLisp interpreter
     void useq_init()
     {
-        if (init_called)
-        {
-            return;
-        }
+        if (g_init_called) return;
 
-        if (!useq_instance)
-        {
-            useq_instance = new ModuLispInterpreter();
-            useq_instance->init();
-        }
+        g_engine = new sig::SignalEngine();
+        g_engine->init_defaults();
 
-        init_called = true;
+        // Allocate batch workspace for WASM visualization
+        g_engine->pool.allocate_batch_workspace();
+
+        g_init_called = true;
     }
 
-    // Evaluate a LISP expression and return the result
-    // Input: C string from JavaScript
-    // Output: Dynamically allocated C string (Emscripten will handle cleanup)
     char* useq_eval(const char* input)
     {
-        if (!useq_instance)
-        {
-            const char* error_msg =
-                "Error: uSEQ not initialized. Call useq_init() first.";
-            char* result = (char*)malloc(strlen(error_msg) + 1);
-            strcpy(result, error_msg);
-            return result;
+        if (!g_engine) {
+            return alloc_cstr("Error: uSEQ not initialized. Call useq_init() first.");
         }
 
-        try
-        {
-            // Convert C string to String type
-            String code(input);
-
+        try {
             // Clear diagnostics from previous eval
-            useq_instance->clear_diagnostics();
+            g_last_diagnostic_count = 0;
 
-            // Evaluate the expression
-            String result_str = useq_instance->eval(code);
+            uint32_t length = (uint32_t)strlen(input);
+            sig::EvalResult result = sig::eval_cold(input, length, *g_engine);
 
-            // Convert result back to C string
-            const char* result_cstr = result_str.c_str();
-            char* result            = (char*)malloc(strlen(result_cstr) + 1);
-            strcpy(result, result_cstr);
+            // Copy diagnostics
+            g_last_diagnostic_count = result.diagnostic_count;
+            if (result.diagnostic_count > 0) {
+                memcpy(g_last_diagnostics, result.diagnostics,
+                       result.diagnostic_count * sizeof(sig::Diagnostic));
+            }
 
-            return result;
+            // Convert result to string
+            switch (result.kind) {
+                case sig::EvalResult::Number: {
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "%.15g", result.number);
+                    return alloc_cstr(buf);
+                }
+                case sig::EvalResult::Text:
+                    if (result.text && result.text_length > 0) {
+                        char* buf = (char*)malloc(result.text_length + 1);
+                        memcpy(buf, result.text, result.text_length);
+                        buf[result.text_length] = '\0';
+                        return buf;
+                    }
+                    return alloc_cstr("");
+                case sig::EvalResult::Ok:
+                    return alloc_cstr("ok");
+                case sig::EvalResult::Error: {
+                    // Return first diagnostic message as error string
+                    if (result.diagnostic_count > 0 && result.diagnostics[0].message) {
+                        String msg = "Error: ";
+                        msg += result.diagnostics[0].message;
+                        return alloc_string(msg);
+                    }
+                    return alloc_cstr("Error: evaluation failed");
+                }
+                case sig::EvalResult::DataRef:
+                    return alloc_cstr("[data]");
+            }
+            return alloc_cstr("");
         }
-        catch (const std::exception& e)
-        {
-            String error_msg = "Error: ";
-            error_msg += e.what();
-            char* result = (char*)malloc(error_msg.length() + 1);
-            strcpy(result, error_msg.c_str());
-            return result;
+        catch (const std::exception& e) {
+            String msg = "Error: ";
+            msg += e.what();
+            return alloc_string(msg);
         }
-        catch (...)
-        {
-            const char* error_msg = "Error: Failed to evaluate expression";
-            char* result          = (char*)malloc(strlen(error_msg) + 1);
-            strcpy(result, error_msg);
-            return result;
+        catch (...) {
+            return alloc_cstr("Error: Failed to evaluate expression");
         }
     }
 
     void useq_update_time(double time_seconds)
     {
-        if (!useq_instance)
-        {
-            return;
-        }
-
-        const double micros = time_seconds * 1e6;
-        useq_instance->set_time_from_external_source(micros);
+        g_current_time = time_seconds;
     }
 
     void useq_set_input_value(int channel, double value)
     {
-        if (!useq_instance || channel < 0)
-        {
-            return;
+        if (channel >= 0 && channel < 32) {
+            g_hw_inputs[channel] = value;
         }
-
-        useq_instance->set_input_value(static_cast<size_t>(channel), value);
     }
 
     double useq_eval_output(const char* name, double time_seconds)
     {
-        if (!useq_instance)
-        {
+        if (!g_engine) {
             return std::numeric_limits<double>::quiet_NaN();
         }
 
-        bool ok      = false;
-        double value = useq_instance->eval_output_at_time(name, time_seconds, &ok);
-
-        if (!ok && !std::isfinite(value))
-        {
+        uint16_t output_index = resolve_output_name(name);
+        if (output_index == sig::NODE_NONE ||
+            !g_engine->pool.outputs[output_index].valid) {
             return std::numeric_limits<double>::quiet_NaN();
         }
 
-        return value;
+        double output_values[sig::MAX_OUTPUTS] = {};
+        execute_at_time(time_seconds, output_values);
+
+        return output_values[output_index];
     }
 
-    // ---------------------------------------------------------------
-    // Last-error reporting
-    // ---------------------------------------------------------------
-    static String s_last_error;
-
-    // Return the last error string (empty if no error)
     char* useq_last_error()
     {
-        char* result = (char*)malloc(s_last_error.length() + 1);
-        strcpy(result, s_last_error.c_str());
-        return result;
+        return alloc_string(s_last_error);
     }
-
-    // ---------------------------------------------------------------
-    // Diagnostics from the most recent useq_eval() call
-    // ---------------------------------------------------------------
 
     const char* useq_last_diagnostics()
     {
-        if (!useq_instance)
-        {
-            char* buf = (char*)malloc(3);
-            strcpy(buf, "[]");
-            return buf;
+        if (g_last_diagnostic_count == 0) {
+            return alloc_cstr("[]");
         }
-
-        const auto& diagnostics = useq_instance->get_diagnostics();
 
         JsonBuilder json;
         json.array_begin_unkeyed();
 
-        for (const auto& d : diagnostics)
-        {
+        for (uint8_t i = 0; i < g_last_diagnostic_count; i++) {
+            const auto& d = g_last_diagnostics[i];
             json.object_begin();
-            json.field("severity", severity_to_cstr(d.severity));
-            json.field("category", category_to_cstr(d.category));
-            json.field("start", static_cast<int>(d.span.start));
-            json.field("end", static_cast<int>(d.span.end));
-            json.field("message", d.message);
-            if (d.suggestion.length() > 0)
+            json.field("severity", sig::severity_to_cstr(d.severity));
+            json.field("category", sig::category_to_cstr(d.category));
+            json.field("start", static_cast<int>(d.span_start));
+            json.field("end", static_cast<int>(d.span_start + d.span_len));
+            json.field("message", d.message ? d.message : "");
+            if (d.suggestion)
                 json.field("suggestion", d.suggestion);
-            if (d.example.length() > 0)
-                json.field("example", d.example);
-            if (d.triggered_by.length() > 0)
-                json.field("triggered_by", d.triggered_by);
             json.object_end();
         }
 
         json.array_end();
         const String result = json.build();
-        char* buf = (char*)malloc(result.length() + 1);
-        strcpy(buf, result.c_str());
-        return buf;
+        return alloc_string(result);
     }
 
-    // ---------------------------------------------------------------
-    // Active diagnostics across all output slots
-    // ---------------------------------------------------------------
-
-    // Return a JSON object keyed by output name, containing diagnostic
-    // arrays for each output that has an active issue.
-    // Returns "{}" when no outputs have diagnostics.
-    // Caller must free() the returned pointer.
     const char* useq_active_diagnostics()
     {
-        if (!useq_instance)
-        {
-            char* buf = (char*)malloc(3);
-            strcpy(buf, "{}");
-            return buf;
-        }
-
-        std::vector<std::pair<String, std::vector<Diagnostic>>> active;
-        useq_instance->collect_active_diagnostics(active);
-
-        if (active.empty())
-        {
-            char* buf = (char*)malloc(3);
-            strcpy(buf, "{}");
-            return buf;
-        }
-
-        JsonBuilder json;
-        json.object_begin();
-
-        for (const auto& entry : active)
-        {
-            const String& output_name = entry.first;
-            const auto& diagnostics   = entry.second;
-
-            json.array_begin(output_name);
-
-            for (const auto& d : diagnostics)
-            {
-                json.object_begin();
-
-                json.field("severity", severity_to_cstr(d.severity));
-                json.field("category", category_to_cstr(d.category));
-                json.field("start", static_cast<int>(d.span.start));
-                json.field("end", static_cast<int>(d.span.end));
-                json.field("message", d.message);
-
-                if (d.suggestion.length() > 0)
-                    json.field("suggestion", d.suggestion);
-                if (d.example.length() > 0)
-                    json.field("example", d.example);
-                if (d.triggered_by.length() > 0)
-                    json.field("triggered_by", d.triggered_by);
-
-                json.object_end();
-            }
-
-            json.array_end();
-        }
-
-        json.object_end();
-
-        const String& result_str = json.build();
-        char* buf = (char*)malloc(result_str.length() + 1);
-        strcpy(buf, result_str.c_str());
-        return buf;
+        // TODO: per-output active diagnostics
+        return alloc_cstr("{}");
     }
 
     // ---------------------------------------------------------------
     // Batch evaluation helpers
     // ---------------------------------------------------------------
 
-    // Parse a JSON array of output names (e.g. ["a1","a2","d1"])
-    // Returns the parsed names in `out`. Returns false on parse error.
-    static bool parse_output_names(const char* json, std::vector<String>& out)
+    char* useq_eval_outputs_time_window(
+        const char* outputs_json,
+        double start_time,
+        double end_time,
+        int num_samples)
     {
-        String json_str(json);
-        int start_pos = json_str.indexOf('[');
-        int end_pos   = json_str.indexOf(']');
-        if (start_pos < 0 || end_pos < 0 || end_pos <= start_pos)
-            return false;
-
-        String contents = json_str.substring(start_pos + 1, end_pos);
-        int pos = 0;
-        while (pos < (int)contents.length())
-        {
-            int quote1 = contents.indexOf('"', pos);
-            if (quote1 < 0) break;
-            int quote2 = contents.indexOf('"', quote1 + 1);
-            if (quote2 < 0) break;
-            out.push_back(contents.substring(quote1 + 1, quote2));
-            pos = quote2 + 1;
+        if (!g_engine) {
+            return alloc_cstr("{\"error\": \"uSEQ not initialized\"}");
         }
-        return true;
-    }
-
-    // Evaluate multiple outputs across a time window
-    // Returns a JSON string containing channel-indexed samples
-    // Format: {"a1": [0.5, 0.6, ...], "a2": [0.3, 0.4, ...]}
-    char* useq_eval_outputs_time_window(const char* outputs_json, double start_time, double end_time, int num_samples)
-    {
-        if (!useq_instance)
-        {
-            const char* error_msg = "{\"error\": \"uSEQ not initialized\"}";
-            char* result = (char*)malloc(strlen(error_msg) + 1);
-            strcpy(result, error_msg);
-            return result;
+        if (num_samples < 1) {
+            return alloc_cstr("{\"error\": \"num_samples must be >= 1\"}");
         }
 
-        if (num_samples < 1)
-        {
-            const char* error_msg = "{\"error\": \"num_samples must be >= 1\"}";
-            char* result = (char*)malloc(strlen(error_msg) + 1);
-            strcpy(result, error_msg);
-            return result;
-        }
-
-        try
-        {
-            // Parse outputs array from JSON string (simple format: ["a1", "a2", "d1"])
+        try {
             std::vector<String> outputs;
-            if (!parse_output_names(outputs_json, outputs))
-            {
+            if (!parse_output_names(outputs_json, outputs)) {
                 s_last_error = "Failed to parse outputs JSON array";
-                const char* error_msg = "{\"error\": \"Failed to parse outputs JSON\"}";
-                char* result = (char*)malloc(strlen(error_msg) + 1);
-                strcpy(result, error_msg);
-                return result;
+                return alloc_cstr("{\"error\": \"Failed to parse outputs JSON\"}");
             }
 
-            // Call the batch evaluation API - now returns map<String, vector<double>>
-            auto results = useq_instance->eval_outputs(start_time, end_time, num_samples, outputs);
+            // Resolve output indices
+            std::vector<uint16_t> output_indices;
+            for (const auto& name : outputs) {
+                output_indices.push_back(resolve_output_name(name.c_str()));
+            }
 
-            // Build JSON response - object with arrays
-            // Format: {"a1": [0.5, 0.6], "a2": [0.3, 0.4]}
+            // Build time array
+            double dt = (num_samples > 1)
+                ? (end_time - start_time) / (double)(num_samples - 1)
+                : 0.0;
+
+            // Snapshot cell values once
+            double cell_values[sig::MAX_CELLS];
+            g_engine->cells.snapshot_values(cell_values, sig::MAX_CELLS);
+
+            // Use batch execution if workspace is available
+            uint16_t num_active_outputs = 0;
+            for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+                if (g_engine->pool.outputs[i].valid) num_active_outputs++;
+            }
+
+            // Allocate output buffer: all outputs x num_samples
+            std::vector<double> batch_buf(num_active_outputs * num_samples, 0.0);
+
+            if (g_engine->pool.batch_workspace) {
+                // Build time array
+                std::vector<double> t_array(num_samples);
+                for (int i = 0; i < num_samples; i++) {
+                    t_array[i] = start_time + dt * i;
+                }
+
+                sig::execute_batch(
+                    g_engine->pool, t_array.data(), (size_t)num_samples,
+                    cell_values, g_hw_inputs,
+                    g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
+                    batch_buf.data(), num_active_outputs
+                );
+            } else {
+                // Fallback: single-sample loop
+                // Allocate full output buffer for execute_at_time
+                for (int s = 0; s < num_samples; s++) {
+                    double t = start_time + dt * s;
+                    double output_values[sig::MAX_OUTPUTS] = {};
+                    double node_values[sig::MAX_TOTAL_NODES];
+
+                    sig::execute_all_outputs(
+                        g_engine->pool, t,
+                        cell_values, g_hw_inputs,
+                        g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
+                        g_engine->pool.prev_output_values,
+                        output_values, node_values
+                    );
+
+                    // Extract requested outputs
+                    uint16_t row = 0;
+                    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+                        if (g_engine->pool.outputs[i].valid) {
+                            batch_buf[row * num_samples + s] = output_values[i];
+                            row++;
+                        }
+                    }
+                }
+            }
+
+            // Build JSON: map from name to sample array
+            // batch_buf is indexed by active output row, but we need to map
+            // from requested output names to their row indices.
+            // Build a mapping from output_index -> active row.
+            uint16_t index_to_row[sig::MAX_OUTPUTS];
+            {
+                uint16_t row = 0;
+                for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+                    if (g_engine->pool.outputs[i].valid) {
+                        index_to_row[i] = row++;
+                    } else {
+                        index_to_row[i] = sig::NODE_NONE;
+                    }
+                }
+            }
+
             String json_result = "{";
             bool first_channel = true;
 
-            for (const auto& channel_pair : results)
-            {
+            for (size_t c = 0; c < outputs.size(); c++) {
                 if (!first_channel) json_result += ",";
                 first_channel = false;
 
-                // Output name as key
                 json_result += "\"";
-                json_result += channel_pair.first;
+                json_result += outputs[c];
                 json_result += "\":[";
 
-                // Array of time samples for this channel
-                const auto& samples = channel_pair.second;
-                for (size_t i = 0; i < samples.size(); ++i)
-                {
-                    if (i > 0) json_result += ",";
-
-                    // Convert double to string
-                    char val_buf[32];
-                    snprintf(val_buf, sizeof(val_buf), "%.15g", samples[i]);
-                    json_result += val_buf;
+                uint16_t idx = output_indices[c];
+                if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
+                    uint16_t row = index_to_row[idx];
+                    for (int s = 0; s < num_samples; s++) {
+                        if (s > 0) json_result += ",";
+                        char val_buf[32];
+                        snprintf(val_buf, sizeof(val_buf), "%.15g",
+                                 batch_buf[row * num_samples + s]);
+                        json_result += val_buf;
+                    }
+                } else {
+                    // Output not active — fill with NaN
+                    for (int s = 0; s < num_samples; s++) {
+                        if (s > 0) json_result += ",";
+                        json_result += "null";
+                    }
                 }
 
                 json_result += "]";
             }
             json_result += "}";
 
-            // Allocate and return result
-            char* result = (char*)malloc(json_result.length() + 1);
-            strcpy(result, json_result.c_str());
-            return result;
+            return alloc_string(json_result);
         }
-        catch (const std::exception& e)
-        {
+        catch (const std::exception& e) {
             s_last_error = e.what();
-            String error_msg = "{\"error\": \"";
-            error_msg += e.what();
-            error_msg += "\"}";
-            char* result = (char*)malloc(error_msg.length() + 1);
-            strcpy(result, error_msg.c_str());
-            return result;
+            String msg = "{\"error\": \"";
+            msg += e.what();
+            msg += "\"}";
+            return alloc_string(msg);
         }
-        catch (...)
-        {
+        catch (...) {
             s_last_error = "Unknown error during batch evaluation";
-            const char* error_msg = "{\"error\": \"Unknown error during batch evaluation\"}";
-            char* result = (char*)malloc(strlen(error_msg) + 1);
-            strcpy(result, error_msg);
-            return result;
+            return alloc_cstr("{\"error\": \"Unknown error during batch evaluation\"}");
         }
     }
 
-    // ---------------------------------------------------------------
-    // Batch evaluation into a caller-provided Float64 buffer
-    // ---------------------------------------------------------------
-    // Writes results into `buffer` in row-major order: channels × samples.
-    // Returns the number of channels written, or -1 on error.
-    //
-    // ABI (from wasmAbi.ts):
-    //   symbol: "useq_eval_outputs_time_window_into"
-    //   returnType: "number"
-    //   argTypes: ["string", "number", "number", "number", "number", "number"]
-    //
-    // Parameters:
-    //   outputs_json  - JSON array of output names, e.g. '["a1","a2"]'
-    //   start_time    - window start (seconds)
-    //   end_time      - window end (seconds)
-    //   num_samples   - number of time samples per channel
-    //   buffer_ptr    - byte offset into the Emscripten HEAPF64 (from _malloc)
-    //   buffer_length - total number of Float64 slots available in buffer
     int useq_eval_outputs_time_window_into(
         const char* outputs_json,
         double start_time,
@@ -398,30 +419,25 @@ extern "C"
         int buffer_ptr,
         int buffer_length)
     {
-        if (!useq_instance)
-        {
+        if (!g_engine) {
             s_last_error = "uSEQ not initialized";
             return -1;
         }
-        if (num_samples < 1)
-        {
+        if (num_samples < 1) {
             s_last_error = "num_samples must be >= 1";
             return -1;
         }
 
-        try
-        {
+        try {
             std::vector<String> outputs;
-            if (!parse_output_names(outputs_json, outputs))
-            {
+            if (!parse_output_names(outputs_json, outputs)) {
                 s_last_error = "Failed to parse outputs JSON array";
                 return -1;
             }
 
             int num_channels = (int)outputs.size();
             int required_slots = num_channels * num_samples;
-            if (required_slots > buffer_length)
-            {
+            if (required_slots > buffer_length) {
                 s_last_error = "Buffer too small: need " +
                     String(std::to_string(required_slots).c_str()) +
                     " slots, got " +
@@ -429,50 +445,101 @@ extern "C"
                 return -1;
             }
 
-            // Interpret buffer_ptr as a byte offset into the Emscripten heap.
-            // Emscripten HEAPF64 views the same memory; buffer_ptr is the
-            // byte address returned by _malloc. Convert to double* pointer.
+            // Resolve output indices
+            std::vector<uint16_t> output_indices;
+            for (const auto& name : outputs) {
+                output_indices.push_back(resolve_output_name(name.c_str()));
+            }
+
             double* buf = reinterpret_cast<double*>(buffer_ptr);
 
-            // Use the interpreter's batch API
-            auto results = useq_instance->eval_outputs(start_time, end_time, num_samples, outputs);
+            // Build time array
+            double dt = (num_samples > 1)
+                ? (end_time - start_time) / (double)(num_samples - 1)
+                : 0.0;
 
-            // Write into the buffer in row-major order: channel 0 samples, channel 1 samples, ...
-            int channel_idx = 0;
-            for (const auto& name : outputs)
-            {
-                auto it = results.find(name);
-                double* row = buf + (channel_idx * num_samples);
+            // Snapshot cell values
+            double cell_values[sig::MAX_CELLS];
+            g_engine->cells.snapshot_values(cell_values, sig::MAX_CELLS);
 
-                if (it != results.end())
-                {
-                    const auto& samples = it->second;
-                    int count = std::min((int)samples.size(), num_samples);
-                    for (int i = 0; i < count; ++i)
-                        row[i] = samples[i];
-                    // Zero-fill if fewer samples than requested
-                    for (int i = count; i < num_samples; ++i)
-                        row[i] = 0.0;
+            // Build active-output row mapping
+            uint16_t index_to_row[sig::MAX_OUTPUTS];
+            uint16_t num_active = 0;
+            for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+                if (g_engine->pool.outputs[i].valid) {
+                    index_to_row[i] = num_active++;
+                } else {
+                    index_to_row[i] = sig::NODE_NONE;
                 }
-                else
-                {
-                    // Channel not found — fill with NaN
-                    for (int i = 0; i < num_samples; ++i)
-                        row[i] = std::numeric_limits<double>::quiet_NaN();
+            }
+
+            if (g_engine->pool.batch_workspace && num_active > 0) {
+                // Use batch execution
+                std::vector<double> t_array(num_samples);
+                for (int i = 0; i < num_samples; i++) {
+                    t_array[i] = start_time + dt * i;
                 }
-                ++channel_idx;
+
+                // Batch buffer: active_outputs x num_samples
+                std::vector<double> batch_buf(num_active * num_samples, 0.0);
+
+                sig::execute_batch(
+                    g_engine->pool, t_array.data(), (size_t)num_samples,
+                    cell_values, g_hw_inputs,
+                    g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
+                    batch_buf.data(), num_active
+                );
+
+                // Copy requested channels into caller's buffer
+                for (int c = 0; c < num_channels; c++) {
+                    double* row = buf + (c * num_samples);
+                    uint16_t idx = output_indices[c];
+
+                    if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
+                        uint16_t active_row = index_to_row[idx];
+                        memcpy(row, &batch_buf[active_row * num_samples],
+                               num_samples * sizeof(double));
+                    } else {
+                        for (int s = 0; s < num_samples; s++) {
+                            row[s] = std::numeric_limits<double>::quiet_NaN();
+                        }
+                    }
+                }
+            } else {
+                // Single-sample fallback
+                for (int s = 0; s < num_samples; s++) {
+                    double t = start_time + dt * s;
+                    double output_values[sig::MAX_OUTPUTS] = {};
+                    double node_values[sig::MAX_TOTAL_NODES];
+
+                    sig::execute_all_outputs(
+                        g_engine->pool, t,
+                        cell_values, g_hw_inputs,
+                        g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
+                        g_engine->pool.prev_output_values,
+                        output_values, node_values
+                    );
+
+                    for (int c = 0; c < num_channels; c++) {
+                        uint16_t idx = output_indices[c];
+                        double* row = buf + (c * num_samples);
+                        if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
+                            row[s] = output_values[idx];
+                        } else {
+                            row[s] = std::numeric_limits<double>::quiet_NaN();
+                        }
+                    }
+                }
             }
 
             s_last_error = "";
             return num_channels;
         }
-        catch (const std::exception& e)
-        {
+        catch (const std::exception& e) {
             s_last_error = e.what();
             return -1;
         }
-        catch (...)
-        {
+        catch (...) {
             s_last_error = "Unknown error during batch evaluation";
             return -1;
         }

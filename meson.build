@@ -7,12 +7,6 @@ if get_option('use_ccache')
   ccache = find_program('ccache', required: false)
   if ccache.found()
     message('ccache found and enabled for compilation caching')
-    # Meson automatically uses ccache if it's in PATH and CXX/CC are not set
-    # We can also explicitly set it via environment variables or wrapper scripts
-    # Export these before running meson setup:
-    #   export CXX="ccache g++"
-    #   export CC="ccache gcc"
-    # Or use: meson setup build --wrap-mode=default
     message('Note: Ensure ccache is in PATH or set CXX="ccache g++" before meson setup')
   else
     message('ccache not found, continuing without compilation caching')
@@ -35,9 +29,6 @@ common_warning_args = [
   '-Wall',           # Enable most warnings
   '-Wextra',         # Enable extra warnings
   '-Wpedantic',      # Pedantic warnings for ISO C++ compliance
-  # '-Werror',         # Treat warnings as errors (exits on first error) - DISABLED
-  # '-Wfatal-errors',  # Stop after first error (for faster builds) - DISABLED
-  # Note: Removed contradictory -Wconversion/-Wno-conversion pair
   '-Wno-conversion', # Disable type conversion warnings (embedded code needs flexibility)
   '-Wshadow',        # Warn about variable shadowing
   '-Wunused',        # Warn about unused variables/functions
@@ -58,12 +49,9 @@ pch_file = 'uSEQ/src/pch.h'
 
 # Define compiler arguments for different targets (early for libraries)
 standalone_args = [
-  # '-DDESKTOP',
-  # '-DUSE_STD_STR',
   '-DUSE_OWN_ARDUINO_STR',
   '-DUSE_STD_IO',
   '-DNO_ETL',
-  # '-DPICO_NO_HARDWARE'
   '-D__not_in_flash(section)=',
   '-D__not_in_flash_func(x)=',
 ]
@@ -98,12 +86,6 @@ if get_option('enable_leds')
   message('LED control support enabled')
 endif
 
-arduino_args = [
-  # '-DARDUINO',
-  # '-DUSE_ARDUINO_STR',
-  # '-DUSE_SERIAL_IO'
-]
-
 # === STATIC LIBRARIES FOR PROPER DEPENDENCY TRACKING ===
 
 # Get unity build option and configure override options
@@ -132,29 +114,7 @@ utils_dep = declare_dependency(
   include_directories : src_inc
 )
 
-# LISP core library - depends on utils
-lisp_core_lib = static_library('useq_lisp_core',
-  'uSEQ/src/modulisp/lisp/parser.cpp',
-  'uSEQ/src/modulisp/lisp/value.cpp',
-  'uSEQ/src/modulisp/lisp/environment.cpp',
-  # interpreter merged into ModuLispInterpreter
-  'uSEQ/src/modulisp/lisp/builtins.cpp',
-  'uSEQ/src/template_instantiations.cpp',
-  include_directories : src_inc,
-  cpp_args : standalone_args,
-  cpp_pch : pch_file,
-  dependencies : utils_dep,
-  override_options : unity_override_options
-)
-
-# Create a dependency object for lisp core
-lisp_core_dep = declare_dependency(
-  link_with : lisp_core_lib,
-  include_directories : src_inc,
-  dependencies : utils_dep
-)
-
-# Signal engine library - depends on lisp_core (for SymbolIntern)
+# Signal engine library - depends on utils (symbol_intern.h is header-only)
 signal_engine_lib = static_library('useq_signal_engine',
   'uSEQ/src/signal_engine/diagnostics.cpp',
   'uSEQ/src/signal_engine/token.cpp',
@@ -166,127 +126,15 @@ signal_engine_lib = static_library('useq_signal_engine',
   include_directories : src_inc,
   cpp_args : standalone_args,
   cpp_pch : pch_file,
-  dependencies : lisp_core_dep,
+  dependencies : utils_dep,
   override_options : unity_override_options
 )
 
 signal_engine_dep = declare_dependency(
   link_with : signal_engine_lib,
   include_directories : src_inc,
-  dependencies : lisp_core_dep
-)
-
-# ModuLisp library - depends on lisp_core
-modulisp_lib = static_library('useq_modulisp',
-  'uSEQ/src/modulisp/modulisp.cpp',
-  'uSEQ/src/modulisp/temporal_context.cpp',
-  'uSEQ/src/modulisp/bytecode_vm.cpp',
-  'uSEQ/src/modulisp/modulisp_interpreter_core.cpp',
-  'uSEQ/src/modulisp/modulisp_time.cpp',
-  'uSEQ/src/modulisp/modulisp_api.cpp',
-  'uSEQ/src/modulisp/builtins_timing.cpp',
-  'uSEQ/src/modulisp/builtins_sequencing.cpp',
-  'uSEQ/src/modulisp/builtins_interpolation.cpp',
-  'uSEQ/src/modulisp/time_manager.cpp',
-  'uSEQ/src/modulisp/scheduler.cpp',
-  'uSEQ/src/modulisp/random_generator.cpp',
-  include_directories : src_inc,
-  cpp_args : standalone_args,
-  cpp_pch : pch_file,
-  dependencies : lisp_core_dep,
-  override_options : unity_override_options
-)
-
-# Create a dependency object for modulisp (placed before test_helpers)
-modulisp_dep = declare_dependency(
-  link_with : modulisp_lib,
-  include_directories : src_inc,
-  dependencies : lisp_core_dep
-)
-
-# Test helpers library - minimal interfaces for faster test compilation
-test_helpers_lib = static_library('useq_test_helpers',
-  'uSEQ/src/interfaces/test_helpers.cpp',
-  include_directories : src_inc,
-  cpp_args : standalone_args,
-  cpp_pch : pch_file,
-  dependencies : [lisp_core_dep, modulisp_dep],
-  override_options : unity_override_options
-)
-
-# Create a dependency object for test helpers
-test_helpers_dep = declare_dependency(
-  link_with : test_helpers_lib,
-  include_directories : src_inc,
-  dependencies : [lisp_core_dep, modulisp_dep]
-)
-
-# (modulisp_dep defined above)
-
-# DSP library - depends on utils
-dsp_lib = static_library('useq_dsp',
-  'uSEQ/src/dsp/tempoEstimator.cpp',
-  include_directories : src_inc,
-  cpp_args : standalone_args,
-  cpp_pch : pch_file,
-  dependencies : utils_dep,
-  override_options : unity_override_options
-)
-
-# Create a dependency object for dsp
-dsp_dep = declare_dependency(
-  link_with : dsp_lib,
-  include_directories : src_inc,
   dependencies : utils_dep
 )
-
-# uSEQ hardware library - depends on modulisp and dsp
-useq_hw_lib = static_library('useq_hw',
-  'uSEQ/src/uSEQ.cpp',
-  'uSEQ/src/uSEQ_io.cpp',
-  'uSEQ/src/uSEQ_i2c.cpp',
-  'uSEQ/src/uSEQ_flash.cpp',
-  'uSEQ/src/uSEQ_api.cpp',
-  'uSEQ/src/uSEQ/output_manager.cpp',
-  'uSEQ/src/uSEQ/io_manager.cpp',
-  'uSEQ/src/uSEQ/i2cHost.cpp',
-  'uSEQ/src/uSEQ/i2cClient.cpp',
-  'uSEQ/src/uSEQ/i2cUtils.cpp',
-  'uSEQ/src/uSEQ/ResponsiveAnalogRead.cpp',
-  'uSEQ/src/uSEQ_update.cpp',
-  include_directories : src_inc,
-  cpp_args : standalone_args,
-  cpp_pch : pch_file,
-  dependencies : [modulisp_dep, dsp_dep],
-  override_options : unity_override_options
-)
-
-# Create a dependency object for useq hardware
-useq_hw_dep = declare_dependency(
-  link_with : useq_hw_lib,
-  include_directories : src_inc,
-  dependencies : [modulisp_dep, dsp_dep]
-)
-
-# === EXECUTABLES USE STATIC LIBRARIES ===
-
-# Standalone interpreter executable - links against all needed libraries
-standalone_interpreter = executable(
-  'standalone',
-  'uSEQ/src/standalone_interpreter.cpp',
-  include_directories : src_inc,
-  cpp_args : standalone_args,
-  cpp_pch : pch_file,
-  dependencies : useq_hw_dep,
-  override_options : unity_override_options
-)
-
-# arduino_interpreter = executable(
-#   'arduino',
-#   sources : arduino_src,
-#   include_directories : src_inc,
-#   cpp_args : arduino_args
-# )
 
 # Add test subdirectory
 subdir('test')

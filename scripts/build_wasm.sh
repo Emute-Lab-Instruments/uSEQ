@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 
-# Build script for uSEQ WebAssembly module
+# Build script for uSEQ WASM module (signal engine)
 
 # Change to project root directory
 cd "$(dirname "$0")/.."
 
 echo "Building uSEQ WASM module..."
 
-# Source files for WASM - minimal set for basic LISP interpreter
+# Source files for WASM — signal engine + utils (symbol_intern is header-only)
 SOURCES=(
     # Wrapper
     "wasm/wasm_wrapper.cpp"
-    
-    # Utils library (essential)
+
+    # Utils library (essential — symbol_intern.h depends on String)
     "uSEQ/src/utils/string.cpp"
     "uSEQ/src/utils/common.cpp"
     "uSEQ/src/utils/itoa.cpp"
@@ -21,43 +21,15 @@ SOURCES=(
     "uSEQ/src/utils/logger_bridge.cpp"
     "uSEQ/src/utils/default_logger.cpp"
     "uSEQ/src/utils.cpp"
-    
-    # LISP core library (essential)
-    "uSEQ/src/modulisp/lisp/parser.cpp"
-    "uSEQ/src/modulisp/lisp/value.cpp"
-    "uSEQ/src/modulisp/lisp/environment.cpp"
-    "uSEQ/src/modulisp/lisp/builtins.cpp"
-    "uSEQ/src/template_instantiations.cpp"
 
-    # ModuLisp library (essential for timing and interpreter)
-    "uSEQ/src/modulisp/modulisp.cpp"
-    "uSEQ/src/modulisp/temporal_context.cpp"
-    "uSEQ/src/modulisp/modulisp_time.cpp"
-    "uSEQ/src/modulisp/modulisp_api.cpp"
-    "uSEQ/src/modulisp/modulisp_interpreter_core.cpp"
-    "uSEQ/src/modulisp/builtins_timing.cpp"
-    "uSEQ/src/modulisp/builtins_sequencing.cpp"
-    "uSEQ/src/modulisp/builtins_interpolation.cpp"
-    "uSEQ/src/modulisp/phasor_manager.cpp"
-    "uSEQ/src/modulisp/random_generator.cpp"
-    "uSEQ/src/modulisp/scheduler.cpp"
-    "uSEQ/src/modulisp/time_manager.cpp"
-
-    # Bytecode VM
-    "uSEQ/src/modulisp/bytecode_vm.cpp"
-
-    # Skip uSEQ.cpp entirely - use ModuLisp directly for WASM
-    # "uSEQ/src/uSEQ.cpp"
-    
-    # Skip hardware-specific files for WASM:
-    # - uSEQ/src/uSEQ_io.cpp (hardware I/O)
-    # - uSEQ/src/uSEQ_i2c.cpp (I2C networking) 
-    # - uSEQ/src/uSEQ_flash.cpp (flash storage)
-    # - uSEQ/src/uSEQ/output_manager.cpp (hardware outputs)
-    # - uSEQ/src/uSEQ/io_manager.cpp (hardware I/O management)
-    # - uSEQ/src/uSEQ_update.cpp (firmware updates)
-    # - uSEQ/src/dsp/tempoEstimator.cpp (DSP processing)
-    # - uSEQ/src/uSEQ_api.cpp (hardware-specific APIs)
+    # Signal engine
+    "uSEQ/src/signal_engine/diagnostics.cpp"
+    "uSEQ/src/signal_engine/token.cpp"
+    "uSEQ/src/signal_engine/cell_store.cpp"
+    "uSEQ/src/signal_engine/node_pool.cpp"
+    "uSEQ/src/signal_engine/executor.cpp"
+    "uSEQ/src/signal_engine/graph_builder.cpp"
+    "uSEQ/src/signal_engine/cold_eval.cpp"
 )
 
 # Compiler flags (matching meson.build standalone_args)
@@ -87,7 +59,7 @@ EM_FLAGS=(
     "--no-entry"
 )
 
-# Build command - output to wasm directory
+# Build command — output to wasm directory
 emcc "${SOURCES[@]}" "${FLAGS[@]}" ${EM_FLAGS[@]} -o wasm/useq.js
 
 if [ $? -ne 0 ]; then
