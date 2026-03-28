@@ -25,6 +25,13 @@ double eval_unary(NodeOp op, double a) {
         case NodeOp::Not:     return (a == 0.0) ? 1.0 : 0.0;
         case NodeOp::BiToUni: return (a + 1.0) * 0.5;
         case NodeOp::UniToBi: return a * 2.0 - 1.0;
+        case NodeOp::HashIndex: {
+            uint32_t v = (uint32_t)(int32_t)a;
+            v = ((v >> 16) ^ v) * 0x45d9f3bu;
+            v = ((v >> 16) ^ v) * 0x45d9f3bu;
+            v = (v >> 16) ^ v;
+            return (double)(v & 0x7fffffffu) / (double)0x7fffffffu;
+        }
         default:              return 0.0;
     }
 }

@@ -37,6 +37,10 @@ struct GraphBuildResult {
     Diagnostic diagnostics[MAX_DIAGNOSTICS] = {};
     uint8_t diagnostic_count = 0;
     bool has_error = false;
+
+    // Cell dependencies discovered during graph compilation
+    SymbolID dep_cells[MAX_OUTPUT_DEPS] = {};
+    uint8_t dep_count = 0;
 };
 
 // ── Graph Builder ───────────────────────────────────────────────────────────
@@ -78,8 +82,22 @@ struct GraphBuilder {
         SymbolID tri, sqr, pulse, usin, ucos;
         SymbolID bi_to_uni, b_to_u, uni_to_bi, u_to_b;
         SymbolID scale, lerp;
+        SymbolID random_, index_rand;
         SymbolID quote;
         SymbolID scope;
+        SymbolID loop_at, eval_at_time, gatesw, zeros_, get_expr;
+        SymbolID rpulse, rstep, ridx, rwarp;
+
+        // Transport / time management (cold-path only)
+        SymbolID set_bpm;
+        SymbolID set_time_sig;
+        SymbolID useq_clear;
+        SymbolID set_time_offset;
+        SymbolID nudge_time;
+        SymbolID useq_play;
+        SymbolID useq_pause;
+        SymbolID useq_stop;
+        SymbolID useq_rewind;
     };
     static Symbols sym;
     static void init_symbols();
@@ -103,6 +121,8 @@ struct GraphBuilder {
     uint16_t compile_fast(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_slow(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_offset(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_loop_at(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_eval_at_time(TokenStream& ts, Scope& scope, TimeContext& ctx);
 
     // Control flow
     uint16_t compile_if(TokenStream& ts, Scope& scope, TimeContext& ctx);
@@ -137,7 +157,18 @@ struct GraphBuilder {
     uint16_t compile_seq(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_interp(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_dm(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_gatesw(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_range(TokenStream& ts, Scope& scope, TimeContext& ctx);
+
+    // Ratio-rhythm functions
+    uint16_t compile_rpulse(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_rstep(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_ridx(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_rwarp(TokenStream& ts, Scope& scope, TimeContext& ctx);
+
+    // Random / hash
+    uint16_t compile_random(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_index_rand(TokenStream& ts, Scope& scope, TimeContext& ctx);
 
     // Vector literal [1 2 3]
     uint16_t compile_vector_literal(TokenStream& ts, Scope& scope, TimeContext& ctx);

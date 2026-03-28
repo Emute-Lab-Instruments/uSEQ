@@ -108,6 +108,15 @@ static inline double eval_node(
             return data_pool[off + i0] + (data_pool[off + i1] - data_pool[off + i0]) * frac;
         }
 
+        case NodeOp::HashIndex: {
+            // Deterministic hash matching old simple_hashing_function
+            uint32_t v = (uint32_t)(int32_t)a;
+            v = ((v >> 16) ^ v) * 0x45d9f3bu;
+            v = ((v >> 16) ^ v) * 0x45d9f3bu;
+            v = (v >> 16) ^ v;
+            return (double)(v & 0x7fffffffu) / (double)0x7fffffffu;
+        }
+
         default: return 0.0;
     }
 }

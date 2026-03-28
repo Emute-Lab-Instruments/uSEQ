@@ -8,6 +8,16 @@
 
 namespace sig {
 
+// ── Global Engine State ────────────────────────────────────────────────────
+// Transport and timing state managed by cold-path commands.
+
+struct EngineState {
+    double time_offset = 0.0;
+    bool is_playing    = true;
+};
+
+extern EngineState g_engine_state;
+
 // ── Eval Result ─────────────────────────────────────────────────────────────
 
 struct EvalResult {

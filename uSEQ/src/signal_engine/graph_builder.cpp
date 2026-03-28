@@ -94,8 +94,33 @@ void GraphBuilder::init_symbols() {
     sym.scale = si.intern("scale");
     sym.lerp = si.intern("lerp");
 
+    sym.random_ = si.intern("random");
+    sym.index_rand = si.intern("index-rand");
+
     sym.quote = si.intern("quote");
     sym.scope = si.intern("scope");
+
+    sym.loop_at = si.intern("loop-at");
+    sym.eval_at_time = si.intern("eval-at-time");
+    sym.gatesw = si.intern("gatesw");
+    sym.zeros_ = si.intern("zeros");
+    sym.get_expr = si.intern("get-expr");
+
+    sym.rpulse = si.intern("rpulse");
+    sym.rstep = si.intern("rstep");
+    sym.ridx = si.intern("ridx");
+    sym.rwarp = si.intern("rwarp");
+
+    // Transport / time management (cold-path only)
+    sym.set_bpm = si.intern("set-bpm");
+    sym.set_time_sig = si.intern("set-time-sig");
+    sym.useq_clear = si.intern("useq-clear");
+    sym.set_time_offset = si.intern("useq-set-time-offset");
+    sym.nudge_time = si.intern("useq-nudge-time");
+    sym.useq_play = si.intern("useq-play");
+    sym.useq_pause = si.intern("useq-pause");
+    sym.useq_stop = si.intern("useq-stop");
+    sym.useq_rewind = si.intern("useq-rewind");
 
     symbols_initialized = true;
 }
@@ -204,8 +229,13 @@ uint16_t GraphBuilder::report_warning(uint16_t span_start, uint16_t span_len,
 
 bool GraphBuilder::is_side_effect_form(SymbolID op) const {
     return op == sym.define || op == sym.def || op == sym.defn ||
-           op == sym.defun || op == sym.defs || op == sym.set;
-    // TODO: add schedule, unschedule, print, println, display, delay, etc.
+           op == sym.defun || op == sym.defs || op == sym.set ||
+           op == sym.zeros_ || op == sym.get_expr ||
+           op == sym.set_bpm || op == sym.set_time_sig ||
+           op == sym.useq_clear || op == sym.set_time_offset ||
+           op == sym.nudge_time || op == sym.useq_play ||
+           op == sym.useq_pause || op == sym.useq_stop ||
+           op == sym.useq_rewind;
 }
 
 // ── Operator classification ─────────────────────────────────────────────────
@@ -552,6 +582,8 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
     if (op == sym.fast)   return compile_fast(ts, scope, ctx);
     if (op == sym.slow)   return compile_slow(ts, scope, ctx);
     if (op == sym.offset || op == sym.shift) return compile_offset(ts, scope, ctx);
+    if (op == sym.loop_at) return compile_loop_at(ts, scope, ctx);
+    if (op == sym.eval_at_time) return compile_eval_at_time(ts, scope, ctx);
 
     // Control flow
     if (op == sym.if_)    return compile_if(ts, scope, ctx);
@@ -644,6 +676,17 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
     if (op == sym.seq || op == sym.from_list) return compile_seq(ts, scope, ctx);
     if (op == sym.interp || op == sym.flatseq) return compile_interp(ts, scope, ctx);
     if (op == sym.dm) return compile_dm(ts, scope, ctx);
+    if (op == sym.gatesw) return compile_gatesw(ts, scope, ctx);
+
+    // Ratio-rhythm functions
+    if (op == sym.rpulse) return compile_rpulse(ts, scope, ctx);
+    if (op == sym.rstep) return compile_rstep(ts, scope, ctx);
+    if (op == sym.ridx) return compile_ridx(ts, scope, ctx);
+    if (op == sym.rwarp) return compile_rwarp(ts, scope, ctx);
+
+    // Random / hash
+    if (op == sym.random_) return compile_random(ts, scope, ctx);
+    if (op == sym.index_rand) return compile_index_rand(ts, scope, ctx);
 
     // Quote in signal context
     if (op == sym.quote) {
@@ -681,6 +724,18 @@ uint16_t GraphBuilder::compile_slow(TokenStream& ts, Scope& scope, TimeContext& 
 uint16_t GraphBuilder::compile_offset(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t amount = compile_expr(ts, scope, ctx);
     TimeContext inner = { pool.make_binop(NodeOp::Add, ctx.t_node, amount) };
+    return compile_expr(ts, scope, inner);
+}
+
+uint16_t GraphBuilder::compile_loop_at(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    uint16_t duration = compile_expr(ts, scope, ctx);
+    TimeContext inner = { pool.make_binop(NodeOp::Fmod, ctx.t_node, duration) };
+    return compile_expr(ts, scope, inner);
+}
+
+uint16_t GraphBuilder::compile_eval_at_time(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    uint16_t time_node = compile_expr(ts, scope, ctx);
+    TimeContext inner = { time_node };
     return compile_expr(ts, scope, inner);
 }
 
@@ -1003,34 +1058,53 @@ uint16_t GraphBuilder::compile_gates(SymbolID op, TokenStream& ts,
 }
 
 uint16_t GraphBuilder::compile_euclid(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (euclid total active phase) or (euclid total active rotation phase)
-    // Bjorklund closed-form: floor(i * active / total) != floor((i-1) * active / total)
+    // (euclid total active phase)
+    // Matches old engine: idx = (step * active) % total; hit if idx < active AND rem < pw
     uint16_t total = compile_expr(ts, scope, ctx);
     uint16_t active = compile_expr(ts, scope, ctx);
+
+    // Optional pulse-width argument (default 0.5)
+    uint16_t pulse_width;
     uint16_t phase;
     if (ts.peek().kind != TokenKind::RParen) {
-        phase = compile_expr(ts, scope, ctx);
+        uint16_t arg3 = compile_expr(ts, scope, ctx);
+        if (ts.peek().kind != TokenKind::RParen) {
+            // 4 args: (euclid total active pulseWidth phase)
+            pulse_width = arg3;
+            phase = compile_expr(ts, scope, ctx);
+        } else {
+            // 3 args: (euclid total active phase)
+            pulse_width = pool.make_const(0.5);
+            phase = arg3;
+        }
     } else {
+        pulse_width = pool.make_const(0.5);
         phase = expand_beat(ctx);
     }
 
-    // step index = floor(phase * total) % total
+    // scaled = phase * total
     uint16_t scaled = pool.make_binop(NodeOp::Mul, phase, total);
-    uint16_t step_idx = pool.make_unary(NodeOp::Floor, scaled);
-    uint16_t step_mod = pool.make_binop(NodeOp::Fmod, step_idx, total);
 
-    // Bresenham: floor((step_mod + 1) * active / total) - floor(step_mod * active / total) > 0
-    uint16_t curr = pool.make_binop(NodeOp::Mul, step_mod, active);
-    uint16_t curr_div = pool.make_binop(NodeOp::Div, curr, total);
-    uint16_t curr_floor = pool.make_unary(NodeOp::Floor, curr_div);
+    // step_idx = min(floor(scaled), total - 1)  — clamp for phase=1.0 edge case
+    uint16_t floored = pool.make_unary(NodeOp::Floor, scaled);
+    uint16_t max_idx = pool.make_binop(NodeOp::Sub, total, pool.make_const(1.0));
+    uint16_t step_idx = pool.make_binop(NodeOp::Min, floored, max_idx);
 
-    uint16_t next_step = pool.make_binop(NodeOp::Add, step_mod, pool.make_const(1.0));
-    uint16_t next = pool.make_binop(NodeOp::Mul, next_step, active);
-    uint16_t next_div = pool.make_binop(NodeOp::Div, next, total);
-    uint16_t next_floor = pool.make_unary(NodeOp::Floor, next_div);
+    // rem = scaled - step_idx  (fractional position within current step)
+    uint16_t rem = pool.make_binop(NodeOp::Sub, scaled, step_idx);
 
-    uint16_t diff = pool.make_binop(NodeOp::Sub, next_floor, curr_floor);
-    return pool.make_binop(NodeOp::CmpGt, diff, pool.make_const(0.0));
+    // idx = (step_idx * active) % total
+    uint16_t product = pool.make_binop(NodeOp::Mul, step_idx, active);
+    uint16_t idx = pool.make_binop(NodeOp::Fmod, product, total);
+
+    // hit = idx < active
+    uint16_t hit = pool.make_binop(NodeOp::CmpLt, idx, active);
+
+    // gate = rem < pulse_width
+    uint16_t gate = pool.make_binop(NodeOp::CmpLt, rem, pulse_width);
+
+    // result = hit ? gate : 0
+    return pool.make_select(hit, gate, pool.make_const(0.0));
 }
 
 uint16_t GraphBuilder::compile_seq(TokenStream& ts, Scope& scope, TimeContext& ctx) {
@@ -1064,6 +1138,292 @@ uint16_t GraphBuilder::compile_dm(TokenStream& ts, Scope& scope, TimeContext& ct
     uint16_t value = compile_expr(ts, scope, ctx);
     uint16_t is_true = pool.make_binop(NodeOp::CmpGt, cond, pool.make_const(0.0));
     return pool.make_select(is_true, value, default_val);
+}
+
+uint16_t GraphBuilder::compile_gatesw(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (gatesw data phase) — gate with width encoding
+    // Pattern values 1-9 control pulse width (value/9.0). Output is binary.
+    DataRef data = resolve_data_table(ts, scope, ctx);
+    if (!data.ok) return NODE_NONE;
+
+    uint16_t phase;
+    if (ts.peek().kind != TokenKind::RParen) {
+        phase = compile_expr(ts, scope, ctx);
+    } else {
+        phase = expand_beat(ctx);
+    }
+
+    uint16_t len = pool.make_const((double)data.length);
+    uint16_t scaled = pool.make_binop(NodeOp::Mul, phase, len);
+    uint16_t idx = pool.make_unary(NodeOp::Floor, scaled);
+
+    // Read pattern value via VecIndex
+    Node vec_node;
+    vec_node.op = NodeOp::VecIndex;
+    vec_node.input_a = idx;
+    vec_node.input_b = NODE_NONE;
+    vec_node.input_c = NODE_NONE;
+    vec_node.imm = (double)data.table_id;
+    vec_node.flags = 0;
+    uint16_t raw = pool.intern_node(vec_node);
+
+    // Width = value / 9.0
+    uint16_t width = pool.make_binop(NodeOp::Div, raw, pool.make_const(9.0));
+
+    // Fractional phase within step
+    uint16_t frac_phase = pool.make_binop(NodeOp::Sub, scaled, idx);
+
+    // Output: 1 if frac_phase < width, 0 otherwise
+    return pool.make_binop(NodeOp::CmpLt, frac_phase, width);
+}
+
+// ── Ratio-Rhythm Functions ──────────────────────────────────────────────────
+
+// Helper: resolve a data table and read its raw constant values.
+// Computes cumulative normalized boundaries into out_cum.
+static bool resolve_ratio_table(GraphBuilder& gb, TokenStream& ts, Scope& scope,
+                                 TimeContext& ctx, double* out_values, double* out_cum,
+                                 uint16_t& out_count, double& out_total) {
+    auto data = gb.resolve_data_table(ts, scope, ctx);
+    if (!data.ok || data.length == 0) return false;
+
+    uint16_t len = 0;
+    const double* raw = gb.cells.get_data_table(data.table_id, len);
+    if (!raw || len == 0) return false;
+
+    out_count = len;
+    out_total = 0.0;
+    for (uint16_t i = 0; i < len; i++) {
+        out_values[i] = raw[i];
+        out_total += raw[i];
+    }
+    if (out_total == 0.0) return false;
+
+    double acc = 0.0;
+    for (uint16_t i = 0; i < len; i++) {
+        acc += out_values[i];
+        out_cum[i] = acc / out_total;
+    }
+    return true;
+}
+
+uint16_t GraphBuilder::compile_ridx(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (ridx ratios phase)
+    // Returns index / ratios.size() (normalized index of current subdivision)
+    double values[64], cum[64];
+    uint16_t count = 0;
+    double total = 0.0;
+
+    if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
+        return report_error_at(0, 0,
+            "ridx needs a non-empty ratio vector",
+            "Try: (ridx [1 2 1] beat)");
+    }
+
+    uint16_t phase;
+    if (ts.peek().kind != TokenKind::RParen) {
+        phase = compile_expr(ts, scope, ctx);
+    } else {
+        phase = expand_beat(ctx);
+    }
+
+    // Build nested Select chain:
+    //   if (phase <= cum[0]) => 0/N
+    //   elif (phase <= cum[1]) => 1/N
+    //   else => (N-1)/N
+    double n = (double)count;
+    uint16_t result = pool.make_const((double)(count - 1) / n);
+
+    for (int i = (int)count - 2; i >= 0; i--) {
+        uint16_t boundary = pool.make_const(cum[i]);
+        uint16_t cmp = pool.make_binop(NodeOp::CmpLe, phase, boundary);
+        uint16_t this_val = pool.make_const((double)i / n);
+        result = pool.make_select(cmp, this_val, result);
+    }
+
+    return result;
+}
+
+uint16_t GraphBuilder::compile_rstep(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (rstep ratios phase)
+    // Returns lastAccumulatedSum / ratioSum (normalized start of current subdivision)
+    double values[64], cum[64];
+    uint16_t count = 0;
+    double total = 0.0;
+
+    if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
+        return report_error_at(0, 0,
+            "rstep needs a non-empty ratio vector",
+            "Try: (rstep [1 2 1] beat)");
+    }
+
+    uint16_t phase;
+    if (ts.peek().kind != TokenKind::RParen) {
+        phase = compile_expr(ts, scope, ctx);
+    } else {
+        phase = expand_beat(ctx);
+    }
+
+    // Build nested Select chain:
+    //   if (phase <= cum[0]) => 0.0
+    //   elif (phase <= cum[1]) => cum[0]
+    //   else => cum[N-2]
+    uint16_t result = pool.make_const(count >= 2 ? cum[count - 2] : 0.0);
+
+    for (int i = (int)count - 2; i >= 0; i--) {
+        uint16_t boundary = pool.make_const(cum[i]);
+        uint16_t cmp = pool.make_binop(NodeOp::CmpLe, phase, boundary);
+        double start_val = (i == 0) ? 0.0 : cum[i - 1];
+        uint16_t this_val = pool.make_const(start_val);
+        result = pool.make_select(cmp, this_val, result);
+    }
+
+    return result;
+}
+
+uint16_t GraphBuilder::compile_rpulse(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (rpulse ratios pulseWidth phase)
+    // Within current subdivision, compute local beat phase and compare to pulseWidth.
+    double values[64], cum[64];
+    uint16_t count = 0;
+    double total = 0.0;
+
+    if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
+        return report_error_at(0, 0,
+            "rpulse needs a non-empty ratio vector",
+            "Try: (rpulse [1 2 1] 0.5 beat)");
+    }
+
+    uint16_t pulse_width = compile_expr(ts, scope, ctx);
+
+    uint16_t phase;
+    if (ts.peek().kind != TokenKind::RParen) {
+        phase = compile_expr(ts, scope, ctx);
+    } else {
+        phase = expand_beat(ctx);
+    }
+
+    // For each subdivision [start, end):
+    //   local_phase = (phase - start) / (end - start)
+    //   hit = local_phase <= pulseWidth
+    auto make_local_pulse = [&](int i) -> uint16_t {
+        double start = (i == 0) ? 0.0 : cum[i - 1];
+        double end = cum[i];
+        double width = end - start;
+        if (width <= 0.0) return pool.make_const(0.0);
+        uint16_t offset_phase = pool.make_binop(NodeOp::Sub, phase, pool.make_const(start));
+        uint16_t local_phase = pool.make_binop(NodeOp::Div, offset_phase, pool.make_const(width));
+        return pool.make_binop(NodeOp::CmpLe, local_phase, pulse_width);
+    };
+
+    uint16_t result = make_local_pulse(count - 1);
+    for (int i = (int)count - 2; i >= 0; i--) {
+        uint16_t boundary = pool.make_const(cum[i]);
+        uint16_t cmp = pool.make_binop(NodeOp::CmpLe, phase, boundary);
+        uint16_t this_val = make_local_pulse(i);
+        result = pool.make_select(cmp, this_val, result);
+    }
+
+    return result;
+}
+
+uint16_t GraphBuilder::compile_rwarp(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (rwarp ratios phase)
+    // Remap phase through ratio boundaries to uniform spacing.
+    // output = (index + beatPhase) / N
+    double values[64], cum[64];
+    uint16_t count = 0;
+    double total = 0.0;
+
+    if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
+        return report_error_at(0, 0,
+            "rwarp needs a non-empty ratio vector",
+            "Try: (rwarp [1 2 1] beat)");
+    }
+
+    uint16_t phase;
+    if (ts.peek().kind != TokenKind::RParen) {
+        phase = compile_expr(ts, scope, ctx);
+    } else {
+        phase = expand_beat(ctx);
+    }
+
+    double n = (double)count;
+    double iw = 1.0 / n;
+
+    auto make_warped = [&](int i) -> uint16_t {
+        double start = (i == 0) ? 0.0 : cum[i - 1];
+        double end = cum[i];
+        double width = end - start;
+        if (width <= 0.0) return pool.make_const((double)i * iw);
+        uint16_t offset_phase = pool.make_binop(NodeOp::Sub, phase, pool.make_const(start));
+        uint16_t local_phase = pool.make_binop(NodeOp::Div, offset_phase, pool.make_const(width));
+        uint16_t idx_plus_local = pool.make_binop(NodeOp::Add, pool.make_const((double)i), local_phase);
+        return pool.make_binop(NodeOp::Mul, idx_plus_local, pool.make_const(iw));
+    };
+
+    uint16_t result = make_warped(count - 1);
+    for (int i = (int)count - 2; i >= 0; i--) {
+        uint16_t boundary = pool.make_const(cum[i]);
+        uint16_t cmp = pool.make_binop(NodeOp::CmpLe, phase, boundary);
+        uint16_t this_val = make_warped(i);
+        result = pool.make_select(cmp, this_val, result);
+    }
+
+    return result;
+}
+
+// -- Random / Hash -----------------------------------------------------------
+
+uint16_t GraphBuilder::compile_random(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (random)       -> HashIndex(beat_num) -> [0,1]
+    // (random lo hi) -> lo + HashIndex(beat_num) * (hi - lo)
+    if (ts.peek().kind == TokenKind::RParen) {
+        // No args: hash of beat_num
+        uint16_t beat_num = expand_beat_num(ctx);
+        return pool.make_unary(NodeOp::HashIndex, beat_num);
+    }
+
+    uint16_t lo = compile_expr(ts, scope, ctx);
+    if (ts.peek().kind == TokenKind::RParen) {
+        // One arg: treat as (random 0 lo)
+        uint16_t beat_num = expand_beat_num(ctx);
+        uint16_t raw = pool.make_unary(NodeOp::HashIndex, beat_num);
+        return pool.make_binop(NodeOp::Mul, raw, lo);
+    }
+
+    uint16_t hi = compile_expr(ts, scope, ctx);
+    // Two args: lo + hash * (hi - lo)
+    uint16_t beat_num = expand_beat_num(ctx);
+    uint16_t raw = pool.make_unary(NodeOp::HashIndex, beat_num);
+    uint16_t range_node = pool.make_binop(NodeOp::Sub, hi, lo);
+    uint16_t scaled = pool.make_binop(NodeOp::Mul, raw, range_node);
+    return pool.make_binop(NodeOp::Add, lo, scaled);
+}
+
+uint16_t GraphBuilder::compile_index_rand(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (index-rand idx)       -> HashIndex(idx) -> [0,1]
+    // (index-rand idx lo hi) -> lo + HashIndex(idx) * (hi - lo)
+    uint16_t idx = compile_expr(ts, scope, ctx);
+
+    if (ts.peek().kind == TokenKind::RParen) {
+        // One arg: hash of idx
+        return pool.make_unary(NodeOp::HashIndex, idx);
+    }
+
+    uint16_t lo = compile_expr(ts, scope, ctx);
+    if (ts.peek().kind == TokenKind::RParen) {
+        // Two args: treat as (index-rand idx 0 lo) -- hash * lo
+        uint16_t raw = pool.make_unary(NodeOp::HashIndex, idx);
+        return pool.make_binop(NodeOp::Mul, raw, lo);
+    }
+
+    uint16_t hi = compile_expr(ts, scope, ctx);
+    // Three args: lo + hash * (hi - lo)
+    uint16_t raw = pool.make_unary(NodeOp::HashIndex, idx);
+    uint16_t range_node = pool.make_binop(NodeOp::Sub, hi, lo);
+    uint16_t scaled = pool.make_binop(NodeOp::Mul, raw, range_node);
+    return pool.make_binop(NodeOp::Add, lo, scaled);
 }
 
 uint16_t GraphBuilder::compile_range(TokenStream& ts, Scope& scope, TimeContext& ctx) {
@@ -1336,6 +1696,12 @@ GraphBuildResult build_output_graph(
            builder.diagnostic_count * sizeof(Diagnostic));
     result.diagnostic_count = builder.diagnostic_count;
     result.has_error = builder.has_error;
+
+    // Copy dependency info
+    memcpy(result.dep_cells, builder.dep_cells,
+           builder.dep_count * sizeof(SymbolID));
+    result.dep_count = builder.dep_count;
+
     return result;
 }
 

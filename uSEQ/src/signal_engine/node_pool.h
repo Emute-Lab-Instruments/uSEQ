@@ -51,6 +51,9 @@ enum class NodeOp : uint8_t {
     Scale,      // 3 inputs: value, out_min, out_max ([0,1]→[min,max])
     Scale5,     // 5 inputs: value, in_min, in_max, out_min, out_max
     Lerp,       // 3 inputs: a, b, t → a + (b-a)*t
+
+    // Deterministic hash (pure function of input)
+    HashIndex,  // input_a = index; deterministic hash → [0,1]
 };
 
 // ── Node ────────────────────────────────────────────────────────────────────

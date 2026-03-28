@@ -1716,9 +1716,17 @@ static double eval_with_setup(const char* setup, const char* output_expr, double
 // ── Euclid Tests ────────────────────────────────────────────────────────────
 
 TEST_CASE("Graph builder: euclid", "[signal_engine][graph_builder][euclid]") {
-    // euclid(total, active, phase) — Bjorklund rhythm
-    SECTION("euclid 3 of 8 at phase 0 is active") {
+    // euclid(total, active, phase) — matches old engine modular algorithm
+    SECTION("euclid 3 of 8 full pattern") {
+        // Old engine pattern: [1,1,0,1,0,0,1,0]
         REQUIRE(eval_at("(euclid 3 8 0.0)", 0.0) == 1.0);
+        REQUIRE(eval_at("(euclid 3 8 0.125)", 0.0) == 1.0);
+        REQUIRE(eval_at("(euclid 3 8 0.25)", 0.0) == 0.0);
+        REQUIRE(eval_at("(euclid 3 8 0.375)", 0.0) == 1.0);
+        REQUIRE(eval_at("(euclid 3 8 0.5)", 0.0) == 0.0);
+        REQUIRE(eval_at("(euclid 3 8 0.625)", 0.0) == 0.0);
+        REQUIRE(eval_at("(euclid 3 8 0.75)", 0.0) == 1.0);
+        REQUIRE(eval_at("(euclid 3 8 0.875)", 0.0) == 0.0);
     }
 
     SECTION("euclid 0 of 8 is always inactive") {
@@ -1726,20 +1734,30 @@ TEST_CASE("Graph builder: euclid", "[signal_engine][graph_builder][euclid]") {
         REQUIRE(eval_at("(euclid 0 8 0.5)", 0.0) == 0.0);
     }
 
-    SECTION("euclid N of N is always active") {
+    SECTION("euclid N of N — active at start of each step, gated by pulse width") {
+        // With default pulse width 0.5, active in first half of each step
         REQUIRE(eval_at("(euclid 4 4 0.0)", 0.0) == 1.0);
         REQUIRE(eval_at("(euclid 4 4 0.25)", 0.0) == 1.0);
         REQUIRE(eval_at("(euclid 4 4 0.5)", 0.0) == 1.0);
         REQUIRE(eval_at("(euclid 4 4 0.75)", 0.0) == 1.0);
     }
 
-    SECTION("euclid 1 of 4 — old engine pattern") {
-        // Old engine: euclid(1, 4) = [1,1,0,0] (active in [0, 0.5), inactive in [0.5, 1))
-        // Our Bresenham impl differs — returns all 1s. TODO: fix to match old engine.
-        // For now, just test what the golden test verifies (3/8 at t=0).
-        REQUIRE(eval_at("(euclid 1 4 0.0)", 0.0) == 1.0);
-        // KNOWN MISMATCH: our impl returns 1 for all phases with euclid(1,4)
-        // Old engine returns 0 for phases >= 0.5. Tracked as a TODO.
+    SECTION("euclid 1 of 4 — matches old engine") {
+        // (euclid 1 4 phase): n=1 total steps, k=4 active
+        // Only 1 step spanning [0,1), always a hit (0 < 4), gated by rem < 0.5
+        REQUIRE(eval_at("(euclid 1 4 0.0)", 0.0) == 1.0);     // rem=0.0 < 0.5
+        REQUIRE(eval_at("(euclid 1 4 0.25)", 0.0) == 1.0);    // rem=0.25 < 0.5
+        REQUIRE(eval_at("(euclid 1 4 0.5)", 0.0) == 0.0);     // rem=0.5, not < 0.5
+        REQUIRE(eval_at("(euclid 1 4 0.75)", 0.0) == 0.0);    // rem=0.75, not < 0.5
+    }
+
+    SECTION("euclid 4 1 — 1 hit out of 4 steps") {
+        // (euclid 4 1 phase): n=4 total, k=1 active
+        // Step 0: idx=(0*1)%4=0 < 1, hit. Steps 1-3: idx >= 1, miss.
+        REQUIRE(eval_at("(euclid 4 1 0.0)", 0.0) == 1.0);     // step 0, hit
+        REQUIRE(eval_at("(euclid 4 1 0.25)", 0.0) == 0.0);    // step 1, miss
+        REQUIRE(eval_at("(euclid 4 1 0.5)", 0.0) == 0.0);     // step 2, miss
+        REQUIRE(eval_at("(euclid 4 1 0.75)", 0.0) == 0.0);    // step 3, miss
     }
 
     SECTION("euclid uses beat as default phase") {
@@ -2114,5 +2132,582 @@ TEST_CASE("Lerp and Scale", "[signal_engine][graph_builder][lerp]") {
         REQUIRE(eval_at("(scale 0.5 100 200)", 0.0) == Approx(150.0));
         REQUIRE(eval_at("(scale 0.0 100 200)", 0.0) == Approx(100.0));
         REQUIRE(eval_at("(scale 1.0 100 200)", 0.0) == Approx(200.0));
+    }
+}
+
+// ── Random and Index-Rand ──────────────────────────────────────────────────
+
+TEST_CASE("random: deterministic per-beat hash", "[signal_engine][random]") {
+    SECTION("(random) returns value in [0,1]") {
+        // At t=0, bpm=120: beat_num = floor(0*2) = 0
+        double v0 = eval_at("(random)", 0.0);
+        REQUIRE(v0 >= 0.0);
+        REQUIRE(v0 <= 1.0);
+    }
+
+    SECTION("(random) at different beat-nums produces different values") {
+        // t=0 => beat_num=0, t=0.5 => beat_num=1 (at 120 bpm)
+        double v0 = eval_at("(random)", 0.0);
+        double v1 = eval_at("(random)", 0.5);
+        REQUIRE(v0 != v1);
+    }
+
+    SECTION("(random) at same beat-num is deterministic") {
+        // t=0.1 and t=0.2 both have beat_num=0 at 120 bpm
+        double v1 = eval_at("(random)", 0.1);
+        double v2 = eval_at("(random)", 0.2);
+        REQUIRE(v1 == Approx(v2));
+    }
+
+    SECTION("(random lo hi) maps to range") {
+        // beat_num at t=0.5, bpm=120 is 1; hash(1) ~= 0.384
+        double v = eval_at("(random 10 20)", 0.5);
+        REQUIRE(v >= 10.0);
+        REQUIRE(v <= 20.0);
+        // Expected: 10 + hash(1) * 10
+        double expected = 10.0 + 0.3839449470 * 10.0;
+        REQUIRE(v == Approx(expected).epsilon(0.001));
+    }
+
+    SECTION("(random hi) with one arg scales [0, hi]") {
+        double v = eval_at("(random 5)", 0.5);
+        REQUIRE(v >= 0.0);
+        REQUIRE(v <= 5.0);
+    }
+}
+
+TEST_CASE("index-rand: deterministic hash of index", "[signal_engine][random]") {
+    SECTION("(index-rand 0) returns value in [0,1]") {
+        double v = eval_at("(index-rand 0)", 0.0);
+        REQUIRE(v >= 0.0);
+        REQUIRE(v <= 1.0);
+    }
+
+    SECTION("(index-rand N) is deterministic") {
+        double v1 = eval_at("(index-rand 42)", 0.0);
+        double v2 = eval_at("(index-rand 42)", 99.0); // different time, same result
+        REQUIRE(v1 == Approx(v2));
+    }
+
+    SECTION("(index-rand 0) != (index-rand 1)") {
+        double v0 = eval_at("(index-rand 0)", 0.0);
+        double v1 = eval_at("(index-rand 1)", 0.0);
+        REQUIRE(v0 != v1);
+    }
+
+    SECTION("(index-rand idx lo hi) maps to range") {
+        // hash(5) ~= some value in [0,1]
+        double v = eval_at("(index-rand 5 100 200)", 0.0);
+        REQUIRE(v >= 100.0);
+        REQUIRE(v <= 200.0);
+    }
+
+    SECTION("constant folding: (index-rand 1) folds to constant") {
+        // When index is a constant literal, the hash should fold at compile time
+        double v1 = eval_at("(index-rand 1)", 0.0);
+        double v2 = eval_at("(index-rand 1)", 1.0);
+        REQUIRE(v1 == Approx(v2));
+        // hash(1) ~= 0.384
+        REQUIRE(v1 == Approx(0.3839449470).epsilon(0.001));
+    }
+
+    SECTION("(index-rand idx lo) with two args scales [0, lo]") {
+        double v = eval_at("(index-rand 3 10)", 0.0);
+        REQUIRE(v >= 0.0);
+        REQUIRE(v <= 10.0);
+    }
+}
+
+// ── loop-at ────────────────────────────────────────────────────────────────
+
+TEST_CASE("loop-at: time wrapping", "[signal_engine][graph_builder][loop-at]") {
+    SECTION("(loop-at 1.0 t) at t=1.5 wraps to 0.5") {
+        // loop-at wraps raw time: fmod(1.5, 1.0) = 0.5
+        // The inner expression is 't' which reads the wrapped time
+        double v = eval_at("(loop-at 1.0 t)", 1.5);
+        REQUIRE(v == Approx(0.5));
+    }
+
+    SECTION("(loop-at 2.0 t) at t=3.0 wraps to 1.0") {
+        double v = eval_at("(loop-at 2.0 t)", 3.0);
+        REQUIRE(v == Approx(1.0));
+    }
+
+    SECTION("(loop-at 1.0 t) at t=0.3 no wrap needed") {
+        double v = eval_at("(loop-at 1.0 t)", 0.3);
+        REQUIRE(v == Approx(0.3));
+    }
+
+    SECTION("(loop-at 0.5 t) at t=1.25 wraps to 0.25") {
+        double v = eval_at("(loop-at 0.5 t)", 1.25);
+        REQUIRE(v == Approx(0.25));
+    }
+}
+
+// ── eval-at-time ───────────────────────────────────────────────────────────
+
+TEST_CASE("eval-at-time: fixed time evaluation", "[signal_engine][graph_builder][eval-at-time]") {
+    SECTION("(eval-at-time 0.5 t) returns 0.5 regardless of actual time") {
+        REQUIRE(eval_at("(eval-at-time 0.5 t)", 0.0) == Approx(0.5));
+        REQUIRE(eval_at("(eval-at-time 0.5 t)", 10.0) == Approx(0.5));
+        REQUIRE(eval_at("(eval-at-time 0.5 t)", 999.0) == Approx(0.5));
+    }
+
+    SECTION("(eval-at-time 2.0 t) returns 2.0") {
+        REQUIRE(eval_at("(eval-at-time 2.0 t)", 0.0) == Approx(2.0));
+    }
+
+    SECTION("eval-at-time with expression") {
+        // (eval-at-time 1.0 (* t 2)) => (* 1.0 2) = 2.0
+        REQUIRE(eval_at("(eval-at-time 1.0 (* t 2))", 0.0) == Approx(2.0));
+    }
+}
+
+// ── gatesw ─────────────────────────────────────────────────────────────────
+
+TEST_CASE("gatesw: gate with width encoding", "[signal_engine][graph_builder][gatesw]") {
+    SECTION("(gatesw [9 0 5] 0.0) — value 9 = full width, start of step") {
+        // phase=0.0, step 0, value=9, width=9/9=1.0
+        // frac_phase = 0.0*3 - floor(0.0*3) = 0.0
+        // 0.0 < 1.0 => 1
+        double v = eval_at("(gatesw [9 0 5] 0.0)", 0.0);
+        REQUIRE(v == Approx(1.0));
+    }
+
+    SECTION("(gatesw [9 0 5] 0.5) — value 0 = zero width") {
+        // phase=0.5, scaled=1.5, step 1, value=0, width=0/9=0.0
+        // frac_phase = 1.5 - 1 = 0.5
+        // 0.5 < 0.0 => 0
+        double v = eval_at("(gatesw [9 0 5] 0.5)", 0.0);
+        REQUIRE(v == Approx(0.0));
+    }
+
+    SECTION("(gatesw [9 0 5] 0.7) — value 5 = mid width, frac > width") {
+        // phase=0.7, scaled=2.1, step 2, value=5, width=5/9=0.5556
+        // frac_phase = 2.1 - 2 = 0.1
+        // 0.1 < 0.5556 => 1
+        double v = eval_at("(gatesw [9 0 5] 0.7)", 0.0);
+        REQUIRE(v == Approx(1.0));
+    }
+
+    SECTION("(gatesw [5] 0.8) — value 5, width=5/9, frac=0.8") {
+        // phase=0.8, scaled=0.8, step 0, value=5, width=5/9~=0.556
+        // frac_phase = 0.8 - 0 = 0.8
+        // 0.8 < 0.556 => 0
+        double v = eval_at("(gatesw [5] 0.8)", 0.0);
+        REQUIRE(v == Approx(0.0));
+    }
+}
+
+// ── zeros (cold path) ──────────────────────────────────────────────────────
+
+TEST_CASE("Cold eval: zeros creates zero vector", "[signal_engine][cold_eval][zeros]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    // Create a zero vector and define it
+    const char* src = "(define pat (zeros 4))";
+    EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+    // zeros returns DataRef which define should handle, but define currently
+    // stores it as expression. The zeros call itself should succeed at top level.
+
+    // Direct zeros call
+    const char* src2 = "(zeros 8)";
+    EvalResult r2 = eval_cold(src2, (uint32_t)strlen(src2), cells, arena, pool);
+    REQUIRE(r2.kind == EvalResult::DataRef);
+    REQUIRE(r2.number >= 0); // valid table ID
+
+    // Verify the data table contains zeros
+    uint16_t table_id = (uint16_t)r2.number;
+    uint16_t len;
+    const double* data = cells.get_data_table(table_id, len);
+    REQUIRE(data != nullptr);
+    REQUIRE(len == 8);
+    for (int i = 0; i < 8; i++) {
+        REQUIRE(data[i] == 0.0);
+    }
+}
+
+// ── get-expr (cold path) ───────────────────────────────────────────────────
+
+TEST_CASE("Cold eval: get-expr returns error for undefined", "[signal_engine][cold_eval][get-expr]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    const char* src = "(get-expr undefined-name)";
+    EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Error);
+}
+
+// ── Ratio-Rhythm Tests ──────────────────────────────────────────────────────
+
+TEST_CASE("Graph builder: ridx", "[signal_engine][graph_builder][ratio]") {
+    // ridx returns normalized index: index / ratios.size()
+
+    SECTION("uniform ratios [1 1 1 1]") {
+        // phase 0.0: first bucket => 0/4
+        REQUIRE(eval_at("(ridx [1 1 1 1] 0.0)", 0.0) == Approx(0.0));
+        // phase 0.25: 0.25 <= cum[0]=0.25 => bucket 0 => 0/4
+        REQUIRE(eval_at("(ridx [1 1 1 1] 0.25)", 0.0) == Approx(0.0));
+        // phase 0.26: > 0.25 => bucket 1 => 1/4
+        REQUIRE(eval_at("(ridx [1 1 1 1] 0.26)", 0.0) == Approx(0.25));
+        // phase 0.5: 0.5 <= cum[1]=0.5 => bucket 1 => 1/4
+        REQUIRE(eval_at("(ridx [1 1 1 1] 0.5)", 0.0) == Approx(0.25));
+        // phase 0.76: bucket 3 => 3/4
+        REQUIRE(eval_at("(ridx [1 1 1 1] 0.76)", 0.0) == Approx(0.75));
+    }
+
+    SECTION("non-uniform ratios [1 2 1]") {
+        // total=4, cum=[0.25, 0.75, 1.0]
+        REQUIRE(eval_at("(ridx [1 2 1] 0.0)", 0.0) == Approx(0.0));
+        REQUIRE(eval_at("(ridx [1 2 1] 0.25)", 0.0) == Approx(0.0));
+        // phase 0.3: bucket 1 => 1/3
+        REQUIRE(eval_at("(ridx [1 2 1] 0.3)", 0.0) == Approx(1.0/3.0));
+        REQUIRE(eval_at("(ridx [1 2 1] 0.75)", 0.0) == Approx(1.0/3.0));
+        // phase 0.8: bucket 2 => 2/3
+        REQUIRE(eval_at("(ridx [1 2 1] 0.8)", 0.0) == Approx(2.0/3.0));
+    }
+}
+
+TEST_CASE("Graph builder: rstep", "[signal_engine][graph_builder][ratio]") {
+    // rstep returns normalized start of current subdivision
+
+    SECTION("uniform ratios [1 1 1 1]") {
+        REQUIRE(eval_at("(rstep [1 1 1 1] 0.0)", 0.0) == Approx(0.0));
+        REQUIRE(eval_at("(rstep [1 1 1 1] 0.26)", 0.0) == Approx(0.25));
+        REQUIRE(eval_at("(rstep [1 1 1 1] 0.76)", 0.0) == Approx(0.75));
+    }
+
+    SECTION("non-uniform ratios [1 2 1]") {
+        // cum = [0.25, 0.75, 1.0]
+        REQUIRE(eval_at("(rstep [1 2 1] 0.0)", 0.0) == Approx(0.0));
+        REQUIRE(eval_at("(rstep [1 2 1] 0.3)", 0.0) == Approx(0.25));
+        REQUIRE(eval_at("(rstep [1 2 1] 0.8)", 0.0) == Approx(0.75));
+    }
+}
+
+TEST_CASE("Graph builder: rpulse", "[signal_engine][graph_builder][ratio]") {
+    SECTION("at subdivision start, local_phase=0 => triggered") {
+        REQUIRE(eval_at("(rpulse [1 2 1] 0.5 0.0)", 0.0) == Approx(1.0));
+    }
+
+    SECTION("within subdivision, depends on local phase vs pulseWidth") {
+        // ratios [1 2 1], cum=[0.25, 0.75, 1.0]
+        // phase 0.1, pw 0.5: bucket 0, local = 0.1/0.25 = 0.4 <= 0.5 => 1
+        REQUIRE(eval_at("(rpulse [1 2 1] 0.5 0.1)", 0.0) == Approx(1.0));
+        // phase 0.2, pw 0.5: bucket 0, local = 0.2/0.25 = 0.8 > 0.5 => 0
+        REQUIRE(eval_at("(rpulse [1 2 1] 0.5 0.2)", 0.0) == Approx(0.0));
+    }
+
+    SECTION("each subdivision boundary triggers") {
+        REQUIRE(eval_at("(rpulse [1 2 1] 0.5 0.251)", 0.0) == Approx(1.0));
+        REQUIRE(eval_at("(rpulse [1 2 1] 0.5 0.751)", 0.0) == Approx(1.0));
+    }
+}
+
+TEST_CASE("Graph builder: rwarp", "[signal_engine][graph_builder][ratio]") {
+    SECTION("uniform ratios are identity") {
+        REQUIRE(eval_at("(rwarp [1 1 1] 0.0)", 0.0) == Approx(0.0).margin(1e-9));
+        REQUIRE(eval_at("(rwarp [1 1 1] 0.5)", 0.0) == Approx(0.5).margin(1e-6));
+        REQUIRE(eval_at("(rwarp [1 1 1] 0.999)", 0.0) == Approx(0.999).margin(1e-3));
+    }
+
+    SECTION("non-uniform ratios warp phase") {
+        // [1 2 1], cum=[0.25, 0.75, 1.0], N=3, iw=1/3
+        REQUIRE(eval_at("(rwarp [1 2 1] 0.0)", 0.0) == Approx(0.0).margin(1e-9));
+        // phase 0.25: bucket 0, local=1.0, output=(0+1)/3=1/3
+        REQUIRE(eval_at("(rwarp [1 2 1] 0.25)", 0.0) == Approx(1.0/3.0).margin(1e-6));
+        // phase 0.5: bucket 1, local=(0.5-0.25)/0.5=0.5, output=(1+0.5)/3=0.5
+        REQUIRE(eval_at("(rwarp [1 2 1] 0.5)", 0.0) == Approx(0.5).margin(1e-6));
+    }
+}
+
+// ── Transport: set-bpm ────────────────────────────────────────────────────
+
+TEST_CASE("Cold eval: set-bpm changes bpm cell", "[signal_engine][cold_eval][transport][set-bpm]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+
+    SECTION("set-bpm 60 changes bpm cell to 60") {
+        const char* src = "(set-bpm 60)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Ok);
+        REQUIRE(cells.cells[bpm_sym].value == 60.0);
+    }
+
+    SECTION("set-bpm 240 changes bpm cell to 240") {
+        const char* src = "(set-bpm 240)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Ok);
+        REQUIRE(cells.cells[bpm_sym].value == 240.0);
+    }
+
+    SECTION("set-bpm without number produces error") {
+        const char* src = "(set-bpm foo)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Error);
+    }
+}
+
+TEST_CASE("set-bpm affects beat phasor", "[signal_engine][cold_eval][transport][set-bpm]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    SymbolID bpp_sym = si.intern("bars-per-phrase");
+    SymbolID pps_sym = si.intern("phrases-per-section");
+
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    cells.cells[bpp_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    cells.cells[pps_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+
+    // Set bpm to 60, then assign beat to a1
+    const char* src = "(do (set-bpm 60) (a1 beat))";
+    EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Ok);
+
+    // Execute at t=0.5
+    pool.rebuild_execution_order();
+    double cell_vals[MAX_CELLS];
+    cells.snapshot_values(cell_vals, MAX_CELLS);
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    execute_all_outputs(pool, 0.5, cell_vals, hw_inputs,
+                        cells.data_pool, cells.data_offsets, cells.data_lengths,
+                        pool.prev_output_values, outputs, workspace);
+
+    // At 60 bpm, beat duration = 1s, so at t=0.5, beat phasor = 0.5
+    REQUIRE(outputs[0] == Approx(0.5).epsilon(0.01));
+}
+
+// ── Transport: set-time-sig ───────────────────────────────────────────────
+
+TEST_CASE("Cold eval: set-time-sig changes beats-per-bar", "[signal_engine][cold_eval][transport][set-time-sig]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+
+    SECTION("set-time-sig 3 4 changes beats-per-bar to 3") {
+        const char* src = "(set-time-sig 3 4)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Ok);
+        REQUIRE(cells.cells[bpb_sym].value == 3.0);
+    }
+
+    SECTION("set-time-sig needs two numbers") {
+        const char* src = "(set-time-sig 3)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Error);
+    }
+}
+
+// ── Transport: useq-clear ─────────────────────────────────────────────────
+
+TEST_CASE("Cold eval: useq-clear resets outputs", "[signal_engine][cold_eval][transport][useq-clear]") {
+    NodePool pool;
+    CellStore cells;
+    SourceArena arena;
+    GraphBuilder::init_symbols();
+
+    auto& si = SymbolIntern::getInstance();
+    SymbolID bpm_sym = si.intern("bpm");
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    SymbolID bpp_sym = si.intern("bars-per-phrase");
+    SymbolID pps_sym = si.intern("phrases-per-section");
+    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    cells.cells[bpp_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    cells.cells[pps_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+
+    // Assign an output
+    const char* src1 = "(a1 0.7)";
+    eval_cold(src1, (uint32_t)strlen(src1), cells, arena, pool);
+    REQUIRE(pool.outputs[0].valid == true);
+
+    // Clear
+    const char* src2 = "(useq-clear)";
+    EvalResult r = eval_cold(src2, (uint32_t)strlen(src2), cells, arena, pool);
+    REQUIRE(r.kind == EvalResult::Ok);
+
+    // All outputs should be invalid
+    REQUIRE(pool.outputs[0].valid == false);
+    REQUIRE(pool.outputs[0].root_node == NODE_NONE);
+
+    // Analog defaults to 0.5
+    REQUIRE(pool.outputs[0].lkg_value == 0.5);
+    // Digital defaults to 0.0
+    REQUIRE(pool.outputs[8].lkg_value == 0.0);
+}
+
+// ── Transport: time offset ────────────────────────────────────────────────
+
+TEST_CASE("Cold eval: time offset", "[signal_engine][cold_eval][transport][time-offset]") {
+    g_engine_state = {};
+
+    SECTION("useq-set-time-offset sets offset") {
+        NodePool pool;
+        CellStore cells;
+        SourceArena arena;
+        GraphBuilder::init_symbols();
+
+        const char* src = "(useq-set-time-offset 1.0)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Ok);
+        REQUIRE(g_engine_state.time_offset == 1.0);
+    }
+
+    SECTION("useq-nudge-time adds to offset") {
+        NodePool pool;
+        CellStore cells;
+        SourceArena arena;
+        GraphBuilder::init_symbols();
+
+        g_engine_state.time_offset = 1.0;
+        const char* src = "(useq-nudge-time 0.5)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Ok);
+        REQUIRE(g_engine_state.time_offset == Approx(1.5));
+    }
+
+    SECTION("negative nudge reduces offset") {
+        NodePool pool;
+        CellStore cells;
+        SourceArena arena;
+        GraphBuilder::init_symbols();
+
+        g_engine_state.time_offset = 2.0;
+        const char* src = "(useq-nudge-time -0.5)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Ok);
+        REQUIRE(g_engine_state.time_offset == Approx(1.5));
+    }
+
+    SECTION("useq-set-time-offset needs a number") {
+        NodePool pool;
+        CellStore cells;
+        SourceArena arena;
+        GraphBuilder::init_symbols();
+
+        const char* src = "(useq-set-time-offset foo)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Error);
+    }
+
+    g_engine_state = {};
+}
+
+// ── Transport: play/pause/stop/rewind ─────────────────────────────────────
+
+TEST_CASE("Cold eval: play/pause/stop/rewind", "[signal_engine][cold_eval][transport]") {
+    g_engine_state = {};
+
+    SECTION("useq-pause sets is_playing to false") {
+        NodePool pool;
+        CellStore cells;
+        SourceArena arena;
+        GraphBuilder::init_symbols();
+
+        REQUIRE(g_engine_state.is_playing == true);
+        const char* src = "(useq-pause)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Ok);
+        REQUIRE(g_engine_state.is_playing == false);
+    }
+
+    SECTION("useq-play sets is_playing to true") {
+        NodePool pool;
+        CellStore cells;
+        SourceArena arena;
+        GraphBuilder::init_symbols();
+
+        g_engine_state.is_playing = false;
+        const char* src = "(useq-play)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Ok);
+        REQUIRE(g_engine_state.is_playing == true);
+    }
+
+    SECTION("useq-stop pauses and resets offset") {
+        NodePool pool;
+        CellStore cells;
+        SourceArena arena;
+        GraphBuilder::init_symbols();
+
+        g_engine_state.is_playing = true;
+        g_engine_state.time_offset = 5.0;
+        const char* src = "(useq-stop)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Ok);
+        REQUIRE(g_engine_state.is_playing == false);
+        REQUIRE(g_engine_state.time_offset == 0.0);
+    }
+
+    SECTION("useq-rewind resets offset but preserves play state") {
+        NodePool pool;
+        CellStore cells;
+        SourceArena arena;
+        GraphBuilder::init_symbols();
+
+        g_engine_state.is_playing = true;
+        g_engine_state.time_offset = 3.0;
+        const char* src = "(useq-rewind)";
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        REQUIRE(r.kind == EvalResult::Ok);
+        REQUIRE(g_engine_state.is_playing == true);
+        REQUIRE(g_engine_state.time_offset == 0.0);
+    }
+
+    g_engine_state = {};
+}
+
+// ── Transport: side-effect in signal context ──────────────────────────────
+
+TEST_CASE("Transport ops error in signal context", "[signal_engine][transport][negative]") {
+    SECTION("set-bpm inside output is an error") {
+        REQUIRE(eval_has_error("(set-bpm 60)"));
+    }
+
+    SECTION("useq-clear inside output is an error") {
+        REQUIRE(eval_has_error("(useq-clear)"));
+    }
+
+    SECTION("useq-pause inside output is an error") {
+        REQUIRE(eval_has_error("(useq-pause)"));
+    }
+
+    SECTION("useq-set-time-offset inside output is an error") {
+        REQUIRE(eval_has_error("(useq-set-time-offset 1.0)"));
     }
 }
