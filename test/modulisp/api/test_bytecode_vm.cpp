@@ -1189,3 +1189,55 @@ TEST_CASE("Immediate closure application compiles natively",
     REQUIRE(result.is_number());
     REQUIRE(result.as_float() == Approx(8.0).epsilon(1e-9));
 }
+
+TEST_CASE("Returned closures can be called through dynamic CALL",
+          "[modulisp][vm][closures][call]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define make-adder (lambda [x] (lambda [y] (+ x y))))");
+
+    const auto compile_result =
+        compile_numeric_program(interp.get_parser()->parse("((make-adder 2) 3)"),
+                                *interp.get_environment(), false);
+    REQUIRE(compile_result.ok);
+    REQUIRE(has_opcode(compile_result.program, NumericVmOpcode::CALL));
+
+    const Value result = interp.eval_v("((make-adder 2) 3)");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(5.0).epsilon(1e-9));
+}
+
+TEST_CASE("Local bindings can store and call returned closures",
+          "[modulisp][vm][closures][call]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    interp.eval("(define make-adder (lambda [x] (lambda [y] (+ x y))))");
+
+    const Value result = interp.eval_v("(let [f (make-adder 2)] (f 3))");
+    REQUIRE(result.is_number());
+    REQUIRE(result.as_float() == Approx(5.0).epsilon(1e-9));
+}
+
+TEST_CASE("Higher-order builtins apply lambdas without tree-walker fallback",
+          "[modulisp][vm][closures][hof]")
+{
+    ModuLispInterpreter interp;
+    interp.init();
+
+    const Value mapped = interp.eval_v("(map (lambda [x] (+ x 1)) [1 2 3])");
+    REQUIRE(mapped.is_list());
+    const std::vector<Value> mapped_items = mapped.as_list();
+    REQUIRE(mapped_items.size() == 3);
+    REQUIRE(mapped_items[0].as_float() == Approx(2.0).epsilon(1e-9));
+    REQUIRE(mapped_items[1].as_float() == Approx(3.0).epsilon(1e-9));
+    REQUIRE(mapped_items[2].as_float() == Approx(4.0).epsilon(1e-9));
+
+    const Value reduced =
+        interp.eval_v("(reduce (lambda [acc x] (+ acc x)) 0 [1 2 3 4])");
+    REQUIRE(reduced.is_number());
+    REQUIRE(reduced.as_float() == Approx(10.0).epsilon(1e-9));
+}

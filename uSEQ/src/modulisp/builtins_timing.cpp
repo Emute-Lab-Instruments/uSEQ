@@ -5,6 +5,7 @@
 #pragma GCC diagnostic ignored "-Wpedantic"
 
 #include "../utils.h"
+#include "bytecode_vm.h"
 #include "modulisp_interpreter.h"
 #include "temporal_context.h"
 #include "lisp/macros.h"
@@ -101,7 +102,7 @@ Value ModuLispInterpreter::useq_fast(std::vector<Value>& args, Environment& env)
     Environment new_env;
     new_env.set_temporal_context(&ctx);
     new_env.set_parent_scope(&env);
-    return eval_in(args[1], new_env);
+    return execute_expr_with_vm(args[1], new_env);
 }
 
 Value ModuLispInterpreter::useq_slow(std::vector<Value>& args, Environment& env)
@@ -135,7 +136,7 @@ Value ModuLispInterpreter::useq_slow(std::vector<Value>& args, Environment& env)
     Environment new_env;
     new_env.set_temporal_context(&ctx);
     new_env.set_parent_scope(&env);
-    return eval_in(args[1], new_env);
+    return execute_expr_with_vm(args[1], new_env);
 }
 
 Value ModuLispInterpreter::useq_offset_time(std::vector<Value>& args,

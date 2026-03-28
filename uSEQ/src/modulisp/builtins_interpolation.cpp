@@ -5,6 +5,7 @@
 #pragma GCC diagnostic ignored "-Wpedantic"
 
 #include "../utils.h"
+#include "bytecode_vm.h"
 #include "modulisp_interpreter.h"
 #include "lisp/macros.h"
 #include <cmath>
@@ -30,7 +31,7 @@ Value fromList(std::vector<Value>& lst, double phasor, Environment& env)
     // keep index in bounds
     if (idx == lst.size())
         idx--;
-    return ModuLispInterpreter::eval_in(lst[idx], env);
+    return execute_expr_with_vm(lst[idx], env);
 }
 
 static Value flatten_impl(const Value& val, Environment& env)
@@ -46,7 +47,7 @@ static Value flatten_impl(const Value& val, Environment& env)
         auto valList = val.as_sequential();
         for (size_t i = 0; static_cast<size_t>(i) < valList.size(); i++)
         {
-            Value evaluatedElement = ModuLispInterpreter::eval_in(valList[i], env);
+            Value evaluatedElement = execute_expr_with_vm(valList[i], env);
             if (evaluatedElement.is_sequential())
             {
                 auto flattenedElement =

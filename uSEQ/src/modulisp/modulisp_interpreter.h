@@ -244,6 +244,8 @@ public:
     Value eval_v(const String& code);
 
     // Static evaluation helpers
+    // Legacy tree-walker entry points retained for command handling and
+    // compatibility tests. Public VM evaluation paths should not route here.
     static String eval_in(const String& code, Environment& env);
     static Value eval_in(Value& v, Environment& env);
     static Value apply(Value& f, LispFuncArgsVec& args, Environment& env);

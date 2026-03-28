@@ -257,16 +257,7 @@ Value ModuLispInterpreter::eval_form_with_vm(Value expr)
     // Everything else: try the VM first
     const double time_seconds =
         m_time_manager ? m_time_manager->get_transport_time() / 1e6 : 0.0;
-    bool used_vm = false;
-    Value result = eval_form_with_vm_at_time(expr, m_environment, time_seconds, &used_vm);
-    if (used_vm)
-    {
-        return result;
-    }
-
-    // VM couldn't handle it (compilation failed) — diagnostics already captured
-    // in eval_form_with_vm_at_time, fall back to tree-walker for this form
-    return eval_in(expr, m_environment);
+    return eval_form_with_vm_at_time(expr, m_environment, time_seconds, nullptr);
 }
 
 // Instance eval wrappers
@@ -726,20 +717,7 @@ Value ModuLispInterpreter::useq_eval_at_time(std::vector<Value>& args,
 Value ModuLispInterpreter::eval_at_time(Value& expr, Environment& env,
                                         TimeValue time_micros)
 {
-    bool used_vm = false;
-    Value compiled_result =
-        eval_form_with_vm_at_time(expr, env, time_micros * 1e-6, &used_vm);
-    if (used_vm)
-    {
-        return compiled_result;
-    }
-
-    TemporalContext ctx = make_temporal_context(time_micros * 1e-6);
-
-    Environment new_env;  // empty, no map allocations
-    new_env.set_temporal_context(&ctx);
-    new_env.set_parent_scope(&env);
-    return eval_in(expr, new_env);
+    return eval_form_with_vm_at_time(expr, env, time_micros * 1e-6, nullptr);
 }
 
 // make_env_for_time and make_env_with_updated_time_durs are now defined in

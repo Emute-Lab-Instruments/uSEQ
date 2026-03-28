@@ -199,6 +199,8 @@ struct LocalValueBinding
 static int s_closure_fallback_count = 0;
 int get_closure_fallback_count() { return s_closure_fallback_count; }
 constexpr size_t kInlineLambdaNodeThreshold = 24;
+constexpr int32_t kCallCurrentProgramSentinel = -1;
+constexpr int32_t kDynamicCallableSentinel = -2;
 
 bool lambda_has_captured_scope(const Value& value)
 {
@@ -345,6 +347,12 @@ Value execute_runtime_expr_with_vm_impl(const Value& expr,
                                         bool signal_context,
                                         const TemporalContext& ctx,
                                         int depth);
+Value execute_callable_with_vm_impl(const Value& callable,
+                                    const std::vector<Value>& args,
+                                    Environment& env,
+                                    bool signal_context,
+                                    const TemporalContext& ctx,
+                                    int depth);
 
 Value execute_runtime_symbol_with_vm(const String& symbol,
                                      const Environment& env,
@@ -518,6 +526,115 @@ Value execute_runtime_expr_with_vm_impl(const Value& expr,
 }
 } // namespace
 
+Value execute_callable_with_vm_bridge(const Value& callable,
+                                      const std::vector<Value>& args,
+                                      Environment& env,
+                                      bool signal_context)
+{
+    TemporalContext exec_ctx;
+    if (const TemporalContext* existing_ctx = env.get_temporal_context())
+    {
+        exec_ctx = *existing_ctx;
+    }
+
+    Environment exec_env(env);
+    exec_env.set_temporal_context(&exec_ctx);
+    return execute_callable_with_vm_impl(callable, args, exec_env, signal_context,
+                                         exec_ctx, 0);
+}
+
+namespace
+{
+Value execute_callable_with_vm_impl(const Value& callable,
+                                    const std::vector<Value>& args,
+                                    Environment& env,
+                                    bool signal_context,
+                                    const TemporalContext& ctx,
+                                    int depth)
+{
+    if (depth > kRuntimeVmBridgeMaxDepth)
+    {
+        return Value::error();
+    }
+
+    switch (callable.type)
+    {
+    case Value::LAMBDA:
+    {
+        if (callable.list.size() < 2 || !callable.list[0].is_vector())
+        {
+            return Value::error();
+        }
+
+        const std::vector<Value> params = callable.list[0].as_vector();
+        if (params.size() != args.size())
+        {
+            return Value::error();
+        }
+
+        Environment lambda_env =
+            callable.lambda_scope ? *callable.lambda_scope : Environment();
+        Environment parent_env(env);
+        TemporalContext lambda_ctx = ctx;
+        parent_env.set_temporal_context(&lambda_ctx);
+        lambda_env.set_parent_scope(&parent_env);
+        lambda_env.set_temporal_context(&lambda_ctx);
+
+        for (size_t i = 0; i < params.size(); ++i)
+        {
+            if (!params[i].is_symbol())
+            {
+                return Value::error();
+            }
+            lambda_env.set(params[i].as_atom(), args[i]);
+            lambda_env.unset_expr(params[i].as_atom());
+        }
+
+        return execute_runtime_expr_with_vm_impl(callable.list[1], lambda_env,
+                                                 signal_context, lambda_ctx,
+                                                 depth + 1);
+    }
+    case Value::BUILTIN:
+    {
+        if (callable.stack_data.builtin == nullptr)
+        {
+            return Value::error();
+        }
+        std::vector<Value> call_args = args;
+        return callable.stack_data.builtin(call_args, env);
+    }
+    case Value::BUILTIN_PLUGIN:
+    {
+        if (callable.stack_data.plugin_builtin == nullptr ||
+            callable.plugin_context == nullptr)
+        {
+            return Value::error();
+        }
+        std::vector<Value> call_args = args;
+        return callable.stack_data.plugin_builtin(callable.plugin_context,
+                                                  call_args, env);
+    }
+    case Value::VECTOR:
+    {
+        if (args.size() != 1 || !args[0].is_number() || callable.list.empty())
+        {
+            return Value::error();
+        }
+
+        const double size = static_cast<double>(callable.list.size());
+        size_t idx = static_cast<size_t>(std::floor(args[0].as_float() * size));
+        if (idx >= callable.list.size())
+        {
+            idx = callable.list.size() - 1;
+        }
+        return callable.list[idx];
+    }
+    default:
+        return Value::error();
+    }
+}
+} // namespace
+
 double tri_wave(double duty, double phase)
 {
     duty = std::clamp(duty, 0.01, 0.99);
@@ -561,6 +678,12 @@ bool classify_numeric_only(const NumericVmProgram& program)
         case NumericVmOpcode::LIST_TAIL:
         case NumericVmOpcode::LIST_LENGTH:
             return false;
+        case NumericVmOpcode::CALL:
+            if (insn.imm == kDynamicCallableSentinel)
+            {
+                return false;
+            }
+            break;
         default:
             break;
         }
@@ -584,6 +707,7 @@ public:
     explicit NumericVmCompiler(const Environment& env, bool signal_context)
         : m_env(env), m_signal_context(signal_context)
     {
+        m_program.signal_context = signal_context;
     }
 
     NumericVmCompileResult compile(const Value& expr)
@@ -699,6 +823,12 @@ private:
 
     int compile_expr_inner(const Value& expr, const AffineTimeTransform& transform)
     {
+        if (expr.type == Value::INT)
+        {
+            record_dependencies(expr);
+            return emit_const(expr);
+        }
+
         if (const std::optional<double> constant =
                 try_resolve_numeric_constant(expr))
         {
@@ -726,6 +856,14 @@ private:
         {
             record_dependencies(expr);
             return emit_const(expr);
+        }
+
+        std::vector<Value> lambda_params;
+        Value lambda_body;
+        if (try_parse_lambda_expr(expr, lambda_params, lambda_body))
+        {
+            record_dependencies(expr);
+            return emit_lambda_value(lambda_params, lambda_body);
         }
 
         if (!expr.is_list())
@@ -1007,7 +1145,7 @@ private:
         {
             return compile_unary(items, NumericVmOpcode::LIST_TAIL, transform);
         }
-        if (op == "length")
+        if (op == "length" || op == "len")
         {
             return compile_unary(items, NumericVmOpcode::LIST_LENGTH, transform);
         }
@@ -3054,7 +3192,19 @@ private:
             return out_reg >= 0;
         }
 
-        return false;
+        const CompilerCheckpoint checkpoint = checkpoint_state();
+        const String prior_error = m_error;
+        const int callable_reg = compile_expr(items[0], transform);
+        if (callable_reg < 0)
+        {
+            rollback(checkpoint);
+            m_error = prior_error;
+            return false;
+        }
+
+        return emit_dynamic_callable_call(
+            callable_reg, std::vector<Value>(items.begin() + 1, items.end()),
+            transform, out_reg);
     }
 
     // Compile a closure call by injecting captured bindings as locals,
@@ -3114,6 +3264,88 @@ private:
             compile_inline_lambda(params, body, arg_exprs, transform);
         pop_local_scope();
         return result;
+    }
+
+    int emit_lambda_value(const std::vector<Value>& params, const Value& body)
+    {
+        const std::set<String> used_atoms = body.get_used_atoms();
+        std::set<String> param_names;
+        for (const Value& param : params)
+        {
+            if (param.is_symbol())
+            {
+                param_names.insert(param.as_atom());
+            }
+        }
+
+        std::vector<std::pair<String, int>> captured_local_values;
+        for (const auto& binding : collect_active_local_values())
+        {
+            if (param_names.find(binding.first) != param_names.end() ||
+                used_atoms.find(binding.first) == used_atoms.end())
+            {
+                continue;
+            }
+            captured_local_values.push_back(binding);
+        }
+
+        std::vector<std::pair<String, Value>> captured_local_callables;
+        for (const auto& binding : collect_active_local_callables())
+        {
+            if (param_names.find(binding.first) != param_names.end() ||
+                used_atoms.find(binding.first) == used_atoms.end())
+            {
+                continue;
+            }
+            captured_local_callables.push_back(binding);
+        }
+
+        if (captured_local_values.empty() && captured_local_callables.empty())
+        {
+            return emit_const(Value(params, body, m_env));
+        }
+
+        std::vector<int> arg_regs;
+        arg_regs.reserve(captured_local_values.size());
+        for (const auto& binding : captured_local_values)
+        {
+            arg_regs.push_back(binding.second);
+        }
+
+        const int first_arg_reg = allocate_argument_window(arg_regs);
+        const size_t intrinsic_index = store_intrinsic(
+            [env = &m_env, params, body, captured_local_values,
+             captured_local_callables](const std::vector<Value>& args,
+                                       const TemporalContext& ctx) -> Value {
+                Environment closure_env(*env);
+                TemporalContext closure_ctx = ctx;
+                closure_env.set_temporal_context(&closure_ctx);
+
+                for (size_t i = 0; i < captured_local_values.size() && i < args.size();
+                     ++i)
+                {
+                    closure_env.set(captured_local_values[i].first, args[i]);
+                    closure_env.unset_expr(captured_local_values[i].first);
+                }
+
+                for (const auto& callable : captured_local_callables)
+                {
+                    closure_env.set(callable.first, callable.second);
+                    closure_env.unset_expr(callable.first);
+                }
+
+                return Value(params, body, closure_env);
+            });
+
+        const int dst = allocate_register();
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::CALL_INTRINSIC;
+        insn.rd = static_cast<uint16_t>(dst);
+        insn.rs1 = static_cast<uint16_t>(first_arg_reg >= 0 ? first_arg_reg : 0);
+        insn.rs2 = static_cast<uint16_t>(arg_regs.size());
+        insn.imm = static_cast<int32_t>(intrinsic_index);
+        m_program.instructions.push_back(insn);
+        return dst;
     }
 
     size_t count_expr_nodes(const Value& expr) const
@@ -3347,6 +3579,37 @@ private:
         return true;
     }
 
+    bool emit_dynamic_callable_call(int callable_reg,
+                                    const std::vector<Value>& arg_exprs,
+                                    const AffineTimeTransform& transform,
+                                    int& out_reg)
+    {
+        std::vector<int> arg_regs;
+        arg_regs.reserve(arg_exprs.size());
+        for (const Value& arg_expr : arg_exprs)
+        {
+            const int arg_reg = compile_expr(arg_expr, transform);
+            if (arg_reg < 0)
+            {
+                return false;
+            }
+            arg_regs.push_back(arg_reg);
+        }
+
+        const int first_arg_reg = allocate_argument_window(arg_regs);
+        out_reg = allocate_register();
+
+        NumericVmInstruction insn;
+        insn.opcode = NumericVmOpcode::CALL;
+        insn.rd = static_cast<uint16_t>(out_reg);
+        insn.rs1 = static_cast<uint16_t>(callable_reg);
+        insn.rs2 = static_cast<uint16_t>(first_arg_reg >= 0 ? first_arg_reg : 0);
+        insn.rs3 = static_cast<uint16_t>(arg_regs.size());
+        insn.imm = kDynamicCallableSentinel;
+        m_program.instructions.push_back(insn);
+        return true;
+    }
+
     bool emit_recursive_self_call(const std::vector<Value>& arg_exprs,
                                   const AffineTimeTransform& transform,
                                   int& out_reg)
@@ -3386,7 +3649,7 @@ private:
         insn.rd = static_cast<uint16_t>(out_reg);
         insn.rs1 = static_cast<uint16_t>(first_arg_reg >= 0 ? first_arg_reg : 0);
         insn.rs2 = static_cast<uint16_t>(arg_regs.size());
-        insn.imm = -1;
+        insn.imm = kCallCurrentProgramSentinel;
         m_program.instructions.push_back(insn);
         return true;
     }
@@ -4428,8 +4691,14 @@ NumericVmExecutionResult execute_numeric_program_fast_impl(
         VMF_CASE(CALL)
         VMF_CASE(CALL_INTRINSIC)
         {
-            const size_t arg_start = static_cast<size_t>(insn.rs1);
-            const size_t arg_count = static_cast<size_t>(insn.rs2);
+            const size_t arg_start = insn.opcode == NumericVmOpcode::CALL &&
+                                             insn.imm == kDynamicCallableSentinel
+                                         ? static_cast<size_t>(insn.rs2)
+                                         : static_cast<size_t>(insn.rs1);
+            const size_t arg_count = insn.opcode == NumericVmOpcode::CALL &&
+                                             insn.imm == kDynamicCallableSentinel
+                                         ? static_cast<size_t>(insn.rs3)
+                                         : static_cast<size_t>(insn.rs2);
             if (arg_start + arg_count > registers.size())
             {
                 result.error = "call arguments out of range";
@@ -4440,7 +4709,13 @@ NumericVmExecutionResult execute_numeric_program_fast_impl(
             if (insn.opcode == NumericVmOpcode::CALL)
             {
                 const NumericVmProgram* callee = nullptr;
-                if (insn.imm == -1)
+                if (insn.imm == kDynamicCallableSentinel)
+                {
+                    result.error = "dynamic callable dispatch needs tagged registers";
+                    result.error_category = DiagnosticCategory::Runtime;
+                    return result;
+                }
+                if (insn.imm == kCallCurrentProgramSentinel)
                 {
                     callee = &program;
                 }
@@ -5104,8 +5379,22 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
             {
                 return result;
             }
-            const size_t arg_start = static_cast<size_t>(insn.rs1);
-            const size_t arg_count = static_cast<size_t>(insn.rs2);
+            const bool dynamic_callable =
+                insn.opcode == NumericVmOpcode::CALL &&
+                insn.imm == kDynamicCallableSentinel;
+            if (dynamic_callable &&
+                !validate_register_index(insn.rs1, registers.size(), result.error,
+                                         "callable"))
+            {
+                return result;
+            }
+
+            const size_t arg_start = dynamic_callable
+                                         ? static_cast<size_t>(insn.rs2)
+                                         : static_cast<size_t>(insn.rs1);
+            const size_t arg_count = dynamic_callable
+                                         ? static_cast<size_t>(insn.rs3)
+                                         : static_cast<size_t>(insn.rs2);
             if (arg_start + arg_count > registers.size())
             {
                 result.error = "call arguments out of range";
@@ -5122,8 +5411,27 @@ TaggedVmExecutionResult execute_tagged_program_impl(const NumericVmProgram& prog
 
             if (insn.opcode == NumericVmOpcode::CALL)
             {
+                if (dynamic_callable)
+                {
+                    Environment exec_env;
+                    TemporalContext exec_ctx = ctx;
+                    exec_env.set_temporal_context(&exec_ctx);
+                    const Value call_result =
+                        execute_callable_with_vm_bridge(registers[insn.rs1], args,
+                                                       exec_env,
+                                                       program.signal_context);
+                    if (call_result.is_error())
+                    {
+                        result.error = "dynamic callable returned an error";
+                        result.error_category = DiagnosticCategory::Runtime;
+                        return result;
+                    }
+                    registers[insn.rd] = call_result;
+                    VM_NEXT();
+                }
+
                 const NumericVmProgram* callee = nullptr;
-                if (insn.imm == -1)
+                if (insn.imm == kCallCurrentProgramSentinel)
                 {
                     callee = &program;
                 }
@@ -5386,12 +5694,36 @@ vm_loop_exit:
 }
 } // namespace
 
+Value execute_callable_with_vm(const Value& callable,
+                               const std::vector<Value>& args,
+                               Environment& env,
+                               bool signal_context)
+{
+    return execute_callable_with_vm_bridge(callable, args, env, signal_context);
+}
+
 NumericVmCompileResult compile_numeric_program(const Value& expr,
                                                const Environment& env,
                                                bool signal_context)
 {
     NumericVmCompiler compiler(env, signal_context);
     return compiler.compile(expr);
+}
+
+Value execute_expr_with_vm(const Value& expr,
+                           Environment& env,
+                           bool signal_context)
+{
+    TemporalContext exec_ctx;
+    if (const TemporalContext* existing_ctx = env.get_temporal_context())
+    {
+        exec_ctx = *existing_ctx;
+    }
+
+    Environment exec_env(env);
+    exec_env.set_temporal_context(&exec_ctx);
+    return execute_runtime_expr_with_vm_impl(expr, exec_env, signal_context,
+                                             exec_ctx, 0);
 }
 
 TaggedVmExecutionResult execute_tagged_program(const NumericVmProgram& program,

@@ -106,6 +106,7 @@ struct NumericVmProgram
     std::vector<TaggedVmIntrinsic> intrinsics;
     size_t register_count = 0;
     bool is_numeric_only = false;
+    bool signal_context = false;
 };
 
 struct NumericVmCompileResult
@@ -135,6 +136,13 @@ struct TaggedVmExecutionResult
 NumericVmCompileResult compile_numeric_program(const Value& expr,
                                                const Environment& env,
                                                bool signal_context = false);
+Value execute_expr_with_vm(const Value& expr,
+                           Environment& env,
+                           bool signal_context = false);
+Value execute_callable_with_vm(const Value& callable,
+                               const std::vector<Value>& args,
+                               Environment& env,
+                               bool signal_context = false);
 TaggedVmExecutionResult execute_tagged_program(const NumericVmProgram& program,
                                                const TemporalContext& ctx);
 NumericVmExecutionResult execute_numeric_program(const NumericVmProgram& program,

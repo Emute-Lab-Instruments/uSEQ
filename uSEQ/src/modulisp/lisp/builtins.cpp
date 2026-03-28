@@ -2,6 +2,7 @@
 #include "../../utils.h"
 #include "../../utils/compiler_config.h"
 #include "../../utils/log.h"
+#include "../bytecode_vm.h"
 #include "../modulisp_interpreter.h"
 #include "environment.h"
 #include "value.h"
@@ -2700,24 +2701,37 @@ Value if_then_else(std::vector<Value>& args, Environment& env)
 
 Value map_list(std::vector<Value>& args, Environment& env)
 {
-    // Evaluate args
-    for (size_t i = 0; i < args.size(); i++)
+    Value callable = args[0];
+    if (callable.type != Value::LAMBDA && !callable.is_builtin() &&
+        callable.type != Value::BUILTIN_PLUGIN &&
+        callable.type != Value::VECTOR)
     {
-        Value pre = args[i];
-        args[i]   = args[i].eval(env);
-        if (args[i].is_error())
+        Value pre = callable;
+        callable = callable.eval(env);
+        if (callable.is_error())
         {
-            report_error_arg_is_error("map", static_cast<int>(i + 1),
-                                      pre.to_lisp_src());
+            report_error_arg_is_error("map", 1, pre.to_lisp_src());
             return Value::error();
         }
     }
 
-    std::vector<Value> result, l = args[1].as_list(), tmp;
+    Value sequence = args[1];
+    if (!sequence.is_sequential())
+    {
+        Value pre = sequence;
+        sequence = sequence.eval(env);
+        if (sequence.is_error())
+        {
+            report_error_arg_is_error("map", 2, pre.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    std::vector<Value> result, l = sequence.as_list(), tmp;
     for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
     {
         tmp.push_back(l[i]);
-        result.push_back(args[0].apply(tmp, env));
+        result.push_back(execute_callable_with_vm(callable, tmp, env));
         tmp.clear();
     }
     return Value(result);
@@ -2725,23 +2739,37 @@ Value map_list(std::vector<Value>& args, Environment& env)
 
 Value filter_list(std::vector<Value>& args, Environment& env)
 {
-    for (size_t i = 0; i < args.size(); i++)
+    Value callable = args[0];
+    if (callable.type != Value::LAMBDA && !callable.is_builtin() &&
+        callable.type != Value::BUILTIN_PLUGIN &&
+        callable.type != Value::VECTOR)
     {
-        Value pre = args[i];
-        args[i]   = args[i].eval(env);
-        if (args[i].is_error())
+        Value pre = callable;
+        callable = callable.eval(env);
+        if (callable.is_error())
         {
-            report_error_arg_is_error("filter", static_cast<int>(i + 1),
-                                      pre.to_lisp_src());
+            report_error_arg_is_error("filter", 1, pre.to_lisp_src());
             return Value::error();
         }
     }
 
-    std::vector<Value> result, l = args[1].as_list(), tmp;
+    Value sequence = args[1];
+    if (!sequence.is_sequential())
+    {
+        Value pre = sequence;
+        sequence = sequence.eval(env);
+        if (sequence.is_error())
+        {
+            report_error_arg_is_error("filter", 2, pre.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    std::vector<Value> result, l = sequence.as_list(), tmp;
     for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
     {
         tmp.push_back(l[i]);
-        if (args[0].apply(tmp, env).as_bool())
+        if (execute_callable_with_vm(callable, tmp, env).as_bool())
             result.push_back(l[i]);
         tmp.clear();
     }
@@ -2750,25 +2778,45 @@ Value filter_list(std::vector<Value>& args, Environment& env)
 
 Value reduce_list(std::vector<Value>& args, Environment& env)
 {
-    for (size_t i = 0; i < args.size(); i++)
+    Value callable = args[0];
+    if (callable.type != Value::LAMBDA && !callable.is_builtin() &&
+        callable.type != Value::BUILTIN_PLUGIN &&
+        callable.type != Value::VECTOR)
     {
-        Value pre = args[i];
-        args[i]   = args[i].eval(env);
-        if (args[i].is_error())
+        Value pre = callable;
+        callable = callable.eval(env);
+        if (callable.is_error())
         {
-            report_error_arg_is_error("reduce", static_cast<int>(i + 1),
-                                      pre.to_lisp_src());
+            report_error_arg_is_error("reduce", 1, pre.to_lisp_src());
             return Value::error();
         }
     }
 
-    std::vector<Value> l = args[2].as_list(), tmp;
-    Value acc            = args[1];
+    Value acc = args[1];
+    if (acc.is_error())
+    {
+        report_error_arg_is_error("reduce", 2, acc.to_lisp_src());
+        return Value::error();
+    }
+
+    Value sequence = args[2];
+    if (!sequence.is_sequential())
+    {
+        Value pre = sequence;
+        sequence = sequence.eval(env);
+        if (sequence.is_error())
+        {
+            report_error_arg_is_error("reduce", 3, pre.to_lisp_src());
+            return Value::error();
+        }
+    }
+
+    std::vector<Value> l = sequence.as_list(), tmp;
     for (size_t i = 0; static_cast<size_t>(i) < l.size(); i++)
     {
         tmp.push_back(acc);
         tmp.push_back(l[i]);
-        acc = args[0].apply(tmp, env);
+        acc = execute_callable_with_vm(callable, tmp, env);
         tmp.clear();
     }
     return acc;
