@@ -167,6 +167,7 @@ enum class NodeOp : uint8_t {
     CellLoad,       // imm = cell_id (loads cell's current double value)
     InputLoad,      // imm = input_index (loads hardware input channel)
     DataLoad,       // input_a = index_node, imm = data_table_id
+    PrevOutputLoad, // imm = output_index; reads previous tick's value for cross-output refs
 
     // Binary arithmetic
     Add, Sub, Mul, Div, Mod, Pow, Min, Max,
@@ -247,6 +248,16 @@ struct NodePool {
     // Error isolation: which outputs depend on each node?
     // Bit i set → output i depends on this node
     uint64_t output_deps[MAX_TOTAL_NODES]; // supports up to 64 outputs
+
+    // Cross-output reads (`get-a1`, etc.) always use previous-tick values.
+    // Executor reads from this buffer; firmware swaps/copies after each tick.
+    double prev_output_values[MAX_OUTPUTS];
+
+    // WASM batch executor workspace. Heap-allocated once at init because
+    // [MAX_TOTAL_NODES * CHUNK] is too large for the stack in Emscripten.
+    // Null on firmware builds, where batch execution is not used.
+    double* batch_workspace;
+    uint16_t batch_chunk_size;
 
     // Shared data tables (same as in CellStore, or referencing CellStore's data)
     // The node pool can reference CellStore's data_pool directly via DataLoad nodes
@@ -528,11 +539,19 @@ uint16_t compile_symbol(GraphBuilder& b, SymbolID sym, Scope& scope,
             // If the symbol appears bare (not inside 'for' or indexing), return length
             return b.make_const(cell.value); // cell.value = length for Data cells
 
-        case CellKind::Callable:
-            // Callables are only valid in call position, not as bare symbols
+        case CellKind::Callable: {
+            CallableInfo& info = b.callables[sym];
+            if (info.param_count == 0) {
+                // Expression cell (e.g., (define sweep (+ 200 (* 200 t))))
+                // Inline the body: re-tokenize from source arena and compile
+                b.add_dependency(sym);
+                return inline_expression_cell(b, sym, info, scope, ctx);
+            }
+            // Function with params — not valid as a bare symbol
             return b.report_error_at(span_start, span_len,
                    "'" + get_symbol_name(sym) + "' is a function — it needs arguments",
                    "Try: (" + get_symbol_name(sym) + " arg1 arg2)");
+        }
 
         case CellKind::Empty:
             return b.report_error_with_fuzzy_match(sym, span_start, span_len);
@@ -976,6 +995,7 @@ void execute_all_outputs(
     const double* data_pool,       // shared data tables
     const uint16_t* data_offsets,  // data table offsets
     const uint16_t* data_lengths,  // data table lengths
+    const double* prev_output_values, // previous tick's output values for cross-output refs
     double* output_values,         // [MAX_OUTPUTS] results written here
     double* node_values            // [MAX_TOTAL_NODES] workspace (can be stack-allocated)
 ) {
@@ -994,6 +1014,9 @@ void execute_all_outputs(
             case NodeOp::RawTimeLoad: result = t; break;
             case NodeOp::CellLoad:    result = cell_values[(uint16_t)n.imm]; break;
             case NodeOp::InputLoad:   result = hw_inputs[(uint16_t)n.imm]; break;
+            case NodeOp::PrevOutputLoad:
+                result = prev_output_values[(uint16_t)n.imm];
+                break;
             case NodeOp::DataLoad: {
                 uint16_t tid = (uint16_t)n.imm;
                 uint16_t off = data_offsets[tid];
@@ -1103,10 +1126,15 @@ void execute_batch(
     double* output_buffer,         // [num_outputs × sample_count], row-major
     uint16_t num_outputs
 ) {
-    // Workspace: one array per node, each of length sample_count
-    // For large batches, chunk to limit memory usage
+    // Workspace: one array per node, each of length CHUNK.
+    // IMPORTANT: This is ~2MB at [1024][256] — too large for the stack, especially
+    // in Emscripten/worker contexts. Heap-allocate once at init, reuse across calls.
+    // On firmware this function is not used (single-sample only), so no RP2040 concern.
     constexpr size_t CHUNK = 256;
-    double regs[MAX_TOTAL_NODES][CHUNK];
+    // Allocated once at useq_init() time, not per call:
+    // static double* regs = new double[MAX_TOTAL_NODES * CHUNK];
+    // Accessed as: regs[node_idx * CHUNK + sample_idx]
+    double* regs = pool.batch_workspace; // pre-allocated, see NodePool
 
     for (size_t chunk_start = 0; chunk_start < sample_count; chunk_start += CHUNK) {
         size_t chunk_size = std::min(CHUNK, sample_count - chunk_start);
@@ -1309,12 +1337,26 @@ EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
 
 ### 5.3 Dependency Tracking and Recompilation
 
+**Important:** Because the graph builder aggressively bakes Number/Data cell values into
+`Const` nodes (for constant folding and optimization), the compiled graph contains NO
+`CellLoad` nodes for most user-defined globals. Dependency tracking therefore CANNOT be
+derived by scanning the graph for `CellLoad` references. Instead, it is a separate data
+structure populated during graph construction via `add_dependency()`.
+
 ```cpp
+// Per-output dependency list, populated during graph construction
+struct OutputDeps {
+    SymbolID cells[64];   // cell IDs this output depends on
+    uint8_t count;
+};
+
+OutputDeps output_deps[MAX_OUTPUTS]; // populated by graph builder's add_dependency()
+
 void on_cell_changed(SymbolID cell_id, CellStore& cells, NodePool& pool) {
-    // For each output, check if it depends on this cell
+    // Check the recorded dependency list — NOT the graph nodes
     for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
         if (pool.outputs[i].root_node == 0xFFFF) continue;
-        if (!output_depends_on_cell(pool, i, cell_id)) continue;
+        if (!output_depends_on(output_deps[i], cell_id)) continue;
 
         // This output needs recompilation
         // Save LKG
@@ -1325,21 +1367,20 @@ void on_cell_changed(SymbolID cell_id, CellStore& cells, NodePool& pool) {
         // Recompile from the stored output expression
         // ... rebuild this output's subgraph in the pool
         // ... re-sort, recompute bitmasks
+        // ... output_deps[i] is repopulated during rebuild
     }
 }
 
-bool output_depends_on_cell(const NodePool& pool, uint16_t output_idx, SymbolID cell_id) {
-    // Walk the output's reachable nodes, check for CellLoad with matching cell_id
-    for (uint16_t i = 0; i < pool.exec_count; i++) {
-        uint16_t idx = pool.exec_order[i];
-        if (!(pool.output_deps[idx] & (1ULL << output_idx))) continue;
-        if (pool.nodes[idx].op == NodeOp::CellLoad && (uint16_t)pool.nodes[idx].imm == cell_id) {
-            return true;
-        }
+bool output_depends_on(const OutputDeps& deps, SymbolID cell_id) {
+    for (uint8_t i = 0; i < deps.count; i++) {
+        if (deps.cells[i] == cell_id) return true;
     }
     return false;
 }
 ```
+
+This matches the existing system's approach (`CompiledOutputProgram.dependencySymbolIds`)
+and is the correct strategy when constants are baked at compile time.
 
 ---
 
@@ -1444,7 +1485,7 @@ extern "C" {
     int useq_eval_outputs_time_window_into(const char* output_names,
                                             double start_time, double end_time,
                                             int sample_count,
-                                            int heap_offset, int max_bytes);
+                                            int heap_offset, int max_f64_slots);
 }
 ```
 
@@ -1455,12 +1496,16 @@ extern "C" {
   {
     "severity": "error",
     "category": "undefinedName",
-    "span": { "start": 5, "end": 8 },
+    "start": 5,
+    "end": 8,
     "message": "'frq' isn't defined. Did you mean 'freq'?",
     "suggestion": "Try: freq"
   }
 ]
 ```
+
+**Note:** Diagnostic span fields are flat `start`/`end` at the top level (matching
+`ERROR_HANDLING_SPEC.md` and the shipped WASM ABI), NOT a nested `span` object.
 
 ---
 
@@ -1489,6 +1534,7 @@ void uSEQ::updateOutputs() {
 
     execute_all_outputs(m_pool, t, cell_snapshot, hw_inputs,
                         m_cells.data_pool, m_cells.data_offsets, m_cells.data_lengths,
+                        m_pool.prev_output_values,
                         output_values, workspace);
 
     // Write to hardware
@@ -1501,6 +1547,10 @@ void uSEQ::updateOutputs() {
     for (int i = 0; i < NUM_SERIAL_OUTS; i++) {
         // Serial outputs handled via protocol
     }
+
+    // Cross-output reads use previous-tick values, so publish this tick's
+    // outputs only after the full pass completes.
+    memcpy(m_pool.prev_output_values, output_values, sizeof(double) * MAX_OUTPUTS);
 }
 ```
 
@@ -1760,8 +1810,7 @@ The following gaps were identified by a systematic audit of the full codebase ag
 - Evaluation order is sequential by index: a1, a2, a3, ..., d1, d2, ...
 - `a2` reading `get-a1` gets the CURRENT tick's a1 value (already computed).
 - `a1` reading `get-a2` gets the PREVIOUS tick's a2 value (not yet computed this tick).
-- **Spec addition:** Add a `PrevOutputLoad` node op that reads from a previous-tick output buffer. All cross-output references use previous-tick values for consistency (eliminates evaluation-order dependency). Alternatively, maintain the sequential order but document it explicitly.
-- **Design decision needed:** Should cross-output references see current-tick (order-dependent) or previous-tick (order-independent) values?
+- **RESOLVED:** All cross-output references use **previous-tick values** via a `PrevOutputLoad` node op. A `prev_output_values[MAX_OUTPUTS]` buffer is swapped after each tick. This eliminates evaluation-order dependency, makes firmware/WASM semantically identical, and the one-sample delay is inaudible at kHz update rates.
 
 ### 15.4 Transport and Time
 
@@ -1881,7 +1930,7 @@ These items were surfaced by the audit and need explicit decisions:
 
 | # | Question | Options | Current behavior |
 |---|----------|---------|-----------------|
-| 1 | Cross-output references: current-tick or previous-tick? | (a) Previous-tick for all (order-independent) (b) Current-tick with documented order | Current-tick, sequential order |
+| 1 | **RESOLVED: Previous-tick for all.** Cross-output reads (`get-a1` etc.) always return the previous tick's value. This is order-independent (essential for the shared-pool model), makes firmware/WASM behavior identical without requiring identical output ordering, and the one-sample delay is inaudible at kHz update rates. Implementation: a `prev_output_values[MAX_OUTPUTS]` buffer, swapped after each tick. `PrevOutputLoad` node op reads from this buffer. | — | Current-tick, sequential order (changed) |
 | 2 | Digital output threshold: >0 or >0.5? | Standardize one | >0 on hardware, >0.5 on desktop |
 | 3 | Output clamping: signal engine or I/O layer? | (a) Clamp in engine (b) Clamp at I/O | I/O layer only |
 | 4 | Error recovery: always LKG or sometimes reset to default? | (a) Always LKG (b) Reset after N failures | Reset to default on runtime error (destructive) |
