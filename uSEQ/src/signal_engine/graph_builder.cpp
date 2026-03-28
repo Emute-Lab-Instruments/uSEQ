@@ -425,6 +425,16 @@ uint16_t GraphBuilder::compile_expr(TokenStream& ts, Scope& scope, TimeContext& 
                                 "Try: (sin (* t 440))");
         }
         uint16_t result = compile_form(op_tok.symbol, ts, scope, ctx, op_tok);
+        // If compile_form errored, skip any unconsumed args to avoid hangs
+        if (has_error) {
+            while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
+                if (ts.peek().kind == TokenKind::LParen) {
+                    skip_form(ts);
+                } else {
+                    ts.consume();
+                }
+            }
+        }
         ts.expect(TokenKind::RParen);
         return result;
     }
@@ -553,6 +563,14 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
 
     // Side effects → compile-time error in signal context
     if (is_side_effect_form(op)) {
+        // Skip remaining args so the parser doesn't hang
+        while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
+            if (ts.peek().kind == TokenKind::LParen) {
+                skip_form(ts);
+            } else {
+                ts.consume();
+            }
+        }
         return report_error(op_tok,
             "This can't be used inside an output expression",
             "Use it at the top level instead");
@@ -629,6 +647,14 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
 
     // Quote in signal context
     if (op == sym.quote) {
+        // Skip the quoted form
+        while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
+            if (ts.peek().kind == TokenKind::LParen) {
+                skip_form(ts);
+            } else {
+                ts.consume();
+            }
+        }
         return report_error(op_tok,
             "'quote' can't be used inside an output expression",
             "Use a literal vector instead: [1 0 1 0]");
