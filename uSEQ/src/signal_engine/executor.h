@@ -24,8 +24,17 @@ struct ExecutionContext {
 
 // ── Single-Sample Execution ─────────────────────────────────────────────────
 // One forward pass through topologically-sorted nodes.
+// Uses LKG fallback for outputs with no current graph but a valid previous value.
 
 void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx);
+
+// ── Post-Tick Commit ────────────────────────────────────────────────────────
+// After execute_all_outputs, call this to:
+//   1. Copy output_values → pool.prev_output_values (for next tick's PrevOutputLoad)
+//   2. Update lkg_value / valid on each active output slot
+// This mutates pool state, so it is NOT used in the batch/visualization path.
+
+void commit_outputs(NodePool& pool, const double* output_values);
 
 // Legacy 10-parameter overload — delegates to the ExecutionContext version.
 void execute_all_outputs(

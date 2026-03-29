@@ -2925,3 +2925,216 @@ TEST_CASE("Batch workspace lifecycle with unique_ptr", "[signal_engine][node_poo
     pool.free_batch_workspace();
     REQUIRE(!pool.batch_workspace);
 }
+
+// ── Firmware Output Loop Integration Tests ─────────────────────────────────
+
+TEST_CASE("Firmware integration: execute_all_outputs with ExecutionContext and commit",
+          "[signal_engine][executor][firmware]") {
+    SignalEngine engine;
+    engine.init_defaults(120.0);
+
+    // Define an output: a1 = sin(* t 440)
+    const char* code = "(a1 (sin (* t 440)))";
+    EvalResult r = eval_cold(code, (uint32_t)strlen(code), engine);
+    REQUIRE(r.kind != EvalResult::Error);
+    engine.pool.rebuild_execution_order();
+
+    // Prepare execution context (mimics firmware tick setup)
+    double cell_vals[MAX_CELLS];
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    ExecutionContext ctx;
+    ctx.t             = 0.5;
+    ctx.cell_values   = cell_vals;
+    ctx.hw_inputs     = hw_inputs;
+    ctx.data_pool     = engine.cells.data_pool;
+    ctx.data_offsets  = engine.cells.data_offsets;
+    ctx.data_lengths  = engine.cells.data_lengths;
+    ctx.prev_outputs  = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace     = workspace;
+
+    execute_all_outputs(engine.pool, ctx);
+
+    double expected = sin(0.5 * 440.0);
+    REQUIRE(outputs[0] == Approx(expected).epsilon(1e-9));
+}
+
+TEST_CASE("commit_outputs updates prev_output_values and lkg",
+          "[signal_engine][executor][firmware]") {
+    NodePool pool;
+    uint16_t c = pool.make_const(0.75);
+    pool.outputs[0].root_node = c;
+    pool.outputs[0].valid = true;
+    pool.rebuild_execution_order();
+
+    double cell_vals[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = nullptr;
+    ctx.data_offsets = nullptr;
+    ctx.data_lengths = nullptr;
+    ctx.prev_outputs = pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+
+    // Create dummy data arrays for data_pool access safety
+    double dp[1] = {};
+    uint16_t do_[1] = {};
+    uint16_t dl[1] = {};
+    ctx.data_pool = dp;
+    ctx.data_offsets = do_;
+    ctx.data_lengths = dl;
+
+    execute_all_outputs(pool, ctx);
+    REQUIRE(outputs[0] == 0.75);
+
+    // Before commit, prev_output_values should still be 0
+    REQUIRE(pool.prev_output_values[0] == 0.0);
+    REQUIRE(pool.outputs[0].lkg_value == 0.0);
+
+    // Commit
+    commit_outputs(pool, outputs);
+
+    // After commit, prev_output_values and lkg should be updated
+    REQUIRE(pool.prev_output_values[0] == 0.75);
+    REQUIRE(pool.outputs[0].lkg_value == 0.75);
+    REQUIRE(pool.outputs[0].valid == true);
+}
+
+TEST_CASE("LKG fallback: output with no graph uses last known good value",
+          "[signal_engine][executor][firmware][lkg]") {
+    NodePool pool;
+
+    // Output 0 has no root_node but has a valid LKG value
+    pool.outputs[0].root_node = NODE_NONE;
+    pool.outputs[0].lkg_value = 0.42;
+    pool.outputs[0].valid = true;
+
+    pool.rebuild_execution_order();
+
+    double cell_vals[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+    double dp[1] = {};
+    uint16_t do_[1] = {};
+    uint16_t dl[1] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = dp;
+    ctx.data_offsets = do_;
+    ctx.data_lengths = dl;
+    ctx.prev_outputs = pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+
+    execute_all_outputs(pool, ctx);
+
+    // Should fall back to LKG value
+    REQUIRE(outputs[0] == 0.42);
+}
+
+TEST_CASE("LKG fallback: invalid output stays at zero",
+          "[signal_engine][executor][firmware][lkg]") {
+    NodePool pool;
+
+    // Output 0 has no root_node and valid == false (never assigned)
+    pool.outputs[0].root_node = NODE_NONE;
+    pool.outputs[0].valid = false;
+    pool.outputs[0].lkg_value = 999.0; // should be ignored
+
+    pool.rebuild_execution_order();
+
+    double cell_vals[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+    double dp[1] = {};
+    uint16_t do_[1] = {};
+    uint16_t dl[1] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = dp;
+    ctx.data_offsets = do_;
+    ctx.data_lengths = dl;
+    ctx.prev_outputs = pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+
+    execute_all_outputs(pool, ctx);
+
+    // Should remain at 0 (caller's init), not use lkg_value
+    REQUIRE(outputs[0] == 0.0);
+}
+
+TEST_CASE("Multi-tick simulation: commit feeds prev_outputs to next tick",
+          "[signal_engine][executor][firmware][multi_tick]") {
+    NodePool pool;
+
+    // a1 (output 0) = constant 0.5
+    uint16_t c = pool.make_const(0.5);
+    pool.outputs[0].root_node = c;
+    pool.outputs[0].valid = true;
+
+    // a2 (output 1) = PrevOutputLoad(0) — reads previous tick's a1
+    uint16_t prev_a1 = pool.make_prev_output_load(0);
+    pool.outputs[1].root_node = prev_a1;
+    pool.outputs[1].valid = true;
+
+    pool.rebuild_execution_order();
+
+    double cell_vals[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+    double dp[1] = {};
+    uint16_t do_[1] = {};
+    uint16_t dl[1] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    // Tick 1: prev_output_values are all 0 initially
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = dp;
+    ctx.data_offsets = do_;
+    ctx.data_lengths = dl;
+    ctx.prev_outputs = pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+
+    execute_all_outputs(pool, ctx);
+    // a1 = 0.5, a2 = prev a1 = 0.0 (no previous tick yet)
+    REQUIRE(outputs[0] == 0.5);
+    REQUIRE(outputs[1] == 0.0);
+
+    // Commit tick 1
+    commit_outputs(pool, outputs);
+
+    // Tick 2: now prev a1 should be 0.5
+    memset(outputs, 0, sizeof(outputs));
+    memset(workspace, 0, sizeof(workspace));
+    ctx.prev_outputs = pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+
+    execute_all_outputs(pool, ctx);
+    REQUIRE(outputs[0] == 0.5);
+    REQUIRE(outputs[1] == 0.5); // prev a1 from tick 1
+}

@@ -143,10 +143,26 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
         ctx.workspace[idx] = result;
     }
 
-    // Read output values
+    // Read output values with LKG fallback
     for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
         if (pool.outputs[i].root_node != NODE_NONE) {
             ctx.output_values[i] = ctx.workspace[pool.outputs[i].root_node];
+        } else if (pool.outputs[i].valid) {
+            // No graph assigned but we have a last-known-good value — use it
+            ctx.output_values[i] = pool.outputs[i].lkg_value;
+        }
+        // else: output was never assigned, leave at caller's init (typically 0)
+    }
+}
+
+// ── Post-Tick Commit ───────────────────────────────────────────────────────
+
+void commit_outputs(NodePool& pool, const double* output_values) {
+    for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
+        pool.prev_output_values[i] = output_values[i];
+        if (pool.outputs[i].root_node != NODE_NONE) {
+            pool.outputs[i].lkg_value = output_values[i];
+            pool.outputs[i].valid = true;
         }
     }
 }

@@ -136,5 +136,26 @@ signal_engine_dep = declare_dependency(
   dependencies : utils_dep
 )
 
+# Firmware scaffold library - composition root and hardware modules
+firmware_lib = static_library('useq_firmware',
+  'uSEQ/src/firmware/firmware.cpp',
+  'uSEQ/src/firmware/hardware_io.cpp',
+  'uSEQ/src/firmware/serial_protocol.cpp',
+  'uSEQ/src/firmware/flash_storage.cpp',
+  'uSEQ/src/firmware/i2c_network.cpp',
+  'uSEQ/src/firmware/dsp_engine.cpp',
+  include_directories : src_inc,
+  cpp_args : standalone_args,
+  cpp_pch : pch_file,
+  dependencies : signal_engine_dep,
+  override_options : unity_override_options
+)
+
+firmware_dep = declare_dependency(
+  link_with : firmware_lib,
+  include_directories : src_inc,
+  dependencies : signal_engine_dep
+)
+
 # Add test subdirectory
 subdir('test')

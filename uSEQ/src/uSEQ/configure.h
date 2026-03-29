@@ -10,7 +10,10 @@
 // #define USEQHARDWARE_0_2
 // #define USEQHARDWARE_1_0
 // #define USEQHARDWARE_EXPANDER_OUT_0_1
+// Default to MUSICTHING if no variant is specified via build flags
+#if !defined(MUSICTHING) && !defined(USEQHARDWARE_0_2) && !defined(USEQHARDWARE_1_0) && !defined(USEQHARDWARE_EXPANDER_OUT_0_1)
 #define MUSICTHING
+#endif
 // #define DESKTOP
 
 // ===== FEATURE FLAGS FOR CONDITIONAL COMPILATION =====

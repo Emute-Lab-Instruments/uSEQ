@@ -45,6 +45,19 @@ signal_engine_probe_exe = executable(
 
 test('signal_engine_probe_smoke', signal_engine_probe_exe)
 
+# ===== Flash Storage Tests =====
+
+flash_storage_test_exe = executable(
+  'test_flash_storage',
+  sources : ['signal_engine/test_flash_storage.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args + ['-DENABLE_FLASH_STORAGE'],
+  cpp_pch : test_pch_file,
+  dependencies : [firmware_dep, math_dep]
+)
+
+test('flash_storage_test', flash_storage_test_exe)
+
 test(
   'signal_engine_golden_fixture',
   python3,
