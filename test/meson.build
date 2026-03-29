@@ -68,3 +68,40 @@ test(
   ],
   depends : signal_engine_probe_exe
 )
+
+# ===== Firmware E2E Tests =====
+
+firmware_e2e_test_exe = executable(
+  'test_firmware_e2e',
+  sources : ['firmware/test_firmware_e2e.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [firmware_dep, math_dep]
+)
+
+test('firmware_e2e_test', firmware_e2e_test_exe, timeout: 60)
+
+firmware_e2e2_test_exe = executable(
+  'test_firmware_e2e_part2',
+  sources : ['firmware/test_firmware_e2e_part2.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [firmware_dep, math_dep]
+)
+
+test('firmware_e2e_test_part2', firmware_e2e2_test_exe, timeout: 60)
+
+# ===== Firmware Fuzz Tests =====
+
+firmware_fuzz_test_exe = executable(
+  'test_firmware_fuzz',
+  sources : ['firmware/test_firmware_fuzz.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [firmware_dep, math_dep]
+)
+
+test('firmware_fuzz_test', firmware_fuzz_test_exe, timeout: 120)

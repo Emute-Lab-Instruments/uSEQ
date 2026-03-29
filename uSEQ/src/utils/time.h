@@ -17,8 +17,13 @@ inline double get_system_time_seconds()
 
 #include <chrono>
 
+// Test override: when non-null, get_system_time_seconds() returns *this
+// instead of the real clock. Set from test harnesses for deterministic time.
+inline double* g_test_time_ptr = nullptr;
+
 inline double get_system_time_seconds()
 {
+    if (g_test_time_ptr) return *g_test_time_ptr;
     static const auto start = std::chrono::steady_clock::now();
     auto now                = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = now - start;

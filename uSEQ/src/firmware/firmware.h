@@ -66,9 +66,10 @@ struct Firmware {
     void watchdog_init();
     void watchdog_kick();
 
-private:
     // ── Bar-Quantized Scheduling ──────────────────────────────────────────
     void enqueue_pending(const char* code, uint16_t length);
+
+private:
     void maybe_drain_pending(double t);
 };
 
