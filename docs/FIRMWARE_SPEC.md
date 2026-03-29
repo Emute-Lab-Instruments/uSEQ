@@ -54,7 +54,7 @@ tick():
            serial.send_response(result)
     4. engine.execute(time, io.inputs) → values   // hot path: one forward pass
     5. io.write_outputs(values)                   // PWM, DAC, digital pins
-    6. engine.swap_prev_outputs(values)            // for cross-output refs
+    6. engine.swap_prev_outputs(values)            // copy current → prev for cross-output refs
     7. serial.maybe_send_stream()                 // periodic output value streaming
 ```
 
@@ -63,8 +63,7 @@ Steps 1–6 are the critical path. Step 7 is opportunistic (skip if tick budget 
 **Invariants:**
 - Steps 1–6 never allocate heap memory.
 - Steps 1–6 never block on I/O (serial read is non-blocking).
-- Step 4 (execute) reads only from the `live` pool — never races with compilation.
-- Step 3 (eval_cold) writes only to the `staging` pool, then atomically swaps it live via `engine.commit()`.
+- Steps 1–6 run sequentially on core 0. No concurrent access to engine state. `eval_cold` writes directly to the live pool. Double-buffering is deferred until multi-threaded execution is needed (e.g., WASM Web Workers).
 
 ### 1.2 Dual-Core Split (RP2040)
 
@@ -148,10 +147,11 @@ struct SerialProtocol {
     bool has_incoming();
 
     // Read the next command. Fills `code` with the expression text.
+    // Returns message length (caller must NOT use strlen on the result).
     // `request_id` is the protocol tracking ID (for response correlation).
     // `immediate` is true if prefixed with "@" (execute now, don't quantize).
-    void read_command(char* code, uint32_t max_len,
-                      uint32_t* request_id, bool* immediate);
+    uint32_t read_command(char* code, uint32_t max_len,
+                          uint32_t* request_id, bool* immediate);
 
     // ── Sending ────────────────────────────────────────────────────────
     // Send eval response (result or error) correlated to a request.
@@ -172,12 +172,16 @@ struct SerialProtocol {
 
 **Contracts:**
 - `has_incoming()` and `read_command()` are non-blocking. They read from an internal ring buffer filled by the serial interrupt.
-- `send_*` functions write to the serial TX buffer. They do not block if the buffer is full — they drop the message.
+- `read_command()` returns the message length. Callers must use this length, not `strlen()`, to determine code size.
+- `send_eval_response()` must NEVER drop an eval response. If the TX buffer is full, block briefly until space is available. Eval responses are the user's confirmation that their code was received and processed — dropping them silently breaks the contract with the editor.
+- `send_stream_data()` and `send_diagnostics()` may be dropped if the TX buffer is full (they are periodic/opportunistic).
 - The protocol layer does NOT evaluate code. It only shuttles bytes. The Firmware connects it to `engine.eval_cold()`.
 - Wire format: JSON messages framed with a start-of-message byte (0x1F) and message-type byte, matching the existing protocol in `uSEQ.cpp`.
+- **Boot-ready signal:** After `init()` completes, firmware sends `{"type":"ready","version":"..."}` on serial. The editor waits for this before sending commands.
 
 **Message types (preserved from existing protocol):**
 ```
+ready       → sent once after boot, includes firmware version
 hello       → hardware config (output names, counts, features)
 ping        → keepalive
 eval        → code string, returns result + diagnostics
@@ -210,11 +214,13 @@ struct FlashStorage {
 ```
 
 **Contracts:**
-- `save()` is called from the cold path (in response to `(memory-save)`). It may take several milliseconds. Outputs continue running from the live pool during save.
-- `load()` is called once during `Firmware::init()`, before the tick loop starts.
+- `save()` is called from the cold path (in response to `(memory-save)`). It may take several milliseconds. Outputs continue running from the live pool during save. Before writing flash, the serial buffer must be drained and a `"save-in-progress"` status sent to the editor so it knows to expect a brief pause.
+- `load()` is called once during `Firmware::init()`, before the tick loop starts. On load, the CRC32 checksum in the metadata header is validated; `load()` returns `false` on mismatch (corrupted data treated as no saved state).
 - Format: each cell is serialized as `{symbol_name}\0{source_text}\0`. Output expressions are serialized as `{output_name}\0{source_text}\0`. A magic header identifies valid data.
+- **No backward compatibility** with the old firmware's flash format. Upgrading to the new firmware requires a clean flash (erase). This is a deliberate break — the old format serialized `Value` objects and environment maps, which have no equivalent in the signal engine.
 - Flash writes are sector-aligned (4KB on RP2040). Interrupts are disabled during the actual flash write (hardware requirement).
 - `set` variables (no source text) are NOT persisted — only `define`d values with source expressions.
+- **Flash wear lifetime:** At typical usage (a few saves per session, ~10 sessions/week), the RP2040's 100K erase-cycle flash endurance gives ~6 years of life. No wear-leveling is needed yet.
 
 ### 2.4 I2CNetwork (Optional)
 
@@ -239,6 +245,7 @@ struct I2CNetwork {
 - `send_to()` is called from the cold path (in response to `(send-to addr expr)`).
 - Incoming messages are processed in the tick loop, same as serial commands: `engine.eval_cold(code)`.
 - I2C is optional — compiled out when `ENABLE_I2C_NETWORKING` is not defined.
+- **Timeout/error handling:** I2C transactions must have a bounded timeout (e.g., 1ms). On timeout or NACK, `send_to()` returns an error status — it never blocks the tick loop. Repeated failures to a given address should be rate-limited (e.g., back off for N ticks) to avoid starving the main loop.
 
 ### 2.5 DSPEngine (Optional, Core 1)
 
@@ -278,10 +285,22 @@ struct Firmware {
     DSPEngine dsp;
 #endif
 
-    // ── Tick state ─────────────────────────────────────────────────────
+    // ── Tick state (struct members, not stack — keeps tick() frame small)
+    char   code_buffer[2048];
     double cell_snapshot[sig::MAX_CELLS];
     double output_values[sig::MAX_OUTPUTS];
     double workspace[sig::MAX_TOTAL_NODES];
+
+    // ── Quantization (see §3.7) ───────────────────────────────────────
+    struct PendingCommand {
+        char     code[2048];
+        uint32_t length;
+        uint32_t request_id;
+    };
+    PendingCommand pending_commands[8];       // ring buffer
+    uint8_t        pending_head = 0;
+    uint8_t        pending_tail = 0;
+    double         last_bar_phasor = 0.0;
 
     // ── Lifecycle ──────────────────────────────────────────────────────
     void init();
@@ -295,6 +314,7 @@ struct Firmware {
 void Firmware::init() {
     // 1. Hardware
     io.init();
+    io.set_led(LED_AMBER);  // booting
     serial.init();
     flash.init();
 #ifdef ENABLE_I2C_NETWORKING
@@ -305,11 +325,20 @@ void Firmware::init() {
     sig::GraphBuilder::init_symbols();
     engine.init_defaults();  // bpm=120, 4/4
 
-    // 3. Restore saved state
+    // 3. Restore saved state (CRC32 validated; mismatch → skip)
     if (flash.has_saved_state()) {
-        flash.load(engine);
-        recompile_all_outputs();
+        if (flash.load(engine)) {
+            recompile_all_outputs();
+        }
+        // load() returns false on checksum mismatch — start with defaults
     }
+
+    // 4. Ready
+    io.set_led(LED_GREEN);
+    serial.send_ready(FIRMWARE_VERSION);  // {"type":"ready","version":"..."}
+
+    // 5. Enable watchdog (200ms timeout)
+    watchdog_enable(200, true);
 }
 ```
 
@@ -323,23 +352,32 @@ void Firmware::tick() {
     // 2. Inputs
     io.read_inputs();
 
+    // 2b. Quantization: drain pending commands on bar boundary
+    maybe_drain_pending(t);
+
     // 3. Serial commands (cold path)
     if (serial.has_incoming()) {
-        char code[2048];
         uint32_t request_id;
         bool immediate;
-        serial.read_command(code, sizeof(code), &request_id, &immediate);
+        uint32_t len = serial.read_command(code_buffer, sizeof(code_buffer),
+                                           &request_id, &immediate);
 
-        sig::EvalResult result = sig::eval_cold(code, strlen(code), engine);
-        serial.send_eval_response(request_id, result);
+        if (immediate) {
+            // @ prefix: execute now
+            sig::EvalResult result = sig::eval_cold(code_buffer, len, engine);
+            serial.send_eval_response(request_id, result);
+        } else {
+            // Queue for next bar boundary (see §3.7 Quantization)
+            enqueue_pending(code_buffer, len, request_id);
+        }
     }
 
 #ifdef ENABLE_I2C_NETWORKING
     // 3b. I2C commands (same cold path)
     if (i2c.has_incoming()) {
-        char code[512];
-        i2c.read_incoming(code, sizeof(code));
-        sig::eval_cold(code, strlen(code), engine);
+        char i2c_buf[512];
+        uint32_t len = i2c.read_incoming(i2c_buf, sizeof(i2c_buf));
+        sig::eval_cold(i2c_buf, len, engine);
     }
 #endif
 
@@ -365,7 +403,7 @@ void Firmware::tick() {
         io.write_outputs();
         io.update_leds();
 
-        // 6. Cross-output buffer update
+        // 6. Copy current → prev for cross-output refs
         memcpy(engine.pool.prev_output_values, output_values,
                sizeof(double) * sig::MAX_OUTPUTS);
     } else {
@@ -376,8 +414,16 @@ void Firmware::tick() {
     // 7. Opportunistic streaming
     serial.send_stream_data(output_values, io.num_continuous_outs + io.num_binary_outs,
                             stream_config);
+
+    // 8. Watchdog kick (see §3.5)
+    watchdog_update();
 }
 ```
+
+**Notes:**
+- `code_buffer[2048]`, `cell_snapshot[512]`, `output_values[42]`, and `workspace[1024]` are `Firmware` struct members (in `.bss`), not stack variables. This keeps tick()'s stack frame small.
+- `snapshot_values` could be optimized with a high-water mark to avoid copying unused cells. Deferred as a future optimization.
+- The `memcpy` from `output_values` to `io.outputs` could be eliminated by aliasing `io.outputs` to `output_values`. Deferred as a future optimization.
 
 ### 3.3 Memory Layout (RP2040)
 
@@ -386,28 +432,70 @@ Component                        Size        Location
 ─────────────────────────────────────────────────────────
 SignalEngine
   CellStore.cells[512]           8 KB        .bss
-  CellStore.callables[512]       12 KB       .bss
+  CellStore.callables[512]       22 KB       .bss
+    (CallableInfo = 44 B each: SymbolID uint32_t + params[8] = 32 B + 4+4+4)
   CellStore.data_pool[2048]      16 KB       .bss
   NodePool.nodes[1024]           20 KB       .bss
+    (std::unique_ptr adds 8 B per node; null on firmware, present on desktop)
   NodePool.cse_hashes[2048]      8 KB        .bss
   NodePool.cse_indices[2048]     4 KB        .bss
+  NodePool.exec_order[1024]      2 KB        .bss
   SourceArena.data[16384]        16 KB       .bss
   OutputSlot[42]                 ~1 KB       .bss
-  OutputDeps[42]                 ~3 KB       .bss
+  OutputDeps[42]                 ~11 KB      .bss
+    (~260 B each: cells[64] = 256 B + count + padding)
   prev_output_values[42]         336 B       .bss
 HardwareIO
   inputs[32]                     256 B       .bss
   outputs[42]                    336 B       .bss
-Firmware tick state
-  cell_snapshot[512]             4 KB        .bss (or stack)
-  output_values[42]              336 B       stack
-  workspace[1024]                8 KB        .bss (too large for stack)
+Firmware struct members
+  code_buffer[2048]              2 KB        .bss
+  cell_snapshot[512]             4 KB        .bss
+  output_values[42]              336 B       .bss
+  workspace[1024]                8 KB        .bss
 ─────────────────────────────────────────────────────────
-Total                            ~102 KB
+Total                            ~121 KB
 
 RP2040 SRAM: 264 KB
-Remaining for stack + serial buffers + DSP + I2C: ~162 KB
+Remaining for stack + serial buffers + DSP + I2C: ~143 KB
 ```
+
+### 3.4 Tick Budget
+
+Target **1 kHz** tick rate for typical patches (< 200 total nodes). Complex patches degrade gracefully — the tick rate drops but outputs never stop. There is no hard deadline; the system is soft-real-time.
+
+**Floating-point cost:** The RP2040 has no FPU. All `double` arithmetic is soft-float, which is the dominant cost per tick. The current choice is `double` (matching the signal engine's value type). Profile before considering a `float` fast-path — the RP2350's hardware FPU will eliminate this constraint entirely.
+
+**Heap fragmentation:** `SymbolIntern` uses `std::map` internally, which heap-allocates on the cold path (symbol registration). This is acceptable because symbol interning only happens during `eval_cold`, never on the hot path. A fixed-memory intern table is a future optimization.
+
+### 3.5 Watchdog
+
+The RP2040 hardware watchdog is configured with a **200 ms timeout**. It is kicked at the end of every `tick()` (step 8). If a tick takes longer than 200 ms (catastrophic bug, infinite loop in cold path), the watchdog resets the MCU. On reset, the firmware boots fresh — flash-saved state is preserved and reloaded normally.
+
+### 3.6 Boot Sequence
+
+```
+1. Hardware init (pins, ADC, LEDs, serial)
+2. LED → amber (booting)
+3. Signal engine init (symbols, defaults)
+4. Flash load (if saved state exists, recompile all outputs)
+5. LED → green (ready)
+6. Send {"type":"ready","version":"..."} on serial
+7. Enter tick loop
+```
+
+On error during boot (e.g., flash load fails), the LED flashes red briefly, then continues to step 5 with default state. The module is always usable after boot.
+
+### 3.7 Quantization
+
+Non-immediate commands are **bar-quantized**: they take effect at the next bar boundary, allowing the performer to queue changes that land on the beat.
+
+**Mechanism:**
+- Incoming commands without the `@` (immediate) prefix are enqueued in `pending_commands[8]`, a ring buffer on the `Firmware` struct.
+- At each tick, before serial processing (step 2b), `maybe_drain_pending()` checks if the bar phasor has wrapped (crossed from near-1.0 back to near-0.0) since the last tick.
+- If the bar wrapped, all pending commands are drained: each is passed to `eval_cold()` and its eval response is sent back via serial.
+- If the ring buffer is full when a new non-immediate command arrives, the oldest pending command is evicted (dropped with an error response).
+- Immediate commands (`@` prefix) bypass the queue entirely and execute in step 3 as before.
 
 ---
 
@@ -425,7 +513,9 @@ Every output has an LKG (last-known-good) value. Error handling at every layer p
 | NaN/Inf during execution | Per-node guard substitutes 0.0. Output continues. | Yes |
 | Node pool exhaustion | Compile error. Output keeps LKG. | Yes |
 | Flash load failure | Engine starts with defaults. No crash. | N/A (boot) |
-| Serial buffer overflow | Message dropped. No crash. | Yes |
+| Serial buffer overflow (stream/diag) | Message dropped. No crash. | Yes |
+| Serial TX full during eval response | Block briefly until space available. Never drop. | Yes |
+| Flash checksum mismatch on load | Treated as no saved state. Engine starts with defaults. | N/A (boot) |
 
 ### 4.2 Diagnostic Flow
 
@@ -552,8 +642,8 @@ uSEQ/uSEQ.ino                  // Arduino entry point (simplified)
 
 static Firmware firmware;
 
-void setup()  { Serial.begin(115200); firmware.init(); }
-void loop()   { firmware.tick(); }
+void setup()  { Serial.begin(115200); firmware.init(); }  // init() sends ready signal
+void loop()   { firmware.tick(); }                        // tick() kicks watchdog
 
 #ifdef ENABLE_DSP_ENGINE
 void setup1() { firmware.dsp.init(); }
@@ -627,14 +717,16 @@ The firmware tests need to cover the INTEGRATION: does the tick loop correctly w
 
 ---
 
-## 10. Open Questions
+## 10. Resolved Design Decisions
 
-1. **Backward compatibility of flash format.** The old firmware's flash format serializes `Value` objects and environment maps. The new format serializes CellStore cells and source text. Should we support loading old-format flash data, or require a clean flash on upgrade?
+These were originally open questions. Decisions are recorded here for posterity.
 
-2. **Scheduling / quantization.** The old firmware has bar-quantized code execution (code sent without `@` prefix waits for the next bar boundary). The signal engine's `eval_cold` executes immediately. Should quantization be in the SerialProtocol layer, the Firmware tick loop, or a dedicated Scheduler module?
+1. **Flash format backward compatibility.** **Decision: No backward compat.** Upgrading to the new firmware requires a clean flash erase. The old format serialized `Value` objects and environment maps which have no equivalent in the signal engine. A clean break is simpler and safer than a fragile migration path. (See §2.3.)
 
-3. **DSP engine integration depth.** The DSP engine (core 1) currently has its own command language (`dsp-create`, `dsp-connect`, etc.). Should these be signal engine cold-path builtins, or stay as a separate system? The existing implementation uses `Value` types for DSP UGen parameters — these need replacing.
+2. **Scheduling / quantization.** **Decision: In the tick loop.** Quantization lives in `Firmware::tick()` via a `pending_commands[8]` ring buffer. Non-immediate commands are queued and drained when the bar phasor wraps. This keeps SerialProtocol and the signal engine unaware of scheduling. (See §3.7.)
 
-4. **Serial output streaming.** The `s1`–`s8` "serial outputs" are virtual — their values are streamed to the editor for visualization, not written to physical pins. Should these be part of HardwareIO (virtual outputs alongside real ones) or a separate concern in SerialProtocol?
+3. **DSP engine integration depth.** **Decision: `eval_cold` builtins.** DSP commands (`dsp-create`, `dsp-connect`, etc.) are implemented as signal engine cold-path builtins. They translate ModuLisp calls into `DSPCommand` structs and enqueue them to core 1. The DSP engine itself remains a dumb command consumer with no LISP knowledge.
 
-5. **Time source.** The old firmware uses `micros()` (RP2040 microsecond timer). The signal engine expects seconds. The conversion is trivial (`micros() / 1e6`) but where should the time source live — in Firmware, in HardwareIO, or as a standalone utility?
+4. **Serial output streaming.** **Decision: In `outputs[]` array, indices 16–23.** Serial outputs (`s1`–`s8`) are virtual entries in the same `outputs[]` array as physical outputs. `HardwareIO::write_outputs()` skips indices beyond the physical count. `SerialProtocol::send_stream_data()` reads from the same array. This keeps the signal engine uniform — an output is an output regardless of destination.
+
+5. **Time source.** **Decision: Standalone utility in `utils/time.h`.** A simple `get_system_time_seconds()` function wraps the platform timer (`micros() / 1e6` on RP2040, `std::chrono` on desktop). Called by `Firmware::tick()` at step 1. Neither Firmware nor HardwareIO owns the clock — it is a pure utility.
