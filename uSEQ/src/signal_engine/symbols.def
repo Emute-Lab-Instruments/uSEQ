@@ -140,6 +140,13 @@ SYM(useq_pause,          "useq-pause",           side_effect)
 SYM(useq_stop,           "useq-stop",            side_effect)
 SYM(useq_rewind,         "useq-rewind",          side_effect)
 
+// ── Derived timing ─────────────────────────────────────────────────────────
+SYM(beat_dur,            "beat-dur",             none)
+SYM(bar_dur,             "bar-dur",              none)
+
+// ── Output feedback ────────────────────────────────────────────────────────
+SYM(prev,                "prev",                 none)
+
 // ── Misc ───────────────────────────────────────────────────────────────────
 SYM(input,               "input",                none)
 SYM(quote,               "quote",                none)

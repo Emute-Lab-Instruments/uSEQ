@@ -647,6 +647,57 @@ EvalResult eval_cold(const char* source, uint32_t length,
     return result;
 }
 
+// ── Bulk recompilation ─────────────────────────────────────────────────────
+// Rebuilds every output graph from stored source text.  Mirrors the
+// per-output recompilation in on_cell_changed() but operates on ALL outputs
+// unconditionally — used after flash load when no graphs exist yet.
+
+void recompile_all_outputs(SignalEngine& engine) {
+    for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
+        if (!engine.output_sources[i].has_source) continue;
+
+        const char* src = engine.arena.read(
+            engine.output_sources[i].arena_offset);
+        if (!src) continue;
+
+        Token tokens[MAX_TOKENS];
+        uint8_t parse_errors = 0;
+        uint16_t count = TokenStream::tokenize(
+            src, engine.output_sources[i].arena_length,
+            tokens, MAX_TOKENS, nullptr, &parse_errors);
+
+        if (parse_errors != 0) {
+            engine.pool.outputs[i].valid = false;
+            continue;
+        }
+
+        TokenStream ts;
+        memcpy(ts.tokens, tokens, count * sizeof(Token));
+        ts.count = count;
+        ts.pos = 0;
+
+        GraphBuildResult result = build_output_graph(
+            engine.pool, ts, engine.cells, engine.arena);
+
+        if (!result.has_error) {
+            engine.pool.outputs[i].root_node = result.root_node;
+            engine.pool.outputs[i].valid = true;
+
+            // Populate dependency tracking so on_cell_changed() works later
+            engine.pool.output_deps[i].clear();
+            for (uint8_t d = 0; d < result.dep_count; d++) {
+                engine.pool.output_deps[i].add(result.dep_cells[d]);
+            }
+        } else {
+            engine.pool.outputs[i].valid = false;
+        }
+    }
+
+    // Reclaim stale nodes from any previous compilation (idempotent due to CSE)
+    engine.pool.gc_unreachable_nodes();
+    engine.pool.rebuild_execution_order();
+}
+
 // ── Dependency tracking (SignalEngine version) ─────────────────────────────
 
 void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {

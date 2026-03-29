@@ -62,6 +62,16 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine);
 EvalResult eval_cold(const char* source, uint32_t length,
                      CellStore& cells, SourceArena& arena, NodePool& pool);
 
+// ── Bulk Recompilation ──────────────────────────────────────────────────────
+// Recompile all outputs that have stored source text.  Used after flash load
+// to rebuild signal graphs from persisted source.
+//
+// Idempotent: the node pool uses hash-consing (CSE), so recompiling the same
+// expression twice yields the same node indices.  A gc pass after rebuild
+// reclaims any stale nodes left from a previous compilation.
+
+void recompile_all_outputs(SignalEngine& engine);
+
 // ── Dependency Tracking ─────────────────────────────────────────────────────
 // When a cell changes, recompile outputs that depend on it.
 

@@ -114,6 +114,9 @@ struct GraphBuilder {
     uint16_t compile_while_gate(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_lambda(TokenStream& ts, Scope& scope, TimeContext& ctx);
 
+    // Output feedback
+    uint16_t compile_prev(TokenStream& ts, Scope& scope, TimeContext& ctx);
+
     // User-defined function call
     uint16_t compile_call(SymbolID fn_sym, TokenStream& ts, Scope& scope,
                           TimeContext& ctx, Token op_tok);

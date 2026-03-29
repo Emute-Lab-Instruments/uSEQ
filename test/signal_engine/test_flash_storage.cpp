@@ -9,6 +9,7 @@
 #include "src/signal_engine/signal_engine.h"
 #include "src/ports/mocks/MockStorage.h"
 #include <cstring>
+#include <cmath>
 
 using namespace sig;
 using namespace firmware;
@@ -287,4 +288,119 @@ TEST_CASE("FlashStorage: operations without storage return false", "[flash]") {
 
     // erase should not crash
     fs.erase();
+}
+
+// ── recompile_all_outputs Tests ───────────────────────────────────────────
+
+// Helper: execute one tick of the engine at a given time, return output values
+static void execute_tick(SignalEngine& engine, double t, double* out) {
+    double cell_snap[MAX_CELLS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+    double prev[MAX_OUTPUTS] = {};
+
+    engine.cells.snapshot_values(cell_snap, MAX_CELLS);
+
+    ExecutionContext ctx;
+    ctx.t             = t;
+    ctx.cell_values   = cell_snap;
+    ctx.hw_inputs     = nullptr;
+    ctx.data_pool     = engine.cells.data_pool;
+    ctx.data_offsets  = engine.cells.data_offsets;
+    ctx.data_lengths  = engine.cells.data_lengths;
+    ctx.prev_outputs  = engine.pool.prev_output_values;
+    ctx.output_values = out;
+    ctx.workspace     = workspace;
+
+    execute_all_outputs(engine.pool, ctx);
+}
+
+TEST_CASE("FlashStorage: outputs execute correctly after load + recompile", "[flash]") {
+    MockStorage storage;
+
+    // ── 1. Build an engine with cells and outputs ──────────────────────────
+    SignalEngine original;
+    GraphBuilder::init_symbols();
+    original.init_defaults(120.0);
+
+    const char* src1 = "(define freq 440)";
+    eval_cold(src1, (uint32_t)strlen(src1), original);
+
+    // a1 outputs a constant expression that depends on freq
+    const char* src2 = "(a1 freq)";
+    eval_cold(src2, (uint32_t)strlen(src2), original);
+
+    // ── 2. Execute and capture output values ───────────────────────────────
+    double orig_out[MAX_OUTPUTS] = {};
+    execute_tick(original, 0.5, orig_out);
+
+    // a1 should produce 440.0
+    REQUIRE(orig_out[0] == Approx(440.0));
+
+    // ── 3. Save to MockStorage ─────────────────────────────────────────────
+    FlashStorage fs = make_flash(storage);
+    REQUIRE(fs.save(original) == true);
+
+    // ── 4. Load into a fresh engine ────────────────────────────────────────
+    SignalEngine loaded;
+    loaded.init_defaults();
+    FlashStorage fs2 = make_flash(storage);
+    REQUIRE(fs2.load(loaded) == true);
+
+    // Before recompilation, outputs should not have valid graphs
+    // (load restores source text and cell values, not node graphs)
+    REQUIRE(loaded.pool.outputs[0].root_node == NODE_NONE);
+
+    // ── 5. Recompile ───────────────────────────────────────────────────────
+    recompile_all_outputs(loaded);
+
+    // Output should now be valid
+    REQUIRE(loaded.pool.outputs[0].valid == true);
+    REQUIRE(loaded.pool.outputs[0].root_node != NODE_NONE);
+
+    // ── 6. Execute and verify same results ─────────────────────────────────
+    double loaded_out[MAX_OUTPUTS] = {};
+    execute_tick(loaded, 0.5, loaded_out);
+
+    REQUIRE(loaded_out[0] == Approx(440.0));
+}
+
+TEST_CASE("recompile_all_outputs is idempotent", "[flash]") {
+    SignalEngine engine;
+    GraphBuilder::init_symbols();
+    engine.init_defaults();
+
+    // Assign an output expression
+    const char* src = "(a1 (sin beat))";
+    eval_cold(src, (uint32_t)strlen(src), engine);
+
+    REQUIRE(engine.pool.outputs[0].valid == true);
+    uint16_t root_after_first = engine.pool.outputs[0].root_node;
+
+    // ── First recompile ────────────────────────────────────────────────────
+    recompile_all_outputs(engine);
+    uint16_t node_count_1 = engine.pool.node_count;
+    uint16_t root_1 = engine.pool.outputs[0].root_node;
+
+    REQUIRE(engine.pool.outputs[0].valid == true);
+
+    // ── Second recompile ───────────────────────────────────────────────────
+    recompile_all_outputs(engine);
+    uint16_t node_count_2 = engine.pool.node_count;
+    uint16_t root_2 = engine.pool.outputs[0].root_node;
+
+    REQUIRE(engine.pool.outputs[0].valid == true);
+
+    // CSE ensures the same expression produces the same root node index
+    REQUIRE(root_1 == root_2);
+
+    // Node count should be stable (GC reclaims duplicates if any)
+    REQUIRE(node_count_1 == node_count_2);
+
+    // Verify the output still produces a valid value
+    double out[MAX_OUTPUTS] = {};
+    execute_tick(engine, 0.25, out);
+
+    // sin(beat) at t=0.25 with 120 BPM: beat = fmod(0.25 * 2.0, 1.0) = 0.5
+    // sin(0.5) ≈ 0.479
+    REQUIRE(std::isfinite(out[0]));
 }

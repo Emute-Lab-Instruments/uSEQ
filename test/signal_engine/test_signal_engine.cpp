@@ -3138,3 +3138,162 @@ TEST_CASE("Multi-tick simulation: commit feeds prev_outputs to next tick",
     REQUIRE(outputs[0] == 0.5);
     REQUIRE(outputs[1] == 0.5); // prev a1 from tick 1
 }
+
+// ── Output Feedback Tests ──────────────────────────────────────────────────
+
+// Helper: multi-output eval with commit/tick support
+struct MultiOutputHarness {
+    SignalEngine engine;
+    double cell_vals[MAX_CELLS];
+    double hw_inputs[32];
+    double outputs[MAX_OUTPUTS];
+    double workspace[MAX_TOTAL_NODES];
+
+    MultiOutputHarness(double bpm = 120.0) {
+        engine.init_defaults(bpm);
+        memset(hw_inputs, 0, sizeof(hw_inputs));
+        memset(outputs, 0, sizeof(outputs));
+        memset(workspace, 0, sizeof(workspace));
+    }
+
+    bool eval(const char* src) {
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
+        if (r.kind == EvalResult::Error) return false;
+        engine.pool.rebuild_execution_order();
+        return true;
+    }
+
+    void tick(double t) {
+        engine.cells.snapshot_values(cell_vals, MAX_CELLS);
+        memset(outputs, 0, sizeof(outputs));
+        memset(workspace, 0, sizeof(workspace));
+
+        ExecutionContext ctx;
+        ctx.t = t;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = engine.cells.data_pool;
+        ctx.data_offsets = engine.cells.data_offsets;
+        ctx.data_lengths = engine.cells.data_lengths;
+        ctx.prev_outputs = engine.pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        execute_all_outputs(engine.pool, ctx);
+    }
+
+    void commit() {
+        commit_outputs(engine.pool, outputs);
+    }
+};
+
+TEST_CASE("Bare output reference: a1 in expression compiles to PrevOutputLoad",
+          "[signal_engine][graph_builder][prev]") {
+    MultiOutputHarness h;
+    // a1 = 0.75 constant, a2 reads bare a1 → previous tick's a1
+    REQUIRE(h.eval("(a1 0.75) (a2 a1)"));
+
+    // Tick 1: a2 = prev(a1) = 0.0 (no previous value)
+    h.tick(0.0);
+    REQUIRE(h.outputs[0] == Approx(0.75));
+    REQUIRE(h.outputs[1] == Approx(0.0));
+
+    h.commit();
+
+    // Tick 2: a2 = prev(a1) = 0.75
+    h.tick(0.0);
+    REQUIRE(h.outputs[0] == Approx(0.75));
+    REQUIRE(h.outputs[1] == Approx(0.75));
+}
+
+TEST_CASE("(prev a1) explicit form compiles to PrevOutputLoad",
+          "[signal_engine][graph_builder][prev]") {
+    MultiOutputHarness h;
+    REQUIRE(h.eval("(a1 0.5) (a2 (prev a1))"));
+
+    // Tick 1: prev(a1) = 0.0
+    h.tick(0.0);
+    REQUIRE(h.outputs[0] == Approx(0.5));
+    REQUIRE(h.outputs[1] == Approx(0.0));
+
+    h.commit();
+
+    // Tick 2: prev(a1) = 0.5
+    h.tick(0.0);
+    REQUIRE(h.outputs[0] == Approx(0.5));
+    REQUIRE(h.outputs[1] == Approx(0.5));
+}
+
+TEST_CASE("(prev d1) works for digital outputs",
+          "[signal_engine][graph_builder][prev]") {
+    MultiOutputHarness h;
+    // d1 = index 8, constant 1.0
+    REQUIRE(h.eval("(d1 1.0) (a1 (prev d1))"));
+
+    h.tick(0.0);
+    REQUIRE(h.outputs[0] == Approx(0.0)); // no prev yet
+
+    h.commit();
+
+    h.tick(0.0);
+    REQUIRE(h.outputs[0] == Approx(1.0)); // prev d1 from tick 1
+}
+
+TEST_CASE("(prev non-output) is an error",
+          "[signal_engine][graph_builder][prev]") {
+    REQUIRE(eval_has_error("(prev t)"));
+    REQUIRE(eval_has_error("(prev beat)"));
+}
+
+TEST_CASE("(fast 4 a1) time-warps output reference without error",
+          "[signal_engine][graph_builder][fast][prev]") {
+    MultiOutputHarness h;
+    // a1 = 0.3, a2 = (fast 4 a1) — should compile without error
+    REQUIRE(h.eval("(a1 0.3) (a2 (fast 4 a1))"));
+
+    h.tick(0.0);
+    REQUIRE(h.outputs[0] == Approx(0.3));
+    // a2 = prev(a1) = 0.0 on first tick (fast wraps time but prev is time-independent)
+    REQUIRE(h.outputs[1] == Approx(0.0));
+
+    h.commit();
+
+    h.tick(0.0);
+    REQUIRE(h.outputs[1] == Approx(0.3));
+}
+
+// ── Timing Symbol Tests ────────────────────────────────────────────────────
+
+TEST_CASE("beat-dur returns correct duration at 120 BPM",
+          "[signal_engine][graph_builder][timing]") {
+    // 120 BPM → beat-dur = 60/120 = 0.5 seconds
+    double val = eval_at("beat-dur", 0.0, 120.0);
+    REQUIRE(val == Approx(0.5));
+}
+
+TEST_CASE("beat-dur returns correct duration at 60 BPM",
+          "[signal_engine][graph_builder][timing]") {
+    // 60 BPM → beat-dur = 60/60 = 1.0 seconds
+    double val = eval_at("beat-dur", 0.0, 60.0);
+    REQUIRE(val == Approx(1.0));
+}
+
+TEST_CASE("bar-dur returns correct duration at 120 BPM 4/4",
+          "[signal_engine][graph_builder][timing]") {
+    // 120 BPM, 4 beats per bar → bar-dur = (60/120)*4 = 2.0 seconds
+    double val = eval_at("bar-dur", 0.0, 120.0);
+    REQUIRE(val == Approx(2.0));
+}
+
+TEST_CASE("bar-dur returns correct duration at 60 BPM 4/4",
+          "[signal_engine][graph_builder][timing]") {
+    // 60 BPM, 4 beats per bar → bar-dur = (60/60)*4 = 4.0 seconds
+    double val = eval_at("bar-dur", 0.0, 60.0);
+    REQUIRE(val == Approx(4.0));
+}
+
+TEST_CASE("beat-dur in expression: (* 2 beat-dur)",
+          "[signal_engine][graph_builder][timing]") {
+    // 120 BPM → beat-dur = 0.5, * 2 = 1.0
+    double val = eval_at("(* 2 beat-dur)", 0.0, 120.0);
+    REQUIRE(val == Approx(1.0));
+}

@@ -37,12 +37,14 @@ void Firmware::init()
     sig::GraphBuilder::init_symbols();
     engine.init_defaults();
 
-    // 7. Flash load — deferred until FlashStorage is implemented.
-    //    When ready:
-    //      if (flash.has_saved_state()) {
-    //          bool ok = flash.load(engine);
-    //          if (!ok) io.boot_led_error_flash();
-    //      }
+    // 7. Flash load + recompile
+    if (flash.has_saved_state()) {
+        if (flash.load(engine)) {
+            sig::recompile_all_outputs(engine);
+        } else {
+            io.boot_led_error_flash();
+        }
+    }
 
     // 8. LED → green (ready)
     io.boot_led_green();

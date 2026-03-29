@@ -74,6 +74,9 @@ void GraphBuilder::init_form_table() {
     add(sym.ridx,         &GraphBuilder::compile_ridx);
     add(sym.rwarp,        &GraphBuilder::compile_rwarp);
 
+    // Output feedback
+    add(sym.prev,         &GraphBuilder::compile_prev);
+
     // Sort by SymbolID for binary search
     std::sort(form_table, form_table + form_table_count,
               [](const FormEntry& a, const FormEntry& b) { return a.sym < b.sym; });
@@ -479,13 +482,33 @@ uint16_t GraphBuilder::compile_symbol(SymbolID sym_id, Scope& scope,
     if (sym_id == sym.beat_num) return expand_beat_num(ctx);
     if (sym_id == sym.bar_num)  return expand_bar_num(ctx);
 
-    // 4. Hardware inputs
+    // 4. Derived timing
+    if (sym_id == sym.beat_dur) {
+        uint16_t bpm_load = pool.make_cell_load(sym.bpm);
+        uint16_t sixty = pool.make_const(60.0);
+        return pool.make_binop(NodeOp::Div, sixty, bpm_load);
+    }
+    if (sym_id == sym.bar_dur) {
+        uint16_t bpm_load = pool.make_cell_load(sym.bpm);
+        uint16_t sixty = pool.make_const(60.0);
+        uint16_t beat_dur = pool.make_binop(NodeOp::Div, sixty, bpm_load);
+        uint16_t bpb_load = pool.make_cell_load(sym.beats_per_bar);
+        return pool.make_binop(NodeOp::Mul, beat_dur, bpb_load);
+    }
+
+    // 5. Hardware inputs
     uint16_t input_idx = resolve_hardware_input(sym_id);
     if (input_idx != NODE_NONE) {
         return pool.make_input_load(input_idx);
     }
 
-    // 5. Cell table
+    // 6. Output references — previous tick's value
+    if (is_output_symbol(sym_id)) {
+        uint16_t idx = resolve_output_index(sym_id);
+        return pool.make_prev_output_load(idx);
+    }
+
+    // 7. Cell table
     if (sym_id < MAX_CELLS) {
         const Cell& cell = cells.cells[sym_id];
         switch (cell.kind) {
@@ -684,6 +707,31 @@ uint16_t GraphBuilder::compile_eval_at_time(TokenStream& ts, Scope& scope, TimeC
     if (time_node == NODE_NONE) return NODE_NONE;
     TimeContext inner = { time_node };
     return compile_expr(ts, scope, inner);
+}
+
+// ── Output Feedback ────────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::compile_prev(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    (void)scope;
+    (void)ctx;
+    if (ts.pos >= ts.count || ts.tokens[ts.pos].kind != TokenKind::Symbol) {
+        return report_error_at(
+            ts.pos > 0 ? ts.tokens[ts.pos - 1].span_start : 0,
+            ts.pos > 0 ? ts.tokens[ts.pos - 1].span_len : 0,
+            "(prev) needs an output name like a1, d1, etc.",
+            "(prev a1)");
+    }
+    Token sym_tok = ts.consume();
+    SymbolID sym_id = sym_tok.symbol;
+
+    if (!is_output_symbol(sym_id)) {
+        return report_error(sym_tok,
+            "(prev) argument must be an output name (a1-a8, d1-d8, s1-s8)",
+            "(prev a1)");
+    }
+
+    uint16_t idx = resolve_output_index(sym_id);
+    return pool.make_prev_output_load(idx);
 }
 
 // ── Control Flow ────────────────────────────────────────────────────────────
