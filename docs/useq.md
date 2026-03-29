@@ -39,9 +39,64 @@ A phasor, rising from 0-1 over the length of a bar
 
 A phasor, rising from 0-1 over the length of a phrase
 
-## `section` 
+## `section`
 
 A phasor, rising from 0-1 over the length of a section
+
+## `beat-dur`
+
+The duration of one beat in seconds. At 120 BPM, `beat-dur` = 0.5.
+
+## `bar-dur`
+
+The duration of one bar in seconds. At 120 BPM in 4/4, `bar-dur` = 2.0.
+
+# Time Warps
+
+Time warps transform the temporal context of an expression. All time values are in **seconds** (the fundamental unit of time in uSEQ).
+
+## `fast`
+
+Speed up an expression by a factor.
+
+```
+(a1 (fast 2 (usin beat)))   ; double speed
+(a1 (fast 0.5 (usin beat))) ; half speed
+```
+
+## `slow`
+
+Slow down an expression by a factor. `(slow 2 x)` is equivalent to `(fast 0.5 x)`.
+
+```
+(a1 (slow 4 (usin beat)))   ; quarter speed
+```
+
+## `offset` / `shift`
+
+Shift the time of an expression by an amount in **seconds**. Use `beat-dur` and `bar-dur` to shift by musical units:
+
+```
+(a1 (offset 0.1 (usin beat)))              ; shift by 0.1 seconds
+(a1 (offset (* 0.5 beat-dur) (usin beat))) ; shift by half a beat
+(a1 (offset bar-dur (usin beat)))          ; shift by one bar
+```
+
+## `prev`
+
+Read the previous tick's value of an output. Enables feedback loops:
+
+```
+(a1 0.5)
+(a2 (prev a1))        ; a2 follows a1 with one-tick delay
+(a2 (+ (prev a2) 0.01)) ; a2 ramps up by 0.01 per tick
+```
+
+Output names (`a1`-`a8`, `d1`-`d8`, `s1`-`s8`) can also be used directly in expressions as shorthand for `(prev ...)`:
+
+```
+(a2 (* a1 0.5))        ; same as (a2 (* (prev a1) 0.5))
+```
 
 # Input and Output
 
