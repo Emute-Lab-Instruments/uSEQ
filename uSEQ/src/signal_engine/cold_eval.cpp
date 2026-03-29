@@ -431,6 +431,74 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             ts.expect(TokenKind::RParen);
             return r;
         }
+        if (op == sym.defs) {
+            // (defs [name1 val1 name2 val2 ...])
+            if (!ts.expect(TokenKind::LBracket)) {
+                return make_error("defs needs a bracket list of name-value pairs",
+                                  "Try: (defs [x 1 y 2 z 3])");
+            }
+            while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
+                Token name_tok = ts.consume();
+                if (name_tok.kind != TokenKind::Symbol) {
+                    return make_error("defs: expected a name",
+                                      "Try: (defs [x 1 y 2])");
+                }
+                SymbolID cell_sym = name_tok.symbol;
+
+                if (ts.at_end() || ts.peek().kind == TokenKind::RBracket) {
+                    return make_error("defs: each name needs a value",
+                                      "Try: (defs [x 1 y 2])");
+                }
+                Token val_tok = ts.peek();
+                if (val_tok.kind == TokenKind::Number) {
+                    ts.consume();
+                    engine.cells.cells[cell_sym].kind = CellKind::Number;
+                    engine.cells.cells[cell_sym].revision++;
+                    engine.cells.cells[cell_sym].value = val_tok.number;
+                } else if (val_tok.kind == TokenKind::LBracket) {
+                    // Vector: [1 2 3]
+                    ts.consume();
+                    double values[64];
+                    uint16_t count = 0;
+                    while (ts.peek().kind != TokenKind::RBracket &&
+                           !ts.at_end() && count < 64) {
+                        Token elem = ts.consume();
+                        if (elem.kind == TokenKind::Number)
+                            values[count++] = elem.number;
+                    }
+                    ts.expect(TokenKind::RBracket);
+                    uint16_t tid = engine.cells.store_data_table(values, count);
+                    engine.cells.cells[cell_sym].kind = CellKind::Data;
+                    engine.cells.cells[cell_sym].data_table_id = tid;
+                    engine.cells.cells[cell_sym].revision++;
+                    engine.cells.cells[cell_sym].value = (double)count;
+                } else {
+                    // Expression — store as callable with 0 params
+                    uint16_t expr_start = ts.pos;
+                    uint32_t byte_start = span_begin(ts, expr_start);
+                    GraphBuilder::skip_form(ts);
+                    uint32_t byte_end = span_end_of(ts, ts.pos);
+
+                    engine.cells.cells[cell_sym].kind = CellKind::Callable;
+                    engine.cells.cells[cell_sym].revision++;
+                    engine.cells.callables[cell_sym].param_count = 0;
+                    if (source && byte_end > byte_start &&
+                        byte_end <= source_length) {
+                        uint32_t len = byte_end - byte_start;
+                        uint32_t off = engine.arena.store(
+                            source + byte_start, len);
+                        if (off != UINT32_MAX) {
+                            engine.cells.callables[cell_sym].source_offset = off;
+                            engine.cells.callables[cell_sym].source_length = len;
+                        }
+                    }
+                }
+                on_cell_changed(cell_sym, engine);
+            }
+            ts.expect(TokenKind::RBracket);
+            ts.expect(TokenKind::RParen);
+            return make_ok();
+        }
         if (op == sym.set) {
             EvalResult r = do_set(ts, engine);
             ts.expect(TokenKind::RParen);
