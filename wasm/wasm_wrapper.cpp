@@ -27,6 +27,7 @@ static sig::SignalEngine* g_engine = nullptr;
 
 static double  g_hw_inputs[32]   = {};
 static double  g_current_time    = 0.0;
+static double  g_prev_tick_time  = 0.0;
 
 static sig::Diagnostic g_last_diagnostics[16] = {};
 static uint8_t         g_last_diagnostic_count = 0;
@@ -94,6 +95,7 @@ static void execute_at_time(double t, double* output_values) {
 
     sig::ExecutionContext ctx;
     ctx.t             = t;
+    ctx.dt            = t - g_prev_tick_time;
     ctx.cell_values   = cell_values;
     ctx.hw_inputs     = g_hw_inputs;
     ctx.data_pool     = g_engine->cells.data_pool;
@@ -103,6 +105,9 @@ static void execute_at_time(double t, double* output_values) {
     ctx.output_values = output_values;
     ctx.workspace     = node_values;
     sig::execute_all_outputs(g_engine->pool, ctx);
+
+    sig::commit_state(g_engine->pool, node_values);
+    g_prev_tick_time = t;
 
     // Update previous output values for next tick
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
