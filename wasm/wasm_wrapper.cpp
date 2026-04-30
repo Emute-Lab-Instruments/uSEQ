@@ -86,6 +86,60 @@ static uint16_t resolve_output_name(const char* name) {
     }
 }
 
+static bool has_active_state() {
+    return g_engine && g_engine->pool.state_slot_count > 0;
+}
+
+// Sequential batch for stateful signals: ticks forward sample-by-sample,
+// advancing state between each. Saves/restores real state so visualization
+// doesn't corrupt the live signal.
+static void execute_batch_sequential(
+    const double* t_array, int num_samples,
+    const double* cell_values,
+    uint16_t num_active, double* batch_buf)
+{
+    // Save state so visualization doesn't corrupt the live signal
+    double saved_state[sig::MAX_STATE_SLOTS];
+    double saved_prev_t = g_prev_tick_time;
+    memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
+
+    double output_values[sig::MAX_OUTPUTS] = {};
+    double node_values[sig::MAX_TOTAL_NODES];
+
+    for (int s = 0; s < num_samples; s++) {
+        double t = t_array[s];
+        memset(output_values, 0, sizeof(output_values));
+
+        sig::ExecutionContext ctx;
+        ctx.t             = t;
+        ctx.dt            = t - g_prev_tick_time;
+        ctx.cell_values   = cell_values;
+        ctx.hw_inputs     = g_hw_inputs;
+        ctx.data_pool     = g_engine->cells.data_pool;
+        ctx.data_offsets  = g_engine->cells.data_offsets;
+        ctx.data_lengths  = g_engine->cells.data_lengths;
+        ctx.prev_outputs  = g_engine->pool.prev_output_values;
+        ctx.output_values = output_values;
+        ctx.workspace     = node_values;
+        sig::execute_all_outputs(g_engine->pool, ctx);
+
+        sig::commit_state(g_engine->pool, node_values);
+        g_prev_tick_time = t;
+
+        uint16_t row = 0;
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+            if (g_engine->pool.outputs[i].valid) {
+                batch_buf[row * num_samples + s] = output_values[i];
+                row++;
+            }
+        }
+    }
+
+    // Restore state — visualization is read-only
+    memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
+    g_prev_tick_time = saved_prev_t;
+}
+
 // Execute all outputs at a given time, writing results into output_values.
 static void execute_at_time(double t, double* output_values) {
     double cell_values[sig::MAX_CELLS];
@@ -312,13 +366,16 @@ extern "C"
             // Allocate output buffer: all outputs x num_samples
             std::vector<double> batch_buf(num_active_outputs * num_samples, 0.0);
 
-            if (g_engine->pool.batch_workspace) {
-                // Build time array
-                std::vector<double> t_array(num_samples);
-                for (int i = 0; i < num_samples; i++) {
-                    t_array[i] = start_time + dt * i;
-                }
+            // Build time array
+            std::vector<double> t_array(num_samples);
+            for (int i = 0; i < num_samples; i++) {
+                t_array[i] = start_time + dt * i;
+            }
 
+            if (has_active_state()) {
+                execute_batch_sequential(t_array.data(), num_samples,
+                                          cell_values, num_active_outputs, batch_buf.data());
+            } else if (g_engine->pool.batch_workspace) {
                 sig::execute_batch(
                     g_engine->pool, t_array.data(), (size_t)num_samples,
                     cell_values, g_hw_inputs,
@@ -326,30 +383,8 @@ extern "C"
                     batch_buf.data(), num_active_outputs
                 );
             } else {
-                // Fallback: single-sample loop
-                // Allocate full output buffer for execute_at_time
-                for (int s = 0; s < num_samples; s++) {
-                    double t = start_time + dt * s;
-                    double output_values[sig::MAX_OUTPUTS] = {};
-                    double node_values[sig::MAX_TOTAL_NODES];
-
-                    sig::execute_all_outputs(
-                        g_engine->pool, t,
-                        cell_values, g_hw_inputs,
-                        g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
-                        g_engine->pool.prev_output_values,
-                        output_values, node_values
-                    );
-
-                    // Extract requested outputs
-                    uint16_t row = 0;
-                    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-                        if (g_engine->pool.outputs[i].valid) {
-                            batch_buf[row * num_samples + s] = output_values[i];
-                            row++;
-                        }
-                    }
-                }
+                execute_batch_sequential(t_array.data(), num_samples,
+                                          cell_values, num_active_outputs, batch_buf.data());
             }
 
             // Build JSON: map from name to sample array
@@ -478,61 +513,42 @@ extern "C"
                 }
             }
 
-            if (g_engine->pool.batch_workspace && num_active > 0) {
-                // Use batch execution
-                std::vector<double> t_array(num_samples);
-                for (int i = 0; i < num_samples; i++) {
-                    t_array[i] = start_time + dt * i;
-                }
+            // Build time array
+            std::vector<double> t_array(num_samples);
+            for (int i = 0; i < num_samples; i++) {
+                t_array[i] = start_time + dt * i;
+            }
 
-                // Batch buffer: active_outputs x num_samples
-                std::vector<double> batch_buf(num_active * num_samples, 0.0);
+            // Batch buffer: active_outputs x num_samples
+            std::vector<double> batch_buf(num_active * num_samples, 0.0);
 
+            if (has_active_state()) {
+                execute_batch_sequential(t_array.data(), num_samples,
+                                          cell_values, num_active, batch_buf.data());
+            } else if (g_engine->pool.batch_workspace && num_active > 0) {
                 sig::execute_batch(
                     g_engine->pool, t_array.data(), (size_t)num_samples,
                     cell_values, g_hw_inputs,
                     g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
                     batch_buf.data(), num_active
                 );
-
-                // Copy requested channels into caller's buffer
-                for (int c = 0; c < num_channels; c++) {
-                    double* row = buf + (c * num_samples);
-                    uint16_t idx = output_indices[c];
-
-                    if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
-                        uint16_t active_row = index_to_row[idx];
-                        memcpy(row, &batch_buf[active_row * num_samples],
-                               num_samples * sizeof(double));
-                    } else {
-                        for (int s = 0; s < num_samples; s++) {
-                            row[s] = std::numeric_limits<double>::quiet_NaN();
-                        }
-                    }
-                }
             } else {
-                // Single-sample fallback
-                for (int s = 0; s < num_samples; s++) {
-                    double t = start_time + dt * s;
-                    double output_values[sig::MAX_OUTPUTS] = {};
-                    double node_values[sig::MAX_TOTAL_NODES];
+                execute_batch_sequential(t_array.data(), num_samples,
+                                          cell_values, num_active, batch_buf.data());
+            }
 
-                    sig::execute_all_outputs(
-                        g_engine->pool, t,
-                        cell_values, g_hw_inputs,
-                        g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
-                        g_engine->pool.prev_output_values,
-                        output_values, node_values
-                    );
+            // Copy requested channels into caller's buffer
+            for (int c = 0; c < num_channels; c++) {
+                double* row = buf + (c * num_samples);
+                uint16_t idx = output_indices[c];
 
-                    for (int c = 0; c < num_channels; c++) {
-                        uint16_t idx = output_indices[c];
-                        double* row = buf + (c * num_samples);
-                        if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
-                            row[s] = output_values[idx];
-                        } else {
-                            row[s] = std::numeric_limits<double>::quiet_NaN();
-                        }
+                if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
+                    uint16_t active_row = index_to_row[idx];
+                    memcpy(row, &batch_buf[active_row * num_samples],
+                           num_samples * sizeof(double));
+                } else {
+                    for (int s = 0; s < num_samples; s++) {
+                        row[s] = std::numeric_limits<double>::quiet_NaN();
                     }
                 }
             }
