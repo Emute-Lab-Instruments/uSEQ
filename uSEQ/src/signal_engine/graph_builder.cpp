@@ -74,6 +74,9 @@ void GraphBuilder::init_form_table() {
     add(sym.ridx,         &GraphBuilder::compile_ridx);
     add(sym.rwarp,        &GraphBuilder::compile_rwarp);
 
+    // State
+    add(sym.integrate,    &GraphBuilder::compile_integrate);
+
     // Output feedback
     add(sym.prev,         &GraphBuilder::compile_prev);
 
@@ -153,9 +156,21 @@ uint16_t GraphBuilder::report_error(const Token& tok, const char* message,
 
 uint16_t GraphBuilder::report_error_at(uint16_t span_start, uint16_t span_len,
                                         const char* message, const char* suggestion) {
+    return report_error_at_cat(DiagnosticCategory::Runtime,
+                               span_start, span_len, message, suggestion);
+}
+
+uint16_t GraphBuilder::report_error_cat(DiagnosticCategory cat, const Token& tok,
+                                         const char* message, const char* suggestion) {
+    return report_error_at_cat(cat, tok.span_start, tok.span_len, message, suggestion);
+}
+
+uint16_t GraphBuilder::report_error_at_cat(DiagnosticCategory cat,
+                                            uint16_t span_start, uint16_t span_len,
+                                            const char* message, const char* suggestion) {
     if (diagnostic_count < MAX_DIAGNOSTICS) {
         diagnostics[diagnostic_count++] = {
-            DiagnosticSeverity::Error, DiagnosticCategory::Runtime,
+            DiagnosticSeverity::Error, cat,
             span_start, span_len, message, suggestion
         };
     }
@@ -183,13 +198,15 @@ uint16_t GraphBuilder::report_error_with_fuzzy_match(SymbolID sym_id,
                  unknown_str.c_str(), match_str.c_str());
         snprintf(fuzzy_sug_buf, sizeof(fuzzy_sug_buf),
                  "Try: %s", match_str.c_str());
-        return report_error_at(span_start, span_len,
-                               fuzzy_msg_buf, fuzzy_sug_buf);
+        return report_error_at_cat(DiagnosticCategory::UndefinedName,
+                                   span_start, span_len,
+                                   fuzzy_msg_buf, fuzzy_sug_buf);
     }
 
-    return report_error_at(span_start, span_len,
-                           "Unknown name",
-                           "Check your spelling");
+    return report_error_at_cat(DiagnosticCategory::UndefinedName,
+                               span_start, span_len,
+                               "Unknown name",
+                               "Check your spelling");
 }
 
 uint16_t GraphBuilder::report_warning(uint16_t span_start, uint16_t span_len,
@@ -209,6 +226,7 @@ uint16_t GraphBuilder::report_warning(uint16_t span_start, uint16_t span_len,
 bool GraphBuilder::is_side_effect_form(SymbolID op) const {
     return op == sym.define || op == sym.def || op == sym.defn ||
            op == sym.defun || op == sym.defs || op == sym.set ||
+           op == sym.defstate ||
            op == sym.zeros_ || op == sym.get_expr ||
            op == sym.set_bpm || op == sym.set_time_sig ||
            op == sym.useq_clear || op == sym.set_time_offset ||
@@ -222,7 +240,8 @@ bool GraphBuilder::is_side_effect_form(SymbolID op) const {
 
 bool GraphBuilder::is_arithmetic_op(SymbolID op) const {
     return op == sym.plus || op == sym.minus || op == sym.star ||
-           op == sym.slash || op == sym.mod_pct;
+           op == sym.slash || op == sym.mod_pct ||
+           op == sym.min_ || op == sym.max_;
 }
 
 bool GraphBuilder::is_comparison_op(SymbolID op) const {
@@ -244,8 +263,7 @@ bool GraphBuilder::is_unary_math(SymbolID op) const {
 }
 
 bool GraphBuilder::is_binary_math(SymbolID op) const {
-    return op == sym.min_ || op == sym.max_ || op == sym.pow_ ||
-           op == sym.expt || op == sym.mod_ || op == sym.pulse;
+    return op == sym.pow_ || op == sym.expt || op == sym.mod_ || op == sym.pulse;
 }
 
 bool GraphBuilder::is_ternary_math(SymbolID op) const {
@@ -258,6 +276,8 @@ NodeOp GraphBuilder::arithmetic_sym_to_op(SymbolID op) const {
     if (op == sym.star)    return NodeOp::Mul;
     if (op == sym.slash)   return NodeOp::Div;
     if (op == sym.mod_pct) return NodeOp::Mod;
+    if (op == sym.min_)    return NodeOp::Min;
+    if (op == sym.max_)    return NodeOp::Max;
     return NodeOp::Add;
 }
 
@@ -434,8 +454,9 @@ uint16_t GraphBuilder::compile_expr(TokenStream& ts, Scope& scope, TimeContext& 
         }
         ts.consume();
         if (op_tok.kind != TokenKind::Symbol) {
-            return report_error(op_tok, "Expected a function name after '('",
-                                "Try: (sin (* t 440))");
+            return report_error_cat(DiagnosticCategory::Syntax, op_tok,
+                                    "Expected a function name after '('",
+                                    "Try: (sin (* t 440))");
         }
         uint16_t result = compile_form(op_tok.symbol, ts, scope, ctx, op_tok);
         // If compile_form errored, skip any unconsumed args to avoid hangs
@@ -453,12 +474,14 @@ uint16_t GraphBuilder::compile_expr(TokenStream& ts, Scope& scope, TimeContext& 
     }
 
     if (tok.kind == TokenKind::Eof) {
-        return report_error(tok, "Unexpected end of expression",
-                            "Expression seems incomplete");
+        return report_error_cat(DiagnosticCategory::Syntax, tok,
+                                "Unexpected end of expression",
+                                "Expression seems incomplete");
     }
 
-    return report_error(tok, "Unexpected token",
-                        "Expected a number, name, or '('");
+    return report_error_cat(DiagnosticCategory::Syntax, tok,
+                            "Unexpected token",
+                            "Expected a number, name, or '('");
 }
 
 // ── Symbol Resolution ───────────────────────────────────────────────────────
@@ -473,6 +496,9 @@ uint16_t GraphBuilder::compile_symbol(SymbolID sym_id, Scope& scope,
 
     // 2. Raw time input
     if (sym_id == sym.t) return ctx.t_node;
+
+    // 2b. dt (time delta)
+    if (sym_id == sym.dt) return pool.make_dt_load();
 
     // 3. Well-known temporal templates
     if (sym_id == sym.beat)     return expand_beat(ctx);
@@ -514,6 +540,10 @@ uint16_t GraphBuilder::compile_symbol(SymbolID sym_id, Scope& scope,
         switch (cell.kind) {
             case CellKind::Number:
                 add_dependency(sym_id);
+                // State cells (flags 0x02) load from state slot, not const
+                if (cell.flags == 0x02) {
+                    return pool.make_state_load(cell.data_table_id);
+                }
                 return pool.make_const(cell.value);
 
             case CellKind::Data:
@@ -528,7 +558,8 @@ uint16_t GraphBuilder::compile_symbol(SymbolID sym_id, Scope& scope,
                     return inline_expression_cell(sym_id, info, scope, ctx);
                 }
                 // Function with params — not valid as bare symbol
-                return report_error_at(span_start, span_len,
+                return report_error_at_cat(DiagnosticCategory::Arity,
+                    span_start, span_len,
                     "This is a function — it needs arguments",
                     "Try calling it: (name arg1 arg2)");
             }
@@ -584,7 +615,7 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
     // 1. Side effects → compile-time error in signal context
     //    (compile_expr drains remaining tokens to RParen after we return)
     if (is_side_effect_form(op)) {
-        return report_error(op_tok,
+        return report_error_cat(DiagnosticCategory::Boundary, op_tok,
             "This can't be used inside an output expression",
             "Use it at the top level instead");
     }
@@ -615,9 +646,7 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
     if (is_unary_math(op)) return compile_unary_math(unary_sym_to_op(op), ts, scope, ctx);
 
     if (is_binary_math(op)) {
-        NodeOp nop = NodeOp::Min;
-        if (op == sym.min_)  nop = NodeOp::Min;
-        if (op == sym.max_)  nop = NodeOp::Max;
+        NodeOp nop = NodeOp::Pow;
         // pow: legacy reversed order — (pow a b) computes b^a
         if (op == sym.pow_)  nop = NodeOp::Pow;
         // expt: standard math order — (expt a b) computes a^b
@@ -651,7 +680,7 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
     if (op == sym.fn || op == sym.lambda) return compile_lambda(ts, scope, ctx);
 
     if (op == sym.quote) {
-        return report_error(op_tok,
+        return report_error_cat(DiagnosticCategory::Boundary, op_tok,
             "'quote' can't be used inside an output expression",
             "Use a literal vector instead: [1 0 1 0]");
     }
@@ -663,7 +692,7 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
             uint16_t ch = (uint16_t)const_value(arg);
             return pool.make_input_load(ch);
         }
-        return report_error(op_tok,
+        return report_error_cat(DiagnosticCategory::Type, op_tok,
             "input channel must be a constant",
             "Try: (input 0) or (input 1)");
     }
@@ -715,7 +744,7 @@ uint16_t GraphBuilder::compile_prev(TokenStream& ts, Scope& scope, TimeContext& 
     (void)scope;
     (void)ctx;
     if (ts.pos >= ts.count || ts.tokens[ts.pos].kind != TokenKind::Symbol) {
-        return report_error_at(
+        return report_error_at_cat(DiagnosticCategory::Arity,
             ts.pos > 0 ? ts.tokens[ts.pos - 1].span_start : 0,
             ts.pos > 0 ? ts.tokens[ts.pos - 1].span_len : 0,
             "(prev) needs an output name like a1, d1, etc.",
@@ -725,7 +754,7 @@ uint16_t GraphBuilder::compile_prev(TokenStream& ts, Scope& scope, TimeContext& 
     SymbolID sym_id = sym_tok.symbol;
 
     if (!is_output_symbol(sym_id)) {
-        return report_error(sym_tok,
+        return report_error_cat(DiagnosticCategory::Type, sym_tok,
             "(prev) argument must be an output name (a1-a8, d1-d8, s1-s8)",
             "(prev a1)");
     }
@@ -761,10 +790,11 @@ uint16_t GraphBuilder::compile_let(TokenStream& ts, Scope& scope, TimeContext& c
         while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
             Token name_tok = ts.consume();
             if (name_tok.kind != TokenKind::Symbol) {
-                return report_error(name_tok, "Expected a name in let binding",
-                                    "Try: (let [x 1 y 2] (+ x y))");
+                return report_error_cat(DiagnosticCategory::Syntax, name_tok,
+                                        "Expected a name in let binding",
+                                        "Try: (let [x 1 y 2] (+ x y))");
             }
-            uint16_t val = compile_expr(ts, scope, ctx);
+            uint16_t val = compile_expr(ts, inner, ctx);
             inner.bind(name_tok.symbol, val);
         }
         ts.expect(TokenKind::RBracket);
@@ -779,10 +809,11 @@ uint16_t GraphBuilder::compile_let(TokenStream& ts, Scope& scope, TimeContext& c
             while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
                 Token name_tok = ts.consume();
                 if (name_tok.kind != TokenKind::Symbol) {
-                    return report_error(name_tok, "Expected a name in let binding",
-                                        "Try: (let (x 1 y 2) (+ x y))");
+                    return report_error_cat(DiagnosticCategory::Syntax, name_tok,
+                                            "Expected a name in let binding",
+                                            "Try: (let (x 1 y 2) (+ x y))");
                 }
-                uint16_t val = compile_expr(ts, scope, ctx);
+                uint16_t val = compile_expr(ts, inner, ctx);
                 inner.bind(name_tok.symbol, val);
             }
         } else {
@@ -791,10 +822,11 @@ uint16_t GraphBuilder::compile_let(TokenStream& ts, Scope& scope, TimeContext& c
                 ts.expect(TokenKind::LParen);
                 Token name_tok = ts.consume();
                 if (name_tok.kind != TokenKind::Symbol) {
-                    return report_error(name_tok, "Expected a name in let binding",
-                                        "Try: (let ((x 1) (y 2)) (+ x y))");
+                    return report_error_cat(DiagnosticCategory::Syntax, name_tok,
+                                            "Expected a name in let binding",
+                                            "Try: (let ((x 1) (y 2)) (+ x y))");
                 }
-                uint16_t val = compile_expr(ts, scope, ctx);
+                uint16_t val = compile_expr(ts, inner, ctx);
                 inner.bind(name_tok.symbol, val);
                 ts.expect(TokenKind::RParen);
             }
@@ -822,8 +854,9 @@ uint16_t GraphBuilder::compile_for(TokenStream& ts, Scope& scope, TimeContext& c
     // (for var collection body)
     Token var_tok = ts.consume();
     if (var_tok.kind != TokenKind::Symbol) {
-        return report_error(var_tok, "'for' needs a variable name",
-                            "Try: (for x [1 2 3] (* x 2))");
+        return report_error_cat(DiagnosticCategory::Syntax, var_tok,
+                                "'for' needs a variable name",
+                                "Try: (for x [1 2 3] (* x 2))");
     }
     SymbolID var = var_tok.symbol;
 
@@ -834,7 +867,7 @@ uint16_t GraphBuilder::compile_for(TokenStream& ts, Scope& scope, TimeContext& c
     if (!col.ok) {
         // Skip past body
         skip_form(ts);
-        return report_error(var_tok,
+        return report_error_cat(DiagnosticCategory::Type, var_tok,
             "for's collection couldn't be resolved at compile time",
             "Try using a literal vector: (for x [1 2 3 4] body)");
     }
@@ -869,7 +902,7 @@ uint16_t GraphBuilder::compile_while_gate(TokenStream& ts, Scope& scope, TimeCon
 uint16_t GraphBuilder::compile_lambda(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     // Lambda in signal context is not supported as a value
     // but if immediately applied, could work. For now, error.
-    return report_error_at(0, 0,
+    return report_error_at_cat(DiagnosticCategory::Boundary, 0, 0,
         "Lambda expressions can't be used directly in outputs",
         "Define the function with 'defn' and call it by name");
 }
@@ -918,8 +951,16 @@ uint16_t GraphBuilder::compile_call(SymbolID fn_sym, TokenStream& ts,
 
     if (arg_count != info.param_count) {
         pop_inline_stack();
-        return report_error(op_tok,
+        return report_error_cat(DiagnosticCategory::Arity, op_tok,
             "Wrong number of arguments",
+            "Check the function definition");
+    }
+
+    // Check for too many arguments (extras not consumed by the loop)
+    if (ts.peek().kind != TokenKind::RParen) {
+        pop_inline_stack();
+        return report_error_cat(DiagnosticCategory::Arity, op_tok,
+            "Too many arguments",
             "Check the function definition");
     }
 
@@ -959,6 +1000,15 @@ uint16_t GraphBuilder::compile_variadic_arithmetic(SymbolID op, TokenStream& ts,
                                                     Scope& scope, TimeContext& ctx) {
     NodeOp nop = arithmetic_sym_to_op(op);
 
+    // Nullary forms: (+) → 0, (*) → 1
+    if (ts.peek().kind == TokenKind::RParen) {
+        if (nop == NodeOp::Add) return pool.make_const(0.0);
+        if (nop == NodeOp::Mul) return pool.make_const(1.0);
+        // (- ) and (/ ) with no args are errors
+        return report_error_at(0, 0, "This operator needs at least one argument",
+                               "Try: (+ 1 2) or (* 3 4)");
+    }
+
     // First argument
     uint16_t result = compile_expr(ts, scope, ctx);
     if (result == NODE_NONE) return NODE_NONE;
@@ -966,6 +1016,11 @@ uint16_t GraphBuilder::compile_variadic_arithmetic(SymbolID op, TokenStream& ts,
     // Handle unary minus: (- x) → negate
     if (ts.peek().kind == TokenKind::RParen && nop == NodeOp::Sub) {
         return pool.make_unary(NodeOp::Neg, result);
+    }
+
+    // Handle unary division: (/ x) → (/ 1 x)
+    if (ts.peek().kind == TokenKind::RParen && nop == NodeOp::Div) {
+        return pool.make_binop(NodeOp::Div, pool.make_const(1.0), result);
     }
 
     // Left-fold remaining arguments
@@ -999,21 +1054,65 @@ uint16_t GraphBuilder::compile_logic(SymbolID op, TokenStream& ts,
 
 uint16_t GraphBuilder::compile_unary_math(NodeOp op, TokenStream& ts,
                                            Scope& scope, TimeContext& ctx) {
+    // Arity check: needs exactly 1 argument
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "This function needs 1 value",
+            "Try giving it an argument, like (sin beat)");
+    }
     uint16_t a = compile_expr(ts, scope, ctx);
+    if (a == NODE_NONE) return NODE_NONE;
+    // Check for extra arguments
+    if (ts.peek().kind != TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            ts.peek().span_start, ts.peek().span_len,
+            "This function takes 1 value, but got more",
+            "Remove the extra arguments");
+    }
     return pool.make_unary(op, a);
 }
 
 uint16_t GraphBuilder::compile_binary_math(NodeOp op, TokenStream& ts,
                                             Scope& scope, TimeContext& ctx) {
+    // Arity check: needs exactly 2 arguments
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "This function needs 2 values",
+            "Try: (pow 2 3) or (mod 10 3)");
+    }
     uint16_t a = compile_expr(ts, scope, ctx);
+    if (a == NODE_NONE) return NODE_NONE;
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "This function needs 2 values, but only got 1",
+            "Add another argument");
+    }
     uint16_t b = compile_expr(ts, scope, ctx);
     return pool.make_binop(op, a, b);
 }
 
 uint16_t GraphBuilder::compile_ternary_math(NodeOp op, TokenStream& ts,
                                              Scope& scope, TimeContext& ctx) {
+    // Arity check: needs exactly 3 arguments
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "This function needs 3 values",
+            "Try: (clamp value low high) or (lerp a b t)");
+    }
     uint16_t a = compile_expr(ts, scope, ctx);
+    if (a == NODE_NONE) return NODE_NONE;
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "This function needs 3 values, but got fewer",
+            "Make sure you provide all 3 arguments");
+    }
     uint16_t b = compile_expr(ts, scope, ctx);
+    if (b == NODE_NONE) return NODE_NONE;
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "This function needs 3 values, but only got 2",
+            "Add the third argument");
+    }
     uint16_t c = compile_expr(ts, scope, ctx);
     return pool.make_ternary(op, a, b, c);
 }
@@ -1072,8 +1171,22 @@ uint16_t GraphBuilder::compile_gates(SymbolID op, TokenStream& ts,
 uint16_t GraphBuilder::compile_euclid(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     // (euclid total active phase)
     // Matches old engine: idx = (step * active) % total; hit if idx < active AND rem < pw
+
+    // Arity check: needs at least 2 args (total, active)
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "euclid needs at least 2 values: total hits and active hits",
+            "Try: (euclid 8 3 beat)");
+    }
     uint16_t total = compile_expr(ts, scope, ctx);
+    if (total == NODE_NONE) return NODE_NONE;
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "euclid needs at least 2 values: total hits and active hits",
+            "Try: (euclid 8 3 beat)");
+    }
     uint16_t active = compile_expr(ts, scope, ctx);
+    if (active == NODE_NONE) return NODE_NONE;
 
     // Optional pulse-width argument (default 0.5)
     uint16_t pulse_width;
@@ -1227,7 +1340,7 @@ uint16_t GraphBuilder::compile_ridx(TokenStream& ts, Scope& scope, TimeContext& 
     double total = 0.0;
 
     if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
-        return report_error_at(0, 0,
+        return report_error_at_cat(DiagnosticCategory::Arity, 0, 0,
             "ridx needs a non-empty ratio vector",
             "Try: (ridx [1 2 1] beat)");
     }
@@ -1264,7 +1377,7 @@ uint16_t GraphBuilder::compile_rstep(TokenStream& ts, Scope& scope, TimeContext&
     double total = 0.0;
 
     if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
-        return report_error_at(0, 0,
+        return report_error_at_cat(DiagnosticCategory::Arity, 0, 0,
             "rstep needs a non-empty ratio vector",
             "Try: (rstep [1 2 1] beat)");
     }
@@ -1301,7 +1414,7 @@ uint16_t GraphBuilder::compile_rpulse(TokenStream& ts, Scope& scope, TimeContext
     double total = 0.0;
 
     if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
-        return report_error_at(0, 0,
+        return report_error_at_cat(DiagnosticCategory::Arity, 0, 0,
             "rpulse needs a non-empty ratio vector",
             "Try: (rpulse [1 2 1] 0.5 beat)");
     }
@@ -1348,7 +1461,7 @@ uint16_t GraphBuilder::compile_rwarp(TokenStream& ts, Scope& scope, TimeContext&
     double total = 0.0;
 
     if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
-        return report_error_at(0, 0,
+        return report_error_at_cat(DiagnosticCategory::Arity, 0, 0,
             "rwarp needs a non-empty ratio vector",
             "Try: (rwarp [1 2 1] beat)");
     }
@@ -1383,6 +1496,38 @@ uint16_t GraphBuilder::compile_rwarp(TokenStream& ts, Scope& scope, TimeContext&
     }
 
     return result;
+}
+
+// ── State Functions ─────────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::compile_integrate(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (integrate rate_expr)
+    // Allocates a state slot, builds update graph: state + rate * dt
+    // Returns LoadState node for reads
+
+    uint16_t rate = compile_expr(ts, scope, ctx);
+    if (rate == NODE_NONE) return NODE_NONE;
+
+    // Allocate a state slot
+    if (pool.state_slot_count >= MAX_STATE_SLOTS) {
+        return report_error_at(0, 0,
+            "Too many state variables (max 32)",
+            "Remove unused integrate or defstate declarations");
+    }
+    uint16_t slot = pool.state_slot_count++;
+    pool.state_values[slot] = 0.0;  // initial value = 0
+
+    // Build update graph: state_load + rate * dt_load
+    uint16_t state_load = pool.make_state_load(slot);
+    uint16_t dt_load = pool.make_dt_load();
+    uint16_t rate_dt = pool.make_binop(NodeOp::Mul, rate, dt_load);
+    uint16_t updated = pool.make_binop(NodeOp::Add, state_load, rate_dt);
+
+    // Store the update root
+    pool.state_update_roots[slot] = updated;
+
+    // Return state_load for reads (caller reads current state value)
+    return state_load;
 }
 
 // -- Random / Hash -----------------------------------------------------------
@@ -1447,7 +1592,7 @@ uint16_t GraphBuilder::compile_range(TokenStream& ts, Scope& scope, TimeContext&
 
     if (ts.peek().kind == TokenKind::RParen) {
         if (!is_const(arg1)) {
-            return report_error_at(0, 0,
+            return report_error_at_cat(DiagnosticCategory::Type, 0, 0,
                 "range needs values known at compile time",
                 "Try: (range 1 8) or use a literal vector [1 2 3 4 5 6 7]");
         }
@@ -1456,7 +1601,7 @@ uint16_t GraphBuilder::compile_range(TokenStream& ts, Scope& scope, TimeContext&
         uint16_t arg2 = compile_expr(ts, scope, ctx);
         if (ts.peek().kind == TokenKind::RParen) {
             if (!is_const(arg1) || !is_const(arg2)) {
-                return report_error_at(0, 0,
+                return report_error_at_cat(DiagnosticCategory::Type, 0, 0,
                     "range needs values known at compile time",
                     "Try: (range 1 8) or use a literal vector");
             }
@@ -1465,7 +1610,7 @@ uint16_t GraphBuilder::compile_range(TokenStream& ts, Scope& scope, TimeContext&
         } else {
             uint16_t arg3 = compile_expr(ts, scope, ctx);
             if (!is_const(arg1) || !is_const(arg2) || !is_const(arg3)) {
-                return report_error_at(0, 0,
+                return report_error_at_cat(DiagnosticCategory::Type, 0, 0,
                     "range needs values known at compile time",
                     "Try: (range 1 8) or use a literal vector");
             }
@@ -1670,7 +1815,7 @@ GraphBuilder::DataRef GraphBuilder::resolve_data_table(TokenStream& ts, Scope& s
                 return ref;
             }
         }
-        report_error_at(tok.span_start, tok.span_len,
+        report_error_at_cat(DiagnosticCategory::Type, tok.span_start, tok.span_len,
             "Expected a vector or data reference",
             "Try: [1 0 1 0] or a defined vector name");
         return ref;
@@ -1679,7 +1824,7 @@ GraphBuilder::DataRef GraphBuilder::resolve_data_table(TokenStream& ts, Scope& s
     // Quoted list '(1 0 1 0) — treat as vector
     // TODO: handle quoted lists
 
-    report_error_at(tok.span_start, tok.span_len,
+    report_error_at_cat(DiagnosticCategory::Type, tok.span_start, tok.span_len,
         "Expected a vector or data reference",
         "Try: [1 0 1 0] or a defined vector name");
     return ref;

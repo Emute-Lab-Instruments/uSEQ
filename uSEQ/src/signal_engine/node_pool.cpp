@@ -191,6 +191,21 @@ uint16_t NodePool::make_prev_output_load(uint16_t output_index) {
     return intern_node(n);
 }
 
+uint16_t NodePool::make_state_load(uint16_t state_slot) {
+    Node n;
+    n.op = NodeOp::LoadState;
+    n.flags = 0;  // state is time-varying (changes each tick)
+    n.imm = (double)state_slot;
+    return intern_node(n);
+}
+
+uint16_t NodePool::make_dt_load() {
+    Node n;
+    n.op = NodeOp::LoadDt;
+    n.flags = 0;  // dt varies per tick
+    return intern_node(n);
+}
+
 uint16_t NodePool::make_unary(NodeOp op, uint16_t a) {
     if (a == NODE_NONE) return NODE_NONE;
     const Node& na = get(a);
@@ -293,6 +308,13 @@ void NodePool::rebuild_execution_order() {
         }
     }
 
+    // Include state update roots in reachability
+    for (uint16_t s = 0; s < state_slot_count; s++) {
+        if (state_update_roots[s] != NODE_NONE) {
+            stack[stack_top++] = state_update_roots[s];
+        }
+    }
+
     while (stack_top > 0) {
         uint16_t idx = stack[--stack_top];
         if (idx == NODE_NONE || idx >= node_count || reachable[idx]) continue;
@@ -326,6 +348,11 @@ void NodePool::gc_unreachable_nodes() {
     for (uint16_t o = 0; o < MAX_OUTPUTS; o++) {
         if (outputs[o].root_node != NODE_NONE)
             stack[stack_top++] = outputs[o].root_node;
+    }
+    // Include state update roots
+    for (uint16_t s = 0; s < state_slot_count; s++) {
+        if (state_update_roots[s] != NODE_NONE)
+            stack[stack_top++] = state_update_roots[s];
     }
     while (stack_top > 0) {
         uint16_t idx = stack[--stack_top];
@@ -362,6 +389,12 @@ void NodePool::gc_unreachable_nodes() {
             outputs[o].root_node = remap[outputs[o].root_node];
     }
 
+    // 4b. Update state update roots
+    for (uint16_t s = 0; s < state_slot_count; s++) {
+        if (state_update_roots[s] != NODE_NONE)
+            state_update_roots[s] = remap[state_update_roots[s]];
+    }
+
     node_count = new_count;
 
     // 5. Rebuild CSE table from scratch (indices changed)
@@ -391,6 +424,11 @@ void NodePool::reset() {
         output_deps[i].clear();
     }
     memset(prev_output_values, 0, sizeof(prev_output_values));
+    memset(state_values, 0, sizeof(state_values));
+    for (uint16_t s = 0; s < MAX_STATE_SLOTS; s++) {
+        state_update_roots[s] = NODE_NONE;
+    }
+    state_slot_count = 0;
 }
 
 void NodePool::allocate_batch_workspace() {

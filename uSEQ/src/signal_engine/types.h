@@ -21,6 +21,7 @@ constexpr size_t MAX_LOCAL_BINDINGS = 32;
 constexpr size_t MAX_DIAGNOSTICS    = 16;
 constexpr size_t MAX_INLINE_DEPTH   = 16;
 constexpr size_t MAX_OUTPUT_DEPS    = 64;
+constexpr size_t MAX_STATE_SLOTS    = 32;
 constexpr size_t MAX_TOKENS         = 256;
 constexpr size_t SOURCE_ARENA_SIZE  = 16384;
 constexpr size_t CSE_TABLE_SIZE     = MAX_TOTAL_NODES * 2;

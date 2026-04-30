@@ -40,12 +40,25 @@ struct EvalResult {
 // Bundles all persistent engine state that was previously spread across
 // separate globals and local variables.
 
+// ── State Update Source ─────────────────────────────────────────────────────
+// Stores the source text and dependency info for a state update expression
+// (needed for recompilation when cells change).
+
+struct StateUpdateSource {
+    uint32_t arena_offset = 0;
+    uint32_t arena_length = 0;
+    bool has_source = false;
+    SymbolID dep_cells[MAX_OUTPUT_DEPS] = {};
+    uint8_t dep_count = 0;
+};
+
 struct SignalEngine {
     CellStore cells;
     SourceArena arena;
     NodePool pool;
     EngineState state;
     OutputSource output_sources[MAX_OUTPUTS] = {};
+    StateUpdateSource state_sources[MAX_STATE_SLOTS] = {};
 
     // Convenience: initialise timing cells and reset state.
     void init_defaults(double bpm = 120.0, int beats_per_bar = 4,

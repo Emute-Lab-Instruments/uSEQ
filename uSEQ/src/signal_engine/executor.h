@@ -12,6 +12,7 @@ namespace sig {
 
 struct ExecutionContext {
     double t;
+    double dt;                       // time delta since last tick
     const double* cell_values;
     const double* hw_inputs;
     const double* data_pool;
@@ -35,6 +36,13 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx);
 // This mutates pool state, so it is NOT used in the batch/visualization path.
 
 void commit_outputs(NodePool& pool, const double* output_values);
+
+// ── Post-Tick State Commit ─────────────────────────────────────────────────
+// After execute_all_outputs, call this to update state slots from their
+// update graphs.  State update roots must already have been executed as
+// part of the node graph (they share the workspace).
+
+void commit_state(NodePool& pool, const double* workspace);
 
 // Legacy 10-parameter overload — delegates to the ExecutionContext version.
 void execute_all_outputs(

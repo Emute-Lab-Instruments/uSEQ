@@ -151,6 +151,9 @@ struct GraphBuilder {
     uint16_t compile_ridx(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_rwarp(TokenStream& ts, Scope& scope, TimeContext& ctx);
 
+    // State
+    uint16_t compile_integrate(TokenStream& ts, Scope& scope, TimeContext& ctx);
+
     // Random / hash
     uint16_t compile_random(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_index_rand(TokenStream& ts, Scope& scope, TimeContext& ctx);
@@ -206,6 +209,14 @@ struct GraphBuilder {
                           const char* suggestion = nullptr);
     uint16_t report_error_at(uint16_t span_start, uint16_t span_len,
                              const char* message, const char* suggestion = nullptr);
+
+    // Category-aware error reporting — prefer these over the Runtime-defaulting overloads
+    uint16_t report_error_cat(DiagnosticCategory cat, const Token& tok,
+                              const char* message, const char* suggestion = nullptr);
+    uint16_t report_error_at_cat(DiagnosticCategory cat,
+                                 uint16_t span_start, uint16_t span_len,
+                                 const char* message, const char* suggestion = nullptr);
+
     uint16_t report_error_with_fuzzy_match(SymbolID sym,
                                             uint16_t span_start, uint16_t span_len);
     uint16_t report_warning(uint16_t span_start, uint16_t span_len,

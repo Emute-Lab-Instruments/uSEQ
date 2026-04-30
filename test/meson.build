@@ -19,8 +19,6 @@ test_inc = include_directories('../uSEQ', '../uSEQ/src')
 # Math library dependency
 math_dep = declare_dependency(link_args : ['-lm'])
 
-python3 = find_program('python3')
-
 # ===== Signal Engine Tests =====
 
 signal_engine_test_exe = executable(
@@ -45,6 +43,30 @@ signal_engine_probe_exe = executable(
 
 test('signal_engine_probe_smoke', signal_engine_probe_exe)
 
+signal_engine_golden_test_exe = executable(
+  'test_signal_engine_golden',
+  sources : ['signal_engine/test_signal_engine_golden.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('signal_engine_golden_test', signal_engine_golden_test_exe)
+
+# ===== Signal Engine Phase 4 Tests =====
+
+signal_engine_phase4_test_exe = executable(
+  'test_signal_engine_phase4',
+  sources : ['signal_engine/test_signal_engine_phase4.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('signal_engine_phase4_test', signal_engine_phase4_test_exe)
+
 # ===== Flash Storage Tests =====
 
 flash_storage_test_exe = executable(
@@ -57,17 +79,6 @@ flash_storage_test_exe = executable(
 )
 
 test('flash_storage_test', flash_storage_test_exe)
-
-test(
-  'signal_engine_golden_fixture',
-  python3,
-  args : [
-    files('../scripts/run_bytecode_vm_golden.py'),
-    files('signal_engine/golden/basic_semantics.yaml'),
-    '--probe', signal_engine_probe_exe.full_path()
-  ],
-  depends : signal_engine_probe_exe
-)
 
 # ===== Firmware E2E Tests =====
 
@@ -105,3 +116,16 @@ firmware_fuzz_test_exe = executable(
 )
 
 test('firmware_fuzz_test', firmware_fuzz_test_exe, timeout: 120)
+
+# ===== Signal Engine Robustness Tests =====
+
+signal_engine_robustness_test_exe = executable(
+  'test_signal_engine_robustness',
+  sources : ['signal_engine/test_signal_engine_robustness.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('signal_engine_robustness_test', signal_engine_robustness_test_exe, timeout: 120)

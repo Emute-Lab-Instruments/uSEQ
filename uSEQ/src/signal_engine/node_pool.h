@@ -55,6 +55,10 @@ enum class NodeOp : uint8_t {
 
     // Deterministic hash (pure function of input)
     HashIndex,  // input_a = index; deterministic hash → [0,1]
+
+    // Cross-sample state
+    LoadState,  // imm = state_slot; reads state_values[slot]
+    LoadDt,     // reads dt (time delta since last tick)
 };
 
 // ── Node ────────────────────────────────────────────────────────────────────
@@ -121,6 +125,11 @@ struct NodePool {
     // Cross-output reads use previous-tick values
     double prev_output_values[MAX_OUTPUTS] = {};
 
+    // ── Cross-sample state ──────────────────────────────────────────────
+    double state_values[MAX_STATE_SLOTS]  = {};       // current state (read during execution)
+    uint16_t state_update_roots[MAX_STATE_SLOTS] = {}; // root node for each state's update expr (init to 0, set to NODE_NONE by init)
+    uint16_t state_slot_count = 0;
+
     // WASM batch workspace (heap-allocated once at init, null on firmware)
     std::unique_ptr<double[]> batch_workspace;
     uint16_t batch_chunk_size = BATCH_CHUNK_SIZE;
@@ -132,6 +141,9 @@ struct NodePool {
     uint16_t make_cell_load(SymbolID cell_id);
     uint16_t make_input_load(uint16_t input_index);
     uint16_t make_prev_output_load(uint16_t output_index);
+
+    uint16_t make_state_load(uint16_t state_slot);
+    uint16_t make_dt_load();
 
     uint16_t make_unary(NodeOp op, uint16_t a);
     uint16_t make_binop(NodeOp op, uint16_t a, uint16_t b);

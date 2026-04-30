@@ -254,6 +254,97 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine) {
     return make_ok();
 }
 
+// ── defstate ────────────────────────────────────────────────────────────────
+
+static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
+                              const char* source, uint32_t source_length) {
+    // (defstate name init_expr update_expr)
+    Token name_tok = ts.consume();
+    if (name_tok.kind != TokenKind::Symbol) {
+        return make_error("defstate needs a name",
+                          "Try: (defstate counter 0 (+ counter 1))");
+    }
+    SymbolID sym = name_tok.symbol;
+
+    // Parse init value — must be a number literal for simplicity
+    Token init_tok = ts.consume();
+    if (init_tok.kind != TokenKind::Number) {
+        return make_error("defstate initial value must be a number",
+                          "Try: (defstate counter 0 (+ counter 1))");
+    }
+    double init_value = init_tok.number;
+
+    // Allocate a state slot (if this name already has a state slot, reuse it)
+    uint16_t state_slot = NODE_NONE;
+    if (sym < MAX_CELLS && engine.cells.cells[sym].kind == CellKind::Number
+        && engine.cells.cells[sym].flags == 0x02) {
+        // Existing state cell — reuse its slot, do NOT reset the value
+        state_slot = (uint16_t)engine.cells.cells[sym].data_table_id;
+    }
+
+    if (state_slot == NODE_NONE) {
+        // New state cell — allocate slot and set initial value
+        if (engine.pool.state_slot_count >= MAX_STATE_SLOTS) {
+            return make_error("Too many state variables (max 32)",
+                              "Remove unused defstate declarations");
+        }
+        state_slot = engine.pool.state_slot_count++;
+        engine.pool.state_values[state_slot] = init_value;
+    }
+
+    // Mark this cell as a state cell: kind=Number (readable), flags=0x02 (state marker),
+    // data_table_id stores the state slot index
+    engine.cells.cells[sym].kind = CellKind::Number;
+    engine.cells.cells[sym].flags = 0x02;  // state cell marker
+    engine.cells.cells[sym].data_table_id = state_slot;
+    engine.cells.cells[sym].revision++;
+    engine.cells.cells[sym].value = init_value;
+
+    // Record the update expression source text for recompilation
+    uint16_t expr_start = ts.pos;
+    uint32_t byte_start = span_begin(ts, expr_start);
+    {
+        uint16_t saved = ts.pos;
+        GraphBuilder::skip_form(ts);
+        uint32_t byte_end = span_end_of(ts, ts.pos);
+        ts.rewind(saved);
+
+        if (source && byte_end > byte_start && byte_end <= source_length) {
+            uint32_t len = byte_end - byte_start;
+            uint32_t offset = engine.arena.store(source + byte_start, len);
+            if (offset != UINT32_MAX) {
+                engine.state_sources[state_slot].arena_offset = offset;
+                engine.state_sources[state_slot].arena_length = len;
+                engine.state_sources[state_slot].has_source = true;
+            }
+        }
+    }
+
+    // Compile the update expression as a signal graph
+    GraphBuildResult result = build_output_graph(engine.pool, ts,
+                                                 engine.cells, engine.arena);
+
+    if (result.has_error) {
+        return make_error("defstate update expression failed to compile",
+                          "Check the update expression");
+    }
+
+    // Store the update root and dependencies
+    engine.pool.state_update_roots[state_slot] = result.root_node;
+    engine.state_sources[state_slot].dep_count = result.dep_count;
+    for (uint8_t d = 0; d < result.dep_count; d++) {
+        engine.state_sources[state_slot].dep_cells[d] = result.dep_cells[d];
+    }
+
+    // Rebuild execution order to include state update subgraphs
+    engine.pool.rebuild_execution_order();
+
+    // Notify dependents so outputs referencing this cell get recompiled
+    on_cell_changed(sym, engine);
+
+    return make_ok();
+}
+
 // ── Transport / time management ─────────────────────────────────────────────
 
 static EvalResult do_set_bpm(TokenStream& ts, SignalEngine& engine) {
@@ -499,6 +590,11 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             ts.expect(TokenKind::RParen);
             return make_ok();
         }
+        if (op == sym.defstate) {
+            EvalResult r = do_defstate(ts, engine, source, source_length);
+            ts.expect(TokenKind::RParen);
+            return r;
+        }
         if (op == sym.set) {
             EvalResult r = do_set(ts, engine);
             ts.expect(TokenKind::RParen);
@@ -686,6 +782,9 @@ EvalResult eval_cold(const char* source, uint32_t length,
     memcpy(tmp->pool.output_deps, pool.output_deps, sizeof(pool.output_deps));
     memcpy(tmp->pool.prev_output_values, pool.prev_output_values,
            sizeof(pool.prev_output_values));
+    memcpy(tmp->pool.state_values, pool.state_values, sizeof(pool.state_values));
+    memcpy(tmp->pool.state_update_roots, pool.state_update_roots, sizeof(pool.state_update_roots));
+    tmp->pool.state_slot_count = pool.state_slot_count;
     tmp->pool.batch_chunk_size = pool.batch_chunk_size;
 
     tmp->state = g_engine_state;
@@ -707,6 +806,9 @@ EvalResult eval_cold(const char* source, uint32_t length,
     memcpy(pool.output_deps, tmp->pool.output_deps, sizeof(pool.output_deps));
     memcpy(pool.prev_output_values, tmp->pool.prev_output_values,
            sizeof(pool.prev_output_values));
+    memcpy(pool.state_values, tmp->pool.state_values, sizeof(pool.state_values));
+    memcpy(pool.state_update_roots, tmp->pool.state_update_roots, sizeof(pool.state_update_roots));
+    pool.state_slot_count = tmp->pool.state_slot_count;
 
     g_engine_state = tmp->state;
     memcpy(output_sources, tmp->output_sources, sizeof(output_sources));
@@ -798,6 +900,47 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                     } else {
                         engine.pool.outputs[i].valid = false;
                     }
+                }
+            }
+        }
+    }
+
+    // Recompile state update graphs that depend on the changed cell
+    for (uint16_t s = 0; s < engine.pool.state_slot_count; s++) {
+        if (!engine.state_sources[s].has_source) continue;
+
+        bool depends = false;
+        for (uint8_t d = 0; d < engine.state_sources[s].dep_count; d++) {
+            if (engine.state_sources[s].dep_cells[d] == cell_id) {
+                depends = true;
+                break;
+            }
+        }
+        if (!depends) continue;
+
+        const char* src = engine.arena.read(engine.state_sources[s].arena_offset);
+        if (!src) continue;
+
+        Token tokens[MAX_TOKENS];
+        uint8_t parse_errors = 0;
+        uint16_t count = TokenStream::tokenize(
+            src, engine.state_sources[s].arena_length,
+            tokens, MAX_TOKENS, nullptr, &parse_errors);
+
+        if (parse_errors == 0) {
+            TokenStream ts;
+            memcpy(ts.tokens, tokens, count * sizeof(Token));
+            ts.count = count;
+            ts.pos = 0;
+
+            GraphBuildResult result = build_output_graph(
+                engine.pool, ts, engine.cells, engine.arena);
+            if (!result.has_error) {
+                engine.pool.state_update_roots[s] = result.root_node;
+                // Update dependencies
+                engine.state_sources[s].dep_count = result.dep_count;
+                for (uint8_t d = 0; d < result.dep_count; d++) {
+                    engine.state_sources[s].dep_cells[d] = result.dep_cells[d];
                 }
             }
         }

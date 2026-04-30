@@ -15,16 +15,20 @@ static inline double eval_node(
     const Node& n,
     double a, double b, double c,
     double t,
+    double dt,
     const double* cell_values,
     const double* hw_inputs,
     const double* data_pool,
     const uint16_t* data_offsets,
     const uint16_t* data_lengths,
-    const double* prev_output_values
+    const double* prev_output_values,
+    const double* state_values
 ) {
     switch (n.op) {
         case NodeOp::Const:       return n.imm;
         case NodeOp::RawTimeLoad: return t;
+        case NodeOp::LoadState:   return state_values[(uint16_t)n.imm];
+        case NodeOp::LoadDt:      return dt;
         case NodeOp::CellLoad:    return cell_values[(uint16_t)n.imm];
         case NodeOp::InputLoad:   return hw_inputs[(uint16_t)n.imm];
         case NodeOp::PrevOutputLoad:
@@ -133,9 +137,10 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
         double b = (n.input_b != NODE_NONE) ? ctx.workspace[n.input_b] : 0.0;
         double c = (n.input_c != NODE_NONE) ? ctx.workspace[n.input_c] : 0.0;
 
-        double result = eval_node(n, a, b, c, ctx.t, ctx.cell_values, ctx.hw_inputs,
+        double result = eval_node(n, a, b, c, ctx.t, ctx.dt,
+                                  ctx.cell_values, ctx.hw_inputs,
                                   ctx.data_pool, ctx.data_offsets, ctx.data_lengths,
-                                  ctx.prev_outputs);
+                                  ctx.prev_outputs, pool.state_values);
 
         // NaN/Inf guard
         if (!std::isfinite(result)) result = 0.0;
@@ -167,6 +172,16 @@ void commit_outputs(NodePool& pool, const double* output_values) {
     }
 }
 
+// ── Post-Tick State Commit ────────────────────────────────────────────────
+
+void commit_state(NodePool& pool, const double* workspace) {
+    for (uint16_t s = 0; s < pool.state_slot_count; ++s) {
+        if (pool.state_update_roots[s] != NODE_NONE) {
+            pool.state_values[s] = workspace[pool.state_update_roots[s]];
+        }
+    }
+}
+
 // Legacy 10-parameter overload
 
 void execute_all_outputs(
@@ -183,6 +198,7 @@ void execute_all_outputs(
 ) {
     ExecutionContext ctx;
     ctx.t             = t;
+    ctx.dt            = 0.0;
     ctx.cell_values   = cell_values;
     ctx.hw_inputs     = hw_inputs;
     ctx.data_pool     = data_pool;
@@ -222,11 +238,18 @@ void execute_batch(
             double* reg_out = regs + (size_t)idx * CHUNK;
 
             if (n.flags & FLAG_TIME_INVARIANT) {
-                // Compute once, broadcast
-                double val = eval_node(n, 0.0, 0.0, 0.0, 0.0,
+                // Compute once, broadcast.
+                // Read input values from registers — time-invariant inputs
+                // were already computed and are the same for every sample,
+                // so reading at index 0 is sufficient.
+                double a = (n.input_a != NODE_NONE) ? regs[(size_t)n.input_a * CHUNK] : 0.0;
+                double b = (n.input_b != NODE_NONE) ? regs[(size_t)n.input_b * CHUNK] : 0.0;
+                double c = (n.input_c != NODE_NONE) ? regs[(size_t)n.input_c * CHUNK] : 0.0;
+                double val = eval_node(n, a, b, c, 0.0, 0.0,
                                        cell_values, hw_inputs,
                                        data_pool, data_offsets, data_lengths,
-                                       pool.prev_output_values);
+                                       pool.prev_output_values,
+                                       pool.state_values);
                 if (!std::isfinite(val)) val = 0.0;
                 for (size_t s = 0; s < chunk_size; s++) reg_out[s] = val;
             } else {
@@ -237,10 +260,11 @@ void execute_batch(
                     double b = (n.input_b != NODE_NONE) ? regs[(size_t)n.input_b * CHUNK + s] : 0.0;
                     double c = (n.input_c != NODE_NONE) ? regs[(size_t)n.input_c * CHUNK + s] : 0.0;
 
-                    double result = eval_node(n, a, b, c, t,
+                    double result = eval_node(n, a, b, c, t, 0.0,
                                               cell_values, hw_inputs,
                                               data_pool, data_offsets, data_lengths,
-                                              pool.prev_output_values);
+                                              pool.prev_output_values,
+                                              pool.state_values);
                     if (!std::isfinite(result)) result = 0.0;
                     reg_out[s] = result;
                 }

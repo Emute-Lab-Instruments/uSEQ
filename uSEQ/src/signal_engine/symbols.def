@@ -121,6 +121,11 @@ SYM(rstep,               "rstep",                signal)
 SYM(ridx,                "ridx",                 signal)
 SYM(rwarp,               "rwarp",                signal)
 
+// ── State forms ────────────────────────────────────────────────────────────
+SYM(defstate,            "defstate",             side_effect)
+SYM(integrate,           "integrate",            signal)
+SYM(dt,                  "dt",                   none)
+
 // ── Side-effect forms (error in signal context) ────────────────────────────
 SYM(define,              "define",               side_effect)
 SYM(def,                 "def",                  side_effect)
