@@ -67,3 +67,6 @@ samples/load.sh
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# Local dev tools (not for distribution)
+tools/

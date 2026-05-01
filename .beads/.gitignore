@@ -2,6 +2,9 @@
 dolt/
 dolt-access.lock
 
+# Credential file (machine-local, never commit)
+.beads-credential-key
+
 # Runtime files
 bd.sock
 bd.sock.startlock
