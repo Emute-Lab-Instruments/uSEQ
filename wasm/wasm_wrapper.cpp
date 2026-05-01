@@ -565,4 +565,165 @@ extern "C"
             return -1;
         }
     }
+
+    // ---------------------------------------------------------------
+    // Combined tick + future projection in a single boundary crossing.
+    // See docs/specs/visualisation.md §5.2 and §7.2 (frontend repo).
+    //
+    // Phase 1: tick the engine at `tick_time` (state-advancing — same as
+    //          execute_at_time). The tick output values for each requested
+    //          output are written into the first `num_channels` slots of
+    //          the caller-provided heap buffer (NaN for inactive outputs).
+    //
+    // Phase 2: project all active outputs from `tick_time` to `project_end`
+    //          at `num_future_samples` evenly spaced times. State is
+    //          snapshot+restored around this phase so live state isn't
+    //          corrupted (mirror of `execute_batch_sequential`'s pattern).
+    //          Projection rows are written after the tick row in
+    //          row-major shape: [out0_s0, out0_s1, ..., out1_s0, ...].
+    //
+    // Buffer layout (doubles):
+    //   [0 .. num_channels-1]                          tick values
+    //   [num_channels .. num_channels*(K+1) - 1]      projection (K = num_future_samples)
+    //
+    // Returns num_channels on success, -1 on error (s_last_error set).
+    // ---------------------------------------------------------------
+    int useq_tick_and_project(
+        const char* outputs_json,
+        double tick_time,
+        double project_end,
+        int num_future_samples,
+        int buffer_ptr,
+        int buffer_length)
+    {
+        if (!g_engine) {
+            s_last_error = "uSEQ not initialized";
+            return -1;
+        }
+        if (num_future_samples < 0) {
+            s_last_error = "num_future_samples must be >= 0";
+            return -1;
+        }
+
+        try {
+            std::vector<String> outputs;
+            if (!parse_output_names(outputs_json, outputs)) {
+                s_last_error = "Failed to parse outputs JSON array";
+                return -1;
+            }
+
+            int num_channels = (int)outputs.size();
+            int required_slots = num_channels + (num_channels * num_future_samples);
+            if (required_slots > buffer_length) {
+                s_last_error = "Buffer too small: need " +
+                    String(std::to_string(required_slots).c_str()) +
+                    " slots, got " +
+                    String(std::to_string(buffer_length).c_str());
+                return -1;
+            }
+
+            // Resolve output indices for the requested names
+            std::vector<uint16_t> output_indices;
+            output_indices.reserve(num_channels);
+            for (const auto& name : outputs) {
+                output_indices.push_back(resolve_output_name(name.c_str()));
+            }
+
+            double* buf = reinterpret_cast<double*>(buffer_ptr);
+
+            // ---- Phase 1: state-advancing tick at tick_time ----
+            double tick_outputs[sig::MAX_OUTPUTS] = {};
+            execute_at_time(tick_time, tick_outputs);
+
+            // Write tick values: one per requested output (NaN if inactive)
+            for (int c = 0; c < num_channels; c++) {
+                uint16_t idx = output_indices[c];
+                if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
+                    buf[c] = tick_outputs[idx];
+                } else {
+                    buf[c] = std::numeric_limits<double>::quiet_NaN();
+                }
+            }
+
+            // ---- Phase 2: projection (save/restore around it) ----
+            if (num_future_samples > 0) {
+                // Snapshot cell values once for the projection batch.
+                double cell_values[sig::MAX_CELLS];
+                g_engine->cells.snapshot_values(cell_values, sig::MAX_CELLS);
+
+                // Build active-output row mapping
+                uint16_t index_to_row[sig::MAX_OUTPUTS];
+                uint16_t num_active = 0;
+                for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+                    if (g_engine->pool.outputs[i].valid) {
+                        index_to_row[i] = num_active++;
+                    } else {
+                        index_to_row[i] = sig::NODE_NONE;
+                    }
+                }
+
+                // Build time array: K samples evenly spaced over
+                // [tick_time, project_end]. With K==1 the lone sample
+                // sits at tick_time (matches the existing _into export's
+                // dt=0 collapse for num_samples==1).
+                double dt = (num_future_samples > 1)
+                    ? (project_end - tick_time) / (double)(num_future_samples - 1)
+                    : 0.0;
+                std::vector<double> t_array(num_future_samples);
+                for (int i = 0; i < num_future_samples; i++) {
+                    t_array[i] = tick_time + dt * i;
+                }
+
+                // Batch buffer: active_outputs x num_future_samples
+                std::vector<double> batch_buf(num_active * num_future_samples, 0.0);
+
+                // execute_batch_sequential snapshots and restores state
+                // internally — safe to call after the state-advancing tick
+                // because the tick already committed and execute_batch_sequential
+                // captures *current* state on entry.
+                if (has_active_state()) {
+                    execute_batch_sequential(t_array.data(), num_future_samples,
+                                              cell_values, num_active, batch_buf.data());
+                } else if (g_engine->pool.batch_workspace && num_active > 0) {
+                    sig::execute_batch(
+                        g_engine->pool, t_array.data(), (size_t)num_future_samples,
+                        cell_values, g_hw_inputs,
+                        g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
+                        batch_buf.data(), num_active
+                    );
+                } else {
+                    execute_batch_sequential(t_array.data(), num_future_samples,
+                                              cell_values, num_active, batch_buf.data());
+                }
+
+                // Copy projection rows into caller's buffer at offset num_channels.
+                double* proj_buf = buf + num_channels;
+                for (int c = 0; c < num_channels; c++) {
+                    double* row = proj_buf + (c * num_future_samples);
+                    uint16_t idx = output_indices[c];
+
+                    if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
+                        uint16_t active_row = index_to_row[idx];
+                        memcpy(row, &batch_buf[active_row * num_future_samples],
+                               num_future_samples * sizeof(double));
+                    } else {
+                        for (int s = 0; s < num_future_samples; s++) {
+                            row[s] = std::numeric_limits<double>::quiet_NaN();
+                        }
+                    }
+                }
+            }
+
+            s_last_error = "";
+            return num_channels;
+        }
+        catch (const std::exception& e) {
+            s_last_error = e.what();
+            return -1;
+        }
+        catch (...) {
+            s_last_error = "Unknown error during tick_and_project";
+            return -1;
+        }
+    }
 }
