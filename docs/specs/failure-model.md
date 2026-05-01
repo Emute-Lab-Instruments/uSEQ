@@ -1,26 +1,29 @@
 # Failure Model
 
 > Spec: compile-time vs runtime errors, LKG fallback, diagnostic survival,
-> numerical hygiene. Counterpart to [MAIN.md](MAIN.md). See
-> [compilation.md §3](compilation.md) for the compile-time rejection rules
-> in signal context, and [ERROR_HANDLING_SPEC.md](ERROR_HANDLING_SPEC.md)
-> for the on-wire diagnostic format.
+> per-output health states, success feedback, REPL-vs-output channels,
+> batch-eval isolation, cascade-noise mitigation, chain-of-blame.
+> Counterpart to [MAIN.md](MAIN.md). See [compilation.md §3](compilation.md)
+> for the compile-time rejection rules in signal context, and
+> [diagnostics.md](diagnostics.md) for the on-wire diagnostic data shapes.
+
+## 1. Error Categories
 
 1.1 ModuLisp distinguishes **compile-time errors** (program never produces a value) from **runtime errors** (program ran but a sample was unhealthy).
 
 1.2 **Compile-time errors** include: parse errors, unresolved symbols (with fuzzy-match suggestions), arity mismatches, side-effect forms inside signal context, recursion in signal context, oversized `for` collections, type errors that the compiler can prove (e.g. arithmetic on a string with no type-promoting operator), unsupported builtins for the current target, and structurally invalid forms.
 
-1.3 Compile-time errors are **structured diagnostics**: they carry severity, category, source span, human-readable message, and a suggestion (often a working example). They surface in the editor as inline annotations and in the firmware as serial-protocol messages.
+1.3 Compile-time errors are **structured diagnostics**: they carry severity, category, source span, human-readable message, and a suggestion (often a working example). They surface in the editor as inline annotations and in the firmware as serial-protocol messages. The data shapes live in [diagnostics.md](diagnostics.md).
 
 1.4 **A compile-time error does not stop the music.** The previously active program for that output (if any) keeps running. Other outputs are unaffected.
 
 1.5 **Runtime errors** are: division by zero, out-of-bounds vector access on an unbounded path, integer-modulo by zero, NaN/Inf propagation that survives to the output root, and invalid local-clock deltas in state-bearing contexts.
 
-1.6 `rate-as` rates follow ordinary numeric health rules. A non-finite rate is
-a runtime error. Zero rate is valid: the local clock stops. Negative rates are
-valid only for primitives that explicitly document reverse-time state semantics;
-otherwise they are compile-time errors when provable or runtime errors when
-only discovered from inputs.
+1.6 `rate-as` rates follow ordinary numeric health rules. A non-finite rate is a runtime error. Zero rate is valid: the local clock stops. Negative rates are valid only for primitives that explicitly document reverse-time state semantics; otherwise they are compile-time errors when provable or runtime errors when only discovered from inputs.
+
+1.7 **Runtime errors are time-phase-dependent.** A signal is a pure function of time and inputs; an expression valid at `beat = 0.3` may produce `NaN` at `beat = 0.95`. Runtime diagnostics describe *when* something went wrong, not just *that* it went wrong. A diagnostic carrying `transient = true` ([diagnostics.md §3.4](diagnostics.md)) signals "this fails on some samples and succeeds on others"; `transient = false` signals "this fails on every sample observed so far". The user should treat transient errors as soft signals (the output is mostly running on LKG but recovers periodically) and persistent errors as hard ones (the output has been on LKG continuously since the failure began).
+
+1.8 **Runtime errors are deduplicated and rate-limited.** A signal sampled hundreds of times per second per output must not produce hundreds of diagnostics. The runtime collapses runtime errors by `(output, category)` and reports at most **one diagnostic per output per frame**. The diagnostic's `last_occurrence` field is updated when the same `(output, category)` recurs without a healthy sample in between. A diagnostic that persists across multiple frames may be annotated with phrasing such as "occurring frequently" — the message text is implementation-defined, the rate-limit is normative.
 
 ## 2. Last-Known-Good (LKG) Fallback
 
@@ -42,4 +45,88 @@ only discovered from inputs.
 
 ## 4. Diagnostic Survival
 
-4.1 **Diagnostics survive across evals.** Per-output health (`idle` / `running` / `fallback` / `error`) is queryable by the editor and shown to the user. A successful eval clears prior diagnostics for that output.
+4.1 **Diagnostics survive across evals.** Per-output health is queryable by the editor and shown to the user. A successful eval clears prior diagnostics for *that output* — not for the whole document. The clearing policy is detailed in [diagnostics.md §4.4](diagnostics.md).
+
+## 5. Per-Output Health States
+
+5.1 Every output is in exactly one of four states at any time:
+
+| State | Meaning |
+|---|---|
+| `idle` | No program assigned. Output emits the neutral default (`0`). |
+| `running` | Active program is healthy and producing samples. |
+| `fallback` | Active program errored; output is running its LKG program. |
+| `error` | No LKG available; output is holding its last valid sample (or neutral default). |
+
+5.2 Transitions:
+
+```
+idle ── (assign) ─────────► running
+running ── (compile fail on new assignment) ─► running   (active unchanged)
+running ── (runtime error) ──────────────────► fallback
+fallback ── (new healthy assignment) ────────► running
+fallback ── (LKG also fails) ────────────────► error
+error ── (new healthy assignment) ───────────► running
+* ── (clear) ────────────────────────────────► idle
+```
+
+5.3 The state is queryable by the editor (typically once per animation frame). It drives output-pane indicators (gutter icon, border colour) and the "using previous version — view error" badge that appears on `fallback`.
+
+## 6. Success Feedback
+
+6.1 **Silence on success is also a bug.** A user typing `(a1 (sin beat))` needs to know it *worked*. If nothing visibly changes — no echo, no indicator, no waveform redraw — they cannot tell whether the code was received, compiled, or is running. The system MUST close the loop.
+
+6.2 Success feedback travels through the same channels as error feedback but is more subdued:
+
+- A brief confirmation that fades after roughly one second ("a1 updated").
+- An output-state transition (idle/error/fallback → running), visible on the indicator.
+- A waveform redraw if the output is being visualised.
+
+6.3 Success feedback must not be noisy. It should be visible enough for a beginner to notice, quiet enough that an expert performing on stage never thinks about it.
+
+## 7. REPL Errors vs Output Errors
+
+7.1 The user types in two distinct contexts. **Output assignments** (`(a1 ...)`, `(d3 ...)`, etc.) install a persistent signal expression; **REPL evals** (e.g. `(+ 1 2)`, `(define foo 42)`, exploratory `(sin 0.5)`) run once and return.
+
+7.2 The two contexts have different failure semantics:
+
+| | Output assignment | REPL eval |
+|---|---|---|
+| Persistent program? | Yes | No |
+| LKG fallback applies? | Yes | No — the expression either works or doesn't |
+| Failure surface | Editor inline annotation; fallback indicator on the output | Inline in the console output stream |
+| Cleared by | Successful reassignment of the same output | The next REPL line |
+
+7.3 Both contexts use the same `Diagnostic` data model. Only the delivery channel differs: output errors are read from `useq_active_diagnostics()` and `useq_output_diagnostics()`; REPL errors are read from `useq_last_diagnostics()` immediately after the eval call.
+
+## 8. Cascade Noise and Display Cap
+
+8.1 **Report-and-continue.** The compiler does not stop at the first error. Non-fatal errors (arity, type, undefined name) emit a typed placeholder and compilation continues so the user sees every problem in one pass. Fatal errors (malformed AST, recursion in signal context, side-effect in signal context) abort early.
+
+8.2 **Typed placeholders.** When a non-fatal error is reported in a numeric context, the compiler substitutes `0.0`, not a sentinel `nil`. This prevents a single error from triggering a cascade of spurious type errors in downstream arithmetic.
+
+8.3 **Placeholder-register suppression.** The compiler tracks which registers hold placeholder values. A diagnostic whose *only* failing input is a placeholder register is suppressed — it is a consequence of the primary error, not an independent problem.
+
+8.4 **Speculative compilation discards diagnostics on rollback.** Where the compiler does speculative compilation (e.g. trying to specialise a callable, attempting numeric while-loop lowering), checkpoint state must include the diagnostic-vector size and rollback must truncate any speculative diagnostics. The user must not see error messages about bytecode that was discarded.
+
+8.5 **Frontend display cap.** Even when the compiler produces many diagnostics, the editor shows at most **5 errors per eval** by default; additional diagnostics are reachable via "show all". Warnings render separately and do not count against this cap.
+
+## 9. Chain of Blame
+
+9.1 When a cell mutation triggers recompilation of dependent outputs and one of those recompilations fails, the error is *caused by* the cell change but *manifests in* the output expression. The user needs to see both halves to know what to fix.
+
+9.2 The diagnostic carries a `triggered_by` field ([diagnostics.md §2](diagnostics.md)) holding the symbol name of the mutated cell that triggered the recompile. The frontend renders it as context — *"this broke because `x` changed"* — alongside the primary message.
+
+9.3 **Span attribution.** The diagnostic's source span points at the *reference site* where the mutated symbol is used inside the output expression, not at the redefinition site. The user needs to see which part of their signal expression depends on the symbol whose meaning changed; the redefinition is in another pane and is by definition the recent action.
+
+## 10. Batch-Eval Isolation
+
+10.1 When the runtime evaluates multiple outputs in a single batch (`useq_eval_outputs_time_window()` and equivalents), a runtime error on one output **must not** abort the others. Each output is independent: errors are recorded per-output, healthy outputs continue producing samples to the end of the batch. This is the per-output expression of the language-wide "never stop the music" guarantee.
+
+10.2 When an output errors mid-batch the runtime:
+
+1. Records the runtime diagnostic against that output.
+2. Substitutes its LKG sample (or last valid / neutral default per [§2.4](#2-last-known-good-lkg-fallback)) for the remainder of the batch.
+3. Continues evaluating the next output.
+
+10.3 The batch return value indicates overall success only as a coarse summary. Individual output errors are retrieved via `useq_active_diagnostics()` / `useq_output_diagnostics()`.

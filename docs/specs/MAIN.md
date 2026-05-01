@@ -42,7 +42,7 @@ Language-wide degradation contracts. Cited from feature sub-specs.
 
 2.3 **LKG is observed safety, not provable safety.** A graph that succeeded once may fail later under different time / inputs. Cascading failures don't promote unhealthy programs.
 
-2.4 **Diagnostics are structured.** Every diagnostic carries severity (`info`/`warning`/`error`), a category, a source span (when applicable), a human-readable message in plain language, and an optional suggestion with a working example. No jargon ("arity mismatch") in user-facing strings. See [ERROR_HANDLING_SPEC.md](ERROR_HANDLING_SPEC.md).
+2.4 **Diagnostics are structured.** Every diagnostic carries severity (`info`/`warning`/`error`), a category, a source span (when applicable), a human-readable message in plain language, and an optional suggestion with a working example. No jargon ("arity mismatch") in user-facing strings. The data shapes and ABI are in [diagnostics.md](diagnostics.md); the failure semantics (LKG, health states, REPL-vs-output channels) are in [failure-model.md](failure-model.md).
 
 2.5 **Diagnostics survive across evals.** Per-output health (`idle`/`running`/`fallback`/`error`) is queryable and rendered. A successful eval clears prior diagnostics for the affected outputs, not for the whole document.
 
@@ -141,7 +141,13 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.12 [compilation.md](compilation.md) — node-graph model, compile passes, time-warp flattening, loop unrolling, signal-context rejection rules.
 
-6.13 [failure-model.md](failure-model.md) — compile-time vs runtime errors, LKG fallback, diagnostic survival, numerical hygiene.
+6.13 [failure-model.md](failure-model.md) — compile-time vs runtime errors, LKG fallback, per-output health states, success feedback, REPL-vs-output channels, batch-eval isolation, cascade-noise mitigation, chain of blame.
+
+6.14 [diagnostics.md](diagnostics.md) — diagnostic data shapes, source-span coordinates, WASM ABI exports, firmware serial JSON embedding, fuzzy-name matching.
+
+6.15 [firmware.md](firmware.md) — firmware composition, tick loop, dual-core split, boot/recovery, watchdog, hardware variants, persistence surface.
+
+6.16 [wire-protocol.md](wire-protocol.md) — byte-level and message-level contract over USB CDC serial between the firmware and a host editor. Single source of truth for what crosses the wire.
 
 ---
 
@@ -149,12 +155,10 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 7.1 `../useq.md` — user-facing manual, builtin catalogue, language tutorial. Authoritative for *what* operators do; this spec is authoritative for *how* expressions are evaluated.
 
-7.2 [ERROR_HANDLING_SPEC.md](ERROR_HANDLING_SPEC.md) — diagnostic format, source spans, ABI surface for diagnostics.
+7.2 `../dev.md` — developer guide; module C++ contracts, file structure, build commands, memory budgets, migration notes. Implementation-only material.
 
-7.3 [FIRMWARE_SPEC.md](FIRMWARE_SPEC.md) — module composition, tick loop, hardware contracts, dual-core split.
+7.3 `../../../docs/RUNTIME_CONTRACT.md` (in `useq-perform`) — runtime/firmware/WASM contract from the editor's perspective.
 
-7.4 `../../../docs/RUNTIME_CONTRACT.md` (in `useq-perform`) — runtime/firmware/WASM contract from the editor's perspective.
+7.4 `../../../docs/specs/MAIN.md` (in `useq-perform`) — app semantics. Counterpart to this doc; where they disagree on app behaviour, that doc wins.
 
-7.5 `../../../docs/specs/MAIN.md` (in `useq-perform`) — app semantics. Counterpart to this doc; where they disagree on app behaviour, that doc wins.
-
-7.6 If this spec disagrees with any of the above on a point of language semantics, **this spec wins** by intent. Implementations should be brought into line. If this spec disagrees with the actually-deployed firmware, that is a bug — file it.
+7.5 If this spec disagrees with any of the above on a point of language semantics, **this spec wins** by intent. Implementations should be brought into line. If this spec disagrees with the actually-deployed firmware, that is a bug — file it.

@@ -206,7 +206,7 @@ python scripts/serve_wasm.py
 
 ## Error Handling and Diagnostics
 
-The bytecode VM compiler produces structured diagnostics that flow through to the browser editor as inline annotations. Full spec: `docs/ERROR_HANDLING_SPEC.md`.
+The signal-engine compiler produces structured diagnostics that flow through to the browser editor as inline annotations. The on-wire data shapes and WASM ABI live in `docs/specs/diagnostics.md`; the failure semantics (LKG, health states, REPL-vs-output channels) live in `docs/specs/failure-model.md`.
 
 ### Key files
 
