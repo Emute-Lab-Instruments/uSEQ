@@ -420,7 +420,7 @@ void SerialProtocol::send_ready()
     JsonBuilder b;
     b.object_begin()
         .field("type", "ready")
-        .field("fw", "1.2.0")
+        .field("version", "1.2.0")
         .object_end();
 
     write_json_str(b.build().c_str());
