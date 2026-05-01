@@ -117,6 +117,22 @@ firmware_fuzz_test_exe = executable(
 
 test('firmware_fuzz_test', firmware_fuzz_test_exe, timeout: 120)
 
+# ===== Wire Protocol Contract Tests =====
+# Encodes the contract from docs/specs/wire-protocol.md. Most cases are
+# tagged [.][!shouldfail] so they don't gate CI; implementing agents
+# remove the tag as their work lands.
+
+wire_protocol_contract_test_exe = executable(
+  'test_wire_protocol_contract',
+  sources : ['firmware/test_wire_protocol_contract.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [firmware_dep, math_dep]
+)
+
+test('wire_protocol_contract_test', wire_protocol_contract_test_exe, timeout: 30)
+
 # ===== Signal Engine Robustness Tests =====
 
 signal_engine_robustness_test_exe = executable(
