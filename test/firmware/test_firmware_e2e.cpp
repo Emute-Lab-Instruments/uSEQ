@@ -535,63 +535,8 @@ TEST_CASE("F2: Multiple dependents — amplitude cell affects two outputs", "[e2
 }
 
 // ============================================================================
-// G. Bar Quantization [e2e][quantization]
+// G. Bar Quantization — REMOVED
 // ============================================================================
-
-TEST_CASE("G1: Queued command executes at bar boundary", "[e2e][quantization]") {
-    FirmwareTestHarness h;
-    h.init();
-    // 120 BPM, 4/4 → one bar = 2 seconds = 2000 ticks
-
-    // Set a1 to 0 initially
-    auto r1 = h.eval("(a1 0.0)");
-    REQUIRE(r1.kind != sig::EvalResult::Error);
-
-    // Queue a command that sets a1 to 1.0, scheduled for bar boundary
-    h.eval_at_bar("(a1 1.0)");
-
-    // Run a few ticks — a1 should still be 0.0 (not yet at bar boundary)
-    h.run_ticks(10);
-    REQUIRE(h.get_output(0) == Approx(0.0).margin(0.01));
-
-    // Run until bar boundary (2000 ticks total from t=0 minus the 10 already run)
-    // The bar boundary occurs when bar phasor wraps from ~1.0 to ~0.0.
-    // At t=0, bar_phasor=0. We need to reach t ≈ 2.0s for the first wrap.
-    h.run_ticks(1990);
-
-    // After the bar boundary, a1 should be 1.0
-    // Run a few more ticks past the boundary to be safe
-    h.run_ticks(50);
-    REQUIRE(h.get_output(0) == Approx(1.0).margin(0.01));
-}
-
-TEST_CASE("G2: Multiple queued commands drain together at bar boundary", "[e2e][quantization]") {
-    FirmwareTestHarness h;
-    h.init();
-    // 120 BPM, 4/4 → one bar = 2 seconds = 2000 ticks
-
-    // Initialize outputs to known values
-    h.eval("(a1 0.0)");
-    h.eval("(a2 0.0)");
-    h.eval("(a3 0.0)");
-
-    // Queue 3 commands
-    h.eval_at_bar("(a1 0.1)");
-    h.eval_at_bar("(a2 0.2)");
-    h.eval_at_bar("(a3 0.3)");
-
-    // Before bar boundary, all should still be 0
-    h.run_ticks(100);
-    REQUIRE(h.get_output(0) == Approx(0.0).margin(0.01));
-    REQUIRE(h.get_output(1) == Approx(0.0).margin(0.01));
-    REQUIRE(h.get_output(2) == Approx(0.0).margin(0.01));
-
-    // Advance past the bar boundary
-    h.run_ticks(1950);
-    h.run_ticks(50); // past the 2000 tick boundary
-
-    // All three should now be set
-    REQUIRE(h.get_output(0) == Approx(0.1).margin(0.01));
-    REQUIRE(h.get_output(1) == Approx(0.2).margin(0.01));
-    REQUIRE(h.get_output(2) == Approx(0.3).margin(0.01));
-}
+// The pending_commands ring buffer was dead code (wire-protocol.md §10.1,
+// firmware.md §6.2). It has been removed. Future in-language quantisation
+// (firmware.md §6.3) will land separately and add new tests here.

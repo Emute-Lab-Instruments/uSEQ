@@ -88,12 +88,6 @@ public:
         return eval(code.c_str());
     }
 
-    // Queue a command for bar-quantized execution.
-    void eval_at_bar(const char* code)
-    {
-        fw.enqueue_pending(code, static_cast<uint16_t>(std::strlen(code)));
-    }
-
     // ── Input Simulation ──────────────────────────────────────────────────
 
     void set_input_waveform(int channel, InputWaveform wf)

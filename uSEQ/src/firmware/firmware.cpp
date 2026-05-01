@@ -1,7 +1,5 @@
 #include "firmware.h"
 #include "../utils/time.h"
-#include "../modulisp/lisp/symbol_intern.h"
-#include <cmath>
 #include <cstring>
 
 #ifdef ARDUINO
@@ -67,9 +65,6 @@ void Firmware::tick()
 
     // ── 2. Read hardware inputs ────────────────────────────────────────────
     io.read_inputs();
-
-    // ── 2b. Drain bar-quantized pending commands on bar boundary ──────────
-    maybe_drain_pending(t);
 
     // ── 3. Serial: non-blocking command intake ─────────────────────────────
     if (serial.has_incoming()) {
@@ -143,71 +138,6 @@ void Firmware::watchdog_kick()
 #ifdef ARDUINO
     watchdog_update();
 #endif
-}
-
-// ── Bar-Quantized Scheduling ──────────────────────────────────────────────
-
-void Firmware::enqueue_pending(const char* code, uint16_t length) {
-    // Clamp to buffer capacity (leave room for null terminator).
-    constexpr uint16_t max_len = sizeof(PendingCommand::code) - 1;
-    if (length > max_len)
-        length = max_len;
-
-    PendingCommand& slot = pending_commands[pending_head];
-
-    // If the ring buffer is full (slot already occupied), evict the oldest
-    // entry by advancing the tail past it.
-    if (slot.occupied) {
-        pending_tail = (pending_tail + 1) % MAX_PENDING;
-    }
-
-    std::memcpy(slot.code, code, length);
-    slot.code[length] = '\0';
-    slot.length   = length;
-    slot.occupied = true;
-
-    pending_head = (pending_head + 1) % MAX_PENDING;
-}
-
-void Firmware::maybe_drain_pending(double t) {
-    // Compute bar phasor from engine timing cells.
-    // Formula mirrors graph_builder.cpp expand_bar():
-    //   bar_phasor = fmod(t * (bpm / 60.0) / beats_per_bar, 1.0)
-    auto& si = SymbolIntern::getInstance();
-    auto bpm_sym = si.intern("bpm");
-    auto bpb_sym = si.intern("beats-per-bar");
-
-    double bpm = engine.cells.cells[bpm_sym].value;
-    double bpb = engine.cells.cells[bpb_sym].value;
-
-    // Guard against zero/negative to avoid division by zero.
-    if (bpm <= 0.0) bpm = 120.0;
-    if (bpb <= 0.0) bpb = 4.0;
-
-    double bar_phasor = std::fmod(t * (bpm / 60.0) / bpb, 1.0);
-
-    // Detect bar boundary: phasor wrapped from near-1.0 back to near-0.0.
-    bool bar_wrapped = (bar_phasor < last_bar_phasor);
-    last_bar_phasor  = bar_phasor;
-
-    if (!bar_wrapped)
-        return;
-
-    // Drain all occupied pending commands.
-    while (pending_tail != pending_head) {
-        PendingCommand& slot = pending_commands[pending_tail];
-        if (!slot.occupied) {
-            pending_tail = (pending_tail + 1) % MAX_PENDING;
-            continue;
-        }
-
-        sig::EvalResult result = sig::eval_cold(
-            slot.code, slot.length, engine);
-        serial.send_eval_response(result);
-
-        slot.occupied = false;
-        pending_tail  = (pending_tail + 1) % MAX_PENDING;
-    }
 }
 
 } // namespace firmware
