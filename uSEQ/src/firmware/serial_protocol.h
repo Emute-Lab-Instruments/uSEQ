@@ -58,6 +58,9 @@ struct SerialProtocol {
     // ── Control messages ───────────────────────────────────────────────────
     void handle_handshake();
     void send_ready();
+    // Log envelope (§5.6) — replaces legacy TEXT/MSG_TO_EDITOR framed bytes.
+    // level: one of "debug", "info", "notice", "warn", "error"
+    void send_log(const char* level, const char* text);
 
     // ── Stream config state (read by tick loop) ────────────────────────────
     unsigned long stream_rate_limit_us = SerialMsg::serial_message_rate_limit;

@@ -167,27 +167,33 @@ TEST_CASE("F2 [§3.3] outbound JSON has no 0x1F/0x65 framing prefix",
 // ── F3 — log envelope shape (§5.6) ──────────────────────────────────────
 
 TEST_CASE("F3 [§5.6] log/notice output uses {type:\"log\",level,text} envelope",
-          "[contract][wire-protocol][.][!shouldfail]")
+          "[contract][wire-protocol]")
 {
-    // The implementation should expose a public method to emit log envelopes
-    // (e.g. firmware::SerialProtocol::send_log(level, text)). Until it
-    // exists, this test documents the expected shape. The agent
-    // implementing F3 should:
-    //   1. Add `send_log(const char* level, const char* text)` to
-    //      firmware::SerialProtocol, emitting {type:"log",level,text}\n.
-    //   2. Migrate utils/log.cpp::println / message_editor (when used by
-    //      the new firmware path) to call into this method.
-    //   3. Stop emitting the legacy TEXT (0x20) and MSG_TO_EDITOR (0x64)
-    //      type bytes.
-
     StdoutCapture cap;
     firmware::SerialProtocol sp;
     sp.init();
 
-    // Placeholder — replace once send_log lands:
-    //   sp.send_log("info", "Hello from uSEQ");
-    // For now, fail the test to mark the spec section as not-yet-complete.
-    FAIL("F3: SerialProtocol::send_log is not implemented; see spec §5.6");
+    sp.send_log("info", "Hello from uSEQ");
+
+    auto out = cap.drain();
+    auto json = extract_last_json(out);
+    REQUIRE_FALSE(json.empty());
+
+    // Spec §5.6 — envelope shape
+    REQUIRE(json.find("\"type\":\"log\"") != std::string::npos);
+    REQUIRE(json.find("\"level\":\"info\"") != std::string::npos);
+    REQUIRE(json.find("\"text\":\"Hello from uSEQ\"") != std::string::npos);
+
+    // Spec §3.3 — no legacy 0x1F/0x65 framing prefix anywhere in output
+    bool found_legacy_prefix = false;
+    for (size_t i = 0; i + 1 < out.size(); ++i) {
+        if (static_cast<unsigned char>(out[i])     == 0x1fu &&
+            static_cast<unsigned char>(out[i + 1]) == 0x65u) {
+            found_legacy_prefix = true;
+            break;
+        }
+    }
+    REQUIRE_FALSE(found_legacy_prefix);
 }
 
 // ── F4 — eval response embeds diagnostics (§5.7) ────────────────────────

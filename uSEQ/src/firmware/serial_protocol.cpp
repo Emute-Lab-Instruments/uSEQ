@@ -426,6 +426,22 @@ void SerialProtocol::send_ready()
     write_json_str(b.build().c_str());
 }
 
+// ── Log envelope (§5.6) ───────────────────────────────────────────────────
+// Replaces legacy TEXT (0x20) and MSG_TO_EDITOR (0x64) framed-byte paths.
+// level: one of "debug", "info", "notice", "warn", "error"
+
+void SerialProtocol::send_log(const char* level, const char* text)
+{
+    JsonBuilder b;
+    b.object_begin()
+        .field("type", "log")
+        .field("level", level)
+        .field("text", text)
+        .object_end();
+
+    write_json_str(b.build().c_str());
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // Internal: system message handlers
 // ══════════════════════════════════════════════════════════════════════════
