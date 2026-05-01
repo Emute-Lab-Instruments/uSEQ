@@ -6,8 +6,9 @@
 // SerialProtocol handles the wire format between the firmware and the editor.
 // It does NOT evaluate code — it only shuttles bytes.
 //
-// Wire format:
-//   [0x1F] [type_byte] [JSON payload] [\n]
+// Wire format (spec §3.3):
+//   JSON messages: {payload}\n  — bare, no prefix bytes
+//   Binary frames: [0x1F][type_byte][payload]  — for stream data
 //
 // Message types (inbound):
 //   hello         — protocol negotiation, returns hardware config

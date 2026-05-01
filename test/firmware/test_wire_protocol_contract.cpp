@@ -115,7 +115,7 @@ TEST_CASE("F1 [§5.5] ready frame uses \"version\" field, not \"fw\"",
 // ── F2 — outbound JSON has no 0x65 prefix (§3.3) ────────────────────────
 
 TEST_CASE("F2 [§3.3] outbound JSON has no 0x1F/0x65 framing prefix",
-          "[contract][wire-protocol][.][!shouldfail]")
+          "[contract][wire-protocol]")
 {
     StdoutCapture cap;
     firmware::SerialProtocol sp;

@@ -589,14 +589,11 @@ bool SerialProtocol::can_write()
 void SerialProtocol::write_json(const char* payload, size_t len)
 {
 #ifdef ARDUINO
-    Serial.write(SerialMsg::message_begin_marker);
-    Serial.write(static_cast<uint8_t>(SerialMsg::serial_message_types::JSON));
+    // Spec §3.3: JSON messages are bare `{...}\n` — no 0x1F/type-byte prefix.
     Serial.write(reinterpret_cast<const uint8_t*>(payload), len);
     Serial.write('\n');
 #else
-    // Desktop: write to stdout with the same framing for test observability
-    putchar(SerialMsg::message_begin_marker);
-    putchar(static_cast<char>(SerialMsg::serial_message_types::JSON));
+    // Desktop: write bare JSON to stdout for test observability.
     fwrite(payload, 1, len, stdout);
     putchar('\n');
     fflush(stdout);
