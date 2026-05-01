@@ -11,10 +11,11 @@
 //   Binary frames: [0x1F][type_byte][payload]  — for stream data
 //
 // Message types (inbound):
-//   hello         — protocol negotiation, returns hardware config
-//   ping          — keepalive heartbeat
-//   eval          — code string (handled by caller after read_command)
-//   stream-config — configure output streaming rate/channels
+//   hello           — protocol negotiation, returns hardware config
+//   ping            — keepalive heartbeat
+//   eval            — code string (handled by caller after read_command)
+//   stream-config   — configure output streaming rate/channels
+//   set-live-inputs — write one or more live-edit slot values (§5.8)
 //
 // Outbound:
 //   ready         — sent once after init
@@ -62,6 +63,16 @@ struct SerialProtocol {
     // level: one of "debug", "info", "notice", "warn", "error"
     void send_log(const char* level, const char* text);
 
+    // ── Testable dispatch entry point ──────────────────────────────────────
+    // Dispatch a fully-framed JSON message (without the trailing '\n').
+    // Called by read_command for messages already in m_msg_buf, and exposed
+    // as a testable entry point so unit tests can inject messages directly
+    // without going through the ring buffer.
+    // Returns true if the message is an eval command (caller should copy code
+    // from the supplied buf/buf_size), false for all internally-handled types.
+    bool dispatch_message(const char* payload, size_t len,
+                          char* buf, size_t buf_size);
+
     // ── Stream config state (read by tick loop) ────────────────────────────
     unsigned long stream_rate_limit_us = SerialMsg::serial_message_rate_limit;
     bool stream_channel_enabled[sig::MAX_OUTPUTS] = {};
@@ -100,6 +111,7 @@ private:
     void handle_hello(const char* payload, size_t len);
     void handle_ping(const char* payload, size_t len);
     void handle_stream_config(const char* payload, size_t len);
+    void handle_set_live_inputs(const char* payload, size_t len);
 };
 
 } // namespace firmware

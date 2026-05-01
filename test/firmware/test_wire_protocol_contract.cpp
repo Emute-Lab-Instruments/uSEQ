@@ -267,20 +267,76 @@ TEST_CASE("F5 [§5.2] hello response has type:\"response\", mode, fw, config",
 }
 
 // ── F6 — set-live-inputs handler (§5.8) ─────────────────────────────────
+//
+// Tests the protocol-level dispatch and ack for set-live-inputs. The slot-table
+// integration (actually writing values to the runtime) is deferred until the
+// live-edit feature lands. See: src-useq/docs/specs/live-edit.md §5.3 and §5.10.
 
-TEST_CASE("F6 [§5.8] set-live-inputs handler exists and applies slot writes",
-          "[contract][wire-protocol][.][!shouldfail]")
+TEST_CASE("F6 [§5.8] set-live-inputs request is accepted and ack has correct shape",
+          "[contract][wire-protocol]")
 {
-    // Implementation hooks — to be added by the agent picking up the
-    // live-edit feature. The shape of this test:
-    //   1. Compile a program containing (live-edit 0.5 :id "knob1" :min 0 :max 1).
-    //   2. Send a set-live-inputs request via the serial protocol.
-    //   3. Verify the slot value updated and the next eval reads the new value.
-    //
-    // Until the live-edit feature lands across compiler + runtime + protocol,
-    // this is a placeholder.
-    FAIL("F6: live-edit / set-live-inputs handler is not implemented; see live-edit.md and spec §5.8");
+    firmware::SerialProtocol sp;
+    sp.init();
+
+    // Build a set-live-inputs payload with two slots and a requestId.
+    // Shape: {"type":"set-live-inputs","slots":{"knob1":0.5,"toggle1":true},"requestId":"req-x"}
+    const char* payload =
+        "{\"type\":\"set-live-inputs\","
+        "\"slots\":{\"knob1\":0.5,\"toggle1\":true},"
+        "\"requestId\":\"req-x\"}";
+    const size_t payload_len = strlen(payload);
+
+    char code_buf[256] = {};
+
+    StdoutCapture cap;
+    // dispatch_message is the internal helper that read_command delegates to.
+    // Using it directly lets us inject a message without going through the
+    // ring buffer — the cleaner testable entry point per the design note.
+    bool is_eval = sp.dispatch_message(payload, payload_len, code_buf, sizeof(code_buf));
+    auto out = cap.drain();
+
+    // set-live-inputs is handled internally — not returned as an eval command.
+    REQUIRE_FALSE(is_eval);
+
+    // Should have emitted exactly one JSON response.
+    auto json = extract_last_json(out);
+    REQUIRE_FALSE(json.empty());
+
+    // §5.8 ack shape: {type:"response", requestId, success:true, applied:N}
+    REQUIRE(json.find("\"type\":\"response\"") != std::string::npos);
+    REQUIRE(json.find("\"success\":true") != std::string::npos);
+    REQUIRE(json.find("\"requestId\":\"req-x\"") != std::string::npos);
+    // Two slots were provided — applied must be 2.
+    REQUIRE(json.find("\"applied\":2") != std::string::npos);
 }
+
+TEST_CASE("F6b [§5.8] set-live-inputs fire-and-forget (no requestId) emits no response",
+          "[contract][wire-protocol]")
+{
+    firmware::SerialProtocol sp;
+    sp.init();
+
+    const char* payload =
+        "{\"type\":\"set-live-inputs\","
+        "\"slots\":{\"knob1\":0.75}}";
+    const size_t payload_len = strlen(payload);
+
+    char code_buf[256] = {};
+
+    StdoutCapture cap;
+    bool is_eval = sp.dispatch_message(payload, payload_len, code_buf, sizeof(code_buf));
+    auto out = cap.drain();
+
+    // Still not an eval command.
+    REQUIRE_FALSE(is_eval);
+    // No requestId => fire-and-forget => no response emitted.
+    REQUIRE(out.empty());
+}
+
+// TODO(live-edit): slot-table integration test — verify that dispatched slot
+// values are actually written to the runtime and read back on the next eval.
+// Blocked until live-edit.md §5.3 slot table is implemented in the compiler
+// and runtime. Add test here alongside F6 when that lands.
 
 // ── F7 — binary STREAM frame layout (§6.1) ──────────────────────────────
 

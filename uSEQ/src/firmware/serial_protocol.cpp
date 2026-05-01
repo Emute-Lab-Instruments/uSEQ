@@ -212,40 +212,42 @@ bool SerialProtocol::has_incoming()
     return false;
 }
 
-bool SerialProtocol::read_command(char* buf, size_t buf_size)
+bool SerialProtocol::dispatch_message(const char* payload, size_t len,
+                                      char* buf, size_t buf_size)
 {
-    if (!m_message_ready) return false;
-
-    m_message_ready = false;
-
     // Parse the JSON message to determine type
     char type_buf[32] = {};
-    extract_string(m_msg_buf, m_msg_len, "type", type_buf, sizeof(type_buf));
+    extract_string(payload, len, "type", type_buf, sizeof(type_buf));
 
     // Extract request ID for response correlation
-    extract_string(m_msg_buf, m_msg_len, "requestId",
+    extract_string(payload, len, "requestId",
                    m_request_id, sizeof(m_request_id));
 
     // Handle system messages internally
     if (strcmp(type_buf, "hello") == 0)
     {
-        handle_hello(m_msg_buf, m_msg_len);
+        handle_hello(payload, len);
         return false; // not a user command
     }
     if (strcmp(type_buf, "ping") == 0)
     {
-        handle_ping(m_msg_buf, m_msg_len);
+        handle_ping(payload, len);
         return false;
     }
     if (strcmp(type_buf, "stream-config") == 0)
     {
-        handle_stream_config(m_msg_buf, m_msg_len);
+        handle_stream_config(payload, len);
+        return false;
+    }
+    if (strcmp(type_buf, "set-live-inputs") == 0)
+    {
+        handle_set_live_inputs(payload, len);
         return false;
     }
 
     // Eval message — extract code field
     char code_buf[2048] = {};
-    size_t code_len = extract_string(m_msg_buf, m_msg_len, "code",
+    size_t code_len = extract_string(payload, len, "code",
                                      code_buf, sizeof(code_buf));
 
     if (code_len == 0)
@@ -270,6 +272,15 @@ bool SerialProtocol::read_command(char* buf, size_t buf_size)
     buf[copy_len] = '\0';
 
     return true;
+}
+
+bool SerialProtocol::read_command(char* buf, size_t buf_size)
+{
+    if (!m_message_ready) return false;
+
+    m_message_ready = false;
+
+    return dispatch_message(m_msg_buf, m_msg_len, buf, buf_size);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -588,6 +599,115 @@ void SerialProtocol::handle_stream_config(const char* payload, size_t len)
         .object_end();
 
     write_json_str(b.build().c_str());
+}
+
+void SerialProtocol::handle_set_live_inputs(const char* payload, size_t len)
+{
+    // §5.8: write one or more live-edit slot values.
+    //
+    // The `slots` field is a JSON object mapping slot-id (string) → value.
+    // Walk the object entries and count them.
+    //
+    // TODO(live-edit §5.3): once the slot table exists, replace the count
+    // loop body with the actual write call, e.g.:
+    //   useq_set_live_input(slot_id, value_str);
+    // See: src-useq/docs/specs/live-edit.md §5.3 for the slot-table design
+    // and §5.10 for the useq_set_live_inputs WASM ABI that this should call.
+
+    int applied = 0;
+
+    const char* slots_val = find_field_value(payload, len, "slots");
+    if (slots_val && *slots_val == '{')
+    {
+        // Walk object keys to count entries. We don't actually write to a
+        // slot table yet — that data structure doesn't exist.
+        const char* end = payload + len;
+        const char* p = slots_val + 1; // skip opening '{'
+        int depth = 0;
+
+        while (p < end)
+        {
+            // Skip whitespace
+            while (p < end && (*p == ' ' || *p == '\t' ||
+                               *p == '\r' || *p == '\n')) ++p;
+            if (p >= end) break;
+
+            if (*p == '}' && depth == 0) break; // end of slots object
+
+            if (*p == '"')
+            {
+                // Found a key — skip over the quoted string
+                ++p; // skip opening quote
+                while (p < end && *p != '"')
+                {
+                    if (*p == '\\') ++p; // escaped char
+                    if (p < end) ++p;
+                }
+                if (p < end) ++p; // skip closing quote
+
+                // Skip whitespace and colon
+                while (p < end && (*p == ' ' || *p == '\t' || *p == ':')) ++p;
+                if (p >= end) break;
+
+                // Skip the value (handles nested objects/arrays, strings,
+                // numbers, booleans, null).
+                if (*p == '"')
+                {
+                    // String value
+                    ++p;
+                    while (p < end && *p != '"')
+                    {
+                        if (*p == '\\') ++p;
+                        if (p < end) ++p;
+                    }
+                    if (p < end) ++p; // skip closing quote
+                }
+                else if (*p == '{' || *p == '[')
+                {
+                    // Nested object/array — skip balanced braces
+                    char open = *p, close = (*p == '{') ? '}' : ']';
+                    int nest = 0;
+                    while (p < end)
+                    {
+                        if (*p == open)  ++nest;
+                        if (*p == close) { --nest; ++p; if (nest == 0) break; continue; }
+                        ++p;
+                    }
+                }
+                else
+                {
+                    // Primitive (number, true, false, null) — skip until ,/}
+                    while (p < end && *p != ',' && *p != '}' && *p != ']') ++p;
+                }
+
+                ++applied; // counted one key-value pair
+
+                // Skip optional comma
+                while (p < end && (*p == ' ' || *p == '\t' ||
+                                   *p == '\r' || *p == '\n')) ++p;
+                if (p < end && *p == ',') ++p;
+            }
+            else
+            {
+                // Unexpected char — bail out
+                break;
+            }
+        }
+    }
+
+    // If the request included a requestId, emit the ack response (§5.8).
+    // If no requestId, this is fire-and-forget — no response emitted.
+    if (m_request_id[0] != '\0')
+    {
+        JsonBuilder b;
+        b.object_begin()
+            .field("type", "response")
+            .field("requestId", m_request_id)
+            .field("success", true)
+            .field("applied", applied)
+            .object_end();
+        write_json_str(b.build().c_str());
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
