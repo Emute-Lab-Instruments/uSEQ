@@ -148,13 +148,9 @@ void message_editor(const String& s)
         return;
     }
 
-    if (Serial.availableForWrite())
-    {
-        Serial.write(SerialMsg::message_begin_marker);
-        Serial.write((u_int8_t)SerialMsg::serial_message_types::MSG_TO_EDITOR);
-        Serial.println(s);
-        // Serial.write(SerialMsg::message_end_marker);
-    }
+    // Legacy framed-text (TEXT/MSG_TO_EDITOR bytes) removed per wire-protocol
+    // spec §5.6.  firmware::Firmware always enables json_mode before reaching
+    // this point, so the branch above is the live path.
 #else
     std::cout << "[EDITOR] " << s.c_str() << std::endl;
 #endif
@@ -180,13 +176,9 @@ void println(const String& s)
         return;
     }
 
-    if (Serial.availableForWrite())
-    {
-        Serial.write(SerialMsg::message_begin_marker);
-        Serial.write((u_int8_t)SerialMsg::serial_message_types::TEXT);
-        Serial.println(s);
-        // Serial.write(SerialMsg::message_end_marker);
-    }
+    // Legacy framed-text (TEXT byte) removed per wire-protocol spec §5.6.
+    // firmware::Firmware always enables json_mode before reaching this point,
+    // so the branch above is the live path.
 #else
     std::cout << s.c_str() << std::endl;
 #endif
