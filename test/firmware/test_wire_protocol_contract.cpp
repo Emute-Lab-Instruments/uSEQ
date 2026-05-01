@@ -77,18 +77,35 @@ private:
 
 // Helper: find a JSON message in captured output, returns its body
 // (without any 0x1F/0x65 framing prefix or trailing newline).
-// Returns the position of the LAST `{` found, paired with the body
-// extracted from there to the next `\n` or `\r\n`.
+// Finds the LAST line that begins with '{', which is the last top-level
+// JSON object emitted. Using the last newline-delimited line ensures nested
+// braces inside a single JSON message are not mistaken for a message start.
 static std::string extract_last_json(const std::string& captured)
 {
-    auto pos = captured.rfind('{');
-    if (pos == std::string::npos) return {};
-    auto end = captured.find('\n', pos);
-    if (end == std::string::npos) end = captured.size();
-    while (end > pos && (captured[end - 1] == '\r' || captured[end - 1] == '\n')) {
-        --end;
+    // Walk backwards through newline-delimited lines to find the last
+    // line that starts with '{'.
+    size_t search_end = captured.size();
+    while (search_end > 0) {
+        // Find the previous newline before search_end
+        size_t line_end = search_end;
+        // Trim trailing newline chars
+        while (line_end > 0 && (captured[line_end - 1] == '\n' || captured[line_end - 1] == '\r'))
+            --line_end;
+
+        // Find start of this line
+        size_t line_start = (line_end == 0) ? 0 : captured.rfind('\n', line_end - 1);
+        if (line_start == std::string::npos)
+            line_start = 0;
+        else
+            ++line_start; // skip the '\n' itself
+
+        if (line_start < line_end && captured[line_start] == '{')
+            return captured.substr(line_start, line_end - line_start);
+
+        if (line_start == 0) break;
+        search_end = line_start; // step back past this line
     }
-    return captured.substr(pos, end - pos);
+    return {};
 }
 
 // ── F1 — ready frame uses "version" not "fw" (§5.5) ─────────────────────
@@ -216,7 +233,7 @@ TEST_CASE("F4 [§5.7] eval response includes diagnostics array",
 // ── F5 — hello response shape (§5.2) ────────────────────────────────────
 
 TEST_CASE("F5 [§5.2] hello response has type:\"response\", mode, fw, config",
-          "[contract][wire-protocol][.][!shouldfail]")
+          "[contract][wire-protocol]")
 {
     StdoutCapture cap;
     firmware::SerialProtocol sp;

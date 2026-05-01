@@ -473,6 +473,7 @@ void SerialProtocol::handle_hello(const char* /*payload*/, size_t /*len*/)
 
     JsonBuilder response;
     response.object_begin()
+        .field("type", "response")
         .field("success", true)
         .field("mode", "json")
         .field("fw", "1.2.0")
