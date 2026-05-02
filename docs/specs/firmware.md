@@ -103,11 +103,11 @@ Indices beyond the variant's physical count are skipped by `write_outputs()`; th
 
 ## 6. Quantised Eval
 
-6.1 Quantised eval is **editor-driven**. The editor holds a submitted-but-not-yet-evaluated form until the chosen musical boundary (default: next bar) and then sends it to the firmware as an ordinary eval. The firmware sees an immediate eval; it has no notion of a queued form. See [top-level.md §1.3](top-level.md).
+6.1 Quantised eval is **runtime-driven**, gated by a single **global quant phasor**. The editor sets `quant: true` on the eval request (see [wire-protocol.md §5.7](wire-protocol.md)); the firmware buffers the form in a quantised-eval queue and drains the queue on the next wrap of the quant phasor. The eval response is sent only after the deferred evaluation completes, so the request's `requestId` round-trip is bounded by the current quant period. Within a single wrap, queued evals execute in submission order with no "latest wins" coalescing — every queued eval runs.
 
-6.2 The historical `@`-prefix immediate-eval surface and the firmware-side `pending_commands` ring buffer that drained on bar-phasor wrap are both **gone**. The serial protocol no longer carries a queued/immediate flag.
+6.2 The **global quant phasor** defaults to `bar`. It is changed via the ModuLisp builtin `(set-quant-phasor expr)` — e.g. `(set-quant-phasor (slow 2 bar))` for a two-bar period. The phasor is global runtime state, not per-request: the wire only conveys the on/off bit for each eval. **Phasor changes are an atomic switch:** calling `(set-quant-phasor …)` immediately replaces the gating phasor for the entire queue — all already-queued entries, plus any subsequent ones, drain together on the next wrap of the new phasor. The previous phasor is dropped without firing; queued entries are never lost, only retimed.
 
-6.3 An explicit ModuLisp builtin for in-language quantised eval is an open question — see [top-level.md §2.1](top-level.md). If such a builtin lands, the editor remains the canonical surface for the user; whether quantisation also requires a firmware-side mechanism is unspecified here.
+6.3 The historical `@`-prefix immediate-eval surface and the legacy `pending_commands` ring buffer (drained on bar-phasor wrap, populated by `@`-prefix text) are both **gone**. The new quantised-eval queue replaces the ring buffer with a JSON-driven, phasor-configurable mechanism. Editor-side hold is no longer used; the editor sends `quant: true` and lets the runtime do the timing — keeping hardware and WASM behaviour identical by construction.
 
 ## 7. LKG and Error Handling
 

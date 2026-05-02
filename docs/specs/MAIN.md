@@ -91,7 +91,7 @@ Language-wide degradation contracts. Cited from feature sub-specs.
 
 Items that span multiple sub-specs. Feature-specific open questions live in the corresponding sub-spec.
 
-5.1 **`schedule` and `unschedule`.** Whether the historical contract (`(schedule name body period)`) survives in the same shape, becomes a thin wrapper over editor-side quantised eval, or is replaced by something else is not yet decided. Treat current behaviour as the historical contract; the spec needs updating once the design lands.
+5.1 **`schedule` and `unschedule`.** Whether the historical contract (`(schedule name body period)`) survives in the same shape, gets folded into the global-quant-phasor mechanism ([top-level.md §1.3](top-level.md), [firmware.md §6](firmware.md)), or is replaced by something else is not yet decided. Treat current behaviour as the historical contract; the spec needs updating once the design lands.
 
 5.2 **Imperative-mode boundaries.** Whether the dialect is set per-session, per-tab, or via a `?mode=imperative` URL param is a UI/runtime decision pending product input. The semantics in [dialects.md](dialects.md) hold once a session is in imperative mode.
 

@@ -33,4 +33,4 @@
 
 3.1 **How dialect is selected.** Per-session, per-tab, or via a `?mode=imperative` URL param is a UI/runtime decision pending product input. The semantics here hold once a session is in imperative mode.
 
-3.2 **`schedule` shape under imperative mode.** Whether the historical `(schedule name body period)` survives, becomes editor-side quantised eval, or is replaced is undecided. See [MAIN.md §5.1](MAIN.md).
+3.2 **`schedule` shape under imperative mode.** Whether the historical `(schedule name body period)` survives, gets folded into the global-quant-phasor mechanism, or is replaced is undecided. See [MAIN.md §5.1](MAIN.md).

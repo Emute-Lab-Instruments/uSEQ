@@ -28,7 +28,8 @@ because Web Serial only enumerates host-side: the device has no signal
 that a host is now listening.
 
 1.2 The protocol is **versioned with the firmware**. The minimum supported
-firmware version is the floor declared in `useq-perform/docs/STABLE_CORE.md`.
+firmware version is the floor declared in `useq-perform/docs/specs/bootstrap.md`
+and `useq-perform/docs/specs/MAIN.md` §4 (currently `1.2.0`).
 Firmware below that floor is not supported by current editors; bringing it
 in-spec requires a new firmware build, not a protocol fallback.
 
@@ -324,17 +325,19 @@ output.
 
 ### 5.7 `eval` (editor → device, request)
 
-Evaluate a ModuLisp expression. Always immediate; the wire carries no
-queued/immediate flag.
+Evaluate a ModuLisp expression. Defaults to immediate; the optional
+`quant` flag opts the request into the runtime's quantised-eval queue.
 
 ```json
 {"type":"eval","code":"(a1 0.5)","requestId":"req-4"}
+{"type":"eval","code":"(a1 0.5)","quant":true,"requestId":"req-5"}
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `type` | string | yes | Always `"eval"`. |
 | `code` | string | yes | The ModuLisp source to evaluate. Multi-form bodies are permitted. |
+| `quant` | bool | optional | When `true`, the device queues the form and evaluates it on the next wrap of the global quant phasor (see Quantisation note below). When `false` or absent, the form evaluates immediately. |
 | `requestId` | string | yes | Per §5.1. |
 
 Maximum `code` length: 2048 bytes (firmware RX buffer cap). Editors SHOULD
@@ -372,13 +375,21 @@ eval responses are **must-deliver**: the device blocks briefly until TX
 buffer space exists rather than dropping. Stream frames and standalone
 diagnostics are opportunistic and may be dropped under load.
 
-**Quantisation.** The wire-level eval is always immediate. If the user
-wants their code to run at a musical boundary (next bar / next beat /
-absolute time), the editor holds the code locally and sends it as an
-ordinary immediate eval at the boundary, OR the user wraps their code in
-an in-language quantising form (e.g. a future `(at-next-bar …)`
-builtin — see [firmware.md §6.3](firmware.md)). The protocol takes no
-position; all timing semantics live in the language or the editor.
+**Quantisation.** Eval requests are immediate by default. Setting
+`quant: true` opts the request into the device's quantised-eval queue:
+the device buffers the form and evaluates it on the next wrap of the
+**global quant phasor** — a single runtime-side phasor that defaults to
+`bar` and is changed via the ModuLisp builtin
+`(set-quant-phasor expr)`. The wire only conveys the on/off bit; the
+period itself is part of runtime state, not protocol state. See
+[firmware.md §6](firmware.md) for queue ordering, drain semantics, and
+phasor-update behaviour.
+
+The eval response (§5.7 response shape) is sent **after the deferred
+evaluation completes**, not at submission time, so a quantised eval's
+`requestId` round-trip latency is bounded by the current quant period.
+Editors SHOULD surface a "pending" affordance until the response
+arrives.
 
 ### 5.8 `set-live-inputs` (editor → device, request)
 
@@ -630,10 +641,18 @@ implementations against this spec.
 - **Firmware-info text probe** (`@(useq-report-firmware-info)`). Replaced
   by the `hello` response's `fw` field.
 - **`@`-prefix immediate-eval marker.** Wire is immediate-only.
-- **`exec` field on eval requests.** Removed — wire carries no
-  queued/immediate flag.
-- **`pending_commands` ring buffer in `firmware::Firmware`.** Dead code;
-  may be removed.
+- **`exec` field on eval requests.** The legacy string-enum `exec` field
+  was removed. The current spec exposes a single boolean `quant` flag on
+  the eval request (§5.7) — opting an eval into the runtime's
+  quantised-eval queue, gated by the global quant phasor. This is a
+  different surface from the legacy `exec` (no per-request "scheduled at
+  absolute time" mode, no editor-side hold).
+- **`pending_commands` ring buffer in `firmware::Firmware`.** The legacy
+  ring buffer (drained on bar-phasor wrap, populated by `@`-prefix text)
+  is gone. The new firmware-side quantised-eval queue (§5.7,
+  [firmware.md §6](firmware.md)) is its replacement: drained on
+  global-quant-phasor wrap, populated by JSON eval requests carrying
+  `quant: true`.
 - **`TEXT (0x20)` and `MSG_TO_EDITOR (0x64)` type bytes.** Replaced by
   `{type:"log",...}` JSON envelopes.
 - **Inbound 10-byte stream frame** (`[0x1F][channel][value]` editor →
@@ -665,7 +684,11 @@ implementations against this spec.
   `{type:"diagnostics"}`.
 - Parse `diagnostics` from eval responses (currently read only from the
   WASM exports).
-- Drop `exec: "immediate"` from `JsonEvalRequest`.
+- Drop `exec: "immediate"` from `JsonEvalRequest` (legacy field).
+- Send `quant: true` on the eval request when the user invokes the
+  Quantised eval keybinding; omit (or send `false`) for Immediate eval.
+- Surface a "pending" affordance for in-flight quantised evals — the
+  response arrives only after the deferred evaluation completes.
 - Implement `set-live-inputs` request (when live-edit ships).
 
 ### 10.4 Firmware changes implied by this spec
@@ -675,7 +698,12 @@ implementations against this spec.
 - Stop emitting `TEXT (0x20)` and `MSG_TO_EDITOR (0x64)` type bytes;
   migrate to `{type:"log",level,text}` envelopes.
 - Implement `set-live-inputs` handler (when live-edit ships).
-- Remove the `pending_commands` ring buffer in `firmware::Firmware`.
+- Remove the legacy `pending_commands` ring buffer in
+  `firmware::Firmware`. Add the new quantised-eval queue, drained on
+  global-quant-phasor wrap, populated by eval requests with
+  `quant: true` (§5.7, [firmware.md §6](firmware.md)).
+- Implement the `(set-quant-phasor expr)` ModuLisp builtin (default
+  phasor: `bar`).
 
 ---
 
@@ -699,7 +727,6 @@ the protocol version is implicit in the firmware semver. If the wire
 shape needs to evolve independently, add a `protocol` field to the
 `hello` response and `ready` frame.
 
-11.5 **In-language quantising builtin.** Whether the firmware grows a
-`(at-next-bar …)` (or similar) form to allow user-authored quantisation
-without editor-side hold is a language-spec question (see
-[firmware.md §6.3](firmware.md)) — no protocol implication either way.
+(11.5 was the open `(at-next-bar …)` question — resolved in v1 by the
+`quant: true` eval-request flag (§5.7) plus the `(set-quant-phasor expr)`
+ModuLisp builtin; see [firmware.md §6](firmware.md).)
