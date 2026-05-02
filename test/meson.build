@@ -145,3 +145,42 @@ signal_engine_robustness_test_exe = executable(
 )
 
 test('signal_engine_robustness_test', signal_engine_robustness_test_exe, timeout: 120)
+
+# ===== LKG / Failure Model Tests =====
+
+signal_engine_lkg_test_exe = executable(
+  'test_signal_engine_lkg',
+  sources : ['signal_engine/test_signal_engine_lkg.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('signal_engine_lkg_test', signal_engine_lkg_test_exe)
+
+# ===== Compile Rejection Tests =====
+
+signal_engine_compile_rejection_test_exe = executable(
+  'test_signal_engine_compile_rejection',
+  sources : ['signal_engine/test_signal_engine_compile_rejection.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('signal_engine_compile_rejection_test', signal_engine_compile_rejection_test_exe)
+
+# ===== Edge Cases Tests =====
+
+signal_engine_edges_test_exe = executable(
+  'test_signal_engine_edges',
+  sources : ['signal_engine/test_signal_engine_edges.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('signal_engine_edges_test', signal_engine_edges_test_exe)
