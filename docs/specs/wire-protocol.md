@@ -14,6 +14,12 @@
 > Editor-side counterpart: `useq-perform/docs/specs/transport.md` (transport
 > state machine, clock policy). Editor-side reference implementation:
 > `useq-perform/src/transport/`.
+>
+> Firmware implementation map (non-normative): request handling and dispatch
+> live in `uSEQ/src/firmware/serial_protocol.cpp`; protocol state and JSON
+> response/log helpers live in `uSEQ/src/utils/log.cpp`; lightweight JSON
+> construction lives in `uSEQ/src/utils/json_builder.h`; output routing,
+> including serial stream frame emission, lives under `uSEQ/src/uSEQ/`.
 
 ---
 
@@ -164,7 +170,8 @@ bytes. Outstanding TX writes that have not been drained are lost.
   §3.3.
 - Every JSON message MUST have a top-level `"type"` string field.
 - Every **request** (editor → device) MUST have a `"requestId"` string
-  field. Format is freeform (the reference editor uses `req-N`); receivers
+  field unless that message's section explicitly defines a fire-and-forget
+  form. Format is freeform (the reference editor uses `req-N`); receivers
   MUST treat it as opaque and echo it verbatim.
 - Every **response** (reply to a request) MUST have `"type":"response"`,
   the echoed `"requestId"`, and a `"success":bool` field.

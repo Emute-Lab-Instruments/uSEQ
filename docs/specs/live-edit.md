@@ -2,7 +2,7 @@
 
 > Spec: compiler and runtime treatment of `live-edit` — the surface form by which the editor declares a literal in source as an externally-driven input slot. Counterpart to [MAIN.md](MAIN.md).
 > See also [inputs.md](inputs.md) (hardware input leaves; this spec adds a new class of input alongside them), [signal-model.md](signal-model.md) (implicit lifting and external leaves), [compilation.md](compilation.md) (compile pipeline, slot allocation, dependency tracking), [diagnostics.md](diagnostics.md) (diagnostic shape), [failure-model.md](failure-model.md) (LKG and health).
-> Editor-side counterpart: [../../../docs/specs/live-edit.md](../../../docs/specs/live-edit.md). Wire protocol: [../../PROTOCOL.md](../../PROTOCOL.md) (TBD: `set-live-inputs` message).
+> Editor-side counterpart: [../../../docs/specs/live-edit.md](../../../docs/specs/live-edit.md). Wire protocol: [wire-protocol.md](wire-protocol.md) (`set-live-inputs` message).
 
 ---
 
@@ -12,7 +12,7 @@
 
 1.2 The motivating user case is hands-on tweaking of a literal value during performance without per-knob-turn recompilation. The runtime exposes a slot table; the host (editor) writes new values via the wire protocol or the WASM ABI; the signal graph reads the slot once per tick.
 
-1.3 The form is identical on firmware and WASM. Both compilers recognise it; both runtimes maintain a slot table; both consume the same wire-protocol message ([../../PROTOCOL.md](../../PROTOCOL.md)) or its WASM-side equivalent (§5.10).
+1.3 The form is identical on firmware and WASM. Both compilers recognise it; both runtimes maintain a slot table; both consume the same wire-protocol message ([wire-protocol.md](wire-protocol.md)) or its WASM-side equivalent (§5.10).
 
 1.4 **`live-edit` is a declaration, not a function.** It does not appear in the runtime call table. Constant folding, CSE, and slot allocation all special-case it.
 
@@ -36,7 +36,7 @@
 
 2.5 **`:name`** is an optional display string. Compiler-irrelevant; preserved for diagnostics and downstream tooling.
 
-2.6 **`:options`** is required for keyword seeds and rejected for numeric/boolean. Vector of keyword literals; the seed must appear in the vector.
+2.6 **`:options`** defines the value space for keyword seeds and is rejected for numeric/boolean. For keyword seeds it should be present in editor-authored source; if omitted, the compiler repairs it to a singleton vector containing the seed and emits a warning (§4.2.2). When present, it must be a vector of keyword literals and the seed must appear in the vector.
 
 2.7 **`:step`** is an optional numeric literal — the slider step granularity used by the editor. Compiler-irrelevant beyond preservation in the slot metadata; the runtime does not enforce step alignment on incoming writes.
 
@@ -50,7 +50,7 @@
 
 3.1 **`live-edit` is recognised during builtin lowering** ([compilation.md §1.2](compilation.md)). The compiler does not lower it to a function call; it lowers it to a `LoadInput` node parameterised by the slot index. `LoadInput` is the **same node type used for hardware input leaves** (`ain1`, `in1`, etc. — [inputs.md](inputs.md)); only the slot source differs (hardware-sampled vs host-written). This shared node type ensures identical hot-path cost.
 
-3.2 **Slot identity is the `:id` string.** Per allocation, the compiler builds a string→index map (id → slot index in the slot table). Wire-protocol and WASM-ABI messages carry the `:id` string; the runtime resolves it to an index at receive time (see [../../PROTOCOL.md](../../PROTOCOL.md) and §5). No hashing; no collision risk; in-flight messages crossing a recompile resolve against the post-recompile id table — if the slot still exists, the write lands; if not, the write is silently dropped per §5.4.
+3.2 **Slot identity is the `:id` string.** Per allocation, the compiler builds a string→index map (id → slot index in the slot table). Wire-protocol and WASM-ABI messages carry the `:id` string; the runtime resolves it to an index at receive time (see [wire-protocol.md](wire-protocol.md) and §5). No hashing; no collision risk; in-flight messages crossing a recompile resolve against the post-recompile id table — if the slot still exists, the write lands; if not, the write is silently dropped per §5.4.
 
 3.3 **Slot metadata table.** Alongside the compiled graph, the compiler emits a slot metadata table containing, per slot:
 - The original `:id` string (for diagnostic display and id-resolution).
@@ -62,7 +62,7 @@
 
 3.4 **Constant folding skips `live-edit`.** A `live-edit` node is opaque to constant folding ([compilation.md §1.3](compilation.md)) even when its bounds are constant. The whole point is that the value varies at runtime.
 
-3.5 **CSE applies by `:id`.** Two `live-edit` forms with the same `:id` and matching metadata hash-cons to the same `LoadInput` node and share one slot. Two with the same `:id` but mismatched `:min`/`:max`/`:options`/seed/variant are a compile-time error (§4.1.8) — duplicate id with disagreeing config. The editor's paste handler ([../../../docs/specs/live-edit.md §3.9](../../../docs/specs/live-edit.md)) prevents accidental duplicates from routine paste; this rule remains as the safety net for hand-typed cases and as the rule that allows two intentional widgets to share a slot.
+3.5 **Duplicate ids are errors.** A `:id` names exactly one slot in v1. If two `live-edit` forms in the same compilation unit use the same `:id`, compilation fails (§4.1.2). The editor's paste handler ([../../../docs/specs/live-edit.md §3.9](../../../docs/specs/live-edit.md)) prevents accidental duplicates from routine paste; the compiler rule remains as the safety net for hand-typed cases.
 
 3.6 **Dependency tracking.** A compiled graph carries the slot ids it reads alongside the cell symbols it inlined ([compilation.md §1.6](compilation.md)). The runtime indexes outputs by their slot dependencies for future selective notification (e.g., panel highlight on slot change). Slot writes do **not** dirty the graph (§3.7).
 
@@ -108,10 +108,10 @@
 4.1.2 **Duplicate `:id`** — `error: live-edit :id "<id>" appears more than once in this document`. Source span points at both occurrences if the diagnostic format supports multi-span.
 4.1.3 **`:min` ≥ `:max`** for numeric seeds — `error: live-edit :min (<m>) must be less than :max (<M>)`. Suggestion: swap.
 4.1.4 **Non-numeric `:min`/`:max`** for numeric seed — `error: live-edit :min and :max must be numbers, got <type>`.
-4.1.5 **`:options` missing** for keyword seed (when the language-level rule treats this as an error rather than the warning behaviour in §4.2.2) — `error: live-edit on a keyword requires :options`. Default behaviour ships with the warning per §4.2.2.
+4.1.5 **Reserved.** Missing `:options` for keyword seeds is repaired with a warning in v1 (§4.2.2), not an error.
 4.1.6 **`:options` present** for non-keyword seed — `error: live-edit :options is only valid for keyword seeds`.
 4.1.7 **Seed not in `:options`** for keyword seed — `error: live-edit seed <:foo> is not in :options [<...>]`.
-4.1.8 **CSE conflict** — `error: live-edit :id "<id>" used with different :min/:max/:options/seed at <span1> and <span2>`. The two forms cannot share a slot.
+4.1.8 **Reserved.** Duplicate ids are covered by §4.1.2.
 4.1.9 **`live-edit` in a rejected position** — `error: live-edit is not valid here`. The editor enforces this client-side too ([../../../docs/specs/live-edit.md §3.5](../../../docs/specs/live-edit.md)); the compiler rejects hand-typed wrappers in those positions:
   - Inside `defstate :initial` body.
   - Inside a quoted/syntax-quoted/unquoted form.
@@ -135,7 +135,7 @@
 
 5.2 **Slot value type.** Each slot stores a single `IEEE 754 double`. Boolean slots store `0.0` or `1.0`. Keyword slots store the integer index into the `:options` vector (cast to double). The `LoadInput` node returns the slot value as a double; type-aware consumers (e.g. boolean test in a conditional) interpret accordingly.
 
-5.3 **Slot write path.** A wire-protocol `set-live-inputs` message ([../../PROTOCOL.md](../../PROTOCOL.md)) or a WASM ABI call (§5.10) carries one or more `(id_string, value)` pairs. The runtime:
+5.3 **Slot write path.** A wire-protocol `set-live-inputs` message ([wire-protocol.md](wire-protocol.md)) or a WASM ABI call (§5.10) carries one or more `(id_string, value)` pairs. The runtime:
 1. Resolves each `id_string` to a slot index via the id→index map built at the most recent eval.
 2. Validates the value against the slot metadata: type matches variant; numeric clamped to `[:min, :max]`; keyword present in `:options`; boolean cast to `0.0`/`1.0`.
 3. Writes the validated value into the slot table at the resolved index.
@@ -166,7 +166,7 @@ extern "C" int useq_set_live_inputs(const char* json_str);
 // Unknown ids count as zero (silent drop, matches §5.4).
 ```
 
-The editor calls this once per UI tick with a coalesced JSON batch — same payload as the wire-protocol message body ([../../PROTOCOL.md](../../PROTOCOL.md)). One ABI surface, one mental model, identical semantics on hardware and WASM.
+The editor calls this once per UI tick with a coalesced JSON batch — same payload as the wire-protocol message body ([wire-protocol.md](wire-protocol.md)). One ABI surface, one mental model, identical semantics on hardware and WASM.
 
 5.11 **Slot enumeration.** After a successful eval, the host can read the current slot metadata table via the existing diagnostics/state ABIs (specific shape defined alongside the wire protocol). The host does not strictly require this — the editor scans its own AST to know what slots exist — but the query enables verification that runtime allocation matches editor expectations and surfaces firmware-specific allocation failures (e.g. cap exceeded per §5.1).
 
@@ -192,13 +192,13 @@ The editor calls this once per UI tick with a coalesced JSON batch — same payl
 - The EDN-driven builtin generator (`scripts/builtins.edn`) — new entry.
 - Both compilers (firmware and WASM) — recognise the form, build the slot metadata table.
 - Both runtimes — slot table data structure, write path, id→index resolution.
-- The wire protocol ([../../PROTOCOL.md](../../PROTOCOL.md)) — new message type.
+- The wire protocol ([wire-protocol.md](wire-protocol.md)) — new message type.
 - The WASM ABI export (§5.10).
 - Editor: AST recognition, widget rendering, persistence, panel.
 
 These land together, not piecemeal. A coordinated cross-repo change.
 
-7.3 The slot table representation, id→index resolution, wire protocol message shape, and WASM ABI are **runtime-internal but jointly stable** with the wire protocol spec ([../../PROTOCOL.md](../../PROTOCOL.md)).
+7.3 The slot table representation, id→index resolution, wire protocol message shape, and WASM ABI are **runtime-internal but jointly stable** with the wire protocol spec ([wire-protocol.md](wire-protocol.md)).
 
 7.4 The editor-side widget vocabulary, panel layout, and gamepad bindings are **app surface** ([../../../docs/specs/live-edit.md](../../../docs/specs/live-edit.md)) and may evolve independently provided the language semantics here are honoured.
 

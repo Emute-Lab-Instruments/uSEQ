@@ -3,8 +3,8 @@
 > Spec: composition, tick loop, hardware contracts, persistence surface,
 > hardware variants, boot/recovery behaviour. Counterpart to
 > [MAIN.md](MAIN.md). The user-observable surface lives here; module C++
-> contracts (struct layouts, method signatures, file paths, migration
-> phases, RP2040 memory budget) live in `../dev.md`.
+> contracts (struct layouts and method signatures) are implementation
+> details, not independent specs.
 
 ## 1. Composition
 
@@ -44,7 +44,7 @@ The `Firmware` struct is the composition root, instantiated once. `HardwareIO` n
 3. Signal engine init: register builtins, set defaults (BPM 120, 4/4).
 4. If flash has a saved state with a valid CRC32, load it and recompile all outputs. On checksum mismatch the saved state is treated as absent and the engine starts with defaults.
 5. LED → green (ready).
-6. Send `{"type":"ready","version":"..."}` over serial. The editor waits for this before sending commands.
+6. Send `{"type":"ready","version":"..."}` over serial. This frame is advisory; the editor does not wait for it and may send `hello` immediately after opening the port.
 7. Enable the watchdog and enter the tick loop.
 
 3.2 **LED indicator states** (user-visible minimum contract):

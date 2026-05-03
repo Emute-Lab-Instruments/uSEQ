@@ -8,7 +8,9 @@
 
 1.1 The "top level" is the surface the user types at and the editor evaluates. Each top-level eval is a single form (or a `do` of multiple forms) that runs immediately.
 
-1.2 **There is no `@` prefix.** All eval is immediate by default. Earlier docs in `../useq.md` describe an `@` operator that no longer exists; treat that section as historical.
+1.2 **There is no `@` prefix.** All eval is immediate by default. The
+historical `@` immediate-eval marker is removed from the protocol and from
+the language surface.
 
 1.3 **Quantised eval is a wire-level flag plus a runtime-side queue, not a language operator.** A keybinding variation submits the form with `quant: true` on the eval request ([wire-protocol.md §5.7](wire-protocol.md)); the runtime buffers the form and drains the queue on the next wrap of the **global quant phasor** ([firmware.md §6](firmware.md)). The phasor defaults to `bar` and is changed via the ModuLisp builtin `(set-quant-phasor expr)` — e.g. `(set-quant-phasor (slow 2 bar))`. The submitted code itself is ordinary top-level code; quantisation is purely about *when* the runtime evaluates it, not what it is.
 
@@ -32,4 +34,10 @@
 
 ## Open / Deferred
 
-2.1 **`schedule` and `unschedule`.** The historical contract (`(schedule name body period)` runs `body` `period` times per bar) is documented in `../useq.md`. Whether it survives in the same shape, gets folded into the global-quant-phasor mechanism (§1.3), or is replaced by something else is not yet decided. Treat current behaviour as the historical contract; the spec needs updating once the design lands. See [MAIN.md §5.1](MAIN.md).
+2.1 **`schedule` and `unschedule`.** The historical contract is
+`(schedule name body period)`, where `body` runs `period` times per bar,
+and `(unschedule name)` removes it. Whether that survives in the same shape,
+gets folded into the global-quant-phasor mechanism (§1.3), or is replaced by
+something else is not yet decided. Treat current behaviour as historical
+compatibility; the spec needs updating once the design lands. See
+[MAIN.md §5.1](MAIN.md).

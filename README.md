@@ -26,7 +26,11 @@ uSEQ modules set up within eurorack performance systems
 
 More info from [https://www.emutelabinstruments.co.uk/useq/](https://www.emutelabinstruments.co.uk/useq/)
 
-## [Developer notes](docs/dev.md)
+## Canonical Specs
+
+The firmware/language specs live in [docs/specs/MAIN.md](docs/specs/MAIN.md).
+Protocol details live in [docs/specs/wire-protocol.md](docs/specs/wire-protocol.md).
+
 ## Building the Firmware
 
 The firmware is in the [uSEQ](./uSEQ/) folder.

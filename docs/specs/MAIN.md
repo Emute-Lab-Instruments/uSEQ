@@ -6,9 +6,8 @@
 > documents are footnotes, not semantics.
 >
 > Counterpart to `../../../docs/specs/MAIN.md` (app semantics, in
-> `useq-perform`) and `../../../docs/RUNTIME_CONTRACT.md` (runtime/firmware
-> contract). The user-facing manual (`../useq.md`) is descriptive — it
-> lists what each builtin does. This document is normative — it defines
+> `useq-perform`) and `../../../docs/specs/runtime-contract.md` (runtime/firmware
+> contract). This document and its sub-specs are the canonical source for
 > what programs *mean* and what runtimes must guarantee.
 >
 > This is the **main spec**. It holds the frame, language-wide failure and
@@ -81,9 +80,9 @@ Language-wide degradation contracts. Cited from feature sub-specs.
 - The compile-time rejection rules for signal context (no side effects, no recursion, no unbounded loops, no dynamic `eval`).
 - The LKG fallback contract for runtime errors.
 
-4.3 **Compatibility cuts** (kept only as bridges, may shrink without replacement): the historical `@`-prefix immediate-eval surface (no longer present; treat earlier sections of `useq.md` as historical), pre-1.2.0 firmware text-serial protocol.
+4.3 **Compatibility cuts** (kept only as bridges, may shrink without replacement): the historical `@`-prefix immediate-eval surface (no longer present; treat earlier sections of `useq.md` as historical).
 
-4.4 **Out of scope** (not compatibility targets, never returning without a mission case): hidden allocation in signal context, implicit threading, cooperative scheduling primitives, multi-tenant evaluation. *Note:* declared cross-sample state via [state.md](state.md) is in-scope — it is transparent (every slot is named or compiler-tracked), bounded, and visible at the call site; the "no hidden state" property is preserved.
+4.4 **Out of scope** (not compatibility targets, never returning without a mission case): pre-1.2.0 firmware text-serial protocol, hidden allocation in signal context, implicit threading, cooperative scheduling primitives, multi-tenant evaluation. *Note:* declared cross-sample state via [state.md](state.md) is in-scope — it is transparent (every slot is named or compiler-tracked), bounded, and visible at the call site; the "no hidden state" property is preserved.
 
 ---
 
@@ -101,7 +100,11 @@ Items that span multiple sub-specs. Feature-specific open questions live in the 
 
 5.5 **Cross-target floating-point determinism.** Soft-float ARM vs. x86/WASM hard-float can diverge on transcendentals. The contract is "within tolerance" rather than "bit-identical"; the precise tolerance ladder is not currently specified — it lived in the deleted bytecode-VM spec and needs to be re-stated against the current engine.
 
-5.6 **Source of truth for builtins.** `../useq.md` is currently descriptive. A canonical, machine-readable catalogue (with signal/imperative-mode availability flags, arity, types, semantics, keyword options, and statefulness) is needed but does not exist yet. Existing golden tests are a partial step toward this.
+5.6 **Source of truth for builtins.** The specs name and define the builtins
+needed for each semantic area, but a complete canonical catalogue (with
+signal/imperative-mode availability flags, arity, types, semantics, keyword
+options, and statefulness) is still missing. Existing golden tests are a
+partial implementation check, not a substitute for that catalogue.
 
 5.7 **User-visible integer types.** Currently all numbers are doubles. The compiler may infer integer-ness internally for indices/counters. Whether to surface integer literals (`1i`?), an `(int x)` coercion, or stay doubles-only is open. Triggers for revisiting: concrete pattern bugs caused by FP rounding at vector indexing boundaries; sustained perf concerns on RP2040 soft-float (mostly absorbed by the move to RP2350 hard-float).
 
@@ -149,16 +152,16 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.16 [wire-protocol.md](wire-protocol.md) — byte-level and message-level contract over USB CDC serial between the firmware and a host editor. Single source of truth for what crosses the wire.
 
+6.17 [visualisation-projection.md](visualisation-projection.md) — WASM/runtime support for editor visualisation projection: live-state ticks, projection forks, reset-fill, frontier extension, and the combined tick/project ABI semantics.
+
 ---
 
 ## 7. Cross-References
 
-7.1 `../useq.md` — user-facing manual, builtin catalogue, language tutorial. Authoritative for *what* operators do; this spec is authoritative for *how* expressions are evaluated.
+7.1 `../../../docs/specs/runtime-contract.md` (in `useq-perform`) — runtime/firmware/WASM contract from the editor's perspective.
 
-7.2 `../dev.md` — developer guide; module C++ contracts, file structure, build commands, memory budgets, migration notes. Implementation-only material.
+7.2 `../../../docs/specs/MAIN.md` (in `useq-perform`) — app semantics. Counterpart to this doc; where they disagree on app behaviour, that doc wins.
 
-7.3 `../../../docs/RUNTIME_CONTRACT.md` (in `useq-perform`) — runtime/firmware/WASM contract from the editor's perspective.
+7.3 `../../../docs/specs/visualisation.md` (in `useq-perform`) — app-side visualisation contract. The app spec owns user-visible rendering semantics; [visualisation-projection.md](visualisation-projection.md) owns the WASM-side projection invariants needed to support them.
 
-7.4 `../../../docs/specs/MAIN.md` (in `useq-perform`) — app semantics. Counterpart to this doc; where they disagree on app behaviour, that doc wins.
-
-7.5 If this spec disagrees with any of the above on a point of language semantics, **this spec wins** by intent. Implementations should be brought into line. If this spec disagrees with the actually-deployed firmware, that is a bug — file it.
+7.4 If this spec disagrees with any of the above on a point of language semantics, **this spec wins** by intent. Implementations should be brought into line. If this spec disagrees with the actually-deployed firmware, that is a bug — file it.

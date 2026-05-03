@@ -325,9 +325,9 @@ Run tests frequently during development to ensure stability.
 
 ## Documentation References
 
-- **User Manual**: `/docs/useq.md` - Complete LISP language reference
-- **Developer Guide**: `/docs/dev.md` - Code structure overview
-- **Hardware Guide**: `/docs/hardware.md` - PCB assembly instructions
+- **Canonical Specs**: `/docs/specs/MAIN.md` - ModuLisp semantics index
+- **Wire Protocol**: `/docs/specs/wire-protocol.md` - USB CDC protocol contract
+- **Firmware Runtime**: `/docs/specs/firmware.md` - firmware runtime invariants
 - **Changelog**: `/docs/changelog.md` - Version history
 
 ## Language Stack
