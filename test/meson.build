@@ -133,6 +133,19 @@ wire_protocol_contract_test_exe = executable(
 
 test('wire_protocol_contract_test', wire_protocol_contract_test_exe, timeout: 30)
 
+# ===== Live-Edit Slot Tests =====
+
+live_edit_test_exe = executable(
+  'test_live_edit',
+  sources : ['signal_engine/test_live_edit.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('live_edit_test', live_edit_test_exe)
+
 # ===== Signal Engine Robustness Tests =====
 
 signal_engine_robustness_test_exe = executable(
@@ -145,3 +158,29 @@ signal_engine_robustness_test_exe = executable(
 )
 
 test('signal_engine_robustness_test', signal_engine_robustness_test_exe, timeout: 120)
+
+# ===== Output Classification Tests =====
+
+output_classification_test_exe = executable(
+  'test_output_classification',
+  sources : ['signal_engine/test_output_classification.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('output_classification_test', output_classification_test_exe)
+
+# ===== UGen Tests =====
+
+ugen_test_exe = executable(
+  'test_ugens',
+  sources : ['signal_engine/test_ugens.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('ugen_test', ugen_test_exe)

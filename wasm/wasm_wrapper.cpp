@@ -35,6 +35,26 @@ static uint8_t         g_last_diagnostic_count = 0;
 static String s_last_error;
 static bool   g_init_called = false;
 
+// ── Persistent projection fork (visualisation-projection.md §2) ──────────
+//
+// Cloned from live state on invalidation (reset-fill), then advanced
+// incrementally at the frontier (extend-frontier). Live state is never
+// mutated during projection.
+
+struct ProjectionFork {
+    double state_values[sig::MAX_STATE_SLOTS];
+    double prev_output_values[sig::MAX_OUTPUTS];
+    double lkg_values[sig::MAX_OUTPUTS];
+    double prev_tick_time;
+    double cell_values[sig::MAX_CELLS];
+    double hw_inputs[32];
+    double frontier_time;
+    double start_time;
+    bool   valid;
+};
+
+static ProjectionFork g_projection_fork = {};
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 static char* alloc_cstr(const char* s) {
@@ -88,6 +108,101 @@ static uint16_t resolve_output_name(const char* name) {
 
 static bool has_active_state() {
     return g_engine && g_engine->pool.state_slot_count > 0;
+}
+
+// Clone post-tick live state into the projection fork.
+static void reset_projection_fork(double tick_time) {
+    memcpy(g_projection_fork.state_values,
+           g_engine->pool.state_values, sizeof(g_projection_fork.state_values));
+    memcpy(g_projection_fork.prev_output_values,
+           g_engine->pool.prev_output_values, sizeof(g_projection_fork.prev_output_values));
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+        g_projection_fork.lkg_values[i] = g_engine->pool.outputs[i].lkg_value;
+    g_projection_fork.prev_tick_time = tick_time;
+    g_engine->cells.snapshot_values(g_projection_fork.cell_values, sig::MAX_CELLS);
+    memcpy(g_projection_fork.hw_inputs, g_hw_inputs, sizeof(g_projection_fork.hw_inputs));
+    g_projection_fork.frontier_time = tick_time;
+    g_projection_fork.start_time    = tick_time;
+    g_projection_fork.valid         = true;
+}
+
+// Project from fork state. Installs fork state into engine, runs the
+// sample loop with proper commit_state + commit_outputs between steps,
+// saves updated fork state, and restores live state before returning.
+// batch_buf is [num_active × num_samples] row-major (active-output rows).
+static void project_from_fork(
+    const double* t_array, int num_samples,
+    uint16_t num_active, double* batch_buf)
+{
+    // Save live state
+    double saved_state[sig::MAX_STATE_SLOTS];
+    double saved_prev_outputs[sig::MAX_OUTPUTS];
+    double saved_lkg[sig::MAX_OUTPUTS];
+    double saved_prev_t = g_prev_tick_time;
+    memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
+    memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+        saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
+
+    // Install fork state
+    memcpy(g_engine->pool.state_values,
+           g_projection_fork.state_values, sizeof(saved_state));
+    memcpy(g_engine->pool.prev_output_values,
+           g_projection_fork.prev_output_values, sizeof(saved_prev_outputs));
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+        g_engine->pool.outputs[i].lkg_value = g_projection_fork.lkg_values[i];
+    g_prev_tick_time = g_projection_fork.prev_tick_time;
+
+    double output_values[sig::MAX_OUTPUTS] = {};
+    double node_values[sig::MAX_TOTAL_NODES];
+
+    for (int s = 0; s < num_samples; s++) {
+        double t = t_array[s];
+        memset(output_values, 0, sizeof(output_values));
+
+        sig::ExecutionContext ctx;
+        ctx.t             = t;
+        ctx.dt            = t - g_prev_tick_time;
+        ctx.cell_values   = g_projection_fork.cell_values;
+        ctx.hw_inputs     = g_projection_fork.hw_inputs;
+        ctx.data_pool     = g_engine->cells.data_pool;
+        ctx.data_offsets  = g_engine->cells.data_offsets;
+        ctx.data_lengths  = g_engine->cells.data_lengths;
+        ctx.prev_outputs  = g_engine->pool.prev_output_values;
+        ctx.output_values = output_values;
+        ctx.workspace     = node_values;
+        sig::execute_all_outputs(g_engine->pool, ctx);
+
+        sig::commit_state(g_engine->pool, node_values);
+        sig::commit_outputs(g_engine->pool, output_values);
+        g_prev_tick_time = t;
+
+        uint16_t row = 0;
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+            if (g_engine->pool.outputs[i].valid) {
+                batch_buf[row * num_samples + s] = output_values[i];
+                row++;
+            }
+        }
+    }
+
+    // Save fork state (fork advances)
+    memcpy(g_projection_fork.state_values,
+           g_engine->pool.state_values, sizeof(saved_state));
+    memcpy(g_projection_fork.prev_output_values,
+           g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+        g_projection_fork.lkg_values[i] = g_engine->pool.outputs[i].lkg_value;
+    g_projection_fork.prev_tick_time = g_prev_tick_time;
+    if (num_samples > 0)
+        g_projection_fork.frontier_time = t_array[num_samples - 1];
+
+    // Restore live state
+    memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
+    memcpy(g_engine->pool.prev_output_values, saved_prev_outputs, sizeof(saved_prev_outputs));
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+        g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
+    g_prev_tick_time = saved_prev_t;
 }
 
 // Sequential batch for stateful signals: ticks forward sample-by-sample,
@@ -198,6 +313,7 @@ extern "C"
         try {
             // Clear diagnostics from previous eval
             g_last_diagnostic_count = 0;
+            g_projection_fork.valid = false;
 
             uint32_t length = (uint32_t)strlen(input);
             sig::EvalResult result = sig::eval_cold(input, length, *g_engine);
@@ -274,8 +390,18 @@ extern "C"
             return std::numeric_limits<double>::quiet_NaN();
         }
 
+        // Save state — useq_eval_output is read-only and must not corrupt
+        // live engine state (execute_at_time advances state permanently).
+        double saved_state[sig::MAX_STATE_SLOTS];
+        memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
+        double saved_prev_t = g_prev_tick_time;
+
         double output_values[sig::MAX_OUTPUTS] = {};
         execute_at_time(time_seconds, output_values);
+
+        // Restore state
+        memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
+        g_prev_tick_time = saved_prev_t;
 
         return output_values[output_index];
     }
@@ -316,6 +442,326 @@ extern "C"
     {
         // TODO: per-output active diagnostics
         return alloc_cstr("{}");
+    }
+
+    // ---------------------------------------------------------------
+    // Live-edit slot API
+    // ---------------------------------------------------------------
+
+    /**
+     * Set live-edit slot values from the frontend.
+     *
+     * JSON format: {"id1": 1.5, "id2": 0.7}
+     * Keys are slot id strings, values are doubles.
+     * Returns the count of successfully applied writes.
+     */
+    int useq_set_live_inputs(const char* json_str)
+    {
+        if (!g_engine || !json_str) return 0;
+
+        int applied = 0;
+        String json(json_str);
+        int len = (int)json.length();
+
+        // Walk the JSON object: find key-value pairs
+        // Skip leading whitespace and opening brace
+        int pos = 0;
+        while (pos < len && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r')) pos++;
+        if (pos >= len || json[pos] != '{') return 0;
+        pos++; // skip '{'
+
+        while (pos < len) {
+            // Skip whitespace and commas
+            while (pos < len && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == ',')) pos++;
+            if (pos >= len || json[pos] == '}') break;
+
+            // Expect a quoted key
+            if (json[pos] != '"') break;
+            pos++; // skip opening quote
+            int key_start = pos;
+            while (pos < len && json[pos] != '"') pos++;
+            if (pos >= len) break;
+            String key = json.substring(key_start, pos);
+            pos++; // skip closing quote
+
+            // Skip whitespace and colon
+            while (pos < len && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r')) pos++;
+            if (pos >= len || json[pos] != ':') break;
+            pos++; // skip colon
+            while (pos < len && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r')) pos++;
+
+            // Parse number value (including negative and decimal)
+            int val_start = pos;
+            if (pos < len && (json[pos] == '-' || json[pos] == '+')) pos++;
+            while (pos < len && ((json[pos] >= '0' && json[pos] <= '9') || json[pos] == '.' || json[pos] == 'e' || json[pos] == 'E' || json[pos] == '+' || json[pos] == '-')) {
+                // Only allow +/- after e/E
+                if ((json[pos] == '+' || json[pos] == '-') && pos > val_start && json[pos-1] != 'e' && json[pos-1] != 'E') break;
+                pos++;
+            }
+            if (pos == val_start) break; // no number found
+
+            String val_str = json.substring(val_start, pos);
+            double value = atof(val_str.c_str());
+
+            g_engine->pool.set_live_slot_value(key.c_str(), value);
+            applied++;
+        }
+
+        return applied;
+    }
+
+    /**
+     * Query all allocated live-edit slots and their metadata.
+     *
+     * Returns JSON array:
+     *   [{"id":"x","value":0.5,"min":0,"max":1,"seed":0.5}, ...]
+     */
+    const char* useq_get_live_slots()
+    {
+        if (!g_engine || g_engine->pool.live_slot_count == 0) {
+            return alloc_cstr("[]");
+        }
+
+        JsonBuilder json;
+        json.array_begin_unkeyed();
+
+        for (uint16_t i = 0; i < g_engine->pool.live_slot_count; i++) {
+            const auto& slot = g_engine->pool.live_slots[i];
+            json.object_begin();
+            json.field("id", slot.id);
+
+            // JsonBuilder lacks a double field — use field_raw with snprintf
+            char numbuf[32];
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.value);
+            json.field_raw("value", String(numbuf));
+
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.min_val);
+            json.field_raw("min", String(numbuf));
+
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.max_val);
+            json.field_raw("max", String(numbuf));
+
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.seed);
+            json.field_raw("seed", String(numbuf));
+
+            json.object_end();
+        }
+
+        json.array_end();
+        const String result = json.build();
+        return alloc_string(result);
+    }
+
+    // ---------------------------------------------------------------
+    // State snapshot application (state-sync.md §3)
+    // ---------------------------------------------------------------
+
+    // ── JSON helpers for state snapshot parsing ─────────────────────
+    //
+    // These skip strings properly (honouring \" escapes) so that braces
+    // and key names inside string values don't confuse the structure walk.
+
+    static int skip_json_string(const char* s, int len, int pos) {
+        if (pos >= len || s[pos] != '"') return pos;
+        pos++; // skip opening quote
+        while (pos < len) {
+            if (s[pos] == '\\') { pos += 2; continue; }
+            if (s[pos] == '"') { pos++; return pos; }
+            pos++;
+        }
+        return pos;
+    }
+
+    static int skip_json_value(const char* s, int len, int pos) {
+        if (pos >= len) return pos;
+        if (s[pos] == '"') return skip_json_string(s, len, pos);
+        if (s[pos] == '{' || s[pos] == '[') {
+            char open = s[pos], close = (open == '{') ? '}' : ']';
+            int depth = 1;
+            pos++;
+            while (pos < len && depth > 0) {
+                if (s[pos] == '"') { pos = skip_json_string(s, len, pos); continue; }
+                if (s[pos] == open) depth++;
+                else if (s[pos] == close) depth--;
+                pos++;
+            }
+            return pos;
+        }
+        // number, bool, null — advance until delimiter
+        while (pos < len && s[pos] != ',' && s[pos] != '}' && s[pos] != ']'
+                        && s[pos] != ' ' && s[pos] != '\n' && s[pos] != '\r') pos++;
+        return pos;
+    }
+
+    // Find a JSON key at the current object nesting depth (depth-1 keys
+    // are skipped). Returns position of the value start, or -1.
+    static int find_field_at_depth(const char* s, int len, int pos, const char* key) {
+        size_t klen = strlen(key);
+        // pos should be right after the opening '{' of the object
+        while (pos < len) {
+            // skip whitespace/commas
+            while (pos < len && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '\n'
+                              || s[pos] == '\r' || s[pos] == ',')) pos++;
+            if (pos >= len || s[pos] == '}') return -1;
+            if (s[pos] != '"') return -1;
+            // read key
+            int key_start = pos + 1;
+            int key_end_pos = skip_json_string(s, len, pos);
+            int key_end = key_end_pos - 1; // before closing quote
+            pos = key_end_pos;
+            // skip colon
+            while (pos < len && (s[pos] == ' ' || s[pos] == ':')) pos++;
+            // check if this key matches
+            if ((key_end - key_start) == (int)klen && memcmp(s + key_start, key, klen) == 0) {
+                return pos; // value starts here
+            }
+            // skip value
+            pos = skip_json_value(s, len, pos);
+        }
+        return -1;
+    }
+
+    // Extract a JSON string value, unescaping \" and \\ sequences.
+    // pos must point at the opening '"'. Returns the unescaped content.
+    static String extract_json_string(const char* s, int len, int pos) {
+        if (pos >= len || s[pos] != '"') return String();
+        pos++; // skip opening quote
+        String result;
+        while (pos < len && s[pos] != '"') {
+            if (s[pos] == '\\' && pos + 1 < len) {
+                char next = s[pos + 1];
+                switch (next) {
+                    case '"':  result += '"';  break;
+                    case '\\': result += '\\'; break;
+                    case 'n':  result += '\n'; break;
+                    case 'r':  result += '\r'; break;
+                    case 't':  result += '\t'; break;
+                    case '/':  result += '/';  break;
+                    default:   result += next; break;
+                }
+                pos += 2;
+            } else {
+                result += s[pos];
+                pos++;
+            }
+        }
+        return result;
+    }
+
+    // Extract a JSON number value as double. pos must point at first digit/sign.
+    static double extract_json_number(const char* s, int len, int pos) {
+        int start = pos;
+        if (pos < len && (s[pos] == '-' || s[pos] == '+')) pos++;
+        while (pos < len && ((s[pos] >= '0' && s[pos] <= '9') || s[pos] == '.'
+                          || s[pos] == 'e' || s[pos] == 'E'
+                          || s[pos] == '+' || s[pos] == '-')) {
+            if ((s[pos] == '+' || s[pos] == '-') && pos > start
+                && s[pos-1] != 'e' && s[pos-1] != 'E') break;
+            pos++;
+        }
+        char buf[64];
+        int n = pos - start;
+        if (n <= 0 || n >= (int)sizeof(buf)) return 0.0;
+        memcpy(buf, s + start, n);
+        buf[n] = '\0';
+        return atof(buf);
+    }
+
+    int useq_apply_state_snapshot(const char* json_str)
+    {
+        if (!g_engine || !json_str) return -1;
+
+        int len = (int)strlen(json_str);
+        const char* s = json_str;
+
+        // Find the opening '{' of the top-level object
+        int pos = 0;
+        while (pos < len && s[pos] != '{') pos++;
+        if (pos >= len) return -1;
+        pos++; // skip '{'
+
+        // 1. Re-eval output source texts
+        int outputs_pos = find_field_at_depth(s, len, pos, "outputs");
+        if (outputs_pos >= 0 && outputs_pos < len && s[outputs_pos] == '{') {
+            int op = outputs_pos + 1; // inside the outputs object
+            while (op < len) {
+                while (op < len && (s[op] == ' ' || s[op] == '\t' || s[op] == '\n'
+                                  || s[op] == '\r' || s[op] == ',')) op++;
+                if (op >= len || s[op] == '}') break;
+                if (s[op] != '"') break;
+                // Extract output name key
+                String oname = extract_json_string(s, len, op);
+                op = skip_json_string(s, len, op);
+                // skip colon
+                while (op < len && (s[op] == ' ' || s[op] == ':')) op++;
+                // The value must be an object
+                if (op >= len || s[op] != '{') {
+                    op = skip_json_value(s, len, op);
+                    continue;
+                }
+                int val_obj_start = op + 1;
+                int val_obj_end = skip_json_value(s, len, op);
+                // Find "source" inside this sub-object
+                int src_pos = find_field_at_depth(s, len, val_obj_start, "source");
+                if (src_pos >= 0 && src_pos < val_obj_end && s[src_pos] == '"') {
+                    String source = extract_json_string(s, len, src_pos);
+                    if (source.length() > 0) {
+                        String cmd = "(" + oname + " " + source + ")";
+                        sig::eval_cold(cmd.c_str(), (uint32_t)cmd.length(), *g_engine);
+                    }
+                }
+                op = val_obj_end;
+            }
+        }
+
+        // 2. Patch state slot values
+        int slots_pos = find_field_at_depth(s, len, pos, "stateSlots");
+        if (slots_pos >= 0 && slots_pos < len && s[slots_pos] == '[') {
+            int p = slots_pos + 1;
+            uint16_t slot_idx = 0;
+            while (p < len && s[p] != ']' && slot_idx < sig::MAX_STATE_SLOTS) {
+                while (p < len && (s[p] == ' ' || s[p] == ',' || s[p] == '\n')) p++;
+                if (p >= len || s[p] == ']') break;
+                if (s[p] != '{') break;
+                int obj_start = p + 1;
+                int obj_end = skip_json_value(s, len, p);
+                int vpos = find_field_at_depth(s, len, obj_start, "value");
+                if (vpos >= 0 && vpos < obj_end) {
+                    double val = extract_json_number(s, len, vpos);
+                    if (slot_idx < g_engine->pool.state_slot_count) {
+                        g_engine->pool.state_values[slot_idx] = val;
+                    }
+                }
+                p = obj_end;
+                slot_idx++;
+            }
+        }
+
+        // 3. Patch live-edit slots
+        int live_pos = find_field_at_depth(s, len, pos, "liveSlots");
+        if (live_pos >= 0 && live_pos < len && s[live_pos] == '[') {
+            int p = live_pos + 1;
+            while (p < len && s[p] != ']') {
+                while (p < len && (s[p] == ' ' || s[p] == ',' || s[p] == '\n')) p++;
+                if (p >= len || s[p] == ']') break;
+                if (s[p] != '{') break;
+                int obj_start = p + 1;
+                int obj_end = skip_json_value(s, len, p);
+                int id_pos = find_field_at_depth(s, len, obj_start, "id");
+                int val_pos = find_field_at_depth(s, len, obj_start, "value");
+                if (id_pos >= 0 && val_pos >= 0 && s[id_pos] == '"') {
+                    String slot_id = extract_json_string(s, len, id_pos);
+                    double val = extract_json_number(s, len, val_pos);
+                    if (slot_id.length() > 0) {
+                        g_engine->pool.set_live_slot_value(slot_id.c_str(), val);
+                    }
+                }
+                p = obj_end;
+            }
+        }
+
+        g_projection_fork.valid = false;
+        return 0;
     }
 
     // ---------------------------------------------------------------
@@ -567,31 +1013,56 @@ extern "C"
     }
 
     // ---------------------------------------------------------------
-    // Combined tick + future projection in a single boundary crossing.
-    // See docs/specs/visualisation.md §5.2 and §7.2 (frontend repo).
+    // Output Classification (visualisation.md §7.3–7.4)
+    // ---------------------------------------------------------------
+
+    const char* useq_output_classifications()
+    {
+        if (!g_engine) return alloc_cstr("[]");
+
+        String result = "[";
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+            if (i > 0) result += ",";
+            char buf[4];
+            snprintf(buf, sizeof(buf), "%d", (int)g_engine->pool.output_class[i]);
+            result += buf;
+        }
+        result += "]";
+        return alloc_string(result);
+    }
+
+    uint32_t useq_output_dependencies(int output_index)
+    {
+        if (!g_engine || output_index < 0 || output_index >= (int)sig::MAX_OUTPUTS)
+            return 0;
+        return g_engine->pool.output_input_mask[output_index];
+    }
+
+    // ---------------------------------------------------------------
+    // Combined tick + projection fork in a single boundary crossing.
+    // See docs/specs/visualisation.md §5.2/§7.2 and
+    // src-useq/docs/specs/visualisation-projection.md §7.
     //
-    // Phase 1: tick the engine at `tick_time` (state-advancing — same as
-    //          execute_at_time). The tick output values for each requested
-    //          output are written into the first `num_channels` slots of
-    //          the caller-provided heap buffer (NaN for inactive outputs).
+    // Phase 1: state-advancing tick at tick_time.
     //
-    // Phase 2: project all active outputs from `tick_time` to `project_end`
-    //          at `num_future_samples` evenly spaced times. State is
-    //          snapshot+restored around this phase so live state isn't
-    //          corrupted (mirror of `execute_batch_sequential`'s pattern).
-    //          Projection rows are written after the tick row in
-    //          row-major shape: [out0_s0, out0_s1, ..., out1_s0, ...].
+    // Phase 2 (projection_mode controls behaviour):
+    //   0 — no projection (tick only).
+    //   1 — reset-fill: clone post-tick state into fork, project from
+    //       strictly after tick_time to projection_end.
+    //   2 — extend-frontier: advance existing fork from its frontier
+    //       toward projection_end. Fails (-1) if no valid fork exists.
     //
     // Buffer layout (doubles):
-    //   [0 .. num_channels-1]                          tick values
-    //   [num_channels .. num_channels*(K+1) - 1]      projection (K = num_future_samples)
+    //   [0 .. num_channels-1]                      tick values
+    //   [num_channels .. num_channels*(N+1) - 1]   projection samples
     //
-    // Returns num_channels on success, -1 on error (s_last_error set).
+    // Returns num_channels on success, -1 on error.
     // ---------------------------------------------------------------
     int useq_tick_and_project(
         const char* outputs_json,
         double tick_time,
-        double project_end,
+        int projection_mode,
+        double projection_end,
         int num_future_samples,
         int buffer_ptr,
         int buffer_length)
@@ -604,6 +1075,10 @@ extern "C"
             s_last_error = "num_future_samples must be >= 0";
             return -1;
         }
+        if (projection_mode < 0 || projection_mode > 2) {
+            s_last_error = "projection_mode must be 0, 1, or 2";
+            return -1;
+        }
 
         try {
             std::vector<String> outputs;
@@ -613,104 +1088,84 @@ extern "C"
             }
 
             int num_channels = (int)outputs.size();
-            int required_slots = num_channels + (num_channels * num_future_samples);
+            int proj_count = (projection_mode == 0) ? 0 : num_future_samples;
+            int required_slots = num_channels + (num_channels * proj_count);
             if (required_slots > buffer_length) {
-                s_last_error = "Buffer too small: need " +
-                    String(std::to_string(required_slots).c_str()) +
-                    " slots, got " +
-                    String(std::to_string(buffer_length).c_str());
+                s_last_error = "Buffer too small";
                 return -1;
             }
 
-            // Resolve output indices for the requested names
             std::vector<uint16_t> output_indices;
             output_indices.reserve(num_channels);
-            for (const auto& name : outputs) {
+            for (const auto& name : outputs)
                 output_indices.push_back(resolve_output_name(name.c_str()));
-            }
 
             double* buf = reinterpret_cast<double*>(buffer_ptr);
 
-            // ---- Phase 1: state-advancing tick at tick_time ----
+            // ── Phase 1: state-advancing tick ──────────────────────
             double tick_outputs[sig::MAX_OUTPUTS] = {};
             execute_at_time(tick_time, tick_outputs);
 
-            // Write tick values: one per requested output (NaN if inactive)
             for (int c = 0; c < num_channels; c++) {
                 uint16_t idx = output_indices[c];
-                if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
-                    buf[c] = tick_outputs[idx];
-                } else {
-                    buf[c] = std::numeric_limits<double>::quiet_NaN();
-                }
+                buf[c] = (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid)
+                    ? tick_outputs[idx]
+                    : std::numeric_limits<double>::quiet_NaN();
             }
 
-            // ---- Phase 2: projection (save/restore around it) ----
-            if (num_future_samples > 0) {
-                // Snapshot cell values once for the projection batch.
-                double cell_values[sig::MAX_CELLS];
-                g_engine->cells.snapshot_values(cell_values, sig::MAX_CELLS);
+            // ── Phase 2: projection ────────────────────────────────
+            if (projection_mode == 0 || proj_count == 0) {
+                s_last_error = "";
+                return num_channels;
+            }
 
-                // Build active-output row mapping
-                uint16_t index_to_row[sig::MAX_OUTPUTS];
-                uint16_t num_active = 0;
-                for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-                    if (g_engine->pool.outputs[i].valid) {
-                        index_to_row[i] = num_active++;
-                    } else {
-                        index_to_row[i] = sig::NODE_NONE;
-                    }
-                }
+            if (projection_mode == 2 && !g_projection_fork.valid) {
+                s_last_error = "extend-frontier requested but no valid projection fork";
+                return -1;
+            }
 
-                // Build time array: K samples evenly spaced over
-                // [tick_time, project_end]. With K==1 the lone sample
-                // sits at tick_time (matches the existing _into export's
-                // dt=0 collapse for num_samples==1).
-                double dt = (num_future_samples > 1)
-                    ? (project_end - tick_time) / (double)(num_future_samples - 1)
-                    : 0.0;
-                std::vector<double> t_array(num_future_samples);
-                for (int i = 0; i < num_future_samples; i++) {
-                    t_array[i] = tick_time + dt * i;
-                }
+            // Reset-fill: clone post-tick live state into the fork
+            if (projection_mode == 1)
+                reset_projection_fork(tick_time);
 
-                // Batch buffer: active_outputs x num_future_samples
-                std::vector<double> batch_buf(num_active * num_future_samples, 0.0);
+            // Build time array — samples strictly after the fork origin.
+            // step = (end - origin) / N, first sample at origin + step.
+            double origin = g_projection_fork.frontier_time;
+            if (!std::isfinite(projection_end) || projection_end <= origin) {
+                s_last_error = "projection_end must be > fork frontier";
+                return -1;
+            }
 
-                // execute_batch_sequential snapshots and restores state
-                // internally — safe to call after the state-advancing tick
-                // because the tick already committed and execute_batch_sequential
-                // captures *current* state on entry.
-                if (has_active_state()) {
-                    execute_batch_sequential(t_array.data(), num_future_samples,
-                                              cell_values, num_active, batch_buf.data());
-                } else if (g_engine->pool.batch_workspace && num_active > 0) {
-                    sig::execute_batch(
-                        g_engine->pool, t_array.data(), (size_t)num_future_samples,
-                        cell_values, g_hw_inputs,
-                        g_engine->cells.data_pool, g_engine->cells.data_offsets, g_engine->cells.data_lengths,
-                        batch_buf.data(), num_active
-                    );
+            double step = (projection_end - origin) / (double)proj_count;
+            std::vector<double> t_array(proj_count);
+            for (int i = 0; i < proj_count; i++)
+                t_array[i] = origin + step * (i + 1);
+
+            // Active-output row mapping
+            uint16_t index_to_row[sig::MAX_OUTPUTS];
+            uint16_t num_active = 0;
+            for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+                if (g_engine->pool.outputs[i].valid)
+                    index_to_row[i] = num_active++;
+                else
+                    index_to_row[i] = sig::NODE_NONE;
+            }
+
+            std::vector<double> batch_buf(num_active * proj_count, 0.0);
+            project_from_fork(t_array.data(), proj_count, num_active, batch_buf.data());
+
+            // Copy requested channels into caller's buffer
+            double* proj_buf = buf + num_channels;
+            for (int c = 0; c < num_channels; c++) {
+                double* row = proj_buf + (c * proj_count);
+                uint16_t idx = output_indices[c];
+                if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
+                    uint16_t active_row = index_to_row[idx];
+                    memcpy(row, &batch_buf[active_row * proj_count],
+                           proj_count * sizeof(double));
                 } else {
-                    execute_batch_sequential(t_array.data(), num_future_samples,
-                                              cell_values, num_active, batch_buf.data());
-                }
-
-                // Copy projection rows into caller's buffer at offset num_channels.
-                double* proj_buf = buf + num_channels;
-                for (int c = 0; c < num_channels; c++) {
-                    double* row = proj_buf + (c * num_future_samples);
-                    uint16_t idx = output_indices[c];
-
-                    if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
-                        uint16_t active_row = index_to_row[idx];
-                        memcpy(row, &batch_buf[active_row * num_future_samples],
-                               num_future_samples * sizeof(double));
-                    } else {
-                        for (int s = 0; s < num_future_samples; s++) {
-                            row[s] = std::numeric_limits<double>::quiet_NaN();
-                        }
-                    }
+                    for (int s = 0; s < proj_count; s++)
+                        row[s] = std::numeric_limits<double>::quiet_NaN();
                 }
             }
 

@@ -88,7 +88,7 @@ static inline double eval_node(
         case NodeOp::BiToUni: return (a + 1.0) * 0.5;
         case NodeOp::UniToBi: return a * 2.0 - 1.0;
         case NodeOp::Lerp:    return a + (b - a) * c;
-        case NodeOp::Scale:   return a * (c - b) + b;
+        case NodeOp::Scale:   return c * (b - a) + a;
         case NodeOp::Scale5:  return 0.0; // TODO: 5-input not representable in 3-input node
 
         case NodeOp::VecIndex: {
@@ -122,6 +122,8 @@ static inline double eval_node(
             return (double)(v & 0x7fffffffu) / (double)0x7fffffffu;
         }
 
+        case NodeOp::SlotLoad: return 0.0; // handled in execution loop
+
         default: return 0.0;
     }
 }
@@ -133,14 +135,21 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
         uint16_t idx = pool.exec_order[i];
         const Node& n = pool.nodes[idx];
 
-        double a = (n.input_a != NODE_NONE) ? ctx.workspace[n.input_a] : 0.0;
-        double b = (n.input_b != NODE_NONE) ? ctx.workspace[n.input_b] : 0.0;
-        double c = (n.input_c != NODE_NONE) ? ctx.workspace[n.input_c] : 0.0;
+        double result;
+        if (n.op == NodeOp::SlotLoad) {
+            uint16_t slot_idx = (uint16_t)n.imm;
+            result = (slot_idx < pool.live_slot_count)
+                ? pool.live_slots[slot_idx].value : 0.0;
+        } else {
+            double a = (n.input_a != NODE_NONE) ? ctx.workspace[n.input_a] : 0.0;
+            double b = (n.input_b != NODE_NONE) ? ctx.workspace[n.input_b] : 0.0;
+            double c = (n.input_c != NODE_NONE) ? ctx.workspace[n.input_c] : 0.0;
 
-        double result = eval_node(n, a, b, c, ctx.t, ctx.dt,
-                                  ctx.cell_values, ctx.hw_inputs,
-                                  ctx.data_pool, ctx.data_offsets, ctx.data_lengths,
-                                  ctx.prev_outputs, pool.state_values);
+            result = eval_node(n, a, b, c, ctx.t, ctx.dt,
+                               ctx.cell_values, ctx.hw_inputs,
+                               ctx.data_pool, ctx.data_offsets, ctx.data_lengths,
+                               ctx.prev_outputs, pool.state_values);
+        }
 
         // NaN/Inf guard
         if (!std::isfinite(result)) result = 0.0;
@@ -237,7 +246,12 @@ void execute_batch(
             const Node& n = pool.nodes[idx];
             double* reg_out = regs + (size_t)idx * CHUNK;
 
-            if (n.flags & FLAG_TIME_INVARIANT) {
+            if (n.op == NodeOp::SlotLoad) {
+                uint16_t slot_idx = (uint16_t)n.imm;
+                double val = (slot_idx < pool.live_slot_count)
+                    ? pool.live_slots[slot_idx].value : 0.0;
+                for (size_t s = 0; s < chunk_size; s++) reg_out[s] = val;
+            } else if (n.flags & FLAG_TIME_INVARIANT) {
                 // Compute once, broadcast.
                 // Read input values from registers — time-invariant inputs
                 // were already computed and are the same for every sample,
@@ -282,6 +296,78 @@ void execute_batch(
             }
         }
     }
+}
+
+// ── Output Classification ───────────────────────────────────────────────────
+
+struct ClassifyResult {
+    bool has_state;      // LoadState, LoadDt, or PrevOutputLoad
+    bool has_input;      // InputLoad
+    uint32_t input_mask; // bitmask of hw input channels
+};
+
+static void classify_node_tree(const NodePool& pool, uint16_t root, ClassifyResult& result) {
+    if (root == NODE_NONE || root >= pool.node_count) return;
+
+    bool visited[MAX_TOTAL_NODES] = {};
+    uint16_t stack[MAX_TOTAL_NODES];
+    uint16_t sp = 0;
+    stack[sp++] = root;
+
+    while (sp > 0) {
+        uint16_t idx = stack[--sp];
+        if (idx == NODE_NONE || idx >= pool.node_count) continue;
+        if (visited[idx]) continue;
+        visited[idx] = true;
+
+        const Node& n = pool.nodes[idx];
+        switch (n.op) {
+            case NodeOp::LoadState:
+            case NodeOp::LoadDt:
+            case NodeOp::PrevOutputLoad:
+                result.has_state = true;
+                break;
+            case NodeOp::InputLoad:
+                result.has_input = true;
+                if ((uint16_t)n.imm < 32)
+                    result.input_mask |= (1u << (uint16_t)n.imm);
+                break;
+            default:
+                break;
+        }
+
+        // Check visited before pushing to avoid stack overflow in dense DAGs
+        if (n.input_a != NODE_NONE && !visited[n.input_a] && sp < MAX_TOTAL_NODES) stack[sp++] = n.input_a;
+        if (n.input_b != NODE_NONE && !visited[n.input_b] && sp < MAX_TOTAL_NODES) stack[sp++] = n.input_b;
+        if (n.input_c != NODE_NONE && !visited[n.input_c] && sp < MAX_TOTAL_NODES) stack[sp++] = n.input_c;
+    }
+}
+
+void classify_outputs(NodePool& pool) {
+    // First pass: classify each output by its own node tree only
+    for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
+        if (!pool.outputs[i].valid || pool.outputs[i].root_node == NODE_NONE) {
+            pool.output_class[i] = OutputClass::Inactive;
+            pool.output_input_mask[i] = 0;
+            continue;
+        }
+
+        ClassifyResult cr = {};
+        classify_node_tree(pool, pool.outputs[i].root_node, cr);
+
+        if (cr.has_state) {
+            pool.output_class[i] = OutputClass::Stateful;
+        } else if (cr.has_input) {
+            pool.output_class[i] = OutputClass::InputDep;
+        } else {
+            pool.output_class[i] = OutputClass::Pure;
+        }
+        pool.output_input_mask[i] = cr.input_mask;
+    }
+
+    // If any state slots exist, outputs that reference LoadState/LoadDt are
+    // already marked Stateful. State update roots are part of the stateful
+    // outputs' computation — they don't pollute pure outputs.
 }
 
 } // namespace sig

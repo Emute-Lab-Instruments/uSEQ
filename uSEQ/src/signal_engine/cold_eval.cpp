@@ -190,7 +190,8 @@ static EvalResult do_defn(TokenStream& ts, SignalEngine& engine,
 
 // ── set ─────────────────────────────────────────────────────────────────────
 
-static EvalResult do_set(TokenStream& ts, SignalEngine& engine) {
+static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
+                         const char* source = nullptr) {
     Token name_tok = ts.consume();
     if (name_tok.kind != TokenKind::Symbol) {
         return make_error("set needs a name", "Try: (set x 42)");
@@ -206,7 +207,7 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine) {
     } else {
         // Non-numeric: compile expression, evaluate once, store scalar result
         GraphBuildResult gr = build_output_graph(engine.pool, ts,
-                                                  engine.cells, engine.arena);
+                                                  engine.cells, engine.arena, source);
         if (gr.has_error) {
             return make_error("set: expression could not be evaluated",
                               "Try: (set x 42)");
@@ -322,9 +323,10 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
 
     // Compile the update expression as a signal graph
     GraphBuildResult result = build_output_graph(engine.pool, ts,
-                                                 engine.cells, engine.arena);
+                                                 engine.cells, engine.arena, source);
 
     if (result.has_error) {
+        engine.pool.state_update_roots[state_slot] = sig::NODE_NONE;
         return make_error("defstate update expression failed to compile",
                           "Check the update expression");
     }
@@ -338,6 +340,7 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
 
     // Rebuild execution order to include state update subgraphs
     engine.pool.rebuild_execution_order();
+    classify_outputs(engine.pool);
 
     // Notify dependents so outputs referencing this cell get recompiled
     on_cell_changed(sym, engine);
@@ -448,7 +451,7 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
 
     // Build the signal graph
     GraphBuildResult result = build_output_graph(engine.pool, ts,
-                                                 engine.cells, engine.arena);
+                                                 engine.cells, engine.arena, source);
 
     if (result.has_error) {
         engine.pool.outputs[output_index].valid = false;
@@ -475,6 +478,7 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
 
     // Re-sort execution order
     engine.pool.rebuild_execution_order();
+    classify_outputs(engine.pool);
 
     return make_ok();
 }
@@ -596,7 +600,7 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             return r;
         }
         if (op == sym.set) {
-            EvalResult r = do_set(ts, engine);
+            EvalResult r = do_set(ts, engine, source);
             ts.expect(TokenKind::RParen);
             return r;
         }
@@ -847,7 +851,7 @@ void recompile_all_outputs(SignalEngine& engine) {
         ts.pos = 0;
 
         GraphBuildResult result = build_output_graph(
-            engine.pool, ts, engine.cells, engine.arena);
+            engine.pool, ts, engine.cells, engine.arena, src);
 
         if (!result.has_error) {
             engine.pool.outputs[i].root_node = result.root_node;
@@ -866,6 +870,7 @@ void recompile_all_outputs(SignalEngine& engine) {
     // Reclaim stale nodes from any previous compilation (idempotent due to CSE)
     engine.pool.gc_unreachable_nodes();
     engine.pool.rebuild_execution_order();
+    classify_outputs(engine.pool);
 }
 
 // ── Dependency tracking (SignalEngine version) ─────────────────────────────
@@ -893,7 +898,7 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                     ts.pos = 0;
 
                     GraphBuildResult result = build_output_graph(
-                        engine.pool, ts, engine.cells, engine.arena);
+                        engine.pool, ts, engine.cells, engine.arena, src);
                     if (!result.has_error) {
                         engine.pool.outputs[i].root_node = result.root_node;
                         engine.pool.outputs[i].valid = true;
@@ -934,7 +939,7 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
             ts.pos = 0;
 
             GraphBuildResult result = build_output_graph(
-                engine.pool, ts, engine.cells, engine.arena);
+                engine.pool, ts, engine.cells, engine.arena, src);
             if (!result.has_error) {
                 engine.pool.state_update_roots[s] = result.root_node;
                 // Update dependencies
@@ -972,7 +977,7 @@ void on_cell_changed(SymbolID cell_id, CellStore& cells,
                     ts.count = count;
                     ts.pos = 0;
 
-                    GraphBuildResult result = build_output_graph(pool, ts, cells, arena);
+                    GraphBuildResult result = build_output_graph(pool, ts, cells, arena, src);
                     if (!result.has_error) {
                         pool.outputs[i].root_node = result.root_node;
                         pool.outputs[i].valid = true;

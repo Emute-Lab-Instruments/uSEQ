@@ -22,6 +22,8 @@ constexpr size_t MAX_DIAGNOSTICS    = 16;
 constexpr size_t MAX_INLINE_DEPTH   = 16;
 constexpr size_t MAX_OUTPUT_DEPS    = 64;
 constexpr size_t MAX_STATE_SLOTS    = 32;
+constexpr size_t MAX_LIVE_SLOTS     = 32;
+constexpr size_t MAX_LIVE_SLOT_ID   = 32;
 constexpr size_t MAX_TOKENS         = 256;
 constexpr size_t SOURCE_ARENA_SIZE  = 16384;
 constexpr size_t CSE_TABLE_SIZE     = MAX_TOTAL_NODES * 2;
@@ -29,6 +31,14 @@ constexpr size_t BATCH_CHUNK_SIZE   = 256;
 
 constexpr uint16_t NODE_NONE        = 0xFFFF;
 constexpr uint8_t  FLAG_TIME_INVARIANT = 0x01;
+
+// ── Output Classification (visualisation.md §4) ────────────────────────────
+enum class OutputClass : uint8_t {
+    Inactive     = 0,  // no graph assigned
+    Pure         = 1,  // closed-form function of t only (+ cells, data)
+    InputDep     = 2,  // references hardware inputs but no cross-sample state
+    Stateful     = 3,  // uses LoadState, LoadDt, or PrevOutputLoad
+};
 
 } // namespace sig
 

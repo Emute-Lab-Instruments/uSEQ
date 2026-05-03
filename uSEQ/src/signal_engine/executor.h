@@ -74,6 +74,13 @@ void execute_batch(
     uint16_t num_outputs
 );
 
+// ── Output Classification ───────────────────────────────────────────────────
+// Walk each output's node graph to determine OutputClass and input dependency
+// bitmask. Call after compilation or graph changes. Writes directly into
+// pool.output_class[] and pool.output_input_mask[].
+
+void classify_outputs(NodePool& pool);
+
 } // namespace sig
 
 #endif // SIGNAL_ENGINE_EXECUTOR_H

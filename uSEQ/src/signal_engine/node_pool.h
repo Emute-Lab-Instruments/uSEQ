@@ -59,6 +59,9 @@ enum class NodeOp : uint8_t {
     // Cross-sample state
     LoadState,  // imm = state_slot; reads state_values[slot]
     LoadDt,     // reads dt (time delta since last tick)
+
+    // Live-edit slots (externally-driven inputs from editor UI)
+    SlotLoad,   // imm = live_slot_index; reads live_slots[slot].value
 };
 
 // ── Node ────────────────────────────────────────────────────────────────────
@@ -122,6 +125,10 @@ struct NodePool {
     OutputSlot outputs[MAX_OUTPUTS] = {};
     OutputDeps output_deps[MAX_OUTPUTS] = {};
 
+    // Per-output classification (recomputed after each eval)
+    OutputClass output_class[MAX_OUTPUTS] = {};
+    uint32_t    output_input_mask[MAX_OUTPUTS] = {};  // bitmask of hw input channels referenced
+
     // Cross-output reads use previous-tick values
     double prev_output_values[MAX_OUTPUTS] = {};
 
@@ -129,6 +136,21 @@ struct NodePool {
     double state_values[MAX_STATE_SLOTS]  = {};       // current state (read during execution)
     uint16_t state_update_roots[MAX_STATE_SLOTS] = {}; // root node for each state's update expr (init to 0, set to NODE_NONE by init)
     uint16_t state_slot_count = 0;
+
+    // ── Live-edit slots (externally written by editor UI) ─────────────
+    struct LiveSlot {
+        char id[MAX_LIVE_SLOT_ID] = {};
+        double value    = 0.0;
+        double min_val  = 0.0;
+        double max_val  = 1.0;
+        double seed     = 0.0;
+    };
+    LiveSlot live_slots[MAX_LIVE_SLOTS] = {};
+    uint16_t live_slot_count = 0;
+
+    int16_t find_live_slot(const char* id) const;
+    int16_t alloc_live_slot(const char* id, double seed, double min_val, double max_val);
+    void set_live_slot_value(const char* id, double value);
 
     // WASM batch workspace (heap-allocated once at init, null on firmware)
     std::unique_ptr<double[]> batch_workspace;
@@ -143,6 +165,7 @@ struct NodePool {
     uint16_t make_prev_output_load(uint16_t output_index);
 
     uint16_t make_state_load(uint16_t state_slot);
+    uint16_t make_slot_load(uint16_t slot_index);
     uint16_t make_dt_load();
 
     uint16_t make_unary(NodeOp op, uint16_t a);
