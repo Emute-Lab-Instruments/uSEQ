@@ -40,6 +40,7 @@ struct Firmware {
     double cell_snapshot[sig::MAX_CELLS]           = {};
     double output_values[sig::MAX_OUTPUTS]         = {};
     double workspace[sig::MAX_TOTAL_NODES]         = {};
+    double prev_tick_time                          = 0.0;
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
     void init();

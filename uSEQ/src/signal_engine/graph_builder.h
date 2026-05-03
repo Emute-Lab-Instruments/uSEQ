@@ -49,6 +49,7 @@ struct GraphBuilder {
     NodePool& pool;
     CellStore& cells;
     const SourceArena& source;
+    const char* source_base = nullptr; // raw tokenized text for string resolution
 
     // Diagnostics output
     Diagnostic diagnostics[MAX_DIAGNOSTICS] = {};
@@ -62,6 +63,12 @@ struct GraphBuilder {
     // Recursion guard for inline stack
     SymbolID inline_stack[MAX_INLINE_DEPTH] = {};
     uint8_t inline_depth = 0;
+
+    // Live-edit: slot count at build start (to detect fresh allocations vs pre-existing)
+    uint16_t live_slot_count_at_start = 0;
+    // Live-edit ids seen during this build (duplicate detection within one graph)
+    char live_edit_ids_seen[MAX_LIVE_SLOTS][MAX_LIVE_SLOT_ID] = {};
+    uint8_t live_edit_ids_count = 0;
 
     // ── Well-known symbol IDs (populated at init) ───────────────────────
     // Generated from symbols.def — do not edit by hand.
@@ -153,6 +160,29 @@ struct GraphBuilder {
 
     // State
     uint16_t compile_integrate(TokenStream& ts, Scope& scope, TimeContext& ctx);
+
+    // UGens
+    uint16_t compile_phasor(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_lfo_sin(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_lfo_tri(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_lfo_saw(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_lfo_sqr(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_slew(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_one_pole(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_env_follow(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_sah(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_noise(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_toggle(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_count(TokenStream& ts, Scope& scope, TimeContext& ctx);
+
+    // UGen helpers
+    uint16_t alloc_state_slot(double init_value);
+    uint16_t build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx, uint16_t default_wave);
+    uint16_t build_osc_output(uint16_t state_load, uint16_t wave_type, uint16_t pw_node);
+
+    // Live-edit
+    uint16_t compile_live_edit(TokenStream& ts, Scope& scope, TimeContext& ctx);
 
     // Random / hash
     uint16_t compile_random(TokenStream& ts, Scope& scope, TimeContext& ctx);
@@ -250,7 +280,8 @@ GraphBuildResult build_output_graph(
     NodePool& pool,
     TokenStream& ts,
     CellStore& cells,
-    const SourceArena& source
+    const SourceArena& source,
+    const char* source_base = nullptr
 );
 
 } // namespace sig

@@ -126,6 +126,40 @@ SYM(defstate,            "defstate",             side_effect)
 SYM(integrate,           "integrate",            signal)
 SYM(dt,                  "dt",                   none)
 
+// ── UGen forms (state-bearing unit generators) ─────────────────────────────
+// Primary names
+SYM(phasor_,             "phasor",               signal)
+SYM(lfo,                 "lfo",                  signal)
+SYM(slew,                "slew",                 signal)
+SYM(one_pole,            "one-pole",             signal)
+SYM(env_follow,          "env-follow",           signal)
+SYM(sah,                 "sah",                  signal)
+SYM(noise,               "noise",                signal)
+SYM(toggle,              "toggle",               signal)
+SYM(count,               "count",                signal)
+
+// Aliases (spec-compat names)
+SYM(osc,                 "osc",                  signal)
+SYM(tri_osc,             "tri-osc",              signal)
+SYM(saw,                 "saw",                  signal)
+SYM(sqr_osc,             "sqr-osc",              signal)
+SYM(envelope_follower,   "envelope-follower",    signal)
+SYM(latch,               "latch",                signal)
+
+// UGen keyword symbols
+SYM(kw_wave,             ":wave",                none)
+SYM(kw_phase,            ":phase",               none)
+SYM(kw_pw,               ":pw",                  none)
+SYM(kw_id,               ":id",                  none)
+SYM(kw_fresh,            ":fresh",               none)
+SYM(kw_attack,           ":attack",              none)
+SYM(kw_release,          ":release",             none)
+SYM(kw_reset,            ":reset",               none)
+SYM(kw_sin,              ":sin",                 none)
+SYM(kw_tri,              ":tri",                 none)
+SYM(kw_saw_kw,           ":saw",                 none)
+SYM(kw_sqr,              ":sqr",                 none)
+
 // ── Side-effect forms (error in signal context) ────────────────────────────
 SYM(define,              "define",               side_effect)
 SYM(def,                 "def",                  side_effect)
@@ -151,6 +185,9 @@ SYM(bar_dur,             "bar-dur",              none)
 
 // ── Output feedback ────────────────────────────────────────────────────────
 SYM(prev,                "prev",                 none)
+
+// ── Live-edit ──────────────────────────────────────────────────────────────
+SYM(live_edit,           "live-edit",            signal)
 
 // ── Misc ───────────────────────────────────────────────────────────────────
 SYM(input,               "input",                none)

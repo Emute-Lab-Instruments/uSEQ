@@ -77,6 +77,28 @@ void GraphBuilder::init_form_table() {
     // State
     add(sym.integrate,    &GraphBuilder::compile_integrate);
 
+    // UGens — primary names
+    add(sym.phasor_,      &GraphBuilder::compile_phasor);
+    add(sym.lfo,          &GraphBuilder::compile_lfo);
+    add(sym.slew,         &GraphBuilder::compile_slew);
+    add(sym.one_pole,     &GraphBuilder::compile_one_pole);
+    add(sym.env_follow,   &GraphBuilder::compile_env_follow);
+    add(sym.sah,          &GraphBuilder::compile_sah);
+    add(sym.noise,        &GraphBuilder::compile_noise);
+    add(sym.toggle,       &GraphBuilder::compile_toggle);
+    add(sym.count,        &GraphBuilder::compile_count);
+
+    // UGens — aliases with wave-type defaults
+    add(sym.osc,          &GraphBuilder::compile_lfo_sin);
+    add(sym.tri_osc,      &GraphBuilder::compile_lfo_tri);
+    add(sym.saw,          &GraphBuilder::compile_lfo_saw);
+    add(sym.sqr_osc,      &GraphBuilder::compile_lfo_sqr);
+    add(sym.envelope_follower, &GraphBuilder::compile_env_follow);
+    add(sym.latch,        &GraphBuilder::compile_sah);
+
+    // Live-edit
+    add(sym.live_edit,    &GraphBuilder::compile_live_edit);
+
     // Output feedback
     add(sym.prev,         &GraphBuilder::compile_prev);
 
@@ -109,6 +131,7 @@ GraphBuilder::GraphBuilder(NodePool& p, CellStore& c, const SourceArena& s)
     : pool(p), cells(c), source(s)
 {
     init_symbols();
+    live_slot_count_at_start = pool.live_slot_count;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -603,7 +626,10 @@ uint16_t GraphBuilder::inline_expression_cell(SymbolID sym_id, const CallableInf
     body_ts.count = body_count;
     body_ts.pos = 0;
 
+    const char* saved_base = source_base;
+    source_base = body_src;
     uint16_t result = compile_expr(body_ts, scope, ctx);
+    source_base = saved_base;
     pop_inline_stack();
     return result;
 }
@@ -1530,6 +1556,642 @@ uint16_t GraphBuilder::compile_integrate(TokenStream& ts, Scope& scope, TimeCont
     return state_load;
 }
 
+// ── UGen Helpers ───────────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::alloc_state_slot(double init_value) {
+    if (pool.state_slot_count >= MAX_STATE_SLOTS) {
+        report_error_at(0, 0,
+            "Too many state variables (max 32)",
+            "Remove unused integrate or defstate declarations");
+        return NODE_NONE;
+    }
+    uint16_t slot = pool.state_slot_count++;
+    pool.state_values[slot] = init_value;
+    return slot;
+}
+
+// ── UGen: phasor ───────────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::compile_phasor(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (phasor freq [:phase init])
+    // Phase-coherent ramp [0,1) at freq Hz.
+    // update: frac(state + freq * dt)
+
+    uint16_t freq = compile_expr(ts, scope, ctx);
+    if (freq == NODE_NONE) return NODE_NONE;
+
+    double init_phase = 0.0;
+
+    // Parse optional keywords
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw = ts.peek();
+        const String& kw_str = getSymbolString(kw.symbol);
+        if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
+        ts.consume();
+        if (kw.symbol == sym.kw_phase) {
+            uint16_t val = compile_expr(ts, scope, ctx);
+            if (is_const(val)) init_phase = const_value(val);
+        } else {
+            // skip unknown keyword value
+            compile_expr(ts, scope, ctx);
+        }
+    }
+
+    uint16_t slot = alloc_state_slot(init_phase);
+    if (slot == NODE_NONE) return NODE_NONE;
+
+    uint16_t state_load = pool.make_state_load(slot);
+    uint16_t dt_load = pool.make_dt_load();
+    uint16_t freq_dt = pool.make_binop(NodeOp::Mul, freq, dt_load);
+    uint16_t updated = pool.make_binop(NodeOp::Add, state_load, freq_dt);
+    uint16_t wrapped = pool.make_unary(NodeOp::Frac, updated);
+
+    pool.state_update_roots[slot] = wrapped;
+    return state_load;
+}
+
+// ── UGen: lfo ──────────────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::build_osc_output(uint16_t state_load, uint16_t wave_type, uint16_t pw_node) {
+    switch (wave_type) {
+        case 0:  return pool.make_unary(NodeOp::USin, state_load);
+        case 1:  return pool.make_unary(NodeOp::Tri, state_load);
+        case 2:  return state_load; // saw = phasor [0,1)
+        case 3:  return pool.make_binop(NodeOp::CmpLt, state_load, pw_node);
+        default: return pool.make_unary(NodeOp::USin, state_load);
+    }
+}
+
+uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx, uint16_t default_wave) {
+    // (lfo freq [:wave :sin|:tri|:saw|:sqr] [:phase init] [:pw width])
+    // default_wave: 0=sin, 1=tri, 2=saw, 3=sqr
+
+    uint16_t freq = compile_expr(ts, scope, ctx);
+    if (freq == NODE_NONE) return NODE_NONE;
+
+    uint16_t wave_type = default_wave;
+    double init_phase = 0.0;
+    uint16_t pulse_width_node = pool.make_const(0.5);
+
+    auto& si = SymbolIntern::getInstance();
+
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw = ts.peek();
+        const String& kw_str = si.getString(kw.symbol);
+        if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
+
+        ts.consume();
+
+        if (kw.symbol == sym.kw_wave) {
+            Token val = ts.consume();
+            if (val.kind != TokenKind::Symbol) {
+                return report_error_cat(DiagnosticCategory::Type, val,
+                    ":wave must be a keyword like :sin, :tri, :saw, or :sqr",
+                    "Try: (lfo 440 :wave :saw)");
+            }
+            if (val.symbol == sym.kw_sin)       wave_type = 0;
+            else if (val.symbol == sym.kw_tri)  wave_type = 1;
+            else if (val.symbol == sym.kw_saw_kw) wave_type = 2;
+            else if (val.symbol == sym.kw_sqr)  wave_type = 3;
+            else {
+                return report_error_cat(DiagnosticCategory::Type, val,
+                    "Unknown waveform",
+                    "Try :sin, :tri, :saw, or :sqr");
+            }
+        } else if (kw.symbol == sym.kw_phase) {
+            uint16_t val = compile_expr(ts, scope, ctx);
+            if (is_const(val)) init_phase = const_value(val);
+        } else if (kw.symbol == sym.kw_pw) {
+            pulse_width_node = compile_expr(ts, scope, ctx);
+        } else {
+            compile_expr(ts, scope, ctx);
+        }
+    }
+
+    // Build phase accumulator
+    uint16_t slot = alloc_state_slot(init_phase);
+    if (slot == NODE_NONE) return NODE_NONE;
+
+    uint16_t state_load = pool.make_state_load(slot);
+    uint16_t dt_load = pool.make_dt_load();
+    uint16_t freq_dt = pool.make_binop(NodeOp::Mul, freq, dt_load);
+    uint16_t updated = pool.make_binop(NodeOp::Add, state_load, freq_dt);
+    uint16_t phase = pool.make_unary(NodeOp::Frac, updated);
+
+    pool.state_update_roots[slot] = phase;
+
+    return build_osc_output(state_load, wave_type, pulse_width_node);
+}
+
+uint16_t GraphBuilder::compile_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    return build_lfo(ts, scope, ctx, 0); // default: :sin
+}
+
+uint16_t GraphBuilder::compile_lfo_sin(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    return build_lfo(ts, scope, ctx, 0);
+}
+
+uint16_t GraphBuilder::compile_lfo_tri(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    return build_lfo(ts, scope, ctx, 1);
+}
+
+uint16_t GraphBuilder::compile_lfo_saw(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    return build_lfo(ts, scope, ctx, 2);
+}
+
+uint16_t GraphBuilder::compile_lfo_sqr(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    return build_lfo(ts, scope, ctx, 3);
+}
+
+// ── UGen: slew ─────────────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::compile_slew(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (slew target rate)
+    // Slew-rate limiter: moves toward target at max `rate` units/sec.
+    // update: state + clamp(target - state, -rate*dt, rate*dt)
+
+    uint16_t target = compile_expr(ts, scope, ctx);
+    if (target == NODE_NONE) return NODE_NONE;
+    uint16_t rate = compile_expr(ts, scope, ctx);
+    if (rate == NODE_NONE) return NODE_NONE;
+
+    uint16_t slot = alloc_state_slot(0.0);
+    if (slot == NODE_NONE) return NODE_NONE;
+
+    uint16_t state_load = pool.make_state_load(slot);
+    uint16_t dt_load = pool.make_dt_load();
+
+    // delta = target - state
+    uint16_t delta = pool.make_binop(NodeOp::Sub, target, state_load);
+
+    // step = rate * dt
+    uint16_t step = pool.make_binop(NodeOp::Mul, rate, dt_load);
+
+    // neg_step = -step
+    uint16_t neg_step = pool.make_unary(NodeOp::Neg, step);
+
+    // clamped_delta = clamp(delta, -step, step)
+    uint16_t clamped = pool.make_ternary(NodeOp::Clamp, delta, neg_step, step);
+
+    // new_state = state + clamped_delta
+    uint16_t updated = pool.make_binop(NodeOp::Add, state_load, clamped);
+
+    pool.state_update_roots[slot] = updated;
+    return state_load;
+}
+
+// ── UGen: one-pole ─────────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::compile_one_pole(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (one-pole input cutoff)
+    // First-order low-pass: alpha = min(1, 2*pi*cutoff*dt)
+    // update: state + alpha * (input - state)
+
+    uint16_t input = compile_expr(ts, scope, ctx);
+    if (input == NODE_NONE) return NODE_NONE;
+    uint16_t cutoff = compile_expr(ts, scope, ctx);
+    if (cutoff == NODE_NONE) return NODE_NONE;
+
+    uint16_t slot = alloc_state_slot(0.0);
+    if (slot == NODE_NONE) return NODE_NONE;
+
+    uint16_t state_load = pool.make_state_load(slot);
+    uint16_t dt_load = pool.make_dt_load();
+
+    // 2*pi*cutoff*dt
+    uint16_t two_pi = pool.make_const(6.283185307179586);
+    uint16_t cutoff_dt = pool.make_binop(NodeOp::Mul, cutoff, dt_load);
+    uint16_t alpha_raw = pool.make_binop(NodeOp::Mul, two_pi, cutoff_dt);
+
+    // alpha = min(1.0, alpha_raw)
+    uint16_t one = pool.make_const(1.0);
+    uint16_t alpha = pool.make_binop(NodeOp::Min, one, alpha_raw);
+
+    // diff = input - state
+    uint16_t diff = pool.make_binop(NodeOp::Sub, input, state_load);
+
+    // scaled = alpha * diff
+    uint16_t scaled = pool.make_binop(NodeOp::Mul, alpha, diff);
+
+    // updated = state + scaled
+    uint16_t updated = pool.make_binop(NodeOp::Add, state_load, scaled);
+
+    pool.state_update_roots[slot] = updated;
+    return state_load;
+}
+
+// ── UGen: env-follow ───────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::compile_env_follow(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (env-follow input attack release)
+    // Asymmetric envelope follower.
+    // if |input| > state: state + attack * (|input| - state)
+    // else:               state + release * (|input| - state)
+    // attack/release are rate coefficients (higher = faster tracking).
+
+    uint16_t input = compile_expr(ts, scope, ctx);
+    if (input == NODE_NONE) return NODE_NONE;
+
+    // Default attack/release if not provided
+    uint16_t attack_node;
+    uint16_t release_node;
+
+    if (ts.peek().kind != TokenKind::RParen) {
+        attack_node = compile_expr(ts, scope, ctx);
+    } else {
+        attack_node = pool.make_const(10.0);
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        release_node = compile_expr(ts, scope, ctx);
+    } else {
+        release_node = pool.make_const(5.0);
+    }
+
+    uint16_t slot = alloc_state_slot(0.0);
+    if (slot == NODE_NONE) return NODE_NONE;
+
+    uint16_t state_load = pool.make_state_load(slot);
+    uint16_t dt_load = pool.make_dt_load();
+
+    // abs_input = abs(input)
+    uint16_t abs_input = pool.make_unary(NodeOp::Abs, input);
+
+    // diff = abs_input - state
+    uint16_t diff = pool.make_binop(NodeOp::Sub, abs_input, state_load);
+
+    // is_rising = diff > 0
+    uint16_t zero = pool.make_const(0.0);
+    uint16_t is_rising = pool.make_binop(NodeOp::CmpGt, diff, zero);
+
+    // attack_coeff = min(1, attack * dt)
+    uint16_t a_dt = pool.make_binop(NodeOp::Mul, attack_node, dt_load);
+    uint16_t a_coeff = pool.make_binop(NodeOp::Min, pool.make_const(1.0), a_dt);
+
+    // release_coeff = min(1, release * dt)
+    uint16_t r_dt = pool.make_binop(NodeOp::Mul, release_node, dt_load);
+    uint16_t r_coeff = pool.make_binop(NodeOp::Min, pool.make_const(1.0), r_dt);
+
+    // coeff = is_rising ? attack_coeff : release_coeff
+    uint16_t coeff = pool.make_select(is_rising, a_coeff, r_coeff);
+
+    // updated = state + coeff * diff
+    uint16_t scaled = pool.make_binop(NodeOp::Mul, coeff, diff);
+    uint16_t updated = pool.make_binop(NodeOp::Add, state_load, scaled);
+
+    pool.state_update_roots[slot] = updated;
+    return state_load;
+}
+
+// ── UGen: sah (sample-and-hold) ────────────────────────────────────────────
+
+uint16_t GraphBuilder::compile_sah(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (sah input trigger)
+    // Aliases: latch
+    // When trigger rises through 0.5, sample input. Otherwise hold previous.
+    // update: (trigger > 0.5 && prev_trigger <= 0.5) ? input : state
+    //
+    // Rising-edge detection requires prev_trigger as a second state slot.
+
+    uint16_t input = compile_expr(ts, scope, ctx);
+    if (input == NODE_NONE) return NODE_NONE;
+    uint16_t trigger = compile_expr(ts, scope, ctx);
+    if (trigger == NODE_NONE) return NODE_NONE;
+
+    // Slot 0: held value
+    uint16_t slot0 = alloc_state_slot(0.0);
+    if (slot0 == NODE_NONE) return NODE_NONE;
+
+    // Slot 1: previous trigger value
+    uint16_t slot1 = alloc_state_slot(0.0);
+    if (slot1 == NODE_NONE) return NODE_NONE;
+
+    uint16_t held_load = pool.make_state_load(slot0);
+    uint16_t prev_trig_load = pool.make_state_load(slot1);
+
+    // rising = (trigger > 0.5) && (prev_trigger <= 0.5)
+    uint16_t threshold = pool.make_const(0.5);
+    uint16_t trig_hi = pool.make_binop(NodeOp::CmpGt, trigger, threshold);
+    uint16_t prev_trig_lo = pool.make_binop(NodeOp::CmpLe, prev_trig_load, threshold);
+    uint16_t rising = pool.make_binop(NodeOp::And, trig_hi, prev_trig_lo);
+
+    // held = rising ? input : held
+    uint16_t new_held = pool.make_select(rising, input, held_load);
+
+    pool.state_update_roots[slot0] = new_held;
+    pool.state_update_roots[slot1] = trigger; // store current trigger for next tick
+
+    return held_load;
+}
+
+// ── UGen: noise ────────────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::compile_noise(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (noise)
+    // White noise source using deterministic hash of running counter.
+    // Uses one state slot as a counter that increments each tick.
+    // Output: HashIndex(counter) → [0,1]
+
+    // (noise) takes no args
+    (void)ts; (void)scope; (void)ctx;
+
+    uint16_t slot = alloc_state_slot(0.0);
+    if (slot == NODE_NONE) return NODE_NONE;
+
+    uint16_t state_load = pool.make_state_load(slot);
+    uint16_t one = pool.make_const(1.0);
+
+    // counter increments each tick
+    uint16_t updated = pool.make_binop(NodeOp::Add, state_load, one);
+
+    pool.state_update_roots[slot] = updated;
+
+    // output = HashIndex(state) → [0,1]
+    // Map to [-1, 1] for bipolar noise
+    uint16_t hash_raw = pool.make_unary(NodeOp::HashIndex, state_load);
+    return pool.make_unary(NodeOp::UniToBi, hash_raw);
+}
+
+// ── UGen: toggle ───────────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::compile_toggle(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (toggle trigger)
+    // T-flip-flop: toggles 0↔1 on each rising edge of trigger.
+    // Needs 2 state slots: toggle state + prev trigger.
+
+    uint16_t trigger = compile_expr(ts, scope, ctx);
+    if (trigger == NODE_NONE) return NODE_NONE;
+
+    uint16_t slot0 = alloc_state_slot(0.0); // toggle state
+    if (slot0 == NODE_NONE) return NODE_NONE;
+    uint16_t slot1 = alloc_state_slot(0.0); // prev trigger
+    if (slot1 == NODE_NONE) return NODE_NONE;
+
+    uint16_t state_load = pool.make_state_load(slot0);
+    uint16_t prev_trig_load = pool.make_state_load(slot1);
+
+    uint16_t threshold = pool.make_const(0.5);
+    uint16_t trig_hi = pool.make_binop(NodeOp::CmpGt, trigger, threshold);
+    uint16_t prev_trig_lo = pool.make_binop(NodeOp::CmpLe, prev_trig_load, threshold);
+    uint16_t rising = pool.make_binop(NodeOp::And, trig_hi, prev_trig_lo);
+
+    // If rising: flip (1 - state). Otherwise: keep state.
+    uint16_t one = pool.make_const(1.0);
+    uint16_t flipped = pool.make_binop(NodeOp::Sub, one, state_load);
+    uint16_t new_state = pool.make_select(rising, flipped, state_load);
+
+    pool.state_update_roots[slot0] = new_state;
+    pool.state_update_roots[slot1] = trigger;
+
+    return state_load;
+}
+
+// ── UGen: count ────────────────────────────────────────────────────────────
+
+uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (count trigger [:reset reset-trigger])
+    // Counts rising edges of trigger. Resets to 0 on rising edge of reset.
+    // Needs 3 state slots: counter, prev trigger, prev reset.
+
+    uint16_t trigger = compile_expr(ts, scope, ctx);
+    if (trigger == NODE_NONE) return NODE_NONE;
+
+    // Optional reset argument
+    uint16_t reset_trigger = pool.make_const(0.0);
+
+    // Parse keywords for :reset
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw = ts.peek();
+        const String& kw_str = getSymbolString(kw.symbol);
+        if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
+        ts.consume();
+        if (kw.symbol == sym.kw_reset) {
+            reset_trigger = compile_expr(ts, scope, ctx);
+        } else {
+            compile_expr(ts, scope, ctx);
+        }
+    }
+
+    uint16_t slot0 = alloc_state_slot(0.0); // counter
+    if (slot0 == NODE_NONE) return NODE_NONE;
+    uint16_t slot1 = alloc_state_slot(0.0); // prev trigger
+    if (slot1 == NODE_NONE) return NODE_NONE;
+    uint16_t slot2 = alloc_state_slot(0.0); // prev reset
+    if (slot2 == NODE_NONE) return NODE_NONE;
+
+    uint16_t counter_load = pool.make_state_load(slot0);
+    uint16_t prev_trig_load = pool.make_state_load(slot1);
+    uint16_t prev_reset_load = pool.make_state_load(slot2);
+
+    uint16_t threshold = pool.make_const(0.5);
+    uint16_t one = pool.make_const(1.0);
+
+    // Detect trigger rising edge
+    uint16_t trig_hi = pool.make_binop(NodeOp::CmpGt, trigger, threshold);
+    uint16_t prev_trig_lo = pool.make_binop(NodeOp::CmpLe, prev_trig_load, threshold);
+    uint16_t trig_rising = pool.make_binop(NodeOp::And, trig_hi, prev_trig_lo);
+
+    // Detect reset rising edge
+    uint16_t reset_hi = pool.make_binop(NodeOp::CmpGt, reset_trigger, threshold);
+    uint16_t prev_reset_lo = pool.make_binop(NodeOp::CmpLe, prev_reset_load, threshold);
+    uint16_t reset_rising = pool.make_binop(NodeOp::And, reset_hi, prev_reset_lo);
+
+    // new_counter = reset_rising ? 0 : (trig_rising ? counter + 1 : counter)
+    uint16_t incremented = pool.make_binop(NodeOp::Add, counter_load, one);
+    uint16_t after_trig = pool.make_select(trig_rising, incremented, counter_load);
+    uint16_t new_counter = pool.make_select(reset_rising, pool.make_const(0.0), after_trig);
+
+    pool.state_update_roots[slot0] = new_counter;
+    pool.state_update_roots[slot1] = trigger;
+    pool.state_update_roots[slot2] = reset_trigger;
+
+    return counter_load;
+}
+
+// -- Live-edit ---------------------------------------------------------------
+
+uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (live-edit <seed> :id <string> :min <num> :max <num> [:name <str>] [:step <num>] [:precision <int>])
+    uint16_t form_start = ts.peek().span_start > 0 ? ts.peek().span_start - 1 : 0;
+
+    // 1. Parse seed — must be a numeric literal
+    Token seed_tok = ts.peek();
+    if (seed_tok.kind == TokenKind::LParen) {
+        // Peek for nested live-edit
+        uint16_t saved_pos = ts.pos;
+        ts.consume(); // skip LParen
+        Token inner_head = ts.peek();
+        ts.rewind(saved_pos);
+        if (inner_head.kind == TokenKind::Symbol && inner_head.symbol == sym.live_edit) {
+            return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
+                "Can't use a nested live-edit as the seed of another live-edit",
+                "Each live-edit wraps a single literal value");
+        }
+        return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
+            "live-edit seed must be a literal number, not an expression",
+            "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+    }
+    if (seed_tok.kind == TokenKind::Symbol) {
+        // Check for nested live-edit
+        const String& name = getSymbolString(seed_tok.symbol);
+        if (name == "live-edit") {
+            return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
+                "Can't nest live-edit inside another live-edit",
+                "Each live-edit wraps a single literal value");
+        }
+        // Check for keywords appearing where seed should be (missing seed)
+        if (name.length() > 0 && name.c_str()[0] == ':') {
+            return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
+                "live-edit seed is missing — first arg must be a number",
+                "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+        }
+        return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
+            "live-edit seed must be a literal number",
+            "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+    }
+    if (seed_tok.kind != TokenKind::Number) {
+        return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
+            "live-edit seed must be a literal number",
+            "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+    }
+    double seed = seed_tok.number;
+    ts.consume();
+
+    // 2. Parse keyword arguments
+    char id_buf[MAX_LIVE_SLOT_ID] = {};
+    bool has_id = false, has_min = false, has_max = false;
+    double min_val = 0.0, max_val = 1.0;
+
+    auto& si = SymbolIntern::getInstance();
+
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw_tok = ts.peek();
+        const String& kw = si.getString(kw_tok.symbol);
+        if (kw.length() == 0 || kw.c_str()[0] != ':') break;
+
+        ts.consume(); // consume keyword
+
+        if (kw == ":id") {
+            Token val = ts.consume();
+            if (val.kind != TokenKind::String) {
+                return report_error_at_cat(DiagnosticCategory::Type, val.span_start, val.span_len,
+                    ":id must be a string",
+                    "Try: :id \"myknob\"");
+            }
+            if (!source_base) {
+                return report_error_at(val.span_start, val.span_len,
+                    "Internal: source text unavailable for string resolution", nullptr);
+            }
+            uint16_t len = val.string.length;
+            if (len >= MAX_LIVE_SLOT_ID) len = MAX_LIVE_SLOT_ID - 1;
+            memcpy(id_buf, source_base + val.string.offset, len);
+            id_buf[len] = '\0';
+            has_id = true;
+        } else if (kw == ":min") {
+            Token val = ts.consume();
+            if (val.kind != TokenKind::Number) {
+                return report_error_at_cat(DiagnosticCategory::Type, val.span_start, val.span_len,
+                    ":min must be a number",
+                    "Try: :min 0");
+            }
+            min_val = val.number;
+            has_min = true;
+        } else if (kw == ":max") {
+            Token val = ts.consume();
+            if (val.kind != TokenKind::Number) {
+                return report_error_at_cat(DiagnosticCategory::Type, val.span_start, val.span_len,
+                    ":max must be a number",
+                    "Try: :max 1");
+            }
+            max_val = val.number;
+            has_max = true;
+        } else if (kw == ":name" || kw == ":step" || kw == ":precision") {
+            // Accept and skip — compiler-irrelevant metadata
+            ts.consume();
+        } else {
+            // Unknown keyword — skip its value
+            ts.consume();
+        }
+    }
+
+    // 3. Validate required args
+    if (!has_id) {
+        return report_error_at_cat(DiagnosticCategory::Arity, form_start, 1,
+            "live-edit requires :id",
+            "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+    }
+    if (!has_min) {
+        return report_error_at_cat(DiagnosticCategory::Arity, form_start, 1,
+            "live-edit requires :min",
+            "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+    }
+    if (!has_max) {
+        return report_error_at_cat(DiagnosticCategory::Arity, form_start, 1,
+            "live-edit requires :max",
+            "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+    }
+    if (min_val >= max_val) {
+        return report_error_at_cat(DiagnosticCategory::Overflow, form_start, 1,
+            "live-edit :min must be less than :max",
+            "Swap :min and :max values");
+    }
+
+    // 4. Check for duplicate id within this build.
+    // If the slot already exists (from a prior build or earlier in this build
+    // via inline expansion), reuse it. Only error if two *literal* live-edit
+    // forms in non-inlined source declare the same id — detected by checking
+    // whether we're currently inside an inline expansion.
+    int16_t pre_existing = pool.find_live_slot(id_buf);
+    if (pre_existing >= 0) {
+        // Slot already allocated. If we're inside inline expansion, reuse is fine.
+        // If we're NOT in inline expansion and we already saw this id in this
+        // build, it's a true source-level duplicate.
+        bool seen_this_build = false;
+        for (uint8_t i = 0; i < live_edit_ids_count; i++) {
+            if (strncmp(live_edit_ids_seen[i], id_buf, MAX_LIVE_SLOT_ID) == 0) {
+                seen_this_build = true;
+                break;
+            }
+        }
+        if (seen_this_build && inline_depth == 0) {
+            return report_error_at_cat(DiagnosticCategory::Boundary, form_start, 1,
+                "duplicate live-edit :id in this document",
+                "Each live-edit must have a unique :id");
+        }
+        // Reuse existing slot (inline expansion or re-eval)
+        if (!seen_this_build && live_edit_ids_count < MAX_LIVE_SLOTS) {
+            strncpy(live_edit_ids_seen[live_edit_ids_count], id_buf, MAX_LIVE_SLOT_ID - 1);
+            live_edit_ids_seen[live_edit_ids_count][MAX_LIVE_SLOT_ID - 1] = '\0';
+            live_edit_ids_count++;
+        }
+        // Update bounds (may have changed on re-eval)
+        pool.live_slots[pre_existing].min_val = min_val;
+        pool.live_slots[pre_existing].max_val = max_val;
+        pool.live_slots[pre_existing].seed = seed;
+        double& v = pool.live_slots[pre_existing].value;
+        if (v < min_val) v = min_val;
+        if (v > max_val) v = max_val;
+        return pool.make_slot_load((uint16_t)pre_existing);
+    }
+
+    // First time seeing this id — record it
+    if (live_edit_ids_count < MAX_LIVE_SLOTS) {
+        strncpy(live_edit_ids_seen[live_edit_ids_count], id_buf, MAX_LIVE_SLOT_ID - 1);
+        live_edit_ids_seen[live_edit_ids_count][MAX_LIVE_SLOT_ID - 1] = '\0';
+        live_edit_ids_count++;
+    }
+
+    // 5. Allocate slot
+    int16_t slot_idx = pool.alloc_live_slot(id_buf, seed, min_val, max_val);
+    if (slot_idx < 0) {
+        return report_error_at(form_start, 1,
+            "Too many live-edit slots (max 32)",
+            "Remove unused live-edit declarations");
+    }
+
+    // 6. Return SlotLoad node
+    return pool.make_slot_load((uint16_t)slot_idx);
+}
+
 // -- Random / Hash -----------------------------------------------------------
 
 uint16_t GraphBuilder::compile_random(TokenStream& ts, Scope& scope, TimeContext& ctx) {
@@ -1836,9 +2498,11 @@ GraphBuildResult build_output_graph(
     NodePool& pool,
     TokenStream& ts,
     CellStore& cells,
-    const SourceArena& source
+    const SourceArena& source,
+    const char* source_base
 ) {
     GraphBuilder builder(pool, cells, source);
+    builder.source_base = source_base;
     Scope root_scope = {};
     TimeContext ctx = { pool.make_raw_time_load() };
 
