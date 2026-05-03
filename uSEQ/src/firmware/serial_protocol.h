@@ -16,6 +16,7 @@
 //   eval            — code string (handled by caller after read_command)
 //   stream-config   — configure output streaming rate/channels
 //   set-live-inputs — write one or more live-edit slot values (§5.8)
+//   get-state       — return full interpreter state snapshot (state-sync.md §2)
 //
 // Outbound:
 //   ready         — sent once after init
@@ -82,6 +83,9 @@ struct SerialProtocol {
     uint8_t num_serial_ins  = 0;
     uint8_t num_serial_outs = 0;
 
+    // Engine access (set by Firmware after construction)
+    sig::SignalEngine* engine = nullptr;
+
 private:
     // ── Ring buffer for incoming bytes ──────────────────────────────────────
     static constexpr size_t RX_BUF_SIZE = 2048;
@@ -112,6 +116,7 @@ private:
     void handle_ping(const char* payload, size_t len);
     void handle_stream_config(const char* payload, size_t len);
     void handle_set_live_inputs(const char* payload, size_t len);
+    void handle_get_state(const char* payload, size_t len);
 };
 
 } // namespace firmware

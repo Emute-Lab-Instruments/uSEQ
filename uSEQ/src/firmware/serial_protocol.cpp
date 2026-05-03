@@ -1,6 +1,7 @@
 #include "serial_protocol.h"
 #include "../utils/json_builder.h"
 #include "../utils/serial_message.h"
+#include "../modulisp/lisp/symbol_intern.h"
 
 #include <cstdio>
 #include <cstring>
@@ -242,6 +243,11 @@ bool SerialProtocol::dispatch_message(const char* payload, size_t len,
     if (strcmp(type_buf, "set-live-inputs") == 0)
     {
         handle_set_live_inputs(payload, len);
+        return false;
+    }
+    if (strcmp(type_buf, "get-state") == 0)
+    {
+        handle_get_state(payload, len);
         return false;
     }
 
@@ -740,6 +746,203 @@ void SerialProtocol::write_json(const char* payload, size_t len)
 void SerialProtocol::write_json_str(const char* payload)
 {
     write_json(payload, strlen(payload));
+}
+
+// ── get-state handler (state-sync.md §2) ────────────────────────────────
+
+static const char* output_name_for_index(uint16_t idx) {
+    static char buf[4];
+    char prefix;
+    uint16_t num;
+    if (idx < 8)       { prefix = 'a'; num = idx; }
+    else if (idx < 16) { prefix = 'd'; num = idx - 8; }
+    else if (idx < 24) { prefix = 's'; num = idx - 16; }
+    else return nullptr;
+    buf[0] = prefix;
+    buf[1] = (char)('1' + num);
+    buf[2] = '\0';
+    return buf;
+}
+
+void SerialProtocol::handle_get_state(const char* /*payload*/, size_t /*len*/)
+{
+    if (!engine)
+    {
+        JsonBuilder b;
+        b.object_begin()
+            .field("requestId", m_request_id)
+            .field("success", false)
+            .field("text", "no engine attached")
+            .object_end();
+        write_json_str(b.build().c_str());
+        return;
+    }
+
+    char numbuf[32];
+
+    // Build the state sub-object first, then embed it in the response.
+    JsonBuilder state;
+    state.object_begin();
+
+    // transport
+    {
+        JsonBuilder tr;
+        tr.object_begin();
+        tr.field("playing", engine->state.is_playing);
+        snprintf(numbuf, sizeof(numbuf), "%.15g", engine->state.time_offset);
+        tr.field_raw("timeOffset", String(numbuf));
+        tr.object_end();
+        state.field_raw("transport", tr.build());
+    }
+
+    // time (not stored in engine — caller provides via tick)
+    state.field_raw("time", "0");
+
+    // cells — only emit non-empty cells
+    {
+        JsonBuilder cells;
+        cells.object_begin();
+        for (size_t i = 0; i < sig::MAX_CELLS; i++) {
+            const auto& cell = engine->cells.cells[i];
+            if (cell.kind == sig::CellKind::Empty) continue;
+
+            const String& name = getSymbolString((uint32_t)i);
+            if (name.length() == 0) continue;
+
+            JsonBuilder c;
+            c.object_begin();
+            switch (cell.kind) {
+                case sig::CellKind::Number:
+                    c.field("type", "number");
+                    snprintf(numbuf, sizeof(numbuf), "%.15g", cell.value);
+                    c.field_raw("value", String(numbuf));
+                    break;
+                case sig::CellKind::Data: {
+                    c.field("type", "data");
+                    uint16_t dlen = 0;
+                    const double* dptr = engine->cells.get_data_table(cell.data_table_id, dlen);
+                    String arr = "[";
+                    for (uint16_t d = 0; d < dlen; d++) {
+                        if (d > 0) arr += ",";
+                        snprintf(numbuf, sizeof(numbuf), "%.15g", dptr[d]);
+                        arr += numbuf;
+                    }
+                    arr += "]";
+                    c.field_raw("values", arr);
+                    break;
+                }
+                case sig::CellKind::Callable: {
+                    c.field("type", "callable");
+                    const auto& info = engine->cells.callables[i];
+                    if (info.source_length > 0) {
+                        const char* src = engine->arena.read(info.source_offset);
+                        if (src) {
+                            String src_str(src);
+                            if (src_str.length() > info.source_length)
+                                src_str = src_str.substring(0, info.source_length);
+                            c.field("source", src_str.c_str());
+                        }
+                    }
+                    break;
+                }
+                case sig::CellKind::Nil:
+                    c.field("type", "nil");
+                    break;
+                default:
+                    break;
+            }
+            c.object_end();
+            cells.field_raw(name.c_str(), c.build());
+        }
+        cells.object_end();
+        state.field_raw("cells", cells.build());
+    }
+
+    // outputs — only emit active outputs
+    {
+        JsonBuilder outs;
+        outs.object_begin();
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+            const auto& slot = engine->pool.outputs[i];
+            if (slot.root_node == sig::NODE_NONE && !engine->output_sources[i].has_source) continue;
+            const char* oname = output_name_for_index(i);
+            if (!oname) continue;
+
+            JsonBuilder o;
+            o.object_begin();
+            // source text
+            if (engine->output_sources[i].has_source) {
+                const char* src = engine->arena.read(engine->output_sources[i].arena_offset);
+                if (src) {
+                    String src_str(src);
+                    uint32_t slen = engine->output_sources[i].arena_length;
+                    if (src_str.length() > slen)
+                        src_str = src_str.substring(0, slen);
+                    o.field("source", src_str.c_str());
+                }
+            }
+            const char* health = slot.valid ? "running" : "fallback";
+            o.field("health", health);
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.lkg_value);
+            o.field_raw("lkgValue", String(numbuf));
+            o.object_end();
+            outs.field_raw(oname, o.build());
+        }
+        outs.object_end();
+        state.field_raw("outputs", outs.build());
+    }
+
+    // stateSlots
+    {
+        String arr = "[";
+        for (uint16_t i = 0; i < engine->pool.state_slot_count; i++) {
+            if (i > 0) arr += ",";
+            JsonBuilder s;
+            s.object_begin();
+            snprintf(numbuf, sizeof(numbuf), "state_%u", (unsigned)i);
+            s.field("id", numbuf);
+            snprintf(numbuf, sizeof(numbuf), "%.15g", engine->pool.state_values[i]);
+            s.field_raw("value", String(numbuf));
+            s.object_end();
+            arr += s.build();
+        }
+        arr += "]";
+        state.field_raw("stateSlots", arr);
+    }
+
+    // liveSlots
+    {
+        String arr = "[";
+        for (uint16_t i = 0; i < engine->pool.live_slot_count; i++) {
+            if (i > 0) arr += ",";
+            const auto& slot = engine->pool.live_slots[i];
+            JsonBuilder l;
+            l.object_begin();
+            l.field("id", slot.id);
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.value);
+            l.field_raw("value", String(numbuf));
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.min_val);
+            l.field_raw("min", String(numbuf));
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.max_val);
+            l.field_raw("max", String(numbuf));
+            l.object_end();
+            arr += l.build();
+        }
+        arr += "]";
+        state.field_raw("liveSlots", arr);
+    }
+
+    state.object_end();
+
+    JsonBuilder b;
+    b.object_begin()
+        .field("requestId", m_request_id)
+        .field("success", true)
+        .field("type", "state-snapshot")
+        .field_raw("state", state.build())
+        .object_end();
+
+    write_json_str(b.build().c_str());
 }
 
 } // namespace firmware

@@ -21,6 +21,7 @@ void Firmware::init()
     io.boot_led_amber();
 
     // 3. Serial protocol (USB CDC, baud rate)
+    serial.engine = &engine;
     serial.init();
 
     // 4. Flash storage (on-chip filesystem)
@@ -88,6 +89,7 @@ void Firmware::tick()
         // Fill execution context — no heap, all members / struct fields
         sig::ExecutionContext ctx;
         ctx.t              = t;
+        ctx.dt             = t - prev_tick_time;
         ctx.cell_values    = cell_snapshot;
         ctx.hw_inputs      = io.inputs;
         ctx.data_pool      = engine.cells.data_pool;
@@ -98,6 +100,8 @@ void Firmware::tick()
         ctx.workspace      = workspace;
 
         sig::execute_all_outputs(engine.pool, ctx);
+        sig::commit_state(engine.pool, workspace);
+        prev_tick_time = t;
     }
     // When paused: output_values retain their last-known-good values,
     // which get written to hardware below.

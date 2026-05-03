@@ -23,6 +23,7 @@
 
 #include "../../uSEQ/src/firmware/serial_protocol.h"
 #include "../../uSEQ/src/signal_engine/cold_eval.h"
+#include "../../uSEQ/src/signal_engine/graph_builder.h"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -381,4 +382,122 @@ TEST_CASE("F7 [§6.1] outbound STREAM frame is exactly 11 bytes "
     //   total = 11 bytes per channel
     REQUIRE(out.empty()); // Documents that desktop currently doesn't write streams.
 #endif
+}
+
+// ── F8 — get-state response shape (state-sync.md §2) ──────────────────
+
+TEST_CASE("F8 [state-sync §2] get-state returns success with state object",
+          "[contract][state-sync]")
+{
+    // Set up a SignalEngine with some known state
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+
+    // Define a cell: (define bpm 140)
+    sig::eval_cold("(define bpm 140)", 16, engine);
+
+    // Define an output: (a1 (sine 1))
+    sig::eval_cold("(a1 (sine 1))", 13, engine);
+
+    firmware::SerialProtocol sp;
+    sp.init();
+    sp.engine = &engine;
+
+    // Dispatch a get-state message
+    StdoutCapture cap;
+    char buf[2048] = {};
+    const char* msg = R"({"type":"get-state","requestId":"req-42"})";
+    sp.dispatch_message(msg, strlen(msg), buf, sizeof(buf));
+
+    auto out = cap.drain();
+    auto json = extract_last_json(out);
+    REQUIRE_FALSE(json.empty());
+
+    // Must contain success and type
+    REQUIRE(json.find("\"success\":true") != std::string::npos);
+    REQUIRE(json.find("\"type\":\"state-snapshot\"") != std::string::npos);
+    REQUIRE(json.find("\"requestId\":\"req-42\"") != std::string::npos);
+
+    // Must contain state sub-object with required fields
+    REQUIRE(json.find("\"state\":{") != std::string::npos);
+    REQUIRE(json.find("\"transport\":{") != std::string::npos);
+    REQUIRE(json.find("\"cells\":{") != std::string::npos);
+    REQUIRE(json.find("\"outputs\":{") != std::string::npos);
+    REQUIRE(json.find("\"stateSlots\":[") != std::string::npos);
+    REQUIRE(json.find("\"liveSlots\":[") != std::string::npos);
+}
+
+TEST_CASE("F9 [state-sync §2] get-state includes defined cells",
+          "[contract][state-sync]")
+{
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+
+    sig::eval_cold("(define my-val 42)", 18, engine);
+
+    firmware::SerialProtocol sp;
+    sp.init();
+    sp.engine = &engine;
+
+    StdoutCapture cap;
+    char buf[2048] = {};
+    const char* msg = R"({"type":"get-state","requestId":"req-1"})";
+    sp.dispatch_message(msg, strlen(msg), buf, sizeof(buf));
+
+    auto out = cap.drain();
+    auto json = extract_last_json(out);
+
+    // The cell "my-val" should appear as a number cell with value 42
+    REQUIRE(json.find("\"my-val\"") != std::string::npos);
+    REQUIRE(json.find("\"type\":\"number\"") != std::string::npos);
+    REQUIRE(json.find("42") != std::string::npos);
+}
+
+TEST_CASE("F10 [state-sync §2] get-state includes active outputs",
+          "[contract][state-sync]")
+{
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+
+    sig::eval_cold("(a1 (sine 1))", 13, engine);
+
+    firmware::SerialProtocol sp;
+    sp.init();
+    sp.engine = &engine;
+
+    StdoutCapture cap;
+    char buf[2048] = {};
+    const char* msg = R"({"type":"get-state","requestId":"req-2"})";
+    sp.dispatch_message(msg, strlen(msg), buf, sizeof(buf));
+
+    auto out = cap.drain();
+    auto json = extract_last_json(out);
+
+    // Output "a1" should be present with source and health
+    REQUIRE(json.find("\"a1\"") != std::string::npos);
+    REQUIRE(json.find("\"source\"") != std::string::npos);
+    REQUIRE(json.find("\"health\"") != std::string::npos);
+}
+
+TEST_CASE("F11 [state-sync §2] get-state without engine returns failure",
+          "[contract][state-sync]")
+{
+    firmware::SerialProtocol sp;
+    sp.init();
+    // engine pointer left as nullptr
+
+    StdoutCapture cap;
+    char buf[2048] = {};
+    const char* msg = R"({"type":"get-state","requestId":"req-3"})";
+    sp.dispatch_message(msg, strlen(msg), buf, sizeof(buf));
+
+    auto out = cap.drain();
+    auto json = extract_last_json(out);
+    REQUIRE_FALSE(json.empty());
+
+    REQUIRE(json.find("\"success\":false") != std::string::npos);
+    REQUIRE(json.find("\"requestId\":\"req-3\"") != std::string::npos);
 }
