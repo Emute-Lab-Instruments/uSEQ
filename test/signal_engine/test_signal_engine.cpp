@@ -978,32 +978,33 @@ TEST_CASE("Graph builder: empty parens", "[signal_engine][graph_builder]") {
 
 TEST_CASE("Graph builder: step function", "[signal_engine][graph_builder]") {
     // We need to use cold eval to set up data + output
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
-    auto& si = SymbolIntern::getInstance();
-
-    SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
-    SymbolID bpb_sym = si.intern("beats-per-bar");
-    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    SignalEngine engine;
+    engine.init_defaults();
 
     // Define data and assign output
-    eval_cold("(define data [10 20 30 40])", 27, cells, arena, pool);
-    EvalResult r = eval_cold("(a1 (step data beat))", 21, cells, arena, pool);
+    eval_cold("(define data [10 20 30 40])", 27, engine);
+    EvalResult r = eval_cold("(a1 (step data beat))", 21, engine);
     REQUIRE(r.kind == EvalResult::Ok);
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
 
     auto exec_at = [&](double t) -> double {
         double cell_vals[MAX_CELLS];
-        cells.snapshot_values(cell_vals, MAX_CELLS);
+        engine.cells.snapshot_values(cell_vals, MAX_CELLS);
         double hw_inputs[32] = {};
         double outputs[MAX_OUTPUTS] = {};
         double workspace[MAX_TOTAL_NODES] = {};
-        execute_all_outputs(pool, t, cell_vals, hw_inputs,
-                            cells.data_pool, cells.data_offsets, cells.data_lengths,
-                            pool.prev_output_values, outputs, workspace);
+        ExecutionContext ctx;
+        ctx.t = t;
+        ctx.dt = 0.0;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = engine.cells.data_pool;
+        ctx.data_offsets = engine.cells.data_offsets;
+        ctx.data_lengths = engine.cells.data_lengths;
+        ctx.prev_outputs = engine.pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        execute_all_outputs(engine.pool, ctx);
         return outputs[0];
     };
 
@@ -1014,31 +1015,32 @@ TEST_CASE("Graph builder: step function", "[signal_engine][graph_builder]") {
 }
 
 TEST_CASE("Graph builder: gates function", "[signal_engine][graph_builder]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
-    auto& si = SymbolIntern::getInstance();
+    SignalEngine engine;
+    engine.init_defaults();
 
-    SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
-    SymbolID bpb_sym = si.intern("beats-per-bar");
-    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
-
-    eval_cold("(define pat [1 0 1 0])", 22, cells, arena, pool);
-    EvalResult r = eval_cold("(a1 (gates pat beat))", 21, cells, arena, pool);
+    eval_cold("(define pat [1 0 1 0])", 22, engine);
+    EvalResult r = eval_cold("(a1 (gates pat beat))", 21, engine);
     REQUIRE(r.kind == EvalResult::Ok);
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
 
     auto exec_at = [&](double t) -> double {
         double cell_vals[MAX_CELLS];
-        cells.snapshot_values(cell_vals, MAX_CELLS);
+        engine.cells.snapshot_values(cell_vals, MAX_CELLS);
         double hw_inputs[32] = {};
         double outputs[MAX_OUTPUTS] = {};
         double workspace[MAX_TOTAL_NODES] = {};
-        execute_all_outputs(pool, t, cell_vals, hw_inputs,
-                            cells.data_pool, cells.data_offsets, cells.data_lengths,
-                            pool.prev_output_values, outputs, workspace);
+        ExecutionContext ctx;
+        ctx.t = t;
+        ctx.dt = 0.0;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = engine.cells.data_pool;
+        ctx.data_offsets = engine.cells.data_offsets;
+        ctx.data_lengths = engine.cells.data_lengths;
+        ctx.prev_outputs = engine.pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        execute_all_outputs(engine.pool, ctx);
         return outputs[0];
     };
 
@@ -1051,32 +1053,33 @@ TEST_CASE("Graph builder: gates function", "[signal_engine][graph_builder]") {
 }
 
 TEST_CASE("Graph builder: interp function", "[signal_engine][graph_builder]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
-    auto& si = SymbolIntern::getInstance();
+    SignalEngine engine;
+    engine.init_defaults();
 
-    SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
-    SymbolID bpb_sym = si.intern("beats-per-bar");
-    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
-
-    eval_cold("(define ramp [0 1 0])", 21, cells, arena, pool);
-    EvalResult r = eval_cold("(a1 (interp ramp beat))", 23, cells, arena, pool);
+    eval_cold("(define ramp [0 1 0])", 21, engine);
+    EvalResult r = eval_cold("(a1 (interp ramp beat))", 23, engine);
     REQUIRE(r.kind == EvalResult::Ok);
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
 
     double cell_vals[MAX_CELLS];
-    cells.snapshot_values(cell_vals, MAX_CELLS);
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
     double hw_inputs[32] = {};
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
     // At beat=0: VecLerp phase=0 => data[0]=0
-    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = engine.cells.data_pool;
+    ctx.data_offsets = engine.cells.data_offsets;
+    ctx.data_lengths = engine.cells.data_lengths;
+    ctx.prev_outputs = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(engine.pool, ctx);
     REQUIRE(outputs[0] == Approx(0.0).margin(1e-6));
 }
 
@@ -1090,41 +1093,37 @@ TEST_CASE("Graph builder: dm function", "[signal_engine][graph_builder]") {
 // ── 13. Graph Builder — Define/Defn/Set ────────────────────────────────────
 
 TEST_CASE("Cold eval: define number", "[signal_engine][cold_eval]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     SymbolID bpm_sym = internSymbol("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
-    EvalResult r = eval_cold("(define x 42)", 13, cells, arena, pool);
+    EvalResult r = eval_cold("(define x 42)", 13, engine);
     REQUIRE(r.kind == EvalResult::Ok);
 
     SymbolID x_sym = SymbolIntern::getInstance().getID("x");
     REQUIRE(x_sym != SymbolIntern::INVALID_ID);
-    REQUIRE(cells.cells[x_sym].kind == CellKind::Number);
-    REQUIRE(cells.cells[x_sym].value == 42.0);
+    REQUIRE(engine.cells.cells[x_sym].kind == CellKind::Number);
+    REQUIRE(engine.cells.cells[x_sym].value == 42.0);
 }
 
 TEST_CASE("Cold eval: define vector", "[signal_engine][cold_eval]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     SymbolID bpm_sym = internSymbol("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
-    EvalResult r = eval_cold("(define data [1 2 3])", 21, cells, arena, pool);
+    EvalResult r = eval_cold("(define data [1 2 3])", 21, engine);
     REQUIRE(r.kind == EvalResult::Ok);
 
     SymbolID data_sym = SymbolIntern::getInstance().getID("data");
     REQUIRE(data_sym != SymbolIntern::INVALID_ID);
-    REQUIRE(cells.cells[data_sym].kind == CellKind::Data);
+    REQUIRE(engine.cells.cells[data_sym].kind == CellKind::Data);
 
     uint16_t len;
-    const double* vals = cells.get_data_table(cells.cells[data_sym].data_table_id, len);
+    const double* vals = engine.cells.get_data_table(engine.cells.cells[data_sym].data_table_id, len);
     REQUIRE(len == 3);
     REQUIRE(vals[0] == 1.0);
     REQUIRE(vals[1] == 2.0);
@@ -1132,96 +1131,95 @@ TEST_CASE("Cold eval: define vector", "[signal_engine][cold_eval]") {
 }
 
 TEST_CASE("Cold eval: set stores number", "[signal_engine][cold_eval]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     SymbolID bpm_sym = internSymbol("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
-    EvalResult r = eval_cold("(set x 42)", 10, cells, arena, pool);
+    EvalResult r = eval_cold("(set x 42)", 10, engine);
     REQUIRE(r.kind == EvalResult::Ok);
 
     SymbolID x_sym = SymbolIntern::getInstance().getID("x");
-    REQUIRE(cells.cells[x_sym].kind == CellKind::Number);
-    REQUIRE(cells.cells[x_sym].value == 42.0);
+    REQUIRE(engine.cells.cells[x_sym].kind == CellKind::Number);
+    REQUIRE(engine.cells.cells[x_sym].value == 42.0);
 }
 
 TEST_CASE("Cold eval: define and output", "[signal_engine][cold_eval]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     SymbolID bpm_sym = internSymbol("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
     // Define a constant and use it in output
-    eval_cold("(define freq 440)", 17, cells, arena, pool);
-    eval_cold("(a1 (+ 1 2))", 12, cells, arena, pool);
+    eval_cold("(define freq 440)", 17, engine);
+    eval_cold("(a1 (+ 1 2))", 12, engine);
 
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
     double cell_vals[MAX_CELLS] = {};
-    cells.snapshot_values(cell_vals, MAX_CELLS);
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
     double hw_inputs[32] = {};
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = engine.cells.data_pool;
+    ctx.data_offsets = engine.cells.data_offsets;
+    ctx.data_lengths = engine.cells.data_lengths;
+    ctx.prev_outputs = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(engine.pool, ctx);
     REQUIRE(outputs[0] == 3.0);
 }
 
 TEST_CASE("Cold eval: redefine overwrites", "[signal_engine][cold_eval]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     SymbolID bpm_sym = internSymbol("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
-    eval_cold("(define x 1)", 12, cells, arena, pool);
+    eval_cold("(define x 1)", 12, engine);
     SymbolID x_sym = SymbolIntern::getInstance().getID("x");
-    REQUIRE(cells.cells[x_sym].value == 1.0);
+    REQUIRE(engine.cells.cells[x_sym].value == 1.0);
 
-    eval_cold("(define x 2)", 12, cells, arena, pool);
-    REQUIRE(cells.cells[x_sym].value == 2.0);
+    eval_cold("(define x 2)", 12, engine);
+    REQUIRE(engine.cells.cells[x_sym].value == 2.0);
 }
 
 TEST_CASE("Cold eval: defn creates callable", "[signal_engine][cold_eval]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     SymbolID bpm_sym = internSymbol("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
-    EvalResult r = eval_cold("(defn add1 [x] (+ x 1))", 24, cells, arena, pool);
+    EvalResult r = eval_cold("(defn add1 [x] (+ x 1))", 24, engine);
     REQUIRE(r.kind == EvalResult::Ok);
 
     SymbolID fn_sym = SymbolIntern::getInstance().getID("add1");
     REQUIRE(fn_sym != SymbolIntern::INVALID_ID);
-    REQUIRE(cells.cells[fn_sym].kind == CellKind::Callable);
-    REQUIRE(cells.callables[fn_sym].param_count == 1);
+    REQUIRE(engine.cells.cells[fn_sym].kind == CellKind::Callable);
+    REQUIRE(engine.cells.callables[fn_sym].param_count == 1);
 }
 
 TEST_CASE("Cold eval: multiple forms (implicit do)", "[signal_engine][cold_eval]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     SymbolID bpm_sym = internSymbol("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
     const char* src = "(define x 5) (a1 x)";
-    EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+    EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
     REQUIRE(r.kind == EvalResult::Ok);
-    REQUIRE(pool.outputs[0].valid);
+    REQUIRE(engine.pool.outputs[0].valid);
 }
 
 // ── 14. Negative Tests — Error Cases ───────────────────────────────────────
@@ -1240,42 +1238,32 @@ TEST_CASE("Negative: quote in output is error", "[signal_engine][negative]") {
 }
 
 TEST_CASE("Negative: unterminated expression is parse error", "[signal_engine][negative]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
     SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
     // "(+ 1" is incomplete — tokenizer should not crash,
     // the graph builder or eval should handle the missing RParen
     const char* src = "(a1 (+ 1";
-    EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+    EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
     // It might succeed with 1.0 (unary +) or error — either is fine as long as no crash
     (void)r;
 }
 
 TEST_CASE("Negative: recursive function is error", "[signal_engine][negative]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
-
-    auto& si = SymbolIntern::getInstance();
-    SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
-    SymbolID bpb_sym = si.intern("beats-per-bar");
-    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    SignalEngine engine;
+    engine.init_defaults();
 
     // Define recursive function
     const char* defn_src = "(defn f [x] (f x))";
-    eval_cold(defn_src, (uint32_t)strlen(defn_src), cells, arena, pool);
+    eval_cold(defn_src, (uint32_t)strlen(defn_src), engine);
 
     // Try to use it in an output — should produce error
     const char* use_src = "(a1 (f 1))";
-    EvalResult r = eval_cold(use_src, (uint32_t)strlen(use_src), cells, arena, pool);
+    EvalResult r = eval_cold(use_src, (uint32_t)strlen(use_src), engine);
     REQUIRE(r.kind == EvalResult::Error);
 }
 
@@ -1296,9 +1284,18 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         double outputs[MAX_OUTPUTS] = {};
         double workspace[MAX_TOTAL_NODES] = {};
 
-        execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                            cells.data_pool, cells.data_offsets, cells.data_lengths,
-                            pool.prev_output_values, outputs, workspace);
+        ExecutionContext ctx;
+        ctx.t = 0.0;
+        ctx.dt = 0.0;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = cells.data_pool;
+        ctx.data_offsets = cells.data_offsets;
+        ctx.data_lengths = cells.data_lengths;
+        ctx.prev_outputs = pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        execute_all_outputs(pool, ctx);
         REQUIRE(outputs[0] == 0.5);
     }
 
@@ -1313,9 +1310,18 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         double outputs[MAX_OUTPUTS] = {};
         double workspace[MAX_TOTAL_NODES] = {};
 
-        execute_all_outputs(pool, 1.5, cell_vals, hw_inputs,
-                            cells.data_pool, cells.data_offsets, cells.data_lengths,
-                            pool.prev_output_values, outputs, workspace);
+        ExecutionContext ctx;
+        ctx.t = 1.5;
+        ctx.dt = 0.0;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = cells.data_pool;
+        ctx.data_offsets = cells.data_offsets;
+        ctx.data_lengths = cells.data_lengths;
+        ctx.prev_outputs = pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        execute_all_outputs(pool, ctx);
         REQUIRE(outputs[0] == 1.5);
     }
 
@@ -1335,9 +1341,18 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         double outputs[MAX_OUTPUTS] = {};
         double workspace[MAX_TOTAL_NODES] = {};
 
-        execute_all_outputs(pool, 3.0, cell_vals, hw_inputs,
-                            cells.data_pool, cells.data_offsets, cells.data_lengths,
-                            pool.prev_output_values, outputs, workspace);
+        ExecutionContext ctx;
+        ctx.t = 3.0;
+        ctx.dt = 0.0;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = cells.data_pool;
+        ctx.data_offsets = cells.data_offsets;
+        ctx.data_lengths = cells.data_lengths;
+        ctx.prev_outputs = pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        execute_all_outputs(pool, ctx);
         REQUIRE(outputs[0] == 7.0);
     }
 
@@ -1353,9 +1368,18 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         double outputs[MAX_OUTPUTS] = {};
         double workspace[MAX_TOTAL_NODES] = {};
 
-        execute_all_outputs(pool, 1.0, cell_vals, hw_inputs,
-                            cells.data_pool, cells.data_offsets, cells.data_lengths,
-                            pool.prev_output_values, outputs, workspace);
+        ExecutionContext ctx;
+        ctx.t = 1.0;
+        ctx.dt = 0.0;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = cells.data_pool;
+        ctx.data_offsets = cells.data_offsets;
+        ctx.data_lengths = cells.data_lengths;
+        ctx.prev_outputs = pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        execute_all_outputs(pool, ctx);
         REQUIRE(outputs[0] == 0.0);
     }
 
@@ -1383,9 +1407,18 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         double outputs[MAX_OUTPUTS] = {};
         double workspace[MAX_TOTAL_NODES] = {};
 
-        execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                            cells.data_pool, cells.data_offsets, cells.data_lengths,
-                            pool.prev_output_values, outputs, workspace);
+        ExecutionContext ctx;
+        ctx.t = 0.0;
+        ctx.dt = 0.0;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = cells.data_pool;
+        ctx.data_offsets = cells.data_offsets;
+        ctx.data_lengths = cells.data_lengths;
+        ctx.prev_outputs = pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        execute_all_outputs(pool, ctx);
         REQUIRE(outputs[0] == 30.0);
     }
 
@@ -1402,9 +1435,18 @@ TEST_CASE("Executor single-sample", "[signal_engine][executor]") {
         double outputs[MAX_OUTPUTS] = {};
         double workspace[MAX_TOTAL_NODES] = {};
 
-        execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                            cells.data_pool, cells.data_offsets, cells.data_lengths,
-                            pool.prev_output_values, outputs, workspace);
+        ExecutionContext ctx;
+        ctx.t = 0.0;
+        ctx.dt = 0.0;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = cells.data_pool;
+        ctx.data_offsets = cells.data_offsets;
+        ctx.data_lengths = cells.data_lengths;
+        ctx.prev_outputs = pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        execute_all_outputs(pool, ctx);
         REQUIRE(outputs[0] == 7.77);
     }
 }
@@ -1426,9 +1468,18 @@ TEST_CASE("Executor: two outputs produce correct values", "[signal_engine][execu
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = cells.data_pool;
+    ctx.data_offsets = cells.data_offsets;
+    ctx.data_lengths = cells.data_lengths;
+    ctx.prev_outputs = pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(pool, ctx);
     REQUIRE(outputs[0] == 1.0);
     REQUIRE(outputs[1] == 2.0);
 }
@@ -1493,9 +1544,18 @@ TEST_CASE("Batch executor: matches single-sample for time-varying", "[signal_eng
     double workspace[MAX_TOTAL_NODES] = {};
     for (size_t i = 0; i < N; i++) {
         double single_out[MAX_OUTPUTS] = {};
-        execute_all_outputs(pool, t_array[i], cell_vals, hw_inputs,
-                            cells.data_pool, cells.data_offsets, cells.data_lengths,
-                            pool.prev_output_values, single_out, workspace);
+        ExecutionContext ctx;
+        ctx.t = t_array[i];
+        ctx.dt = 0.0;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = cells.data_pool;
+        ctx.data_offsets = cells.data_offsets;
+        ctx.data_lengths = cells.data_lengths;
+        ctx.prev_outputs = pool.prev_output_values;
+        ctx.output_values = single_out;
+        ctx.workspace = workspace;
+        execute_all_outputs(pool, ctx);
         REQUIRE(output_buffer[i] == Approx(single_out[0]).margin(1e-12));
     }
 
@@ -1547,9 +1607,18 @@ TEST_CASE("Edge cases: VecIndex with empty data table", "[signal_engine][executo
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = cells.data_pool;
+    ctx.data_offsets = cells.data_offsets;
+    ctx.data_lengths = cells.data_lengths;
+    ctx.prev_outputs = pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(pool, ctx);
     // Empty table should return 0.0
     REQUIRE(outputs[0] == 0.0);
 }
@@ -1557,9 +1626,8 @@ TEST_CASE("Edge cases: VecIndex with empty data table", "[signal_engine][executo
 // ── Graph Builder Integration (tokenize-build-check) ───────────────────────
 
 TEST_CASE("Graph builder: constant arithmetic via tokenizer", "[signal_engine][graph_builder]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
+    SignalEngine engine;
+    engine.init_defaults();
 
     const char* src = "(+ 1 2)";
     Token tokens[MAX_TOKENS];
@@ -1571,17 +1639,16 @@ TEST_CASE("Graph builder: constant arithmetic via tokenizer", "[signal_engine][g
     ts.count = count;
     ts.pos = 0;
 
-    GraphBuildResult result = build_output_graph(pool, ts, cells, arena);
+    GraphBuildResult result = build_output_graph(engine.pool, ts, engine.cells, engine.arena);
     REQUIRE(!result.has_error);
     REQUIRE(result.root_node != NODE_NONE);
-    REQUIRE(pool.nodes[result.root_node].op == NodeOp::Const);
-    REQUIRE(pool.nodes[result.root_node].imm == 3.0);
+    REQUIRE(engine.pool.nodes[result.root_node].op == NodeOp::Const);
+    REQUIRE(engine.pool.nodes[result.root_node].imm == 3.0);
 }
 
 TEST_CASE("Graph builder: nested arithmetic folds", "[signal_engine][graph_builder]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
+    SignalEngine engine;
+    engine.init_defaults();
 
     const char* src = "(+ (* 2 3) (- 10 4))";
     Token tokens[MAX_TOKENS];
@@ -1593,16 +1660,15 @@ TEST_CASE("Graph builder: nested arithmetic folds", "[signal_engine][graph_build
     ts.count = count;
     ts.pos = 0;
 
-    GraphBuildResult result = build_output_graph(pool, ts, cells, arena);
+    GraphBuildResult result = build_output_graph(engine.pool, ts, engine.cells, engine.arena);
     REQUIRE(!result.has_error);
-    REQUIRE(pool.nodes[result.root_node].op == NodeOp::Const);
-    REQUIRE(pool.nodes[result.root_node].imm == 12.0);
+    REQUIRE(engine.pool.nodes[result.root_node].op == NodeOp::Const);
+    REQUIRE(engine.pool.nodes[result.root_node].imm == 12.0);
 }
 
 TEST_CASE("Graph builder: time reference not folded", "[signal_engine][graph_builder]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
+    SignalEngine engine;
+    engine.init_defaults();
 
     const char* src = "(* t 2)";
     Token tokens[MAX_TOKENS];
@@ -1614,45 +1680,45 @@ TEST_CASE("Graph builder: time reference not folded", "[signal_engine][graph_bui
     ts.count = count;
     ts.pos = 0;
 
-    GraphBuildResult result = build_output_graph(pool, ts, cells, arena);
+    GraphBuildResult result = build_output_graph(engine.pool, ts, engine.cells, engine.arena);
     REQUIRE(!result.has_error);
-    REQUIRE(pool.nodes[result.root_node].op == NodeOp::Mul);
+    REQUIRE(engine.pool.nodes[result.root_node].op == NodeOp::Mul);
 }
 
 TEST_CASE("Cold eval: beat phasor at 120 bpm", "[signal_engine][cold_eval]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
+    SignalEngine engine;
+    engine.init_defaults();
 
-    auto& si = SymbolIntern::getInstance();
-    SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
-    SymbolID bpb_sym = si.intern("beats-per-bar");
-    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
-
-    EvalResult r = eval_cold("(a1 beat)", 9, cells, arena, pool);
+    EvalResult r = eval_cold("(a1 beat)", 9, engine);
     REQUIRE(r.kind == EvalResult::Ok);
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
 
     double cell_vals[MAX_CELLS] = {};
-    cells.snapshot_values(cell_vals, MAX_CELLS);
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
     double hw_inputs[32] = {};
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = engine.cells.data_pool;
+    ctx.data_offsets = engine.cells.data_offsets;
+    ctx.data_lengths = engine.cells.data_lengths;
+    ctx.prev_outputs = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(engine.pool, ctx);
     REQUIRE(outputs[0] == Approx(0.0).margin(1e-9));
 
-    execute_all_outputs(pool, 0.25, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ctx.t = 0.25;
+    execute_all_outputs(engine.pool, ctx);
     REQUIRE(outputs[0] == Approx(0.5).margin(1e-9));
 
-    execute_all_outputs(pool, 0.5, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ctx.t = 0.5;
+    execute_all_outputs(engine.pool, ctx);
     REQUIRE(outputs[0] == Approx(0.0).margin(1e-9));
 }
 
@@ -1665,39 +1731,40 @@ TEST_CASE("Cold eval: beat phasor at 120 bpm", "[signal_engine][cold_eval]") {
 // Evaluates setup forms, then assigns output_expr to a1, executes at time t.
 static double eval_with_setup(const char* setup, const char* output_expr, double t,
                               double bpm = 120.0) {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
-
-    auto& si = SymbolIntern::getInstance();
-    cells.cells[si.intern("bpm")] = { CellKind::Number, 0, 0, 1, bpm };
-    cells.cells[si.intern("beats-per-bar")] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[si.intern("bars-per-phrase")] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[si.intern("phrases-per-section")] = { CellKind::Number, 0, 0, 1, 4.0 };
+    SignalEngine engine;
+    engine.init_defaults(bpm);
 
     // Run setup
     if (setup && strlen(setup) > 0) {
-        EvalResult sr = eval_cold(setup, (uint32_t)strlen(setup), cells, arena, pool);
+        EvalResult sr = eval_cold(setup, (uint32_t)strlen(setup), engine);
         if (sr.kind == EvalResult::Error) return -99999.0;
     }
 
     // Assign output
     char wrapped[4096];
     snprintf(wrapped, sizeof(wrapped), "(a1 %s)", output_expr);
-    EvalResult r = eval_cold(wrapped, (uint32_t)strlen(wrapped), cells, arena, pool);
+    EvalResult r = eval_cold(wrapped, (uint32_t)strlen(wrapped), engine);
     if (r.kind == EvalResult::Error) return -99999.0;
 
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
     double cell_vals[MAX_CELLS];
-    cells.snapshot_values(cell_vals, MAX_CELLS);
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
     double hw_inputs[32] = {};
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    execute_all_outputs(pool, t, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = t;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = engine.cells.data_pool;
+    ctx.data_offsets = engine.cells.data_offsets;
+    ctx.data_lengths = engine.cells.data_lengths;
+    ctx.prev_outputs = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(engine.pool, ctx);
     return outputs[0];
 }
 
@@ -1845,54 +1912,70 @@ TEST_CASE("Defn and user function calls", "[signal_engine][cold_eval][defn]") {
 // ── Dependency Tracking and Recompilation ────────────────────────────────────
 
 TEST_CASE("Dependency tracking: cell changes trigger recompilation", "[signal_engine][cold_eval][dependency]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
-    cells.cells[si.intern("bpm")] = { CellKind::Number, 0, 0, 1, 120.0 };
-    cells.cells[si.intern("beats-per-bar")] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[si.intern("bars-per-phrase")] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[si.intern("phrases-per-section")] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[si.intern("bpm")] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[si.intern("beats-per-bar")] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[si.intern("bars-per-phrase")] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[si.intern("phrases-per-section")] = { CellKind::Number, 0, 0, 1, 4.0 };
 
     // Define freq = 440
-    EvalResult r1 = eval_cold("(define freq 440)", 17, cells, arena, pool);
+    EvalResult r1 = eval_cold("(define freq 440)", 17, engine);
     REQUIRE(r1.kind == EvalResult::Ok);
 
     // Assign output: (a1 freq)
-    EvalResult r2 = eval_cold("(a1 freq)", 9, cells, arena, pool);
+    EvalResult r2 = eval_cold("(a1 freq)", 9, engine);
     REQUIRE(r2.kind == EvalResult::Ok);
 
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
 
     // Execute — should get 440
     double cell_vals[MAX_CELLS];
-    cells.snapshot_values(cell_vals, MAX_CELLS);
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
     double hw_inputs[32] = {};
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
-    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = engine.cells.data_pool;
+    ctx.data_offsets = engine.cells.data_offsets;
+    ctx.data_lengths = engine.cells.data_lengths;
+    ctx.prev_outputs = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(engine.pool, ctx);
     REQUIRE(outputs[0] == Approx(440.0));
 
     SECTION("constant baked into graph does not auto-update without recompilation") {
         // Change freq to 880
-        EvalResult r3 = eval_cold("(define freq 880)", 17, cells, arena, pool);
+        EvalResult r3 = eval_cold("(define freq 880)", 17, engine);
         REQUIRE(r3.kind == EvalResult::Ok);
 
         // Snapshot new values
-        cells.snapshot_values(cell_vals, MAX_CELLS);
+        engine.cells.snapshot_values(cell_vals, MAX_CELLS);
 
         // Execute again — The graph has freq baked as Const(440).
         // Without recompilation, the output should still be 440
         // (because the graph builder bakes Number cells as constants).
         // on_cell_changed SHOULD trigger recompilation, but only if
         // the output source was stored. Let's check both cases.
-        execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                            cells.data_pool, cells.data_offsets, cells.data_lengths,
-                            pool.prev_output_values, outputs, workspace);
+        ExecutionContext ctx;
+        ctx.t = 0.0;
+        ctx.dt = 0.0;
+        ctx.cell_values = cell_vals;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = engine.cells.data_pool;
+        ctx.data_offsets = engine.cells.data_offsets;
+        ctx.data_lengths = engine.cells.data_lengths;
+        ctx.prev_outputs = engine.pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        execute_all_outputs(engine.pool, ctx);
 
         // If dependency tracking + recompilation works: 880
         // If it doesn't (no stored output source): 440 (stale baked constant)
@@ -1915,44 +1998,51 @@ TEST_CASE("Dependency tracking: cell changes trigger recompilation", "[signal_en
         // But per spec, Number cells are baked as Const for optimization.
         // This test documents the expected behavior.
         SymbolID freq_id = si.intern("freq");
-        REQUIRE(cells.cells[freq_id].kind == CellKind::Number);
-        REQUIRE(cells.cells[freq_id].value == 440.0);
+        REQUIRE(engine.cells.cells[freq_id].kind == CellKind::Number);
+        REQUIRE(engine.cells.cells[freq_id].value == 440.0);
     }
 }
 
 // ── Multiple Outputs ────────────────────────────────────────────────────────
 
 TEST_CASE("Multiple outputs: a1 and d1 simultaneously", "[signal_engine][executor][multi_output]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
-    cells.cells[si.intern("bpm")] = { CellKind::Number, 0, 0, 1, 120.0 };
-    cells.cells[si.intern("beats-per-bar")] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[si.intern("bars-per-phrase")] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[si.intern("phrases-per-section")] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[si.intern("bpm")] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[si.intern("beats-per-bar")] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[si.intern("bars-per-phrase")] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[si.intern("phrases-per-section")] = { CellKind::Number, 0, 0, 1, 4.0 };
 
     // a1 = constant 0.75
-    EvalResult r1 = eval_cold("(a1 0.75)", 9, cells, arena, pool);
+    EvalResult r1 = eval_cold("(a1 0.75)", 9, engine);
     REQUIRE(r1.kind == EvalResult::Ok);
 
     // d1 = constant 0.25
-    EvalResult r2 = eval_cold("(d1 0.25)", 9, cells, arena, pool);
+    EvalResult r2 = eval_cold("(d1 0.25)", 9, engine);
     REQUIRE(r2.kind == EvalResult::Ok);
 
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
 
     double cell_vals[MAX_CELLS];
-    cells.snapshot_values(cell_vals, MAX_CELLS);
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
     double hw_inputs[32] = {};
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = engine.cells.data_pool;
+    ctx.data_offsets = engine.cells.data_offsets;
+    ctx.data_lengths = engine.cells.data_lengths;
+    ctx.prev_outputs = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(engine.pool, ctx);
 
     // a1 is output index 0
     REQUIRE(outputs[0] == 0.75);
@@ -1961,27 +2051,25 @@ TEST_CASE("Multiple outputs: a1 and d1 simultaneously", "[signal_engine][executo
 }
 
 TEST_CASE("Multiple outputs share subgraph nodes via CSE", "[signal_engine][executor][cse_sharing]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
-    cells.cells[si.intern("bpm")] = { CellKind::Number, 0, 0, 1, 120.0 };
-    cells.cells[si.intern("beats-per-bar")] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[si.intern("bars-per-phrase")] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[si.intern("phrases-per-section")] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[si.intern("bpm")] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[si.intern("beats-per-bar")] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[si.intern("bars-per-phrase")] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[si.intern("phrases-per-section")] = { CellKind::Number, 0, 0, 1, 4.0 };
 
-    uint16_t initial_node_count = pool.node_count;
+    uint16_t initial_node_count = engine.pool.node_count;
 
     // Both outputs use beat — the beat subgraph should be shared
-    EvalResult r1 = eval_cold("(a1 beat)", 9, cells, arena, pool);
+    EvalResult r1 = eval_cold("(a1 beat)", 9, engine);
     REQUIRE(r1.kind == EvalResult::Ok);
-    uint16_t after_a1 = pool.node_count;
+    uint16_t after_a1 = engine.pool.node_count;
 
-    EvalResult r2 = eval_cold("(a2 beat)", 9, cells, arena, pool);
+    EvalResult r2 = eval_cold("(a2 beat)", 9, engine);
     REQUIRE(r2.kind == EvalResult::Ok);
-    uint16_t after_a2 = pool.node_count;
+    uint16_t after_a2 = engine.pool.node_count;
 
     // a2 should add very few (or zero) new nodes since beat subgraph is shared
     // The beat subgraph has: CellLoad(bpm), Const(60), Div, Mul(t, rate), Const(1), Fmod
@@ -1993,38 +2081,45 @@ TEST_CASE("Multiple outputs share subgraph nodes via CSE", "[signal_engine][exec
     REQUIRE(nodes_added_by_a2 == 0);
 
     // Both outputs should point to the same root node
-    REQUIRE(pool.outputs[0].root_node == pool.outputs[1].root_node);
+    REQUIRE(engine.pool.outputs[0].root_node == engine.pool.outputs[1].root_node);
 }
 
 // ── Output Reassignment ─────────────────────────────────────────────────────
 
 TEST_CASE("Output reassignment silently replaces", "[signal_engine][cold_eval][reassign]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
-    cells.cells[si.intern("bpm")] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[si.intern("bpm")] = { CellKind::Number, 0, 0, 1, 120.0 };
 
     // First assignment
-    EvalResult r1 = eval_cold("(a1 0.5)", 8, cells, arena, pool);
+    EvalResult r1 = eval_cold("(a1 0.5)", 8, engine);
     REQUIRE(r1.kind == EvalResult::Ok);
 
     // Second assignment overwrites
-    EvalResult r2 = eval_cold("(a1 0.9)", 8, cells, arena, pool);
+    EvalResult r2 = eval_cold("(a1 0.9)", 8, engine);
     REQUIRE(r2.kind == EvalResult::Ok);
 
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
     double cell_vals[MAX_CELLS];
-    cells.snapshot_values(cell_vals, MAX_CELLS);
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
     double hw_inputs[32] = {};
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    execute_all_outputs(pool, 0.0, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = engine.cells.data_pool;
+    ctx.data_offsets = engine.cells.data_offsets;
+    ctx.data_lengths = engine.cells.data_lengths;
+    ctx.prev_outputs = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(engine.pool, ctx);
 
     // Should be 0.9, not 0.5
     REQUIRE(outputs[0] == 0.9);
@@ -2290,31 +2385,29 @@ TEST_CASE("gatesw: gate with width encoding", "[signal_engine][graph_builder][ga
 // ── zeros (cold path) ──────────────────────────────────────────────────────
 
 TEST_CASE("Cold eval: zeros creates zero vector", "[signal_engine][cold_eval][zeros]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
     SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
     // Create a zero vector and define it
     const char* src = "(define pat (zeros 4))";
-    EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+    EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
     // zeros returns DataRef which define should handle, but define currently
     // stores it as expression. The zeros call itself should succeed at top level.
 
     // Direct zeros call
     const char* src2 = "(zeros 8)";
-    EvalResult r2 = eval_cold(src2, (uint32_t)strlen(src2), cells, arena, pool);
+    EvalResult r2 = eval_cold(src2, (uint32_t)strlen(src2), engine);
     REQUIRE(r2.kind == EvalResult::DataRef);
     REQUIRE(r2.number >= 0); // valid table ID
 
     // Verify the data table contains zeros
     uint16_t table_id = (uint16_t)r2.number;
     uint16_t len;
-    const double* data = cells.get_data_table(table_id, len);
+    const double* data = engine.cells.get_data_table(table_id, len);
     REQUIRE(data != nullptr);
     REQUIRE(len == 8);
     for (int i = 0; i < 8; i++) {
@@ -2325,17 +2418,15 @@ TEST_CASE("Cold eval: zeros creates zero vector", "[signal_engine][cold_eval][ze
 // ── get-expr (cold path) ───────────────────────────────────────────────────
 
 TEST_CASE("Cold eval: get-expr returns error for undefined", "[signal_engine][cold_eval][get-expr]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
     SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
     const char* src = "(get-expr undefined-name)";
-    EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+    EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
     REQUIRE(r.kind == EvalResult::Error);
 }
 
@@ -2425,41 +2516,37 @@ TEST_CASE("Graph builder: rwarp", "[signal_engine][graph_builder][ratio]") {
 // ── Transport: set-bpm ────────────────────────────────────────────────────
 
 TEST_CASE("Cold eval: set-bpm changes bpm cell", "[signal_engine][cold_eval][transport][set-bpm]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
     SymbolID bpm_sym = si.intern("bpm");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
     SECTION("set-bpm 60 changes bpm cell to 60") {
         const char* src = "(set-bpm 60)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
-        REQUIRE(cells.cells[bpm_sym].value == 60.0);
+        REQUIRE(engine.cells.cells[bpm_sym].value == 60.0);
     }
 
     SECTION("set-bpm 240 changes bpm cell to 240") {
         const char* src = "(set-bpm 240)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
-        REQUIRE(cells.cells[bpm_sym].value == 240.0);
+        REQUIRE(engine.cells.cells[bpm_sym].value == 240.0);
     }
 
     SECTION("set-bpm without number produces error") {
         const char* src = "(set-bpm foo)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Error);
     }
 }
 
 TEST_CASE("set-bpm affects beat phasor", "[signal_engine][cold_eval][transport][set-bpm]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
     SymbolID bpm_sym = si.intern("bpm");
@@ -2467,27 +2554,36 @@ TEST_CASE("set-bpm affects beat phasor", "[signal_engine][cold_eval][transport][
     SymbolID bpp_sym = si.intern("bars-per-phrase");
     SymbolID pps_sym = si.intern("phrases-per-section");
 
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
-    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[bpp_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[pps_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[bpp_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[pps_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
 
     // Set bpm to 60, then assign beat to a1
     const char* src = "(do (set-bpm 60) (a1 beat))";
-    EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+    EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
     REQUIRE(r.kind == EvalResult::Ok);
 
     // Execute at t=0.5
-    pool.rebuild_execution_order();
+    engine.pool.rebuild_execution_order();
     double cell_vals[MAX_CELLS];
-    cells.snapshot_values(cell_vals, MAX_CELLS);
+    engine.cells.snapshot_values(cell_vals, MAX_CELLS);
     double hw_inputs[32] = {};
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    execute_all_outputs(pool, 0.5, cell_vals, hw_inputs,
-                        cells.data_pool, cells.data_offsets, cells.data_lengths,
-                        pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = 0.5;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = engine.cells.data_pool;
+    ctx.data_offsets = engine.cells.data_offsets;
+    ctx.data_lengths = engine.cells.data_lengths;
+    ctx.prev_outputs = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(engine.pool, ctx);
 
     // At 60 bpm, beat duration = 1s, so at t=0.5, beat phasor = 0.5
     REQUIRE(outputs[0] == Approx(0.5).epsilon(0.01));
@@ -2496,27 +2592,25 @@ TEST_CASE("set-bpm affects beat phasor", "[signal_engine][cold_eval][transport][
 // ── Transport: set-time-sig ───────────────────────────────────────────────
 
 TEST_CASE("Cold eval: set-time-sig changes beats-per-bar", "[signal_engine][cold_eval][transport][set-time-sig]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
     SymbolID bpm_sym = si.intern("bpm");
     SymbolID bpb_sym = si.intern("beats-per-bar");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
-    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
 
     SECTION("set-time-sig 3 4 changes beats-per-bar to 3") {
         const char* src = "(set-time-sig 3 4)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
-        REQUIRE(cells.cells[bpb_sym].value == 3.0);
+        REQUIRE(engine.cells.cells[bpb_sym].value == 3.0);
     }
 
     SECTION("set-time-sig needs two numbers") {
         const char* src = "(set-time-sig 3)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Error);
     }
 }
@@ -2524,160 +2618,134 @@ TEST_CASE("Cold eval: set-time-sig changes beats-per-bar", "[signal_engine][cold
 // ── Transport: useq-clear ─────────────────────────────────────────────────
 
 TEST_CASE("Cold eval: useq-clear resets outputs", "[signal_engine][cold_eval][transport][useq-clear]") {
-    NodePool pool;
-    CellStore cells;
-    SourceArena arena;
-    GraphBuilder::init_symbols();
+    SignalEngine engine;
+    engine.init_defaults();
 
     auto& si = SymbolIntern::getInstance();
     SymbolID bpm_sym = si.intern("bpm");
     SymbolID bpb_sym = si.intern("beats-per-bar");
     SymbolID bpp_sym = si.intern("bars-per-phrase");
     SymbolID pps_sym = si.intern("phrases-per-section");
-    cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
-    cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[bpp_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
-    cells.cells[pps_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
+    engine.cells.cells[bpb_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[bpp_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
+    engine.cells.cells[pps_sym] = { CellKind::Number, 0, 0, 1, 4.0 };
 
     // Assign an output
     const char* src1 = "(a1 0.7)";
-    eval_cold(src1, (uint32_t)strlen(src1), cells, arena, pool);
-    REQUIRE(pool.outputs[0].valid == true);
+    eval_cold(src1, (uint32_t)strlen(src1), engine);
+    REQUIRE(engine.pool.outputs[0].valid == true);
 
     // Clear
     const char* src2 = "(useq-clear)";
-    EvalResult r = eval_cold(src2, (uint32_t)strlen(src2), cells, arena, pool);
+    EvalResult r = eval_cold(src2, (uint32_t)strlen(src2), engine);
     REQUIRE(r.kind == EvalResult::Ok);
 
     // All outputs should be invalid
-    REQUIRE(pool.outputs[0].valid == false);
-    REQUIRE(pool.outputs[0].root_node == NODE_NONE);
+    REQUIRE(engine.pool.outputs[0].valid == false);
+    REQUIRE(engine.pool.outputs[0].root_node == NODE_NONE);
 
     // Analog defaults to 0.5
-    REQUIRE(pool.outputs[0].lkg_value == 0.5);
+    REQUIRE(engine.pool.outputs[0].lkg_value == 0.5);
     // Digital defaults to 0.0
-    REQUIRE(pool.outputs[8].lkg_value == 0.0);
+    REQUIRE(engine.pool.outputs[8].lkg_value == 0.0);
 }
 
 // ── Transport: time offset ────────────────────────────────────────────────
 
 TEST_CASE("Cold eval: time offset", "[signal_engine][cold_eval][transport][time-offset]") {
-    g_engine_state = {};
-
     SECTION("useq-set-time-offset sets offset") {
-        NodePool pool;
-        CellStore cells;
-        SourceArena arena;
-        GraphBuilder::init_symbols();
+        SignalEngine engine;
+        engine.init_defaults();
 
         const char* src = "(useq-set-time-offset 1.0)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
-        REQUIRE(g_engine_state.time_offset == 1.0);
+        REQUIRE(engine.state.time_offset == 1.0);
     }
 
     SECTION("useq-nudge-time adds to offset") {
-        NodePool pool;
-        CellStore cells;
-        SourceArena arena;
-        GraphBuilder::init_symbols();
+        SignalEngine engine;
+        engine.init_defaults();
 
-        g_engine_state.time_offset = 1.0;
+        engine.state.time_offset = 1.0;
         const char* src = "(useq-nudge-time 0.5)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
-        REQUIRE(g_engine_state.time_offset == Approx(1.5));
+        REQUIRE(engine.state.time_offset == Approx(1.5));
     }
 
     SECTION("negative nudge reduces offset") {
-        NodePool pool;
-        CellStore cells;
-        SourceArena arena;
-        GraphBuilder::init_symbols();
+        SignalEngine engine;
+        engine.init_defaults();
 
-        g_engine_state.time_offset = 2.0;
+        engine.state.time_offset = 2.0;
         const char* src = "(useq-nudge-time -0.5)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
-        REQUIRE(g_engine_state.time_offset == Approx(1.5));
+        REQUIRE(engine.state.time_offset == Approx(1.5));
     }
 
     SECTION("useq-set-time-offset needs a number") {
-        NodePool pool;
-        CellStore cells;
-        SourceArena arena;
-        GraphBuilder::init_symbols();
+        SignalEngine engine;
+        engine.init_defaults();
 
         const char* src = "(useq-set-time-offset foo)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Error);
     }
-
-    g_engine_state = {};
 }
 
 // ── Transport: play/pause/stop/rewind ─────────────────────────────────────
 
 TEST_CASE("Cold eval: play/pause/stop/rewind", "[signal_engine][cold_eval][transport]") {
-    g_engine_state = {};
-
     SECTION("useq-pause sets is_playing to false") {
-        NodePool pool;
-        CellStore cells;
-        SourceArena arena;
-        GraphBuilder::init_symbols();
+        SignalEngine engine;
+        engine.init_defaults();
 
-        REQUIRE(g_engine_state.is_playing == true);
+        REQUIRE(engine.state.is_playing == true);
         const char* src = "(useq-pause)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
-        REQUIRE(g_engine_state.is_playing == false);
+        REQUIRE(engine.state.is_playing == false);
     }
 
     SECTION("useq-play sets is_playing to true") {
-        NodePool pool;
-        CellStore cells;
-        SourceArena arena;
-        GraphBuilder::init_symbols();
+        SignalEngine engine;
+        engine.init_defaults();
 
-        g_engine_state.is_playing = false;
+        engine.state.is_playing = false;
         const char* src = "(useq-play)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
-        REQUIRE(g_engine_state.is_playing == true);
+        REQUIRE(engine.state.is_playing == true);
     }
 
     SECTION("useq-stop pauses and resets offset") {
-        NodePool pool;
-        CellStore cells;
-        SourceArena arena;
-        GraphBuilder::init_symbols();
+        SignalEngine engine;
+        engine.init_defaults();
 
-        g_engine_state.is_playing = true;
-        g_engine_state.time_offset = 5.0;
+        engine.state.is_playing = true;
+        engine.state.time_offset = 5.0;
         const char* src = "(useq-stop)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
-        REQUIRE(g_engine_state.is_playing == false);
-        REQUIRE(g_engine_state.time_offset == 0.0);
+        REQUIRE(engine.state.is_playing == false);
+        REQUIRE(engine.state.time_offset == 0.0);
     }
 
     SECTION("useq-rewind resets offset but preserves play state") {
-        NodePool pool;
-        CellStore cells;
-        SourceArena arena;
-        GraphBuilder::init_symbols();
+        SignalEngine engine;
+        engine.init_defaults();
 
-        g_engine_state.is_playing = true;
-        g_engine_state.time_offset = 3.0;
+        engine.state.is_playing = true;
+        engine.state.time_offset = 3.0;
         const char* src = "(useq-rewind)";
-        EvalResult r = eval_cold(src, (uint32_t)strlen(src), cells, arena, pool);
+        EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
-        REQUIRE(g_engine_state.is_playing == true);
-        REQUIRE(g_engine_state.time_offset == 0.0);
+        REQUIRE(engine.state.is_playing == true);
+        REQUIRE(engine.state.time_offset == 0.0);
     }
-
-    g_engine_state = {};
 }
 
 // ── Transport: side-effect in signal context ──────────────────────────────
@@ -2832,10 +2900,18 @@ TEST_CASE("GC reclaims dead nodes", "[signal_engine][node_pool][gc]") {
     double outputs[MAX_OUTPUTS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
 
-    execute_all_outputs(engine.pool, 0.0, cell_vals, hw_inputs,
-                        engine.cells.data_pool, engine.cells.data_offsets,
-                        engine.cells.data_lengths,
-                        engine.pool.prev_output_values, outputs, workspace);
+    ExecutionContext ctx;
+    ctx.t = 0.0;
+    ctx.dt = 0.0;
+    ctx.cell_values = cell_vals;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = engine.cells.data_pool;
+    ctx.data_offsets = engine.cells.data_offsets;
+    ctx.data_lengths = engine.cells.data_lengths;
+    ctx.prev_outputs = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(engine.pool, ctx);
     REQUIRE(outputs[0] == Approx(42.0));
 }
 

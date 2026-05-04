@@ -44,20 +44,6 @@ void commit_outputs(NodePool& pool, const double* output_values);
 
 void commit_state(NodePool& pool, const double* workspace);
 
-// Legacy 10-parameter overload — delegates to the ExecutionContext version.
-void execute_all_outputs(
-    const NodePool& pool,
-    double t,
-    const double* cell_values,
-    const double* hw_inputs,
-    const double* data_pool,
-    const uint16_t* data_offsets,
-    const uint16_t* data_lengths,
-    const double* prev_output_values,
-    double* output_values,
-    double* node_values    // workspace [MAX_TOTAL_NODES], can be stack-allocated
-);
-
 // ── Batched Execution (WASM Visualization) ──────────────────────────────────
 // SOA execution across a time window for efficient visualization.
 

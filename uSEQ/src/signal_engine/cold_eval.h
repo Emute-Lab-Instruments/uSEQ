@@ -70,11 +70,6 @@ struct SignalEngine {
 
 EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine);
 
-// Legacy overload — delegates to the SignalEngine version using the global
-// engine state and output_sources arrays.
-EvalResult eval_cold(const char* source, uint32_t length,
-                     CellStore& cells, SourceArena& arena, NodePool& pool);
-
 // ── Bulk Recompilation ──────────────────────────────────────────────────────
 // Recompile all outputs that have stored source text.  Used after flash load
 // to rebuild signal graphs from persisted source.
@@ -89,16 +84,6 @@ void recompile_all_outputs(SignalEngine& engine);
 // When a cell changes, recompile outputs that depend on it.
 
 void on_cell_changed(SymbolID cell_id, SignalEngine& engine);
-
-// Legacy overload
-void on_cell_changed(SymbolID cell_id, CellStore& cells,
-                     SourceArena& arena, NodePool& pool);
-
-// ── Global singletons (legacy) ─────────────────────────────────────────────
-// Retained for backward compatibility; new code should use SignalEngine.
-
-extern EngineState g_engine_state;
-extern OutputSource output_sources[MAX_OUTPUTS];
 
 } // namespace sig
 

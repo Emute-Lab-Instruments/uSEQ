@@ -176,34 +176,6 @@ void commit_state(NodePool& pool, const double* workspace) {
     }
 }
 
-// Legacy 10-parameter overload
-
-void execute_all_outputs(
-    const NodePool& pool,
-    double t,
-    const double* cell_values,
-    const double* hw_inputs,
-    const double* data_pool,
-    const uint16_t* data_offsets,
-    const uint16_t* data_lengths,
-    const double* prev_output_values,
-    double* output_values,
-    double* node_values
-) {
-    ExecutionContext ctx;
-    ctx.t             = t;
-    ctx.dt            = 0.0;
-    ctx.cell_values   = cell_values;
-    ctx.hw_inputs     = hw_inputs;
-    ctx.data_pool     = data_pool;
-    ctx.data_offsets  = data_offsets;
-    ctx.data_lengths  = data_lengths;
-    ctx.prev_outputs  = prev_output_values;
-    ctx.output_values = output_values;
-    ctx.workspace     = node_values;
-    execute_all_outputs(pool, ctx);
-}
-
 // ── Batched Execution ───────────────────────────────────────────────────────
 
 void execute_batch(

@@ -7,14 +7,6 @@
 
 namespace sig {
 
-// ── Global engine state (legacy) ──────────────────────────────────────────
-
-EngineState g_engine_state = {};
-
-// ── Output source storage (legacy) ─────────────────────────────────────────
-
-OutputSource output_sources[MAX_OUTPUTS] = {};
-
 // ── SignalEngine::init_defaults ────────────────────────────────────────────
 
 void SignalEngine::init_defaults(double bpm, int beats_per_bar,
@@ -234,10 +226,18 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
             double workspace[MAX_TOTAL_NODES] = {};
             double outputs[MAX_OUTPUTS] = {};
 
-            execute_all_outputs(engine.pool, 0.0, cell_vals, hw_inputs,
-                                engine.cells.data_pool, engine.cells.data_offsets,
-                                engine.cells.data_lengths,
-                                engine.pool.prev_output_values, outputs, workspace);
+            ExecutionContext ctx;
+            ctx.t = 0.0;
+            ctx.dt = 0.0;
+            ctx.cell_values = cell_vals;
+            ctx.hw_inputs = hw_inputs;
+            ctx.data_pool = engine.cells.data_pool;
+            ctx.data_offsets = engine.cells.data_offsets;
+            ctx.data_lengths = engine.cells.data_lengths;
+            ctx.prev_outputs = engine.pool.prev_output_values;
+            ctx.output_values = outputs;
+            ctx.workspace = workspace;
+            execute_all_outputs(engine.pool, ctx);
 
             engine.cells.cells[sym].kind = CellKind::Number;
             engine.cells.cells[sym].value = outputs[0];
@@ -762,65 +762,6 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
     return last;
 }
 
-// ── eval_cold legacy overload ──────────────────────────────────────────────
-// Wraps separate CellStore/SourceArena/NodePool into a heap-allocated
-// SignalEngine, runs eval, then copies the mutated state back.
-// This is a cold path, so the allocation overhead is acceptable.
-// The global g_engine_state and output_sources are synchronised.
-
-EvalResult eval_cold(const char* source, uint32_t length,
-                     CellStore& cells, SourceArena& arena, NodePool& pool) {
-    SignalEngine* tmp = new SignalEngine();
-    memcpy(&tmp->cells, &cells, sizeof(CellStore));
-    memcpy(&tmp->arena, &arena, sizeof(SourceArena));
-
-    // Copy NodePool fields individually (unique_ptr is not trivially copyable).
-    // batch_workspace is not needed for cold-path eval so we leave it null.
-    memcpy(tmp->pool.nodes, pool.nodes, sizeof(pool.nodes));
-    tmp->pool.node_count = pool.node_count;
-    memcpy(tmp->pool.cse_hashes, pool.cse_hashes, sizeof(pool.cse_hashes));
-    memcpy(tmp->pool.cse_indices, pool.cse_indices, sizeof(pool.cse_indices));
-    memcpy(tmp->pool.exec_order, pool.exec_order, sizeof(pool.exec_order));
-    tmp->pool.exec_count = pool.exec_count;
-    memcpy(tmp->pool.outputs, pool.outputs, sizeof(pool.outputs));
-    memcpy(tmp->pool.output_deps, pool.output_deps, sizeof(pool.output_deps));
-    memcpy(tmp->pool.prev_output_values, pool.prev_output_values,
-           sizeof(pool.prev_output_values));
-    memcpy(tmp->pool.state_values, pool.state_values, sizeof(pool.state_values));
-    memcpy(tmp->pool.state_update_roots, pool.state_update_roots, sizeof(pool.state_update_roots));
-    tmp->pool.state_slot_count = pool.state_slot_count;
-    tmp->pool.batch_chunk_size = pool.batch_chunk_size;
-
-    tmp->state = g_engine_state;
-    memcpy(tmp->output_sources, output_sources, sizeof(output_sources));
-
-    EvalResult result = eval_cold(source, length, *tmp);
-
-    memcpy(&cells, &tmp->cells, sizeof(CellStore));
-    memcpy(&arena, &tmp->arena, sizeof(SourceArena));
-
-    // Copy back NodePool fields
-    memcpy(pool.nodes, tmp->pool.nodes, sizeof(pool.nodes));
-    pool.node_count = tmp->pool.node_count;
-    memcpy(pool.cse_hashes, tmp->pool.cse_hashes, sizeof(pool.cse_hashes));
-    memcpy(pool.cse_indices, tmp->pool.cse_indices, sizeof(pool.cse_indices));
-    memcpy(pool.exec_order, tmp->pool.exec_order, sizeof(pool.exec_order));
-    pool.exec_count = tmp->pool.exec_count;
-    memcpy(pool.outputs, tmp->pool.outputs, sizeof(pool.outputs));
-    memcpy(pool.output_deps, tmp->pool.output_deps, sizeof(pool.output_deps));
-    memcpy(pool.prev_output_values, tmp->pool.prev_output_values,
-           sizeof(pool.prev_output_values));
-    memcpy(pool.state_values, tmp->pool.state_values, sizeof(pool.state_values));
-    memcpy(pool.state_update_roots, tmp->pool.state_update_roots, sizeof(pool.state_update_roots));
-    pool.state_slot_count = tmp->pool.state_slot_count;
-
-    g_engine_state = tmp->state;
-    memcpy(output_sources, tmp->output_sources, sizeof(output_sources));
-
-    delete tmp;
-    return result;
-}
-
 // ── Bulk recompilation ─────────────────────────────────────────────────────
 // Rebuilds every output graph from stored source text.  Mirrors the
 // per-output recompilation in on_cell_changed() but operates on ALL outputs
@@ -952,44 +893,6 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
     }
 
     engine.pool.rebuild_execution_order();
-}
-
-// ── Dependency tracking (legacy overload) ──────────────────────────────────
-
-void on_cell_changed(SymbolID cell_id, CellStore& cells,
-                     SourceArena& arena, NodePool& pool) {
-    for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
-        if (pool.outputs[i].root_node == NODE_NONE) continue;
-        if (!pool.output_deps[i].contains(cell_id)) continue;
-
-        if (output_sources[i].has_source) {
-            const char* src = arena.read(output_sources[i].arena_offset);
-            if (src) {
-                Token tokens[MAX_TOKENS];
-                uint8_t parse_errors = 0;
-                uint16_t count = TokenStream::tokenize(
-                    src, output_sources[i].arena_length,
-                    tokens, MAX_TOKENS, nullptr, &parse_errors);
-
-                if (parse_errors == 0) {
-                    TokenStream ts;
-                    memcpy(ts.tokens, tokens, count * sizeof(Token));
-                    ts.count = count;
-                    ts.pos = 0;
-
-                    GraphBuildResult result = build_output_graph(pool, ts, cells, arena, src);
-                    if (!result.has_error) {
-                        pool.outputs[i].root_node = result.root_node;
-                        pool.outputs[i].valid = true;
-                    } else {
-                        pool.outputs[i].valid = false;
-                    }
-                }
-            }
-        }
-    }
-
-    pool.rebuild_execution_order();
 }
 
 } // namespace sig
