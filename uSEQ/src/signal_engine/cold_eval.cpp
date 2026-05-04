@@ -586,9 +586,11 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         if (sym < MAX_CELLS && engine.cells.cells[sym].kind == CellKind::Number) {
             return make_number(engine.cells.cells[sym].value);
         }
-        // Try as a signal expression (e.g. bar, beat, phrase)
-        return eval_expression(
-            source + tok.span_start, tok.span_len, engine);
+        if (source && tok.span_start + tok.span_len <= source_length) {
+            return eval_expression(
+                source + tok.span_start, tok.span_len, engine);
+        }
+        return make_ok();
     }
 
     if (tok.kind == TokenKind::LBracket) {
@@ -599,6 +601,7 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         engine.scratch_pool.reset();
         uint8_t saved_table_count = engine.cells.data_table_count;
 
+        // Static: pointer survives return. Caller must copy before next eval_cold.
         static char vec_buf[512];
         uint16_t buf_pos = 0;
         vec_buf[buf_pos++] = '[';

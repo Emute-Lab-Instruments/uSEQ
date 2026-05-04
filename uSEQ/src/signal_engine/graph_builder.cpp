@@ -1565,6 +1565,10 @@ uint16_t GraphBuilder::compile_integrate(TokenStream& ts, Scope& scope, TimeCont
                 state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
             } else if (id_tok.kind == TokenKind::Symbol) {
                 state_id = id_tok.symbol;
+            } else {
+                return report_error_cat(DiagnosticCategory::Type, id_tok,
+                    ":id must be a string or keyword",
+                    "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
             compile_expr(ts, scope, ctx);
@@ -1641,6 +1645,10 @@ uint16_t GraphBuilder::compile_phasor(TokenStream& ts, Scope& scope, TimeContext
                 state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
             } else if (id_tok.kind == TokenKind::Symbol) {
                 state_id = id_tok.symbol;
+            } else {
+                return report_error_cat(DiagnosticCategory::Type, id_tok,
+                    ":id must be a string or keyword",
+                    "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
             compile_expr(ts, scope, ctx);
@@ -1717,6 +1725,10 @@ uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx
                 state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
             } else if (id_tok.kind == TokenKind::Symbol) {
                 state_id = id_tok.symbol;
+            } else {
+                return report_error_cat(DiagnosticCategory::Type, id_tok,
+                    ":id must be a string or keyword",
+                    "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
             compile_expr(ts, scope, ctx);
@@ -1781,6 +1793,10 @@ uint16_t GraphBuilder::compile_slew(TokenStream& ts, Scope& scope, TimeContext& 
                 state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
             } else if (id_tok.kind == TokenKind::Symbol) {
                 state_id = id_tok.symbol;
+            } else {
+                return report_error_cat(DiagnosticCategory::Type, id_tok,
+                    ":id must be a string or keyword",
+                    "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
             compile_expr(ts, scope, ctx);
@@ -1836,6 +1852,10 @@ uint16_t GraphBuilder::compile_one_pole(TokenStream& ts, Scope& scope, TimeConte
                 state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
             } else if (id_tok.kind == TokenKind::Symbol) {
                 state_id = id_tok.symbol;
+            } else {
+                return report_error_cat(DiagnosticCategory::Type, id_tok,
+                    ":id must be a string or keyword",
+                    "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
             compile_expr(ts, scope, ctx);
@@ -1909,6 +1929,10 @@ uint16_t GraphBuilder::compile_env_follow(TokenStream& ts, Scope& scope, TimeCon
                 state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
             } else if (id_tok.kind == TokenKind::Symbol) {
                 state_id = id_tok.symbol;
+            } else {
+                return report_error_cat(DiagnosticCategory::Type, id_tok,
+                    ":id must be a string or keyword",
+                    "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
             compile_expr(ts, scope, ctx);
@@ -1977,6 +2001,10 @@ uint16_t GraphBuilder::compile_sah(TokenStream& ts, Scope& scope, TimeContext& c
                 state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
             } else if (id_tok.kind == TokenKind::Symbol) {
                 state_id = id_tok.symbol;
+            } else {
+                return report_error_cat(DiagnosticCategory::Type, id_tok,
+                    ":id must be a string or keyword",
+                    "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
             compile_expr(ts, scope, ctx);
@@ -2029,6 +2057,10 @@ uint16_t GraphBuilder::compile_noise(TokenStream& ts, Scope& scope, TimeContext&
                 state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
             } else if (id_tok.kind == TokenKind::Symbol) {
                 state_id = id_tok.symbol;
+            } else {
+                return report_error_cat(DiagnosticCategory::Type, id_tok,
+                    ":id must be a string or keyword",
+                    "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
             compile_expr(ts, scope, ctx);
@@ -2074,6 +2106,10 @@ uint16_t GraphBuilder::compile_toggle(TokenStream& ts, Scope& scope, TimeContext
                 state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
             } else if (id_tok.kind == TokenKind::Symbol) {
                 state_id = id_tok.symbol;
+            } else {
+                return report_error_cat(DiagnosticCategory::Type, id_tok,
+                    ":id must be a string or keyword",
+                    "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
             compile_expr(ts, scope, ctx);
@@ -2132,6 +2168,10 @@ uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext&
                 state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
             } else if (id_tok.kind == TokenKind::Symbol) {
                 state_id = id_tok.symbol;
+            } else {
+                return report_error_cat(DiagnosticCategory::Type, id_tok,
+                    ":id must be a string or keyword",
+                    "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
             compile_expr(ts, scope, ctx);

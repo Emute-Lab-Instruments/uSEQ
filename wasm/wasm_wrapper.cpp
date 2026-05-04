@@ -410,6 +410,7 @@ extern "C"
         // Save state — useq_eval_output is read-only and must not corrupt
         // live engine state (execute_at_time advances state permanently).
         double saved_state[sig::MAX_STATE_SLOTS];
+        uint16_t saved_slot_count = g_engine->pool.state_slot_count;
         memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
         double saved_prev_t = g_prev_tick_time;
 
@@ -418,6 +419,7 @@ extern "C"
 
         // Restore state
         memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
+        g_engine->pool.state_slot_count = saved_slot_count;
         g_prev_tick_time = saved_prev_t;
 
         return output_values[output_index];
