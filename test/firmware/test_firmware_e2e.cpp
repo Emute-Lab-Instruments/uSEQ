@@ -173,7 +173,7 @@ TEST_CASE("B3: Clamp", "[e2e][signal_chain]") {
     // Input: sine(10Hz, amp=0.5, offset=0.5) → range [0.0, 1.0]
     h.set_input_sine(2, 10.0, 0.5, 0.5);
 
-    auto r = h.eval("(a1 (clamp ain1 0.3 0.7))");
+    auto r = h.eval("(a1 (clamp 0.3 0.7 ain1))");
     REQUIRE(r.kind != sig::EvalResult::Error);
 
     h.start_capture();

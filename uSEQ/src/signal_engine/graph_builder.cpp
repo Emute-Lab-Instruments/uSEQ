@@ -1818,8 +1818,8 @@ uint16_t GraphBuilder::compile_slew(TokenStream& ts, Scope& scope, TimeContext& 
     // neg_step = -step
     uint16_t neg_step = pool.make_unary(NodeOp::Neg, step);
 
-    // clamped_delta = clamp(delta, -step, step)
-    uint16_t clamped = pool.make_ternary(NodeOp::Clamp, delta, neg_step, step);
+    // clamped_delta = clamp(-step, step, delta) — value-last convention
+    uint16_t clamped = pool.make_ternary(NodeOp::Clamp, neg_step, step, delta);
 
     // new_state = state + clamped_delta
     uint16_t updated = pool.make_binop(NodeOp::Add, state_load, clamped);
