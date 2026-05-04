@@ -4,14 +4,13 @@
 
 #ifdef ARDUINO
 #include <Wire.h>
-#include "../uSEQ/configure.h"
 
-// Fallback I2C pin definitions for hardware variants that omit them.
-#ifndef _USEQ_SDA_PIN_
-#define _USEQ_SDA_PIN_ 0
+// I2C pin definitions — override via PlatformIO build flags if needed
+#ifndef USEQ_I2C_SDA_PIN
+#define USEQ_I2C_SDA_PIN 0
 #endif
-#ifndef _USEQ_SCL_PIN_
-#define _USEQ_SCL_PIN_ 1
+#ifndef USEQ_I2C_SCL_PIN
+#define USEQ_I2C_SCL_PIN 1
 #endif
 #endif
 
@@ -76,8 +75,8 @@ void I2CNetwork::init_host() {
 #ifdef ARDUINO
     // Setup the default I2C bus as host.
     Wire.end();
-    Wire.setSDA(_USEQ_SDA_PIN_);
-    Wire.setSCL(_USEQ_SCL_PIN_);
+    Wire.setSDA(USEQ_I2C_SDA_PIN);
+    Wire.setSCL(USEQ_I2C_SCL_PIN);
     Wire.begin();
 
     // Scan for connected expander modules.
@@ -86,17 +85,79 @@ void I2CNetwork::init_host() {
 }
 
 void I2CNetwork::scan_for_expanders() {
+    expander_count = 0;
 #ifdef ARDUINO
-    // Probe all valid 7-bit addresses for devices.
-    for (uint8_t addr = 1; addr < 127; addr++) {
+    for (uint8_t addr = 1; addr < 127 && expander_count < MAX_EXPANDERS; addr++) {
         Wire.beginTransmission(addr);
         uint8_t err = Wire.endTransmission();
         if (err == 0) {
-            // Device found at addr — could query type here.
-            // For now, just note its existence.
-            // Future: maintain a discovered-device list.
+            // Query device type
+            Wire.beginTransmission(addr);
+            Wire.write("$gettype", 8);
+            Wire.endTransmission();
+
+            Wire.requestFrom(addr, (uint8_t)7);
+            char type_buf[8] = {};
+            int n = 0;
+            while (Wire.available() && n < 7)
+                type_buf[n++] = (char)Wire.read();
+
+            if (strstr(type_buf, "aout") || strstr(type_buf, "useq")) {
+                expander_addrs[expander_count++] = addr;
+            }
         }
     }
+#endif
+}
+
+void I2CNetwork::sync_all() {
+#ifdef ARDUINO
+    for (uint8_t i = 0; i < expander_count; i++) {
+        const char* msg = "$sync";
+        send_to(expander_addrs[i], reinterpret_cast<const uint8_t*>(msg), 5);
+    }
+#endif
+}
+
+void I2CNetwork::send_eval_to(uint8_t expander_index, const char* code) {
+#ifdef ARDUINO
+    if (expander_index >= expander_count) return;
+    size_t len = strlen(code);
+    send_to(expander_addrs[expander_index],
+            reinterpret_cast<const uint8_t*>(code), len);
+#else
+    (void)expander_index; (void)code;
+#endif
+}
+
+void I2CNetwork::broadcast_tempo(double bpm, double beat_phase) {
+#ifdef ARDUINO
+    // Pack as: "$tempo" + 8 bytes BPM + 8 bytes phase
+    uint8_t buf[22];
+    std::memcpy(buf, "$tempo", 6);
+    std::memcpy(buf + 6, &bpm, 8);
+    std::memcpy(buf + 14, &beat_phase, 8);
+    for (uint8_t i = 0; i < expander_count; i++)
+        send_to(expander_addrs[i], buf, 22);
+#else
+    (void)bpm; (void)beat_phase;
+#endif
+}
+
+void I2CNetwork::broadcast_output_values(const double* values, uint8_t count) {
+#ifdef ARDUINO
+    // Pack as: "$vals" + count byte + N doubles
+    if (count > 24) count = 24;
+    size_t payload = 6 + 1 + count * 8;
+    uint8_t buf[6 + 1 + 24 * 8];
+    std::memcpy(buf, "$vals", 5);
+    buf[5] = '\0';
+    buf[6] = count;
+    std::memcpy(buf + 7, values, count * 8);
+    for (uint8_t i = 0; i < expander_count; i++)
+        send_to(expander_addrs[i], buf, payload);
+#else
+    (void)values; (void)count;
 #endif
 }
 

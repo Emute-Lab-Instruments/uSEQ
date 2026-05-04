@@ -38,11 +38,22 @@ struct I2CNetwork {
     bool client_mode = false;
     I2CIncoming incoming;
 
+    // Discovered expander addresses (max 5)
+    static constexpr uint8_t MAX_EXPANDERS = 5;
+    uint8_t expander_addrs[MAX_EXPANDERS] = {};
+    uint8_t expander_count = 0;
+
     // ── Methods ───────────────────────────────────────────────────────────
     void init();
     bool send_to(uint8_t address, const uint8_t* data, size_t len);
     bool has_incoming();
     bool read_incoming(uint8_t* buf, size_t buf_size, size_t& bytes_read);
+
+    // Host-mode: sync all connected expanders
+    void sync_all();
+    void send_eval_to(uint8_t expander_index, const char* code);
+    void broadcast_tempo(double bpm, double beat_phase);
+    void broadcast_output_values(const double* values, uint8_t count);
 
     // Host-mode helpers
     void init_host();
