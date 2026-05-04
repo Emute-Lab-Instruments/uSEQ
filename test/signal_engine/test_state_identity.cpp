@@ -465,3 +465,123 @@ TEST_CASE("State identity: re-resolve does not grow entry count",
 
     REQUIRE(h.engine.registry.entry_count == count_after_first);
 }
+
+// ============================================================================
+// Projection fork: simulate save/restore cycle and verify invariants
+// ============================================================================
+
+TEST_CASE("State identity: projection fork preserves live state",
+          "[golden][state_identity][projection]") {
+    GoldenHarness h;
+
+    h.eval_ok("(a1 (phasor 1 :id \"proj-p\"))");
+    h.tick("a1", 0.0);
+    h.tick("a1", 0.01);
+    h.tick("a1", 0.02);
+
+    // Snapshot live state before projection
+    double live_state[MAX_STATE_SLOTS];
+    memcpy(live_state, h.engine.pool.state_values, sizeof(live_state));
+    uint16_t live_slot_count = h.engine.pool.state_slot_count;
+    uint16_t live_registry_count = h.engine.registry.entry_count;
+    double live_prev_outputs[MAX_OUTPUTS];
+    memcpy(live_prev_outputs, h.engine.pool.prev_output_values, sizeof(live_prev_outputs));
+
+    // Simulate projection fork: save → install fork → advance → restore
+    // Save
+    double saved_state[MAX_STATE_SLOTS];
+    uint16_t saved_slot_count = h.engine.pool.state_slot_count;
+    StateResourceRegistry saved_registry = h.engine.registry;
+    double saved_prev_outputs[MAX_OUTPUTS];
+    memcpy(saved_state, h.engine.pool.state_values, sizeof(saved_state));
+    memcpy(saved_prev_outputs, h.engine.pool.prev_output_values, sizeof(saved_prev_outputs));
+
+    // Execute several projection samples (advances state in the engine)
+    for (int s = 0; s < 10; s++) {
+        double t = 0.03 + s * 0.01;
+        std::memset(h.outputs, 0, sizeof(h.outputs));
+        std::memset(h.workspace, 0, sizeof(h.workspace));
+        h.engine.cells.snapshot_values(h.cell_values, MAX_CELLS);
+
+        ExecutionContext ctx;
+        ctx.t = t;
+        ctx.dt = 0.01;
+        ctx.cell_values = h.cell_values;
+        ctx.hw_inputs = h.hw_inputs;
+        ctx.data_pool = h.engine.cells.data_pool;
+        ctx.data_offsets = h.engine.cells.data_offsets;
+        ctx.data_lengths = h.engine.cells.data_lengths;
+        ctx.prev_outputs = h.engine.pool.prev_output_values;
+        ctx.output_values = h.outputs;
+        ctx.workspace = h.workspace;
+        execute_all_outputs(h.engine.pool, ctx);
+        commit_state(h.engine.pool, h.workspace);
+        commit_outputs(h.engine.pool, h.outputs);
+    }
+
+    // State has been mutated by projection execution
+    REQUIRE(h.engine.pool.state_values[0] != live_state[0]);
+
+    // Restore live state
+    memcpy(h.engine.pool.state_values, saved_state, sizeof(saved_state));
+    h.engine.pool.state_slot_count = saved_slot_count;
+    h.engine.registry = saved_registry;
+    memcpy(h.engine.pool.prev_output_values, saved_prev_outputs, sizeof(saved_prev_outputs));
+
+    // Verify live state is unchanged
+    REQUIRE(h.engine.pool.state_slot_count == live_slot_count);
+    REQUIRE(h.engine.registry.entry_count == live_registry_count);
+    for (uint16_t i = 0; i < live_slot_count; i++) {
+        REQUIRE(h.engine.pool.state_values[i] == Approx(live_state[i]));
+    }
+    for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
+        REQUIRE(h.engine.pool.prev_output_values[i] == Approx(live_prev_outputs[i]));
+    }
+}
+
+TEST_CASE("State identity: repeated projection doesn't grow registry",
+          "[golden][state_identity][projection]") {
+    GoldenHarness h;
+
+    h.eval_ok("(a1 (phasor 1 :id \"rp\"))");
+    h.tick("a1", 0.0);
+
+    uint16_t initial_entries = h.engine.registry.entry_count;
+    uint16_t initial_slots = h.engine.pool.state_slot_count;
+
+    // Simulate 5 projection fork cycles
+    for (int cycle = 0; cycle < 5; cycle++) {
+        double saved_state[MAX_STATE_SLOTS];
+        uint16_t saved_slot_count = h.engine.pool.state_slot_count;
+        memcpy(saved_state, h.engine.pool.state_values, sizeof(saved_state));
+
+        // Advance 3 samples in "fork"
+        for (int s = 0; s < 3; s++) {
+            double t = 0.01 * (cycle * 3 + s + 1);
+            std::memset(h.outputs, 0, sizeof(h.outputs));
+            std::memset(h.workspace, 0, sizeof(h.workspace));
+            h.engine.cells.snapshot_values(h.cell_values, MAX_CELLS);
+
+            ExecutionContext ctx;
+            ctx.t = t;
+            ctx.dt = 0.01;
+            ctx.cell_values = h.cell_values;
+            ctx.hw_inputs = h.hw_inputs;
+            ctx.data_pool = h.engine.cells.data_pool;
+            ctx.data_offsets = h.engine.cells.data_offsets;
+            ctx.data_lengths = h.engine.cells.data_lengths;
+            ctx.prev_outputs = h.engine.pool.prev_output_values;
+            ctx.output_values = h.outputs;
+            ctx.workspace = h.workspace;
+            execute_all_outputs(h.engine.pool, ctx);
+            commit_state(h.engine.pool, h.workspace);
+        }
+
+        // Restore
+        memcpy(h.engine.pool.state_values, saved_state, sizeof(saved_state));
+        h.engine.pool.state_slot_count = saved_slot_count;
+    }
+
+    REQUIRE(h.engine.registry.entry_count == initial_entries);
+    REQUIRE(h.engine.pool.state_slot_count == initial_slots);
+}
