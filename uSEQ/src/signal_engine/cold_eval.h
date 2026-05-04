@@ -4,6 +4,7 @@
 #include "types.h"
 #include "cell_store.h"
 #include "node_pool.h"
+#include "state_registry.h"
 #include "diagnostics.h"
 
 namespace sig {
@@ -62,6 +63,7 @@ struct SignalEngine {
     OutputSource output_sources[MAX_OUTPUTS] = {};
     StateUpdateSource state_sources[MAX_STATE_SLOTS] = {};
 
+    StateResourceRegistry registry;
     NodePool scratch_pool;
 
     void init_defaults(double bpm = 120.0, int beats_per_bar = 4,

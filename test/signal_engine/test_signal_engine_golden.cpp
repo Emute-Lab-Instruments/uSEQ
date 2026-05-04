@@ -1792,6 +1792,92 @@ TEST_CASE("Golden: defined cell visible in top-level expression",
     REQUIRE(r.number == Approx(880.0));
 }
 
+// ── State Resource Registry ─────────────────────────────────────────────────
+
+TEST_CASE("Registry: resolve allocates new slot on first call",
+          "[golden][registry]") {
+    StateResourceRegistry reg;
+    double state_values[MAX_STATE_SLOTS] = {};
+    uint16_t slot_count = 0;
+
+    StateResourceKey key = { internSymbol("phase-A"), ResourceKind::OscillatorPhase, 0 };
+    uint16_t slot = reg.resolve(key, 0.0, state_values, slot_count);
+
+    REQUIRE(slot == 0);
+    REQUIRE(slot_count == 1);
+    REQUIRE(reg.entry_count == 1);
+    REQUIRE(state_values[0] == 0.0);
+}
+
+TEST_CASE("Registry: resolve returns existing slot for matching key",
+          "[golden][registry]") {
+    StateResourceRegistry reg;
+    double state_values[MAX_STATE_SLOTS] = {};
+    uint16_t slot_count = 0;
+
+    StateResourceKey key = { internSymbol("phase-A"), ResourceKind::OscillatorPhase, 0 };
+    uint16_t slot1 = reg.resolve(key, 0.0, state_values, slot_count);
+    state_values[slot1] = 0.75;
+
+    uint16_t slot2 = reg.resolve(key, 0.0, state_values, slot_count);
+    REQUIRE(slot2 == slot1);
+    REQUIRE(slot_count == 1);
+    REQUIRE(state_values[slot2] == 0.75);
+}
+
+TEST_CASE("Registry: different keys get different slots",
+          "[golden][registry]") {
+    StateResourceRegistry reg;
+    double state_values[MAX_STATE_SLOTS] = {};
+    uint16_t slot_count = 0;
+
+    StateResourceKey k1 = { internSymbol("A"), ResourceKind::OscillatorPhase, 0 };
+    StateResourceKey k2 = { internSymbol("B"), ResourceKind::OscillatorPhase, 0 };
+    StateResourceKey k3 = { internSymbol("A"), ResourceKind::TriggerMemory, 0 };
+
+    uint16_t s1 = reg.resolve(k1, 0.0, state_values, slot_count);
+    uint16_t s2 = reg.resolve(k2, 0.0, state_values, slot_count);
+    uint16_t s3 = reg.resolve(k3, 1.0, state_values, slot_count);
+
+    REQUIRE(s1 != s2);
+    REQUIRE(s1 != s3);
+    REQUIRE(s2 != s3);
+    REQUIRE(slot_count == 3);
+    REQUIRE(state_values[s3] == 1.0);
+}
+
+TEST_CASE("Registry: mark_all_inactive and re-resolve reactivates",
+          "[golden][registry]") {
+    StateResourceRegistry reg;
+    double state_values[MAX_STATE_SLOTS] = {};
+    uint16_t slot_count = 0;
+
+    StateResourceKey key = { internSymbol("X"), ResourceKind::Integrator, 0 };
+    reg.resolve(key, 0.0, state_values, slot_count);
+    REQUIRE(reg.entries[0].active == true);
+
+    reg.mark_all_inactive();
+    REQUIRE(reg.entries[0].active == false);
+
+    reg.resolve(key, 0.0, state_values, slot_count);
+    REQUIRE(reg.entries[0].active == true);
+    REQUIRE(slot_count == 1);
+}
+
+TEST_CASE("Registry: clear resets completely",
+          "[golden][registry]") {
+    StateResourceRegistry reg;
+    double state_values[MAX_STATE_SLOTS] = {};
+    uint16_t slot_count = 0;
+
+    StateResourceKey key = { internSymbol("Y"), ResourceKind::SlewAccumulator, 0 };
+    reg.resolve(key, 0.5, state_values, slot_count);
+    REQUIRE(reg.entry_count == 1);
+
+    reg.clear();
+    REQUIRE(reg.entry_count == 0);
+}
+
 TEST_CASE("Golden: repeated set with expression doesn't grow live pool",
           "[golden][scratch_eval]") {
     GoldenHarness h;
