@@ -397,6 +397,8 @@ static EvalResult do_useq_clear(SignalEngine& engine) {
         engine.output_sources[i].has_source = false;
     }
     engine.pool.exec_count = 0;
+    engine.pool.state_slot_count = 0;
+    engine.registry.clear();
     return make_ok();
 }
 

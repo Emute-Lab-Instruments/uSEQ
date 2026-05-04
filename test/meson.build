@@ -184,3 +184,16 @@ ugen_test_exe = executable(
 )
 
 test('ugen_test', ugen_test_exe)
+
+# ===== State Identity Tests =====
+
+state_identity_test_exe = executable(
+  'test_state_identity',
+  sources : ['signal_engine/test_state_identity.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('state_identity_test', state_identity_test_exe)
