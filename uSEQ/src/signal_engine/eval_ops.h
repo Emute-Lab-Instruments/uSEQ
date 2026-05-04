@@ -66,11 +66,17 @@ static inline double eval_binary_op(NodeOp op, double a, double b) {
     }
 }
 
+// Convention: ternary ops take their "main" argument LAST so that the
+// thing-being-affected can be a nested expression at the end of a lisp form.
+//   (clamp lo  hi  value) — value is last
+//   (scale min max value) — value is last
+//   (lerp  a   b   t)    — interpolation parameter t is last
+//   (if    cond then else) — condition is first (Select)
 static inline double eval_ternary_op(NodeOp op, double a, double b, double c) {
     switch (op) {
-        case NodeOp::Clamp:  return (a < b) ? b : (a > c) ? c : a;
+        case NodeOp::Clamp:  return (c < a) ? a : (c > b) ? b : c; // (clamp lo hi value)
         case NodeOp::Lerp:   return a + (b - a) * c;
-        case NodeOp::Scale:  return a * (c - b) + b;
+        case NodeOp::Scale:  return c * (b - a) + a;
         case NodeOp::Select: return (a != 0.0) ? b : c;
         default: return 0.0;
     }

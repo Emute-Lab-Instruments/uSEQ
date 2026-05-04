@@ -407,18 +407,26 @@ extern "C"
             return std::numeric_limits<double>::quiet_NaN();
         }
 
-        // Save state — useq_eval_output is read-only and must not corrupt
-        // live engine state (execute_at_time advances state permanently).
+        // Save all mutable state — useq_eval_output is read-only and must
+        // not corrupt live engine state (execute_at_time advances everything).
         double saved_state[sig::MAX_STATE_SLOTS];
+        double saved_prev_outputs[sig::MAX_OUTPUTS];
+        double saved_lkg[sig::MAX_OUTPUTS];
         uint16_t saved_slot_count = g_engine->pool.state_slot_count;
         memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
+        memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+            saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
         double saved_prev_t = g_prev_tick_time;
 
         double output_values[sig::MAX_OUTPUTS] = {};
         execute_at_time(time_seconds, output_values);
 
-        // Restore state
+        // Restore all state
         memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
+        memcpy(g_engine->pool.prev_output_values, saved_prev_outputs, sizeof(saved_prev_outputs));
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+            g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
         g_engine->pool.state_slot_count = saved_slot_count;
         g_prev_tick_time = saved_prev_t;
 

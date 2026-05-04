@@ -388,10 +388,10 @@ TEST_CASE("Golden semantics: numeric expressions are lifted into signals",
     check_expr("or returns numeric truth", "(or 0 -2)", {{0.0, 1.0}});
     check_expr("if without else defaults to zero", "(if 0 42)", {{0.0, 0.0}});
 
-    check_expr("clamp below range", "(clamp -1 0 3)", {{0.0, 0.0}});
-    check_expr("clamp above range", "(clamp 5 0 3)", {{0.0, 3.0}});
+    check_expr("clamp below range", "(clamp 0 3 -1)", {{0.0, 0.0}});
+    check_expr("clamp above range", "(clamp 0 3 5)", {{0.0, 3.0}});
     check_expr("lerp midpoint", "(lerp 0 10 0.5)", {{0.0, 5.0}});
-    check_expr("scale unipolar value", "(scale 0.5 100 200)", {{0.0, 150.0}});
+    check_expr("scale unipolar value", "(scale 100 200 0.5)", {{0.0, 150.0}});
 }
 
 TEST_CASE("Golden semantics: time, phasors, and time substitutions",

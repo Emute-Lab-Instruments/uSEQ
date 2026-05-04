@@ -682,11 +682,12 @@ TEST_CASE("Constant folding: all ternary ops", "[signal_engine][node_pool]") {
         return pool.nodes[r].imm;
     };
 
-    REQUIRE(fold_ter(NodeOp::Clamp, 5.0, 0.0, 3.0) == 3.0);
-    REQUIRE(fold_ter(NodeOp::Clamp, -1.0, 0.0, 3.0) == 0.0);
-    REQUIRE(fold_ter(NodeOp::Clamp, 1.5, 0.0, 3.0) == 1.5);
+    // Clamp: (clamp lo hi value) — value is last arg
+    REQUIRE(fold_ter(NodeOp::Clamp, 0.0, 3.0, 5.0) == 3.0);
+    REQUIRE(fold_ter(NodeOp::Clamp, 0.0, 3.0, -1.0) == 0.0);
+    REQUIRE(fold_ter(NodeOp::Clamp, 0.0, 3.0, 1.5) == 1.5);
     REQUIRE(fold_ter(NodeOp::Lerp, 0.0, 10.0, 0.5) == 5.0);
-    REQUIRE(fold_ter(NodeOp::Scale, 0.5, 100.0, 200.0) == 150.0);
+    REQUIRE(fold_ter(NodeOp::Scale, 100.0, 200.0, 0.5) == 150.0); // (scale min max value)
     REQUIRE(fold_ter(NodeOp::Select, 1.0, 42.0, 99.0) == 42.0);
     REQUIRE(fold_ter(NodeOp::Select, 0.0, 42.0, 99.0) == 99.0);
 }
@@ -788,18 +789,18 @@ TEST_CASE("Graph builder: math functions", "[signal_engine][graph_builder]") {
         REQUIRE(eval_at("(pow 0.5 9)", 0.0) == Approx(3.0));
     }
 
-    SECTION("Clamp") {
-        REQUIRE(eval_at("(clamp 5 0 3)", 0.0) == 3.0);
-        REQUIRE(eval_at("(clamp -1 0 3)", 0.0) == 0.0);
-        REQUIRE(eval_at("(clamp 1.5 0 3)", 0.0) == 1.5);
+    SECTION("Clamp: (clamp lo hi value)") {
+        REQUIRE(eval_at("(clamp 0 3 5)", 0.0) == 3.0);
+        REQUIRE(eval_at("(clamp 0 3 -1)", 0.0) == 0.0);
+        REQUIRE(eval_at("(clamp 0 3 1.5)", 0.0) == 1.5);
     }
 
     SECTION("Lerp: (lerp a b t) = a + (b-a)*t") {
         REQUIRE(eval_at("(lerp 0 10 0.5)", 0.0) == Approx(5.0));
     }
 
-    SECTION("Scale: (scale val min max) = val*(max-min)+min") {
-        REQUIRE(eval_at("(scale 0.5 100 200)", 0.0) == Approx(150.0));
+    SECTION("Scale: (scale min max value) — value is last arg") {
+        REQUIRE(eval_at("(scale 100 200 0.5)", 0.0) == Approx(150.0));
     }
 }
 
@@ -2211,10 +2212,10 @@ TEST_CASE("Lerp and Scale", "[signal_engine][graph_builder][lerp]") {
         REQUIRE(eval_at("(lerp 0 10 1.0)", 0.0) == Approx(10.0));
     }
 
-    SECTION("scale maps 0-1 to range") {
-        REQUIRE(eval_at("(scale 0.5 100 200)", 0.0) == Approx(150.0));
-        REQUIRE(eval_at("(scale 0.0 100 200)", 0.0) == Approx(100.0));
-        REQUIRE(eval_at("(scale 1.0 100 200)", 0.0) == Approx(200.0));
+    SECTION("scale maps 0-1 to range: (scale min max value)") {
+        REQUIRE(eval_at("(scale 100 200 0.5)", 0.0) == Approx(150.0));
+        REQUIRE(eval_at("(scale 100 200 0.0)", 0.0) == Approx(100.0));
+        REQUIRE(eval_at("(scale 100 200 1.0)", 0.0) == Approx(200.0));
     }
 }
 
