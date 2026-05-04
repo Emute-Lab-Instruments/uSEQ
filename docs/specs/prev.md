@@ -4,6 +4,18 @@
 > sugar, batch semantics, feedback loops. Counterpart to [MAIN.md](MAIN.md).
 > See [outputs.md](outputs.md) for the output model.
 
+## Source files
+
+- `uSEQ/src/signal_engine/graph_builder.cpp` — `compile_prev()` resolves the output name to an index and emits `PrevOutputLoad`; bare output names in expression position also emit `PrevOutputLoad` via `compile_symbol()`.
+- `uSEQ/src/signal_engine/node_pool.h` — `NodeOp::PrevOutputLoad` (imm = output_index); `make_prev_output_load()`; `NodePool::prev_output_values[]`.
+- `uSEQ/src/signal_engine/executor.cpp` — `PrevOutputLoad` case reads `prev_output_values[idx]`; `commit_outputs()` copies current output values to `prev_output_values` after each tick.
+- `uSEQ/src/signal_engine/executor.h` — `ExecutionContext::prev_outputs` pointer.
+- `wasm/wasm_wrapper.cpp` — `execute_at_time()` updates `prev_output_values` after each tick; `ProjectionFork` clones `prev_output_values` for projection.
+- `test/signal_engine/test_signal_engine_golden.cpp` — "explicit prev reads previous committed sample", "self-reference via prev for integration", "prev with non-output name is Type" tests.
+- `test/signal_engine/test_signal_engine.cpp` — `PrevOutputLoad` node construction and execution tests.
+
+---
+
 1.1 Output values produced in the current sample are not readable from other outputs in the same sample. To reference another output, you read its **previous sample** value.
 
 1.2 `(prev a1)` reads the value `a1` produced one sample ago in the current sampling pass.
@@ -16,7 +28,7 @@
 
 1.6 `prev` enables feedback loops between outputs: `(a2 (+ (prev a2) 0.01))` integrates by `0.01` per sample.
 
-1.7 **`prev` does not introduce hidden state into the signal graph.** The "state" lives in the engine's per-output sample buffer; the graph itself remains a pure function of `(t, cells, inputs, prev_outputs)`.
+1.7 **`prev` does not introduce hidden state into the signal graph.** The "state" lives in the engine's per-output sample buffer; the graph itself remains a pure function of `(t, cells, inputs, prev_outputs)`. (The buffer is `NodePool::prev_output_values[]`; updated by `executor.cpp` `commit_outputs()`.)
 
 1.8 `prev` is rejected in any context where the referenced output has not been declared. Self-reference (`(a1 (prev a1))`) is allowed.
 

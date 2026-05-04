@@ -21,6 +21,26 @@
 > construction lives in `uSEQ/src/utils/json_builder.h`; output routing,
 > including serial stream frame emission, lives under `uSEQ/src/uSEQ/`.
 
+### Source Files
+
+Firmware side:
+
+- `uSEQ/src/firmware/serial_protocol.{h,cpp}` — `SerialProtocol`: RX ring buffer, JSON message extraction, `dispatch_message()`, `handle_hello()`, `handle_ping()`, `handle_stream_config()`, `handle_set_live_inputs()`, `send_eval_response()`, `send_stream_data()`, `send_diagnostics()`, `send_log()`, `send_ready()`
+- `uSEQ/src/firmware/firmware.{h,cpp}` — `Firmware::tick()` (drains serial, dispatches eval, emits stream frames)
+- `uSEQ/src/utils/serial_message.h` — wire-level constants: start marker (`0x1F`), message type bytes (`STREAM`, `INPUT_SET`), rate limits
+- `uSEQ/src/utils/json_builder.h` — `JsonBuilder`: lightweight fluent JSON construction (no external library)
+- `uSEQ/src/utils/log.{h,cpp}` — `Protocol` namespace: JSON mode toggle, request ID tracking, response helpers
+- `uSEQ/src/firmware/flash_storage.{h,cpp}` — persistence surface referenced by boot sequence
+
+WASM parity:
+
+- `wasm/wasm_wrapper.cpp` — same JSON shapes as ABI calls (`useq_eval`, `useq_last_diagnostics`, etc.)
+
+Tests:
+
+- `test/firmware/test_wire_protocol_contract.cpp` — contract tests encoding the spec section by section
+- `test/firmware/test_firmware_e2e.cpp` — end-to-end tests including serial protocol interactions
+
 ---
 
 ## 1. Frame
@@ -65,7 +85,7 @@ itself does not handle 1200 baud as a runtime mode.
 
 ## 3. Wire-Level Framing
 
-3.1 **Discrimination from the first byte.**
+3.1 **Discrimination from the first byte.** (See `uSEQ/src/utils/serial_message.h` — start marker 0x1F, message type byte constants; `uSEQ/src/firmware/serial_protocol.cpp` — try_extract_message, byte-level discrimination.)
 
 | First byte | Frame kind |
 |-----------|-----------|
@@ -145,7 +165,7 @@ Once the handshake is complete, the editor:
 3. Begins sending `eval` requests (§5.7) and `set-live-inputs` requests
    (§5.8) as the user works.
 4. Begins consuming binary `STREAM` frames (§3.2 / §6) and any
-   unsolicited JSON messages (§5.5, §5.6, §5.9).
+   unsolicited JSON messages (§5.5, §5.6, §5.9, §5.10).
 
 ### 4.4 Disconnect
 
@@ -183,7 +203,7 @@ The full request → response → unsolicited message catalog follows.
 
 ### 5.1 `hello` (editor → device, request)
 
-Sent by the editor immediately on port open. Retried per §4.2.
+Sent by the editor immediately on port open. Retried per §4.2. (See `uSEQ/src/firmware/serial_protocol.cpp` — handle_hello parses hello request, sends hello response with config.)
 
 ```json
 {"type":"hello","client":"editor","version":"1.2.0","requestId":"req-1"}
@@ -241,7 +261,7 @@ mechanisms.
 ### 5.3 `stream-config` (editor → device, request)
 
 Sent by the editor after a successful hello, using the io config from the
-hello response.
+hello response. (See `uSEQ/src/firmware/serial_protocol.cpp` — handle_stream_config parses channel configs, updates stream_rate_limit_us and stream_channel_enabled[].)
 
 ```json
 {
@@ -332,7 +352,7 @@ output.
 
 ### 5.7 `eval` (editor → device, request)
 
-Evaluate a ModuLisp expression. Defaults to immediate; the optional
+Evaluate a ModuLisp expression. (See `uSEQ/src/firmware/serial_protocol.cpp` — dispatch_message returns true for eval type, caller reads code; `uSEQ/src/firmware/firmware.cpp` — Firmware::tick calls eval_cold with the code buffer, then send_eval_response; `uSEQ/src/signal_engine/cold_eval.cpp` — eval_cold, the actual evaluation.) Defaults to immediate; the optional
 `quant` flag opts the request into the runtime's quantised-eval queue.
 
 ```json
@@ -400,7 +420,7 @@ arrives.
 
 ### 5.8 `set-live-inputs` (editor → device, request)
 
-Write to one or more `live-edit` slots in a single atomic message. See
+Write to one or more `live-edit` slots in a single atomic message. (See `uSEQ/src/firmware/serial_protocol.cpp` — handle_set_live_inputs parses slot JSON, applies values.) See
 [live-edit.md §5.3](live-edit.md) for the runtime semantics; this section
 specifies only the wire shape.
 
@@ -447,11 +467,215 @@ These frames are **opportunistic** — the device MAY drop them if TX is
 backed up. Eval responses are still the must-deliver path for
 eval-correlated diagnostics; the standalone frame is for everything else.
 
+### 5.10 `hw-input` (device → editor, unsolicited)
+
+Pushed by the device when a physical control (button, toggle, encoder
+click, gate input) changes state. The device emits one frame per edge
+transition — rising and falling for momentary controls, state-change for
+toggles.
+
+See [hardware-bindings.md](../../useq-perform/docs/specs/hardware-bindings.md)
+for how the editor routes these events to bound expressions.
+
+```json
+{"type":"hw-input","kind":"button","id":"sw1","state":"pressed","ts":123456}
+{"type":"hw-input","kind":"toggle","id":"sw2","state":true}
+{"type":"hw-input","kind":"encoder","id":"swr","state":"pressed"}
+{"type":"hw-input","kind":"gate","id":"in1","state":"released"}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | Always `"hw-input"`. |
+| `kind` | string | yes | One of `"button"`, `"toggle"`, `"encoder"`, `"gate"`. Identifies the control type — see below. |
+| `id` | string | yes | Physical-control keyword **without** the leading colon. E.g. `"sw1"`, `"sw2"`, `"swr"`, `"in1"`. Matches the `<input-id>` keywords in [hardware-bindings.md §2.4](../../useq-perform/docs/specs/hardware-bindings.md). |
+| `state` | string \| bool | yes | For `button`/`encoder`/`gate`: `"pressed"` or `"released"` (string). For `toggle`: `true` (on) or `false` (off) (boolean). |
+| `ts` | number | optional | Device-side timestamp in milliseconds since boot. Absent when the firmware does not yet emit timestamps. Editors MUST NOT depend on its presence. |
+
+**Kind semantics:**
+
+- `"button"` — momentary switch. Two edges: `"pressed"` then `"released"`.
+  The device debounces; the editor receives clean edges.
+- `"toggle"` — sticky toggle switch. One event per flip, carrying the
+  post-flip boolean state (`true` = on, `false` = off).
+- `"encoder"` — encoder click (the push-button on a rotary encoder).
+  Treated as momentary (`"pressed"` / `"released"`). Encoder *rotation*
+  is a continuous signal (`(rot)`), not an event — it has no `hw-input`
+  frame.
+- `"gate"` — external gate/trigger input (`:in1`, `:in2`). Carries
+  `"pressed"` (gate high) and `"released"` (gate low).
+
+**Delivery.** `hw-input` frames are **must-deliver**: hardware input
+events are infrequent (human-rate, not audio-rate) and losing one would
+silently break the performer's control flow. The device blocks briefly
+if TX is full, matching eval-response delivery semantics.
+
+**Forward compatibility.** New `kind` values may be added in future
+firmware. Editors MUST ignore unknown kinds (logging at debug level is
+acceptable).
+
+### 5.11 `calibrate-begin` (editor → device, request)
+
+Enter calibration takeover mode for one analog output. The device freezes
+all other outputs at their current LKG values and takes exclusive control
+of the named output. See
+[calibration.md](../../docs/specs/calibration.md) for the editor-side UX
+spec.
+
+```json
+{"type":"calibrate-begin","output":"a1","requestId":"req-20"}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | Always `"calibrate-begin"`. |
+| `output` | string | yes | Analog output id (e.g. `"a1"`, `"a2"`). Must match an output exposed by the connected variant. |
+| `requestId` | string | yes | Per §5.1. |
+
+**Response:**
+
+```json
+{
+  "type": "response",
+  "requestId": "req-20",
+  "success": true,
+  "status": {"kind": "uncalibrated"}
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | Always `"response"`. |
+| `requestId` | string | yes | Echoed from the request. |
+| `success` | bool | yes | `false` if the output is unknown, already in takeover for a different output, or the variant does not support calibration. |
+| `error` | string | on failure | Human-readable rejection reason. |
+| `status` | object | on success | Per-output calibration status. One of `{"kind":"uncalibrated"}`, `{"kind":"calibrated","date":"<ISO>"}`, or `{"kind":"partial","savedOctaves":[0,1]}`. |
+
+Only one output may be in takeover at a time. Sending `calibrate-begin`
+for a second output while a takeover is active MUST fail with
+`success: false`.
+
+### 5.12 `calibrate-set-target` (editor → device, request)
+
+Drive the takeover output to a specific target voltage. Sent on takeover
+entry (to set the initial 0V target) and when advancing to the next
+octave step.
+
+```json
+{"type":"calibrate-set-target","output":"a1","voltage":1.0,"requestId":"req-21"}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | Always `"calibrate-set-target"`. |
+| `output` | string | yes | Must match the output currently in takeover. |
+| `voltage` | number | yes | Target voltage (typically 0, 1, 2, 3, or 4). The firmware drives the DAC to produce this voltage (before any calibration correction). |
+| `requestId` | string | yes | Per §5.1. |
+
+**Response:** standard ack `{type:"response",requestId,success:true}`.
+On failure (e.g. output mismatch, no active takeover), `success: false`
+with `error`.
+
+### 5.13 `calibrate-adjust` (editor → device, request)
+
+Apply a fine correction delta (in cents) to the current output. The
+firmware accumulates deltas internally; the editor maintains a local
+mirror for display (see
+[calibration.md §4.5](../../docs/specs/calibration.md)).
+
+```json
+{"type":"calibrate-adjust","output":"a1","delta":0.5,"requestId":"req-22"}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | Always `"calibrate-adjust"`. |
+| `output` | string | yes | Must match the output currently in takeover. |
+| `delta` | number | yes | Signed correction in cents. Positive = sharper / higher voltage; negative = flatter / lower voltage. |
+| `requestId` | string | yes | Per §5.1. |
+
+**Response:**
+
+```json
+{"type":"response","requestId":"req-22","success":true}
+```
+
+If the firmware clamps the accumulated offset (e.g. hardware limit), the
+response includes `clampedOffset`:
+
+```json
+{"type":"response","requestId":"req-22","success":true,"clampedOffset":48.2}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `clampedOffset` | number | optional | The firmware's authoritative cumulative offset in cents after applying the delta. Present only when the value was clamped. The editor MUST snap its UI to this value. |
+
+### 5.14 `calibrate-save-point` (editor → device, request)
+
+Stage the current calibration point for a specific octave. The value is
+held in RAM; it is not flushed to flash until `calibrate-end` with
+`commit: true` (§5.15).
+
+```json
+{"type":"calibrate-save-point","output":"a1","octave":2,"requestId":"req-23"}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | Always `"calibrate-save-point"`. |
+| `output` | string | yes | Must match the output currently in takeover. |
+| `octave` | number | yes | Octave index: `0` (0V), `1` (1V), `2` (2V), `3` (3V), or `4` (4V). |
+| `requestId` | string | yes | Per §5.1. |
+
+**Response:** standard ack `{type:"response",requestId,success:true}`.
+On failure (e.g. flash write error), `success: false` with `error`.
+
+### 5.15 `calibrate-end` (editor → device, request)
+
+Exit calibration takeover and resume normal operation.
+
+```json
+{"type":"calibrate-end","commit":true,"requestId":"req-24"}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | Always `"calibrate-end"`. |
+| `commit` | bool | yes | `true` — flush all staged calibration points to flash and apply them. `false` — discard staged points and revert the output to its pre-takeover calibration state. |
+| `requestId` | string | yes | Per §5.1. |
+
+**Response:** standard ack `{type:"response",requestId,success:true}`.
+
+After a successful `calibrate-end`, the device resumes normal output
+behaviour. Stream frames resume if they were suspended during takeover.
+
+### 5.16 Calibration response conventions
+
+All `calibrate-*` requests are **must-deliver** (the device blocks
+briefly on TX backpressure rather than dropping). Response shapes follow
+the standard `{type:"response",requestId,success}` envelope (§5.1).
+
+Additional fields that MAY appear on calibration responses:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `error` | string | Human-readable rejection reason (present when `success: false`). |
+| `clampedOffset` | number | Firmware's authoritative cumulative offset in cents. Present on `calibrate-adjust` responses when the value was clamped. |
+| `status` | object | Per-output calibration status. Present on `calibrate-begin` success responses. |
+
+The pre-takeover calibration state is sacred: the firmware holds the
+prior calibration in memory across the takeover and only commits new
+points to flash on `calibrate-end { commit: true }`. Individual
+`calibrate-save-point` messages stage values; they do not flush
+per-step. This protects the user from data loss on disconnect / abort.
+See [calibration.md §6.3](../../docs/specs/calibration.md).
+
 ---
 
 ## 6. Binary Stream Frames
 
-6.1 **Output stream frame** (`type 0x00`, device → editor):
+6.1 **Output stream frame** (`type 0x00`, device → editor). (See `uSEQ/src/firmware/serial_protocol.cpp` — send_stream_data writes 0x1F 0x00 channel value bytes; `uSEQ/src/utils/serial_message.h` — SerialMsg constants for frame layout.)
 
 ```
 [0x1F] [0x00] [channel: u8] [value: 8 bytes, IEEE 754 double, little-endian]
@@ -594,6 +818,71 @@ editor (on every UI tick while user drags slider):
 
 device (if requestId present):
   → {"type":"response","requestId":"req-12","success":true,"applied":1}\n
+```
+
+### 8.5 Hardware button press (with binding)
+
+```
+user presses sw1 on the module:
+  → {"type":"hw-input","kind":"button","id":"sw1","state":"pressed","ts":48230}\n
+
+editor looks up binding for (on-press :sw1 …), dispatches eval:
+  ← {"type":"eval","code":"(mute-toggle)","requestId":"req-14"}\n
+
+device responds:
+  → {"type":"response","requestId":"req-14","success":true,"text":"1","console":"","meta":null}\n
+
+user releases sw1:
+  → {"type":"hw-input","kind":"button","id":"sw1","state":"released","ts":48412}\n
+
+editor looks up binding for (on-release :sw1 …) — none registered, no eval sent.
+```
+
+### 8.6 Toggle switch flip
+
+```
+user flips toggle sw2 to "on":
+  → {"type":"hw-input","kind":"toggle","id":"sw2","state":true}\n
+
+editor dispatches (on-toggle :sw2 (lambda (state) …)) with state = true.
+```
+
+### 8.7 CV calibration session (one output, two octaves then abort)
+
+```
+editor enters calibration for a1:
+  ← {"type":"calibrate-begin","output":"a1","requestId":"req-20"}\n
+
+device acks with status:
+  → {"type":"response","requestId":"req-20","success":true,
+     "status":{"kind":"uncalibrated"}}\n
+
+editor sets initial target to 0V:
+  ← {"type":"calibrate-set-target","output":"a1","voltage":0,"requestId":"req-21"}\n
+  → {"type":"response","requestId":"req-21","success":true}\n
+
+user adjusts slider (delta = +1.3 cents):
+  ← {"type":"calibrate-adjust","output":"a1","delta":1.3,"requestId":"req-22"}\n
+  → {"type":"response","requestId":"req-22","success":true}\n
+
+user saves octave 0:
+  ← {"type":"calibrate-save-point","output":"a1","octave":0,"requestId":"req-23"}\n
+  → {"type":"response","requestId":"req-23","success":true}\n
+
+editor advances to 1V:
+  ← {"type":"calibrate-set-target","output":"a1","voltage":1,"requestId":"req-24"}\n
+  → {"type":"response","requestId":"req-24","success":true}\n
+
+user adjusts, firmware clamps:
+  ← {"type":"calibrate-adjust","output":"a1","delta":52,"requestId":"req-25"}\n
+  → {"type":"response","requestId":"req-25","success":true,"clampedOffset":50}\n
+  (editor snaps slider to 50 cents)
+
+user aborts — discard partial calibration:
+  ← {"type":"calibrate-end","commit":false,"requestId":"req-26"}\n
+  → {"type":"response","requestId":"req-26","success":true}\n
+
+device reverts a1 to pre-takeover state, resumes normal operation.
 ```
 
 ---

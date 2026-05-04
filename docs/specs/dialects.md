@@ -3,13 +3,22 @@
 > Spec: Reactive vs Imperative dialects and the rules for switching between
 > them. Counterpart to [MAIN.md](MAIN.md).
 
+## Source files
+
+- `uSEQ/src/signal_engine/cold_eval.h` — `EngineState` struct (`is_playing` flag controls whether the engine re-evaluates outputs between user evals).
+- `uSEQ/src/signal_engine/cold_eval.cpp` — top-level eval dispatch; transport commands (`useq_play`, `useq_pause`, `useq_stop`) that toggle engine state.
+- `uSEQ/src/signal_engine/executor.cpp` — `execute_all_outputs()` / `execute_batch()` — the hot-path that the reactive dialect drives every tick.
+- `uSEQ/src/firmware/firmware.cpp` — firmware main loop checks `engine.state.is_playing` to decide whether to sample outputs.
+
+---
+
 1.1 ModuLisp has **two mutually-exclusive evaluation dialects**: **Reactive** and **Imperative**. A session runs in exactly one. The dialect is a runtime mode, not per-form.
 
 1.2 **Reactive** is the default and the dialect [MAIN.md](MAIN.md) and most sub-specs describe. It uses FRP semantics: every output expression is implicitly a function of time, cells are reactive bindings, dependents auto-recompile when bindings change, the engine re-runs each output graph as fast as it can.
 
 1.3 **Imperative** is a traditional Lisp REPL. `define` mutates eagerly and does not invalidate anything. There is no implicit time, no auto-re-evaluation, no FRP. If the user wants periodic execution, they set it up themselves (e.g. via `schedule` or external tooling). Outputs hold whatever value was last written until the user writes again.
 
-1.4 The two dialects share the same parser, the same value tower (see [values-types.md](values-types.md)), the same standard library where it is meaningful, and the same compile/eval pipeline. They differ in **what the engine does between user evals** — re-runs everything (Reactive) vs. nothing (Imperative).
+1.4 The two dialects share the same parser, the same value tower (see [values-types.md](values-types.md)), the same standard library where it is meaningful, and the same compile/eval pipeline. They differ in **what the engine does between user evals** — re-runs everything (Reactive) vs. nothing (Imperative). (The compile/eval pipeline is `cold_eval.cpp`; the hot-path re-evaluation is `executor.cpp` `execute_all_outputs()`.)
 
 1.5 Switching dialects mid-session is allowed but resets all output bindings and dependency state. There is no "mixed" mode (although the imperative mode can be set up to imitate some of the semantics and functionality of the reactive mode).
 

@@ -7,6 +7,17 @@
 > for the compile-time rejection rules in signal context, and
 > [diagnostics.md](diagnostics.md) for the on-wire diagnostic data shapes.
 
+### Source Files
+
+- `uSEQ/src/signal_engine/executor.{h,cpp}` — `execute_all_outputs()` (per-output isolation, LKG fallback via `OutputSlot.lkg_value`), `commit_outputs()` (LKG promotion), `commit_state()` (state-slot updates)
+- `uSEQ/src/signal_engine/node_pool.h` — `OutputSlot` (`root_node`, `lkg_value`, `valid` flag — the per-output health state storage)
+- `uSEQ/src/signal_engine/graph_builder.{h,cpp}` — compile-time error reporting (`report_error`, `report_error_cat`, `report_warning`), `GraphBuildResult.has_error`, dependency tracking for chain-of-blame (`dep_cells`)
+- `uSEQ/src/signal_engine/cold_eval.{h,cpp}` — `EvalResult` (diagnostic array, error kind), `on_cell_changed()` (dependency-triggered recompilation — chain of blame source)
+- `uSEQ/src/signal_engine/diagnostics.{h,cpp}` — `Diagnostic` struct (severity, category, span, message, suggestion), `DiagnosticSeverity`, `DiagnosticCategory`
+- `wasm/wasm_wrapper.cpp` — `useq_last_diagnostics()`, `useq_active_diagnostics()`, batch-eval isolation in `useq_eval_outputs_time_window_into()`
+- `uSEQ/src/firmware/firmware.{h,cpp}` — tick-loop error handling, watchdog recovery
+- `test/signal_engine/test_signal_engine_robustness.cpp` — robustness and error-recovery tests
+
 ## 1. Error Categories
 
 1.1 ModuLisp distinguishes **compile-time errors** (program never produces a value) from **runtime errors** (program ran but a sample was unhealthy).
@@ -27,7 +38,7 @@
 
 ## 2. Last-Known-Good (LKG) Fallback
 
-2.1 **Whole-output LKG fallback.** When an active output program errors at runtime — including non-finite values reaching the root — that output **switches to its LKG program** for the rest of the current sampling pass and remains on LKG until either (a) the user replaces the broken program with a working one, or (b) the user explicitly clears the output.
+2.1 **Whole-output LKG fallback.** When an active output program errors at runtime — including non-finite values reaching the root — that output **switches to its LKG program** for the rest of the current sampling pass and remains on LKG until either (a) the user replaces the broken program with a working one, or (b) the user explicitly clears the output. (See `uSEQ/src/signal_engine/executor.cpp` — execute_all_outputs, LKG fallback when output produces NaN/Inf; `uSEQ/src/signal_engine/node_pool.h` — OutputSlot.lkg_value, .valid.)
 
 2.2 **What is "last-known-good"**: the most recent program for that output that has completed at least one full healthy sample batch. LKG is observed safety, not provable safety — a graph that succeeded once may fail later under different time / inputs.
 
@@ -49,7 +60,7 @@
 
 ## 5. Per-Output Health States
 
-5.1 Every output is in exactly one of four states at any time:
+5.1 Every output is in exactly one of four states at any time. (See `uSEQ/src/signal_engine/node_pool.h` — OutputSlot: root_node==NODE_NONE is idle, valid+lkg determines running/fallback/error; `uSEQ/src/signal_engine/executor.cpp` — commit_outputs updates lkg_value and valid flag.)
 
 | State | Meaning |
 |---|---|
@@ -121,7 +132,7 @@ error ── (new healthy assignment) ───────────► runni
 
 ## 10. Batch-Eval Isolation
 
-10.1 When the runtime evaluates multiple outputs in a single batch (`useq_eval_outputs_time_window()` and equivalents), a runtime error on one output **must not** abort the others. Each output is independent: errors are recorded per-output, healthy outputs continue producing samples to the end of the batch. This is the per-output expression of the language-wide "never stop the music" guarantee.
+10.1 When the runtime evaluates multiple outputs in a single batch (`useq_eval_outputs_time_window()` and equivalents), a runtime error on one output **must not** abort the others. Each output is independent: errors are recorded per-output, healthy outputs continue producing samples to the end of the batch. This is the per-output expression of the language-wide "never stop the music" guarantee. (See `wasm/wasm_wrapper.cpp` — useq_eval_outputs_time_window_into, per-output loop with errors isolated; `uSEQ/src/signal_engine/executor.cpp` — execute_all_outputs iterates outputs independently.)
 
 10.2 When an output errors mid-batch the runtime:
 

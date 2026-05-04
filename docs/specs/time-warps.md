@@ -6,6 +6,13 @@
 > Counterpart to [MAIN.md](MAIN.md). See [time.md](time.md) for the time
 > leaves themselves.
 
+## Source files
+
+- `uSEQ/src/signal_engine/graph_builder.cpp` — `compile_fast()`, `compile_slow()`, `compile_offset()`, `compile_loop_at()`, `compile_eval_at_time()`; `shift` is aliased to `compile_offset()`.
+- `uSEQ/src/signal_engine/graph_builder.h` — `TimeContext` struct (carries the current local time node through nested compilation); declaration of all time-warp compile methods.
+- `uSEQ/src/signal_engine/node_pool.h` — `NodeOp::Mul`, `NodeOp::Div`, `NodeOp::Add` (the arithmetic nodes that substitution sugars emit); `NodeOp::Fmod` (for `loop-at` wrapping).
+- `test/signal_engine/test_signal_engine_golden.cpp` — "fast doubles local time", "slow halves local time", "fast/slow compose and flatten", "dynamic fast is pointwise substitution", "offset uses seconds", "shift aliases offset", "musical offset can use beat-dur" golden tests.
+
 ---
 
 ## 1. Two Different Ideas
@@ -88,6 +95,8 @@ substitution:
 - `(slow k expr)` means `(time-as (/ t k) expr)`.
 - `(offset k expr)` means `(time-as (+ t k) expr)`. `k` is in seconds.
 - `(shift k expr)` is an alias of `offset`.
+
+(See `graph_builder.cpp`: `compile_fast()` compiles `k`, then sets `ctx.time_node = pool.make_binop(Mul, k_node, ctx.time_node)` and compiles the body. `compile_slow()` uses `Div`, `compile_offset()` uses `Add`. The `shift` symbol is registered as an alias of `compile_offset()` in the dispatch table.)
 
 3.2 Dynamic arguments are allowed, but they are always stateless substitution.
 If `k` is a signal, `(fast k expr)` means `expr` sees `t' = k(t) * t` at each

@@ -8,6 +8,17 @@
 > [failure-model.md](failure-model.md); this doc only specifies the
 > data shapes and the ABI calls that produce them.
 
+### Source Files
+
+- `uSEQ/src/signal_engine/diagnostics.{h,cpp}` — `Diagnostic` struct, `DiagnosticSeverity`/`DiagnosticCategory` enums, `severity_to_cstr()`, `category_to_cstr()`, `find_fuzzy_match()`
+- `uSEQ/src/signal_engine/graph_builder.{h,cpp}` — `report_error()`, `report_error_with_fuzzy_match()`, `report_warning()`, `GraphBuildResult.diagnostics`
+- `uSEQ/src/signal_engine/cold_eval.{h,cpp}` — `EvalResult.diagnostics` (diagnostics from eval), diagnostic propagation
+- `uSEQ/src/signal_engine/token.{h,cpp}` — `Token.span_start`/`span_len` (source span on every token), tokenizer error diagnostics
+- `wasm/wasm_wrapper.cpp` — `useq_last_diagnostics()` (JSON array from last eval), `useq_active_diagnostics()` (per-output health state), JSON serialization via `JsonBuilder`
+- `uSEQ/src/firmware/serial_protocol.{h,cpp}` — `send_eval_response()` (embeds diagnostics in JSON), `send_diagnostics()` (standalone diagnostic frames)
+- `uSEQ/src/utils/json_builder.h` — `JsonBuilder`: lightweight JSON construction for diagnostic serialization
+- `uSEQ/src/utils/error_messages.{h,cpp}` — static error message strings
+
 ## 1. Source Span
 
 1.1 A **source span** locates a region of source text. Character offsets, not line/column — the editor (CodeMirror) works natively with character positions and can derive line/column for display.
@@ -19,7 +30,7 @@ struct SourceSpan {
 };
 ```
 
-1.2 **Limit.** `uint16_t` allows offsets up to 65535. Live-coding expressions are short; this is sufficient. Source strings exceeding the limit emit diagnostics with a clamped `{0, 0}` span — the diagnostic is still produced, it just can't point at a specific location.
+1.2 **Limit.** `uint16_t` allows offsets up to 65535. Live-coding expressions are short; this is sufficient. Source strings exceeding the limit emit diagnostics with a clamped `{0, 0}` span — the diagnostic is still produced, it just can't point at a specific location. (See `uSEQ/src/signal_engine/diagnostics.h` — Diagnostic.span_start, span_len, both uint16_t; `uSEQ/src/signal_engine/token.h` — Token.span_start, span_len; `uSEQ/src/signal_engine/node_pool.h` — Node.span_start, span_len.)
 
 1.3 **Two coordinate spaces.** Spans live in either of two spaces; the system must not conflate them.
 
@@ -104,6 +115,8 @@ The WASM build exports three diagnostic functions. All return JSON strings via `
 
 ### 4.1 `useq_last_diagnostics`
 
+(See `wasm/wasm_wrapper.cpp` — useq_last_diagnostics function, JSON serialization via JsonBuilder.)
+
 ```cpp
 EMSCRIPTEN_KEEPALIVE
 const char* useq_last_diagnostics();
@@ -129,6 +142,8 @@ Spans are eval-relative — they reference offsets into the code string passed t
 ```
 
 ### 4.2 `useq_active_diagnostics`
+
+(See `wasm/wasm_wrapper.cpp` — useq_active_diagnostics function, currently returns "{}".)
 
 ```cpp
 EMSCRIPTEN_KEEPALIVE
@@ -179,7 +194,7 @@ The frontend reads `useq_last_diagnostics()` immediately after every eval for re
 
 ## 5. Firmware Serial Embedding
 
-5.1 The firmware ships diagnostics inside its existing serial JSON eval response. The response gains an optional `diagnostics` array with the same per-object shape as the WASM ABI:
+5.1 The firmware ships diagnostics inside its existing serial JSON eval response. The response gains an optional `diagnostics` array with the same per-object shape as the WASM ABI. (See `uSEQ/src/firmware/serial_protocol.cpp` — send_eval_response embeds diagnostics; `uSEQ/src/utils/json_builder.h` — JsonBuilder for JSON construction.)
 
 ```json
 {
@@ -216,7 +231,7 @@ The frontend reads `useq_last_diagnostics()` immediately after every eval for re
 
 ## 7. Fuzzy Name Suggestions
 
-7.1 Diagnostics in the `undefined_name` category include a `suggestion` field that points at the nearest known symbol when one is plausible. The matching algorithm is implementation-defined but must consider, at minimum:
+7.1 Diagnostics in the `undefined_name` category include a `suggestion` field that points at the nearest known symbol when one is plausible. The matching algorithm is implementation-defined but must consider, at minimum. (See `uSEQ/src/signal_engine/diagnostics.cpp` — find_fuzzy_match, Levenshtein distance, prefix, case-insensitive; `uSEQ/src/signal_engine/graph_builder.cpp` — report_error_with_fuzzy_match invokes find_fuzzy_match on unresolved symbols.)
 
 - Levenshtein distance on lowercased names, with a hard cutoff (typically `≤ 2`).
 - Prefix matches (`si` → `sin`).

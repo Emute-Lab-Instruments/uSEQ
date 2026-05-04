@@ -4,6 +4,17 @@
 > See also [inputs.md](inputs.md) (hardware input leaves; this spec adds a new class of input alongside them), [signal-model.md](signal-model.md) (implicit lifting and external leaves), [compilation.md](compilation.md) (compile pipeline, slot allocation, dependency tracking), [diagnostics.md](diagnostics.md) (diagnostic shape), [failure-model.md](failure-model.md) (LKG and health).
 > Editor-side counterpart: [../../../docs/specs/live-edit.md](../../../docs/specs/live-edit.md). Wire protocol: [wire-protocol.md](wire-protocol.md) (`set-live-inputs` message).
 
+## Source files
+
+**Note:** The `live-edit` feature is partially implemented. The wire-protocol dispatch and stub handler exist, but the compiler-side slot table, `LoadInput`-based compilation, and WASM ABI export are not yet landed. The source files below reflect the current state.
+
+- `uSEQ/src/firmware/serial_protocol.cpp` — `handle_set_live_inputs()` dispatches `set-live-inputs` messages; currently a stub awaiting slot-table integration (see TODO at line ~611).
+- `uSEQ/src/firmware/serial_protocol.h` — declares `set-live-inputs` as a recognised message type.
+- `uSEQ/src/signal_engine/node_pool.h` — `NodeOp::InputLoad` is the shared node type that will be used for live-edit slots (same as hardware inputs, per spec section 3.1).
+- `uSEQ/src/signal_engine/graph_builder.cpp` — future home of `live-edit` form recognition during builtin lowering.
+- `wasm/wasm_wrapper.cpp` — future home of `useq_set_live_inputs()` WASM ABI export (spec section 5.10).
+- `test/firmware/test_wire_protocol_contract.cpp` — F6/F6b tests for `set-live-inputs` protocol dispatch and ack shape.
+
 ---
 
 ## 1. Frame
