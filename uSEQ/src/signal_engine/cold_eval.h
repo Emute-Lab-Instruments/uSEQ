@@ -65,6 +65,7 @@ struct SignalEngine {
 
     StateResourceRegistry registry;
     NodePool scratch_pool;
+    char eval_text_buf[512] = {};
 
     void init_defaults(double bpm = 120.0, int beats_per_bar = 4,
                        int bars_per_phrase = 4, int phrases_per_section = 4);

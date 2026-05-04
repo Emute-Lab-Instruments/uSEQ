@@ -594,15 +594,12 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
     }
 
     if (tok.kind == TokenKind::LBracket) {
-        // Top-level vector: evaluate each element via scratch eval, return text
         ts.consume(); // eat '['
 
-        // Reset scratch pool once for the whole vector
         engine.scratch_pool.reset();
         uint8_t saved_table_count = engine.cells.data_table_count;
 
-        // Static: pointer survives return. Caller must copy before next eval_cold.
-        static char vec_buf[512];
+        char* vec_buf = engine.eval_text_buf;
         uint16_t buf_pos = 0;
         vec_buf[buf_pos++] = '[';
         bool first = true;
@@ -610,16 +607,16 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         EvalResult last_error = {};
 
         while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
-            // Get source slice for this element
             Token elem_start = ts.peek();
 
-            // Skip the element form
-            if (elem_start.kind == TokenKind::LParen) {
+            // Skip the element form (handle both paren and bracket nesting)
+            if (elem_start.kind == TokenKind::LParen ||
+                elem_start.kind == TokenKind::LBracket) {
                 int depth = 0;
                 do {
                     Token t = ts.consume();
-                    if (t.kind == TokenKind::LParen) depth++;
-                    else if (t.kind == TokenKind::RParen) depth--;
+                    if (t.kind == TokenKind::LParen || t.kind == TokenKind::LBracket) depth++;
+                    else if (t.kind == TokenKind::RParen || t.kind == TokenKind::RBracket) depth--;
                 } while (depth > 0 && !ts.at_end());
             } else {
                 ts.consume();
@@ -627,7 +624,7 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
 
             uint32_t elem_span_start = elem_start.span_start;
             Token prev = ts.tokens[ts.pos > 0 ? ts.pos - 1 : 0];
-            uint32_t elem_span_end = prev.span_start + prev.span_len;
+            uint32_t elem_span_end = (uint32_t)prev.span_start + prev.span_len;
 
             if (source && elem_span_end > elem_span_start &&
                 elem_span_end <= source_length) {
@@ -639,16 +636,16 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                     last_error = er;
                     break;
                 }
-                if (!first && buf_pos < sizeof(vec_buf) - 20) vec_buf[buf_pos++] = ' ';
+                constexpr uint16_t BUF_CAP = sizeof(engine.eval_text_buf);
+                if (!first && buf_pos < BUF_CAP - 20) vec_buf[buf_pos++] = ' ';
                 first = false;
                 int written = snprintf(vec_buf + buf_pos,
-                                       sizeof(vec_buf) - buf_pos,
+                                       BUF_CAP - buf_pos,
                                        "%.15g", er.number);
                 if (written > 0) buf_pos += (uint16_t)written;
             }
         }
 
-        // Skip to closing bracket
         while (ts.peek().kind != TokenKind::RBracket && !ts.at_end())
             ts.consume();
         ts.expect(TokenKind::RBracket);
@@ -657,7 +654,8 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
 
         if (any_error) return last_error;
 
-        if (buf_pos < sizeof(vec_buf) - 1) vec_buf[buf_pos++] = ']';
+        constexpr uint16_t BUF_CAP2 = sizeof(engine.eval_text_buf);
+        if (buf_pos < BUF_CAP2 - 1) vec_buf[buf_pos++] = ']';
         vec_buf[buf_pos] = '\0';
 
         EvalResult r;
