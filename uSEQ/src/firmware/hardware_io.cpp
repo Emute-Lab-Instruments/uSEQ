@@ -345,7 +345,8 @@ void HardwareIO::init()
 
     // ── Configure output pin modes ──────────────────────────────────────
     for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
-        pinMode(OUTPUT_PINS[i], OUTPUT_2MA);
+        if (OUTPUT_PINS[i] >= 0)
+            pinMode(OUTPUT_PINS[i], OUTPUT_2MA);
     }
 
     // ── Analog output setup (PWM freq / resolution) ─────────────────────

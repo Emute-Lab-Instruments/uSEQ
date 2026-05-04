@@ -70,7 +70,7 @@ static inline double eval_ternary_op(NodeOp op, double a, double b, double c) {
     switch (op) {
         case NodeOp::Clamp:  return (a < b) ? b : (a > c) ? c : a;
         case NodeOp::Lerp:   return a + (b - a) * c;
-        case NodeOp::Scale:  return c * (b - a) + a;
+        case NodeOp::Scale:  return a * (c - b) + b;
         case NodeOp::Select: return (a != 0.0) ? b : c;
         default: return 0.0;
     }
