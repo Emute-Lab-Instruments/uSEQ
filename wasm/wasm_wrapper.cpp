@@ -225,11 +225,16 @@ static void execute_batch_sequential(
     const double* cell_values,
     uint16_t num_active, double* batch_buf)
 {
-    // Save state so visualization doesn't corrupt the live signal
+    // Save all mutable state so visualization doesn't corrupt the live signal
     double saved_state[sig::MAX_STATE_SLOTS];
+    double saved_prev_outputs[sig::MAX_OUTPUTS];
+    double saved_lkg[sig::MAX_OUTPUTS];
     uint16_t saved_slot_count = g_engine->pool.state_slot_count;
     double saved_prev_t = g_prev_tick_time;
     memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
+    memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+        saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
 
     double output_values[sig::MAX_OUTPUTS] = {};
     double node_values[sig::MAX_TOTAL_NODES];
@@ -252,6 +257,7 @@ static void execute_batch_sequential(
         sig::execute_all_outputs(g_engine->pool, ctx);
 
         sig::commit_state(g_engine->pool, node_values);
+        sig::commit_outputs(g_engine->pool, output_values);
         g_prev_tick_time = t;
 
         uint16_t row = 0;
@@ -263,8 +269,11 @@ static void execute_batch_sequential(
         }
     }
 
-    // Restore state — visualization is read-only
+    // Restore all state — visualization is read-only
     memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
+    memcpy(g_engine->pool.prev_output_values, saved_prev_outputs, sizeof(saved_prev_outputs));
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+        g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
     g_engine->pool.state_slot_count = saved_slot_count;
     g_prev_tick_time = saved_prev_t;
 }

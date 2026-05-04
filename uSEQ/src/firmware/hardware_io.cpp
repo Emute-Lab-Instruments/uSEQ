@@ -190,7 +190,7 @@ static constexpr double RECP_2048 = 1.0 / 2048.0;
 // ── Input index convention ──────────────────────────────────────────────
 // Matches useqInputNames from configure.h:
 //   0=I1, 1=I2, 2=M1, 3=M2, 4=T1, 5=T2, 6=RS1, 7=R1,
-//   8=AI1, 9=AI2, 10=MAINKNOB, 11=XKNOB, 12=YKNOB, 13=ZSWITCH
+//   8=AI1, 9=AI2, 10=MAINKNOB, 11=XKNOB, 12=YKNOB, 13=ZSWITCH, 14=AUDIO_L, 15=AUDIO_R
 enum InputIndex : uint8_t {
     INP_I1       = 0,
     INP_I2       = 1,
@@ -206,6 +206,8 @@ enum InputIndex : uint8_t {
     INP_XKNOB    = 11,
     INP_YKNOB    = 12,
     INP_ZSWITCH  = 13,
+    INP_AUDIO_L  = 14,
+    INP_AUDIO_R  = 15,
 };
 
 // ── Simple smoothing filter ─────────────────────────────────────────────
@@ -316,7 +318,7 @@ void HardwareIO::init()
     num_continuous_outs = 4;
     num_binary_outs     = 2;
     num_serial_outs     = 9;
-    num_hw_inputs       = 14;  // I1, I2, M1, M2, T1, T2, RS1, R1, AI1, AI2, MAIN, X, Y, Z
+    num_hw_inputs       = 16;  // I1, I2, M1, M2, T1, T2, RS1, R1, AI1, AI2, MAIN, X, Y, Z, AUDIO_L, AUDIO_R
 #elif defined(USEQHARDWARE_1_0)
     num_continuous_outs = 3;
     num_binary_outs     = 3;
@@ -353,8 +355,8 @@ void HardwareIO::init()
     analogWriteFreq(100000);
     analogWriteResolution(11);
 
-#ifndef USEQHARDWARE_EXPANDER_OUT_0_1
-    // PIO PWM for LED outputs
+#if !defined(USEQHARDWARE_EXPANDER_OUT_0_1) && !defined(MUSICTHING)
+    // PIO PWM for LED outputs (MUSICTHING and Expander use analogWrite instead)
     uint offset  = pio_add_program(pio0, &pwm_program);
     uint offset2 = pio_add_program(pio1, &pwm_program);
     for (int i = 0; i < HW_NUM_CONTINUOUS; i++) {
@@ -485,6 +487,10 @@ void HardwareIO::read_inputs()
     inputs[INP_XKNOB]    = s_responsive[2].getValue() * RECP_4096;
     inputs[INP_AI1]      = s_responsive[4].getValue() * RECP_4096;
     inputs[INP_AI2]      = s_responsive[5].getValue() * RECP_4096;
+
+    // Audio direct inputs
+    inputs[INP_AUDIO_L] = s_responsive[6].getValue() * RECP_4096;
+    inputs[INP_AUDIO_R] = s_responsive[7].getValue() * RECP_4096;
 
     // Switch: threshold to 0/1/2
     int sw = s_responsive[3].getValue();
