@@ -8,9 +8,11 @@
 
 #ifdef ARDUINO
 #include <Arduino.h>
+#include <SPI.h>
 #include <hardware/gpio.h>
 #include <hardware/pio.h>
 #include "utils/piopwm.h"
+#include "utils/ResponsiveAnalogRead.h"
 #include "../utils/serial_message.h"
 
 // PIO PWM helpers (same as in the old io_manager)
@@ -66,6 +68,21 @@ static constexpr int HW_NUM_OUTPUTS    = 6;  // continuous + binary
 // Inversion flags (Music Thing specific)
 static constexpr bool INVERT_ANALOG  = true;
 static constexpr bool INVERT_DIGITAL = true;
+
+// MCP4822 SPI DAC — aL (channel 0) and aR (channel 1)
+static SPISettings dac_spi_settings(20000000, MSBFIRST, SPI_MODE0);
+
+static inline void dac_write(uint8_t channel, uint16_t value_12bit) {
+    if (value_12bit > 4095) value_12bit = 4095;
+    // MCP4822: [channel | 0 | gain=1x | active | 12-bit data]
+    uint16_t cmd = 0x3000 | (value_12bit & 0x0FFF);
+    if (channel & 1) cmd |= 0x8000;
+    SPI.beginTransaction(dac_spi_settings);
+    digitalWrite(DAC_CS_PIN, LOW);
+    SPI.transfer16(cmd);
+    digitalWrite(DAC_CS_PIN, HIGH);
+    SPI.endTransaction();
+}
 
 // Input channels: 0-3 via MUX_IN_1, 4-5 via MUX_IN_2, 6-7 audio direct
 static constexpr int NUM_RESPONSIVE_CHANNELS = 8;
@@ -226,7 +243,7 @@ namespace firmware {
 
 // ── File-scope state for input filtering ────────────────────────────────
 #if defined(ARDUINO) && defined(MUSICTHING)
-static SmoothInput s_responsive[NUM_RESPONSIVE_CHANNELS];
+static ResponsiveAnalogRead s_responsive[NUM_RESPONSIVE_CHANNELS];
 
 static int oversample_adc(int pin) {
     int sum = 0;
@@ -353,6 +370,13 @@ void HardwareIO::init()
     pinMode(PIN_I1, INPUT_PULLUP);
     pinMode(PIN_I2, INPUT_PULLUP);
 
+    // SPI DAC init for aL/aR
+    pinMode(DAC_CS_PIN, OUTPUT);
+    digitalWrite(DAC_CS_PIN, HIGH);
+    SPI.begin();
+    dac_write(0, 0);
+    dac_write(1, 0);
+
     analogReadResolution(12);
     pinMode(MUX_IN_1_PIN, INPUT);
     pinMode(MUX_IN_2_PIN, INPUT);
@@ -455,14 +479,14 @@ void HardwareIO::read_inputs()
     s_responsive[3].update(oversample_adc(MUX_IN_1_PIN));
 
     // ── Normalize to [0,1] ───────────────────────────────────────────────
-    inputs[INP_MAINKNOB] = s_responsive[0].value() * RECP_4096;
-    inputs[INP_YKNOB]    = s_responsive[1].value() * RECP_4096;
-    inputs[INP_XKNOB]    = s_responsive[2].value() * RECP_4096;
-    inputs[INP_AI1]      = s_responsive[4].value() * RECP_4096;
-    inputs[INP_AI2]      = s_responsive[5].value() * RECP_4096;
+    inputs[INP_MAINKNOB] = s_responsive[0].getValue() * RECP_4096;
+    inputs[INP_YKNOB]    = s_responsive[1].getValue() * RECP_4096;
+    inputs[INP_XKNOB]    = s_responsive[2].getValue() * RECP_4096;
+    inputs[INP_AI1]      = s_responsive[4].getValue() * RECP_4096;
+    inputs[INP_AI2]      = s_responsive[5].getValue() * RECP_4096;
 
     // Switch: threshold to 0/1/2
-    int sw = s_responsive[3].value();
+    int sw = s_responsive[3].getValue();
     if (sw < 100)       inputs[INP_ZSWITCH] = 0.0;
     else if (sw > 3500) inputs[INP_ZSWITCH] = 2.0;
     else                inputs[INP_ZSWITCH] = 1.0;
@@ -556,7 +580,17 @@ void HardwareIO::write_outputs()
 #endif
 
         // Write output pin
+#if defined(MUSICTHING)
+        if (i < 2) {
+            // aL/aR: SPI DAC (12-bit, scale from 11-bit PWM range)
+            uint16_t dac_val = static_cast<uint16_t>((scaled * 4095) / MAX_PWM_I);
+            dac_write(static_cast<uint8_t>(i), dac_val);
+        } else {
+            analogWrite(OUTPUT_PINS[i], scaled);
+        }
+#else
         analogWrite(OUTPUT_PINS[i], scaled);
+#endif
     }
 
     // ── Binary outputs (indices num_continuous_outs .. num_continuous_outs+num_binary_outs-1)
