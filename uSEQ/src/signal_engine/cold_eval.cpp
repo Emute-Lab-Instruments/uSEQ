@@ -323,7 +323,8 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
 
     // Compile the update expression as a signal graph
     GraphBuildResult result = build_output_graph(engine.pool, ts,
-                                                 engine.cells, engine.arena, source);
+                                                 engine.cells, engine.arena, source,
+                                                 &engine.registry);
 
     if (result.has_error) {
         engine.pool.state_update_roots[state_slot] = sig::NODE_NONE;
@@ -451,7 +452,8 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
 
     // Build the signal graph
     GraphBuildResult result = build_output_graph(engine.pool, ts,
-                                                 engine.cells, engine.arena, source);
+                                                 engine.cells, engine.arena, source,
+                                                 &engine.registry);
 
     if (result.has_error) {
         engine.pool.outputs[output_index].valid = false;
@@ -959,7 +961,8 @@ void recompile_all_outputs(SignalEngine& engine) {
         ts.pos = 0;
 
         GraphBuildResult result = build_output_graph(
-            engine.pool, ts, engine.cells, engine.arena, src);
+            engine.pool, ts, engine.cells, engine.arena, src,
+            &engine.registry);
 
         if (!result.has_error) {
             engine.pool.outputs[i].root_node = result.root_node;
@@ -1006,7 +1009,8 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                     ts.pos = 0;
 
                     GraphBuildResult result = build_output_graph(
-                        engine.pool, ts, engine.cells, engine.arena, src);
+                        engine.pool, ts, engine.cells, engine.arena, src,
+                        &engine.registry);
                     if (!result.has_error) {
                         engine.pool.outputs[i].root_node = result.root_node;
                         engine.pool.outputs[i].valid = true;
@@ -1047,7 +1051,8 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
             ts.pos = 0;
 
             GraphBuildResult result = build_output_graph(
-                engine.pool, ts, engine.cells, engine.arena, src);
+                engine.pool, ts, engine.cells, engine.arena, src,
+                &engine.registry);
             if (!result.has_error) {
                 engine.pool.state_update_roots[s] = result.root_node;
                 // Update dependencies

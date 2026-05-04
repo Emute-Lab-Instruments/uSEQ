@@ -1546,21 +1546,33 @@ uint16_t GraphBuilder::compile_rwarp(TokenStream& ts, Scope& scope, TimeContext&
 // ── State Functions ─────────────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_integrate(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (integrate rate_expr)
+    // (integrate rate_expr [:id <id>])
     // Allocates a state slot, builds update graph: state + rate * dt
     // Returns LoadState node for reads
 
     uint16_t rate = compile_expr(ts, scope, ctx);
     if (rate == NODE_NONE) return NODE_NONE;
 
-    // Allocate a state slot
-    if (pool.state_slot_count >= MAX_STATE_SLOTS) {
-        return report_error_at(0, 0,
-            "Too many state variables (max 32)",
-            "Remove unused integrate or defstate declarations");
+    StateID state_id = 0;
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw = ts.peek();
+        const String& kw_str = getSymbolString(kw.symbol);
+        if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
+        ts.consume();
+        if (kw.symbol == sym.kw_id) {
+            Token id_tok = ts.consume();
+            if (id_tok.kind == TokenKind::String && source_base) {
+                state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
+            } else if (id_tok.kind == TokenKind::Symbol) {
+                state_id = id_tok.symbol;
+            }
+        } else {
+            compile_expr(ts, scope, ctx);
+        }
     }
-    uint16_t slot = pool.state_slot_count++;
-    pool.state_values[slot] = 0.0;  // initial value = 0
+
+    uint16_t slot = resolve_or_alloc(state_id, ResourceKind::Integrator, 0, 0.0);
+    if (slot == NODE_NONE) return NODE_NONE;
 
     // Build update graph: state_load + rate * dt_load
     uint16_t state_load = pool.make_state_load(slot);
@@ -1589,19 +1601,32 @@ uint16_t GraphBuilder::alloc_state_slot(double init_value) {
     return slot;
 }
 
+uint16_t GraphBuilder::resolve_or_alloc(StateID state_id, ResourceKind kind,
+                                        uint8_t role, double init_value) {
+    if (state_id != 0 && registry) {
+        StateResourceKey key{state_id, kind, role};
+        uint16_t slot = registry->resolve(key, init_value,
+                                          pool.state_values,
+                                          pool.state_slot_count);
+        if (slot == NODE_NONE) {
+            report_error_at(0, 0,
+                "Too many state variables (max 32)",
+                "Remove unused stateful expressions");
+        }
+        return slot;
+    }
+    return alloc_state_slot(init_value);
+}
+
 // ── UGen: phasor ───────────────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_phasor(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (phasor freq [:phase init])
-    // Phase-coherent ramp [0,1) at freq Hz.
-    // update: frac(state + freq * dt)
-
     uint16_t freq = compile_expr(ts, scope, ctx);
     if (freq == NODE_NONE) return NODE_NONE;
 
     double init_phase = 0.0;
+    StateID state_id = 0;
 
-    // Parse optional keywords
     while (ts.peek().kind == TokenKind::Symbol) {
         Token kw = ts.peek();
         const String& kw_str = getSymbolString(kw.symbol);
@@ -1610,13 +1635,19 @@ uint16_t GraphBuilder::compile_phasor(TokenStream& ts, Scope& scope, TimeContext
         if (kw.symbol == sym.kw_phase) {
             uint16_t val = compile_expr(ts, scope, ctx);
             if (is_const(val)) init_phase = const_value(val);
+        } else if (kw.symbol == sym.kw_id) {
+            Token id_tok = ts.consume();
+            if (id_tok.kind == TokenKind::String && source_base) {
+                state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
+            } else if (id_tok.kind == TokenKind::Symbol) {
+                state_id = id_tok.symbol;
+            }
         } else {
-            // skip unknown keyword value
             compile_expr(ts, scope, ctx);
         }
     }
 
-    uint16_t slot = alloc_state_slot(init_phase);
+    uint16_t slot = resolve_or_alloc(state_id, ResourceKind::OscillatorPhase, 0, init_phase);
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
@@ -1642,15 +1673,13 @@ uint16_t GraphBuilder::build_osc_output(uint16_t state_load, uint16_t wave_type,
 }
 
 uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx, uint16_t default_wave) {
-    // (lfo freq [:wave :sin|:tri|:saw|:sqr] [:phase init] [:pw width])
-    // default_wave: 0=sin, 1=tri, 2=saw, 3=sqr
-
     uint16_t freq = compile_expr(ts, scope, ctx);
     if (freq == NODE_NONE) return NODE_NONE;
 
     uint16_t wave_type = default_wave;
     double init_phase = 0.0;
     uint16_t pulse_width_node = pool.make_const(0.5);
+    StateID state_id = 0;
 
     auto& si = SymbolIntern::getInstance();
 
@@ -1682,13 +1711,19 @@ uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx
             if (is_const(val)) init_phase = const_value(val);
         } else if (kw.symbol == sym.kw_pw) {
             pulse_width_node = compile_expr(ts, scope, ctx);
+        } else if (kw.symbol == sym.kw_id) {
+            Token id_tok = ts.consume();
+            if (id_tok.kind == TokenKind::String && source_base) {
+                state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
+            } else if (id_tok.kind == TokenKind::Symbol) {
+                state_id = id_tok.symbol;
+            }
         } else {
             compile_expr(ts, scope, ctx);
         }
     }
 
-    // Build phase accumulator
-    uint16_t slot = alloc_state_slot(init_phase);
+    uint16_t slot = resolve_or_alloc(state_id, ResourceKind::OscillatorPhase, 0, init_phase);
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
@@ -1725,7 +1760,7 @@ uint16_t GraphBuilder::compile_lfo_sqr(TokenStream& ts, Scope& scope, TimeContex
 // ── UGen: slew ─────────────────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_slew(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (slew target rate)
+    // (slew target rate [:id <id>])
     // Slew-rate limiter: moves toward target at max `rate` units/sec.
     // update: state + clamp(target - state, -rate*dt, rate*dt)
 
@@ -1734,7 +1769,25 @@ uint16_t GraphBuilder::compile_slew(TokenStream& ts, Scope& scope, TimeContext& 
     uint16_t rate = compile_expr(ts, scope, ctx);
     if (rate == NODE_NONE) return NODE_NONE;
 
-    uint16_t slot = alloc_state_slot(0.0);
+    StateID state_id = 0;
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw = ts.peek();
+        const String& kw_str = getSymbolString(kw.symbol);
+        if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
+        ts.consume();
+        if (kw.symbol == sym.kw_id) {
+            Token id_tok = ts.consume();
+            if (id_tok.kind == TokenKind::String && source_base) {
+                state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
+            } else if (id_tok.kind == TokenKind::Symbol) {
+                state_id = id_tok.symbol;
+            }
+        } else {
+            compile_expr(ts, scope, ctx);
+        }
+    }
+
+    uint16_t slot = resolve_or_alloc(state_id, ResourceKind::SlewAccumulator, 0, 0.0);
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
@@ -1762,7 +1815,7 @@ uint16_t GraphBuilder::compile_slew(TokenStream& ts, Scope& scope, TimeContext& 
 // ── UGen: one-pole ─────────────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_one_pole(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (one-pole input cutoff)
+    // (one-pole input cutoff [:id <id>])
     // First-order low-pass: alpha = min(1, 2*pi*cutoff*dt)
     // update: state + alpha * (input - state)
 
@@ -1771,7 +1824,25 @@ uint16_t GraphBuilder::compile_one_pole(TokenStream& ts, Scope& scope, TimeConte
     uint16_t cutoff = compile_expr(ts, scope, ctx);
     if (cutoff == NODE_NONE) return NODE_NONE;
 
-    uint16_t slot = alloc_state_slot(0.0);
+    StateID state_id = 0;
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw = ts.peek();
+        const String& kw_str = getSymbolString(kw.symbol);
+        if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
+        ts.consume();
+        if (kw.symbol == sym.kw_id) {
+            Token id_tok = ts.consume();
+            if (id_tok.kind == TokenKind::String && source_base) {
+                state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
+            } else if (id_tok.kind == TokenKind::Symbol) {
+                state_id = id_tok.symbol;
+            }
+        } else {
+            compile_expr(ts, scope, ctx);
+        }
+    }
+
+    uint16_t slot = resolve_or_alloc(state_id, ResourceKind::OnePole, 0, 0.0);
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
@@ -1802,7 +1873,7 @@ uint16_t GraphBuilder::compile_one_pole(TokenStream& ts, Scope& scope, TimeConte
 // ── UGen: env-follow ───────────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_env_follow(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (env-follow input attack release)
+    // (env-follow input attack release [:id <id>])
     // Asymmetric envelope follower.
     // if |input| > state: state + attack * (|input| - state)
     // else:               state + release * (|input| - state)
@@ -1826,7 +1897,25 @@ uint16_t GraphBuilder::compile_env_follow(TokenStream& ts, Scope& scope, TimeCon
         release_node = pool.make_const(5.0);
     }
 
-    uint16_t slot = alloc_state_slot(0.0);
+    StateID state_id = 0;
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw = ts.peek();
+        const String& kw_str = getSymbolString(kw.symbol);
+        if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
+        ts.consume();
+        if (kw.symbol == sym.kw_id) {
+            Token id_tok = ts.consume();
+            if (id_tok.kind == TokenKind::String && source_base) {
+                state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
+            } else if (id_tok.kind == TokenKind::Symbol) {
+                state_id = id_tok.symbol;
+            }
+        } else {
+            compile_expr(ts, scope, ctx);
+        }
+    }
+
+    uint16_t slot = resolve_or_alloc(state_id, ResourceKind::EnvelopeFollower, 0, 0.0);
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
@@ -1864,7 +1953,7 @@ uint16_t GraphBuilder::compile_env_follow(TokenStream& ts, Scope& scope, TimeCon
 // ── UGen: sah (sample-and-hold) ────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_sah(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (sah input trigger)
+    // (sah input trigger [:id <id>])
     // Aliases: latch
     // When trigger rises through 0.5, sample input. Otherwise hold previous.
     // update: (trigger > 0.5 && prev_trigger <= 0.5) ? input : state
@@ -1876,12 +1965,30 @@ uint16_t GraphBuilder::compile_sah(TokenStream& ts, Scope& scope, TimeContext& c
     uint16_t trigger = compile_expr(ts, scope, ctx);
     if (trigger == NODE_NONE) return NODE_NONE;
 
+    StateID state_id = 0;
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw = ts.peek();
+        const String& kw_str = getSymbolString(kw.symbol);
+        if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
+        ts.consume();
+        if (kw.symbol == sym.kw_id) {
+            Token id_tok = ts.consume();
+            if (id_tok.kind == TokenKind::String && source_base) {
+                state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
+            } else if (id_tok.kind == TokenKind::Symbol) {
+                state_id = id_tok.symbol;
+            }
+        } else {
+            compile_expr(ts, scope, ctx);
+        }
+    }
+
     // Slot 0: held value
-    uint16_t slot0 = alloc_state_slot(0.0);
+    uint16_t slot0 = resolve_or_alloc(state_id, ResourceKind::HeldValue, 0, 0.0);
     if (slot0 == NODE_NONE) return NODE_NONE;
 
     // Slot 1: previous trigger value
-    uint16_t slot1 = alloc_state_slot(0.0);
+    uint16_t slot1 = resolve_or_alloc(state_id, ResourceKind::TriggerMemory, 0, 0.0);
     if (slot1 == NODE_NONE) return NODE_NONE;
 
     uint16_t held_load = pool.make_state_load(slot0);
@@ -1905,15 +2012,30 @@ uint16_t GraphBuilder::compile_sah(TokenStream& ts, Scope& scope, TimeContext& c
 // ── UGen: noise ────────────────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_noise(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (noise)
+    // (noise [:id <id>])
     // White noise source using deterministic hash of running counter.
     // Uses one state slot as a counter that increments each tick.
     // Output: HashIndex(counter) → [0,1]
 
-    // (noise) takes no args
-    (void)ts; (void)scope; (void)ctx;
+    StateID state_id = 0;
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw = ts.peek();
+        const String& kw_str = getSymbolString(kw.symbol);
+        if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
+        ts.consume();
+        if (kw.symbol == sym.kw_id) {
+            Token id_tok = ts.consume();
+            if (id_tok.kind == TokenKind::String && source_base) {
+                state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
+            } else if (id_tok.kind == TokenKind::Symbol) {
+                state_id = id_tok.symbol;
+            }
+        } else {
+            compile_expr(ts, scope, ctx);
+        }
+    }
 
-    uint16_t slot = alloc_state_slot(0.0);
+    uint16_t slot = resolve_or_alloc(state_id, ResourceKind::NoiseCounter, 0, 0.0);
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
@@ -1933,16 +2055,34 @@ uint16_t GraphBuilder::compile_noise(TokenStream& ts, Scope& scope, TimeContext&
 // ── UGen: toggle ───────────────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_toggle(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (toggle trigger)
+    // (toggle trigger [:id <id>])
     // T-flip-flop: toggles 0↔1 on each rising edge of trigger.
     // Needs 2 state slots: toggle state + prev trigger.
 
     uint16_t trigger = compile_expr(ts, scope, ctx);
     if (trigger == NODE_NONE) return NODE_NONE;
 
-    uint16_t slot0 = alloc_state_slot(0.0); // toggle state
+    StateID state_id = 0;
+    while (ts.peek().kind == TokenKind::Symbol) {
+        Token kw = ts.peek();
+        const String& kw_str = getSymbolString(kw.symbol);
+        if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
+        ts.consume();
+        if (kw.symbol == sym.kw_id) {
+            Token id_tok = ts.consume();
+            if (id_tok.kind == TokenKind::String && source_base) {
+                state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
+            } else if (id_tok.kind == TokenKind::Symbol) {
+                state_id = id_tok.symbol;
+            }
+        } else {
+            compile_expr(ts, scope, ctx);
+        }
+    }
+
+    uint16_t slot0 = resolve_or_alloc(state_id, ResourceKind::ToggleState, 0, 0.0); // toggle state
     if (slot0 == NODE_NONE) return NODE_NONE;
-    uint16_t slot1 = alloc_state_slot(0.0); // prev trigger
+    uint16_t slot1 = resolve_or_alloc(state_id, ResourceKind::TriggerMemory, 0, 0.0); // prev trigger
     if (slot1 == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot0);
@@ -1967,7 +2107,7 @@ uint16_t GraphBuilder::compile_toggle(TokenStream& ts, Scope& scope, TimeContext
 // ── UGen: count ────────────────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (count trigger [:reset reset-trigger])
+    // (count trigger [:reset reset-trigger] [:id <id>])
     // Counts rising edges of trigger. Resets to 0 on rising edge of reset.
     // Needs 3 state slots: counter, prev trigger, prev reset.
 
@@ -1976,8 +2116,9 @@ uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext&
 
     // Optional reset argument
     uint16_t reset_trigger = pool.make_const(0.0);
+    StateID state_id = 0;
 
-    // Parse keywords for :reset
+    // Parse keywords for :reset and :id
     while (ts.peek().kind == TokenKind::Symbol) {
         Token kw = ts.peek();
         const String& kw_str = getSymbolString(kw.symbol);
@@ -1985,16 +2126,23 @@ uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext&
         ts.consume();
         if (kw.symbol == sym.kw_reset) {
             reset_trigger = compile_expr(ts, scope, ctx);
+        } else if (kw.symbol == sym.kw_id) {
+            Token id_tok = ts.consume();
+            if (id_tok.kind == TokenKind::String && source_base) {
+                state_id = internSymbol(source_base + id_tok.string.offset, id_tok.string.length);
+            } else if (id_tok.kind == TokenKind::Symbol) {
+                state_id = id_tok.symbol;
+            }
         } else {
             compile_expr(ts, scope, ctx);
         }
     }
 
-    uint16_t slot0 = alloc_state_slot(0.0); // counter
+    uint16_t slot0 = resolve_or_alloc(state_id, ResourceKind::Counter, 0, 0.0); // counter
     if (slot0 == NODE_NONE) return NODE_NONE;
-    uint16_t slot1 = alloc_state_slot(0.0); // prev trigger
+    uint16_t slot1 = resolve_or_alloc(state_id, ResourceKind::TriggerMemory, 0, 0.0); // prev trigger
     if (slot1 == NODE_NONE) return NODE_NONE;
-    uint16_t slot2 = alloc_state_slot(0.0); // prev reset
+    uint16_t slot2 = resolve_or_alloc(state_id, ResourceKind::ResetLatch, 0, 0.0); // prev reset
     if (slot2 == NODE_NONE) return NODE_NONE;
 
     uint16_t counter_load = pool.make_state_load(slot0);
@@ -2518,10 +2666,12 @@ GraphBuildResult build_output_graph(
     TokenStream& ts,
     CellStore& cells,
     const SourceArena& source,
-    const char* source_base
+    const char* source_base,
+    StateResourceRegistry* registry
 ) {
     GraphBuilder builder(pool, cells, source);
     builder.source_base = source_base;
+    builder.registry = registry;
     Scope root_scope = {};
     TimeContext ctx = { pool.make_raw_time_load() };
 

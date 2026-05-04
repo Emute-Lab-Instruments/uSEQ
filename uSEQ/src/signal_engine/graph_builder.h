@@ -5,6 +5,7 @@
 #include "token.h"
 #include "node_pool.h"
 #include "cell_store.h"
+#include "state_registry.h"
 #include "diagnostics.h"
 
 namespace sig {
@@ -45,11 +46,14 @@ struct GraphBuildResult {
 
 // ── Graph Builder ───────────────────────────────────────────────────────────
 
+struct StateResourceRegistry;
+
 struct GraphBuilder {
     NodePool& pool;
     CellStore& cells;
     const SourceArena& source;
     const char* source_base = nullptr; // raw tokenized text for string resolution
+    StateResourceRegistry* registry = nullptr;
 
     // Diagnostics output
     Diagnostic diagnostics[MAX_DIAGNOSTICS] = {};
@@ -180,6 +184,8 @@ struct GraphBuilder {
 
     // UGen helpers
     uint16_t alloc_state_slot(double init_value);
+    uint16_t resolve_or_alloc(StateID state_id, ResourceKind kind, uint8_t role,
+                              double init_value);
     uint16_t build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx, uint16_t default_wave);
     uint16_t build_osc_output(uint16_t state_load, uint16_t wave_type, uint16_t pw_node);
 
@@ -283,7 +289,8 @@ GraphBuildResult build_output_graph(
     TokenStream& ts,
     CellStore& cells,
     const SourceArena& source,
-    const char* source_base = nullptr
+    const char* source_base = nullptr,
+    StateResourceRegistry* registry = nullptr
 );
 
 } // namespace sig
