@@ -22,8 +22,14 @@ constexpr size_t MAX_DIAGNOSTICS    = 16;
 constexpr size_t MAX_INLINE_DEPTH   = 16;
 constexpr size_t MAX_OUTPUT_DEPS    = 64;
 constexpr size_t MAX_STATE_SLOTS    = 32;
+#ifdef ARDUINO
 constexpr size_t MAX_LIVE_SLOTS     = 32;
+#else
+constexpr size_t MAX_LIVE_SLOTS     = 256;
+#endif
 constexpr size_t MAX_LIVE_SLOT_ID   = 32;
+constexpr size_t MAX_LIVE_SLOT_OPTIONS = 16;
+constexpr size_t MAX_LIVE_SLOT_OPTION_LEN = 32;
 constexpr size_t MAX_TOKENS         = 256;
 constexpr size_t SOURCE_ARENA_SIZE  = 16384;
 constexpr size_t CSE_TABLE_SIZE     = MAX_TOTAL_NODES * 2;

@@ -89,9 +89,16 @@ struct OutputDeps {
     SymbolID cells[MAX_OUTPUT_DEPS] = {};
     uint8_t count = 0;
 
+    // Live-edit slot indices referenced by this output's graph
+    uint16_t slots[MAX_LIVE_SLOTS] = {};
+    uint8_t slot_count = 0;
+
     void clear();
     void add(SymbolID sym);
     bool contains(SymbolID sym) const;
+
+    void add_slot(uint16_t slot_index);
+    bool contains_slot(uint16_t slot_index) const;
 };
 
 // ── Node Pool ───────────────────────────────────────────────────────────────
@@ -133,18 +140,28 @@ struct NodePool {
     uint16_t state_slot_count = 0;
 
     // ── Live-edit slots (externally written by editor UI) ─────────────
+
+    enum class SlotVariant : uint8_t { Numeric = 0, Boolean = 1, Keyword = 2 };
+
     struct LiveSlot {
         char id[MAX_LIVE_SLOT_ID] = {};
         double value    = 0.0;
         double min_val  = 0.0;
         double max_val  = 1.0;
         double seed     = 0.0;
+        SlotVariant variant = SlotVariant::Numeric;
+        double step     = 0.0;
+        int precision   = -1;  // -1 means unset
+        char options[MAX_LIVE_SLOT_OPTIONS][MAX_LIVE_SLOT_OPTION_LEN] = {};
+        uint8_t options_count = 0;
     };
     LiveSlot live_slots[MAX_LIVE_SLOTS] = {};
     uint16_t live_slot_count = 0;
 
     int16_t find_live_slot(const char* id) const;
-    int16_t alloc_live_slot(const char* id, double seed, double min_val, double max_val);
+    int16_t alloc_live_slot(const char* id, double seed, double min_val, double max_val,
+                            SlotVariant variant = SlotVariant::Numeric,
+                            double step = 0.0, int precision = -1);
     void set_live_slot_value(const char* id, double value);
 
     // WASM batch workspace (heap-allocated once at init, null on firmware)

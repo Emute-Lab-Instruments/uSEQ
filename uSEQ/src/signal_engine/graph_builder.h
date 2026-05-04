@@ -7,8 +7,35 @@
 #include "cell_store.h"
 #include "state_registry.h"
 #include "diagnostics.h"
+#include <cstring>
 
 namespace sig {
+
+// ── Cross-output live-edit ID tracking ──────────────────────────────────────
+// Shared across all build_output_graph calls within one eval batch.
+// Detects duplicate :id across separate output compilations.
+
+struct SharedLiveEditIDs {
+    char ids[MAX_LIVE_SLOTS][MAX_LIVE_SLOT_ID] = {};
+    uint16_t count = 0;
+
+    void clear() { count = 0; }
+
+    bool contains(const char* id) const {
+        for (uint16_t i = 0; i < count; i++) {
+            if (strncmp(ids[i], id, MAX_LIVE_SLOT_ID) == 0) return true;
+        }
+        return false;
+    }
+
+    void add(const char* id) {
+        if (count < MAX_LIVE_SLOTS) {
+            strncpy(ids[count], id, MAX_LIVE_SLOT_ID - 1);
+            ids[count][MAX_LIVE_SLOT_ID - 1] = '\0';
+            count++;
+        }
+    }
+};
 
 // ── Scope (local bindings for let, lambda params, for variables) ────────────
 
@@ -70,9 +97,16 @@ struct GraphBuilder {
 
     // Live-edit: slot count at build start (to detect fresh allocations vs pre-existing)
     uint16_t live_slot_count_at_start = 0;
-    // Live-edit ids seen during this build (duplicate detection within one graph)
-    char live_edit_ids_seen[MAX_LIVE_SLOTS][MAX_LIVE_SLOT_ID] = {};
-    uint8_t live_edit_ids_count = 0;
+    // Live-edit ids seen during this build (duplicate detection within one graph).
+    // Capped at 64 per single output — a single output won't have 256 live-edits.
+    static constexpr uint16_t MAX_IDS_PER_BUILD = 64;
+    char live_edit_ids_seen[MAX_IDS_PER_BUILD][MAX_LIVE_SLOT_ID] = {};
+    uint16_t live_edit_ids_count = 0;
+    // Cross-output shared ID tracking (set by build_output_graph when provided)
+    SharedLiveEditIDs* shared_live_edit_ids = nullptr;
+
+    // Context flag: when true, compile_live_edit emits an error
+    bool reject_live_edit = false;
 
     // ── Well-known symbol IDs (populated at init) ───────────────────────
     // Generated from symbols.def — do not edit by hand.
@@ -290,7 +324,8 @@ GraphBuildResult build_output_graph(
     CellStore& cells,
     const SourceArena& source,
     const char* source_base = nullptr,
-    StateResourceRegistry* registry = nullptr
+    StateResourceRegistry* registry = nullptr,
+    SharedLiveEditIDs* shared_ids = nullptr
 );
 
 } // namespace sig

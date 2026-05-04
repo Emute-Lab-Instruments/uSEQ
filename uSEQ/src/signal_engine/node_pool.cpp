@@ -17,6 +17,7 @@ double eval_ternary(NodeOp op, double a, double b, double c) { return eval_terna
 
 void OutputDeps::clear() {
     count = 0;
+    slot_count = 0;
 }
 
 void OutputDeps::add(SymbolID sym) {
@@ -32,6 +33,23 @@ void OutputDeps::add(SymbolID sym) {
 bool OutputDeps::contains(SymbolID sym) const {
     for (uint8_t i = 0; i < count; i++) {
         if (cells[i] == sym) return true;
+    }
+    return false;
+}
+
+void OutputDeps::add_slot(uint16_t slot_index) {
+    // Deduplicate
+    for (uint8_t i = 0; i < slot_count; i++) {
+        if (slots[i] == slot_index) return;
+    }
+    if (slot_count < MAX_LIVE_SLOTS) {
+        slots[slot_count++] = slot_index;
+    }
+}
+
+bool OutputDeps::contains_slot(uint16_t slot_index) const {
+    for (uint8_t i = 0; i < slot_count; i++) {
+        if (slots[i] == slot_index) return true;
     }
     return false;
 }
@@ -159,16 +177,26 @@ int16_t NodePool::find_live_slot(const char* id) const {
     return -1;
 }
 
-int16_t NodePool::alloc_live_slot(const char* id, double seed, double min_val, double max_val) {
+int16_t NodePool::alloc_live_slot(const char* id, double seed, double min_val, double max_val,
+                                   SlotVariant variant, double step, int precision) {
     int16_t existing = find_live_slot(id);
     if (existing >= 0) {
         live_slots[existing].min_val = min_val;
         live_slots[existing].max_val = max_val;
         live_slots[existing].seed = seed;
-        // Reclamp existing value to new bounds
-        double& v = live_slots[existing].value;
-        if (v < min_val) v = min_val;
-        if (v > max_val) v = max_val;
+        live_slots[existing].variant = variant;
+        live_slots[existing].step = step;
+        live_slots[existing].precision = precision;
+        // Reclamp existing value to new bounds (numeric only)
+        if (variant == SlotVariant::Numeric) {
+            double& v = live_slots[existing].value;
+            if (v < min_val) v = min_val;
+            if (v > max_val) v = max_val;
+        } else if (variant == SlotVariant::Boolean) {
+            double& v = live_slots[existing].value;
+            v = (v != 0.0) ? 1.0 : 0.0;
+        }
+        // Keyword: value is index into options, validated by caller
         return existing;
     }
     if (live_slot_count >= MAX_LIVE_SLOTS) return -1;
@@ -179,16 +207,40 @@ int16_t NodePool::alloc_live_slot(const char* id, double seed, double min_val, d
     live_slots[idx].min_val = min_val;
     live_slots[idx].max_val = max_val;
     live_slots[idx].seed = seed;
+    live_slots[idx].variant = variant;
+    live_slots[idx].step = step;
+    live_slots[idx].precision = precision;
     return (int16_t)idx;
 }
 
 void NodePool::set_live_slot_value(const char* id, double value) {
     int16_t idx = find_live_slot(id);
     if (idx < 0) return;
-    double clamped = value;
-    if (clamped < live_slots[idx].min_val) clamped = live_slots[idx].min_val;
-    if (clamped > live_slots[idx].max_val) clamped = live_slots[idx].max_val;
-    live_slots[idx].value = clamped;
+
+    // §5.9: reject non-finite numbers — slot retains previous value
+    if (!std::isfinite(value)) return;
+
+    switch (live_slots[idx].variant) {
+        case SlotVariant::Numeric: {
+            // Clamp to [min, max]
+            double clamped = value;
+            if (clamped < live_slots[idx].min_val) clamped = live_slots[idx].min_val;
+            if (clamped > live_slots[idx].max_val) clamped = live_slots[idx].max_val;
+            live_slots[idx].value = clamped;
+            break;
+        }
+        case SlotVariant::Boolean:
+            // Cast to 0.0 or 1.0
+            live_slots[idx].value = (value != 0.0) ? 1.0 : 0.0;
+            break;
+        case SlotVariant::Keyword: {
+            // Validate against options vector length
+            int index = (int)value;
+            if (index < 0 || index >= (int)live_slots[idx].options_count) return;
+            live_slots[idx].value = (double)index;
+            break;
+        }
+    }
 }
 
 uint16_t NodePool::make_dt_load() {

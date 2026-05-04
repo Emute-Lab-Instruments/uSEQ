@@ -6,11 +6,11 @@
 
 ## Source files
 
-**Note:** The `live-edit` feature is partially implemented. The wire-protocol dispatch and stub handler exist, but the compiler-side slot table, `LoadInput`-based compilation, and WASM ABI export are not yet landed. The source files below reflect the current state.
+**Note:** The `live-edit` feature is partially implemented. The wire-protocol dispatch and stub handler exist, but the compiler-side slot table, `SlotLoad`-based compilation, and WASM ABI export are not yet landed. The source files below reflect the current state.
 
 - `uSEQ/src/firmware/serial_protocol.cpp` — `handle_set_live_inputs()` dispatches `set-live-inputs` messages; currently a stub awaiting slot-table integration (see TODO at line ~611).
 - `uSEQ/src/firmware/serial_protocol.h` — declares `set-live-inputs` as a recognised message type.
-- `uSEQ/src/signal_engine/node_pool.h` — `NodeOp::InputLoad` is the shared node type that will be used for live-edit slots (same as hardware inputs, per spec section 3.1).
+- `uSEQ/src/signal_engine/node_pool.h` — `NodeOp::SlotLoad` is the dedicated node type for live-edit slot reads (separate from `InputLoad` for hardware inputs — see spec section 3.1 for rationale).
 - `uSEQ/src/signal_engine/graph_builder.cpp` — future home of `live-edit` form recognition during builtin lowering.
 - `wasm/wasm_wrapper.cpp` — future home of `useq_set_live_inputs()` WASM ABI export (spec section 5.10).
 - `test/firmware/test_wire_protocol_contract.cpp` — F6/F6b tests for `set-live-inputs` protocol dispatch and ack shape.
@@ -59,7 +59,13 @@
 
 ## 3. Compilation
 
-3.1 **`live-edit` is recognised during builtin lowering** ([compilation.md §1.2](compilation.md)). The compiler does not lower it to a function call; it lowers it to a `LoadInput` node parameterised by the slot index. `LoadInput` is the **same node type used for hardware input leaves** (`ain1`, `in1`, etc. — [inputs.md](inputs.md)); only the slot source differs (hardware-sampled vs host-written). This shared node type ensures identical hot-path cost.
+3.1 **`live-edit` is recognised during builtin lowering** ([compilation.md §1.2](compilation.md)). The compiler does not lower it to a function call; it lowers it to a **`SlotLoad` node** parameterised by the slot index. `SlotLoad` is a **separate node type from `InputLoad`** (the node type used for hardware input leaves like `ain1`, `in1`, etc. — [inputs.md](inputs.md)).
+
+**Design decision (SlotLoad vs InputLoad):** An earlier draft of this spec proposed reusing `InputLoad` for both hardware inputs and live-edit slots. The implementation uses a distinct `SlotLoad` op because the two input classes have different lifecycles:
+- **Hardware inputs** (`InputLoad`) are permanent, hardware-sampled per tick, and never invalidated by recompilation.
+- **Live-edit slots** (`SlotLoad`) are editor-driven, temporary (allocated/freed on recompile), and index into a separate slot table that is rebuilt each eval.
+
+Sharing a single node type would conflate these lifecycles in the executor, the output classifier, and any tooling that reasons about graph structure (e.g. determining whether an output depends on editor-driven state). The performance contract is preserved: `SlotLoad` is a single indexed array read from the slot table — O(1) per sample, identical hot-path cost to `InputLoad`.
 
 3.2 **Slot identity is the `:id` string.** Per allocation, the compiler builds a string→index map (id → slot index in the slot table). Wire-protocol and WASM-ABI messages carry the `:id` string; the runtime resolves it to an index at receive time (see [wire-protocol.md](wire-protocol.md) and §5). No hashing; no collision risk; in-flight messages crossing a recompile resolve against the post-recompile id table — if the slot still exists, the write lands; if not, the write is silently dropped per §5.4.
 
@@ -77,15 +83,15 @@
 
 3.6 **Dependency tracking.** A compiled graph carries the slot ids it reads alongside the cell symbols it inlined ([compilation.md §1.6](compilation.md)). The runtime indexes outputs by their slot dependencies for future selective notification (e.g., panel highlight on slot change). Slot writes do **not** dirty the graph (§3.7).
 
-3.7 **Slot writes never invalidate compiled graphs.** This is the load-bearing performance contract. A host write to a slot updates the slot value; the next sample tick reads the new value via the existing `LoadInput` node. No recompilation, no graph invalidation, no allocation. Distinguishes live-edit slot writes from cell mutations ([compilation.md §1.7](compilation.md)) which *do* invalidate.
+3.7 **Slot writes never invalidate compiled graphs.** This is the load-bearing performance contract. A host write to a slot updates the slot value; the next sample tick reads the new value via the existing `SlotLoad` node. No recompilation, no graph invalidation, no allocation. Distinguishes live-edit slot writes from cell mutations ([compilation.md §1.7](compilation.md)) which *do* invalidate.
 
 3.8 **Recompilation triggers.** Slot allocation only changes during eval. Adding/removing a `live-edit` form (or changing its `:id`/`:min`/`:max`/`:options`/seed/variant) triggers normal recompilation of the enclosing form. The slot metadata table is rebuilt fresh per eval; the runtime preserves slot *values* across re-allocation when the `:id` survives (slot migration by id; analogous to [compilation.md §2.3](compilation.md) for state slots). Changes to compiler-irrelevant metadata (`:name`, `:step`, `:precision`) do not require recompilation but are picked up at the next eval that runs.
 
-3.9 **Sub-tick guarantees preserved.** A `LoadInput` node is a single indexed read from the slot table — no allocation, no string lookup. The string→index resolution happens at slot-write receive time, not on the per-sample hot path. Slot table is sized at compile time and indexed by integer slot index. Matches the existing input-leaf cost.
+3.9 **Sub-tick guarantees preserved.** A `SlotLoad` node is a single indexed array read from the slot table — no allocation, no string lookup. The string→index resolution happens at slot-write receive time, not on the per-sample hot path. Slot table is sized at compile time and indexed by integer slot index. Matches the existing input-leaf cost.
 
 3.10 **`(define x (live-edit …))` lifts the bound name to an input load.** When the compiler sees a `define` (or `let` binding) whose value is a `live-edit` form:
 - The bound name is associated with the slot directly.
-- Every signal-context reference to the name lowers to the same `LoadInput` node (subject to CSE).
+- Every signal-context reference to the name lowers to the same `SlotLoad` node (subject to CSE).
 - The `live-edit` is the binding's value; not a wrapper around the value.
 - Redefining the name to a non-`live-edit` value is allowed and triggers normal cell-mutation recompilation; the slot is freed.
 
@@ -144,7 +150,7 @@
 
 5.1 **Slot table.** The runtime holds an array of slot values, indexed by integer slot index. Allocated/resized at eval time; constant for the duration of one compiled program. Maximum slot count is implementation-bounded; firmware ships with a cap (initial proposal: 256) and emits a compile error if exceeded. WASM is bounded only by available memory.
 
-5.2 **Slot value type.** Each slot stores a single `IEEE 754 double`. Boolean slots store `0.0` or `1.0`. Keyword slots store the integer index into the `:options` vector (cast to double). The `LoadInput` node returns the slot value as a double; type-aware consumers (e.g. boolean test in a conditional) interpret accordingly.
+5.2 **Slot value type.** Each slot stores a single `IEEE 754 double`. Boolean slots store `0.0` or `1.0`. Keyword slots store the integer index into the `:options` vector (cast to double). The `SlotLoad` node returns the slot value as a double; type-aware consumers (e.g. boolean test in a conditional) interpret accordingly.
 
 5.3 **Slot write path.** A wire-protocol `set-live-inputs` message ([wire-protocol.md](wire-protocol.md)) or a WASM ABI call (§5.10) carries one or more `(id_string, value)` pairs. The runtime:
 1. Resolves each `id_string` to a slot index via the id→index map built at the most recent eval.
@@ -154,7 +160,7 @@
 
 5.4 **Unknown id** in a write — silently ignored. (The host is racing the eval; the slot may not exist yet, or may have been freed by a recent recompile.) An optional debug log is acceptable; no diagnostic, no error frame.
 
-5.5 **Slot read path.** During sampling, a `LoadInput` node reads the slot value directly. Cost: one indexed array read. Equivalent to a hardware input read.
+5.5 **Slot read path.** During sampling, a `SlotLoad` node reads the slot value from the slot table. Cost: one indexed array read. Equivalent to a hardware input read.
 
 5.6 **Slot value persistence across recompilation.** When eval triggers recompile and the new slot table includes the same `:id`, the slot value carries over. When a slot disappears (its `:id` removed from source), its value is dropped on the runtime side. Editor-side persistence is independent ([../../../docs/specs/live-edit.md §7](../../../docs/specs/live-edit.md)).
 
@@ -185,7 +191,7 @@ The editor calls this once per UI tick with a coalesced JSON batch — same payl
 
 ## 6. Performance Targets
 
-6.1 **Per-sample cost is O(1) per `LoadInput`** — equivalent to a hardware input read. Tens of slots per program is well within budget.
+6.1 **Per-sample cost is O(1) per `SlotLoad`** — equivalent to a hardware input read. Tens of slots per program is well within budget.
 
 6.2 **Slot-write receive cost** is O(N) per message in N pairs, dominated by JSON parse on the WASM/firmware side. At typical N (≤ 20) and message rate (≤ 60 Hz), this stays under ~5% of one core's budget on RP2040; on WASM it is negligible.
 

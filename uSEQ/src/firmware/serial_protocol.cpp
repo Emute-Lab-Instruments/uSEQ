@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -612,24 +613,16 @@ void SerialProtocol::handle_set_live_inputs(const char* payload, size_t len)
     // §5.8: write one or more live-edit slot values.
     //
     // The `slots` field is a JSON object mapping slot-id (string) → value.
-    // Walk the object entries and count them.
-    //
-    // TODO(live-edit §5.3): once the slot table exists, replace the count
-    // loop body with the actual write call, e.g.:
-    //   useq_set_live_input(slot_id, value_str);
-    // See: src-useq/docs/specs/live-edit.md §5.3 for the slot-table design
-    // and §5.10 for the useq_set_live_inputs WASM ABI that this should call.
+    // Walk the object entries, parse each key → value pair, resolve the slot
+    // by ID, validate the value, and write via set_live_slot_value().
 
     int applied = 0;
 
     const char* slots_val = find_field_value(payload, len, "slots");
-    if (slots_val && *slots_val == '{')
+    if (slots_val && *slots_val == '{' && engine)
     {
-        // Walk object keys to count entries. We don't actually write to a
-        // slot table yet — that data structure doesn't exist.
         const char* end = payload + len;
         const char* p = slots_val + 1; // skip opening '{'
-        int depth = 0;
 
         while (p < end)
         {
@@ -638,39 +631,73 @@ void SerialProtocol::handle_set_live_inputs(const char* payload, size_t len)
                                *p == '\r' || *p == '\n')) ++p;
             if (p >= end) break;
 
-            if (*p == '}' && depth == 0) break; // end of slots object
+            if (*p == '}') break; // end of slots object
 
             if (*p == '"')
             {
-                // Found a key — skip over the quoted string
+                // Extract key string into id_buf
+                char id_buf[sig::MAX_LIVE_SLOT_ID] = {};
+                size_t id_len = 0;
                 ++p; // skip opening quote
                 while (p < end && *p != '"')
                 {
-                    if (*p == '\\') ++p; // escaped char
-                    if (p < end) ++p;
+                    if (*p == '\\') {
+                        ++p; // skip backslash
+                        if (p >= end) break;
+                    }
+                    if (id_len < sig::MAX_LIVE_SLOT_ID - 1)
+                        id_buf[id_len++] = *p;
+                    ++p;
                 }
+                id_buf[id_len] = '\0';
                 if (p < end) ++p; // skip closing quote
 
                 // Skip whitespace and colon
                 while (p < end && (*p == ' ' || *p == '\t' || *p == ':')) ++p;
                 if (p >= end) break;
 
-                // Skip the value (handles nested objects/arrays, strings,
-                // numbers, booleans, null).
+                // Parse the value
+                bool value_valid = false;
+                double value = 0.0;
+
                 if (*p == '"')
                 {
-                    // String value
-                    ++p;
+                    // String value — resolve keyword slot option to index
+                    char str_buf[sig::MAX_LIVE_SLOT_OPTION_LEN] = {};
+                    size_t str_len = 0;
+                    ++p; // skip opening quote
                     while (p < end && *p != '"')
                     {
-                        if (*p == '\\') ++p;
-                        if (p < end) ++p;
+                        if (*p == '\\') {
+                            ++p;
+                            if (p >= end) break;
+                        }
+                        if (str_len < sig::MAX_LIVE_SLOT_OPTION_LEN - 1)
+                            str_buf[str_len++] = *p;
+                        ++p;
                     }
+                    str_buf[str_len] = '\0';
                     if (p < end) ++p; // skip closing quote
+
+                    // Look up slot and resolve keyword to option index
+                    int16_t str_slot_idx = engine->pool.find_live_slot(id_buf);
+                    if (str_slot_idx >= 0 &&
+                        engine->pool.live_slots[str_slot_idx].variant ==
+                            sig::NodePool::SlotVariant::Keyword) {
+                        auto& slot = engine->pool.live_slots[str_slot_idx];
+                        for (uint8_t oi = 0; oi < slot.options_count; oi++) {
+                            if (strncmp(slot.options[oi], str_buf,
+                                        sig::MAX_LIVE_SLOT_OPTION_LEN) == 0) {
+                                value = (double)oi;
+                                value_valid = true;
+                                break;
+                            }
+                        }
+                    }
                 }
                 else if (*p == '{' || *p == '[')
                 {
-                    // Nested object/array — skip balanced braces
+                    // Nested object/array — skip
                     char open = *p, close = (*p == '{') ? '}' : ']';
                     int nest = 0;
                     while (p < end)
@@ -680,13 +707,62 @@ void SerialProtocol::handle_set_live_inputs(const char* payload, size_t len)
                         ++p;
                     }
                 }
+                else if (*p == 't' || *p == 'f')
+                {
+                    // Boolean: true → 1.0, false → 0.0
+                    if (p + 4 <= end && memcmp(p, "true", 4) == 0) {
+                        value = 1.0;
+                        value_valid = true;
+                        p += 4;
+                    } else if (p + 5 <= end && memcmp(p, "false", 5) == 0) {
+                        value = 0.0;
+                        value_valid = true;
+                        p += 5;
+                    } else {
+                        while (p < end && *p != ',' && *p != '}') ++p;
+                    }
+                }
+                else if (*p == 'n')
+                {
+                    // null — skip
+                    while (p < end && *p != ',' && *p != '}') ++p;
+                }
                 else
                 {
-                    // Primitive (number, true, false, null) — skip until ,/}
-                    while (p < end && *p != ',' && *p != '}' && *p != ']') ++p;
+                    // Numeric value — parse
+                    const char* val_start = p;
+                    if (*p == '-' || *p == '+') ++p;
+                    while (p < end && ((*p >= '0' && *p <= '9') || *p == '.' ||
+                                       *p == 'e' || *p == 'E' || *p == '+' || *p == '-'))
+                    {
+                        // Only allow +/- after e/E
+                        if ((*p == '+' || *p == '-') && p > val_start &&
+                            *(p-1) != 'e' && *(p-1) != 'E') break;
+                        ++p;
+                    }
+                    if (p > val_start) {
+                        char num_buf[64] = {};
+                        size_t num_len = (size_t)(p - val_start);
+                        if (num_len >= sizeof(num_buf)) num_len = sizeof(num_buf) - 1;
+                        memcpy(num_buf, val_start, num_len);
+                        num_buf[num_len] = '\0';
+                        value = atof(num_buf);
+                        // Reject NaN and Inf
+                        if (std::isfinite(value))
+                            value_valid = true;
+                    }
                 }
 
-                ++applied; // counted one key-value pair
+                // Write to slot if value is valid and slot exists
+                if (value_valid && id_len > 0)
+                {
+                    int16_t slot_idx = engine->pool.find_live_slot(id_buf);
+                    if (slot_idx >= 0) {
+                        engine->pool.set_live_slot_value(id_buf, value);
+                        ++applied;
+                    }
+                    // Unknown slot IDs are silently dropped per spec
+                }
 
                 // Skip optional comma
                 while (p < end && (*p == ' ' || *p == '\t' ||

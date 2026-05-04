@@ -2220,6 +2220,13 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
     // (live-edit <seed> :id <string> :min <num> :max <num> [:name <str>] [:step <num>] [:precision <int>])
     uint16_t form_start = ts.peek().span_start > 0 ? ts.peek().span_start - 1 : 0;
 
+    // 0. Reject if in a context that forbids live-edit (defstate :initial, quote)
+    if (reject_live_edit) {
+        return report_error_at_cat(DiagnosticCategory::Boundary, form_start, 1,
+            "live-edit is not valid here",
+            "live-edit cannot appear inside defstate initial values or quoted forms");
+    }
+
     // 1. Parse seed — must be a numeric literal
     Token seed_tok = ts.peek();
     if (seed_tok.kind == TokenKind::LParen) {
@@ -2342,11 +2349,22 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
             "Swap :min and :max values");
     }
 
-    // 4. Check for duplicate id within this build.
+    // 4. Check for duplicate id — within this build AND across outputs.
     // If the slot already exists (from a prior build or earlier in this build
     // via inline expansion), reuse it. Only error if two *literal* live-edit
     // forms in non-inlined source declare the same id — detected by checking
     // whether we're currently inside an inline expansion.
+
+    // 4a. Cross-output duplicate check (shared table spans all outputs in one eval batch)
+    if (shared_live_edit_ids && inline_depth == 0) {
+        if (shared_live_edit_ids->contains(id_buf)) {
+            // Already seen in a different output's compilation
+            return report_error_at_cat(DiagnosticCategory::Boundary, form_start, 1,
+                "duplicate live-edit :id in this document",
+                "Each live-edit must have a unique :id across all outputs");
+        }
+    }
+
     int16_t pre_existing = pool.find_live_slot(id_buf);
     if (pre_existing >= 0) {
         // Slot already allocated. If we're inside inline expansion, reuse is fine.
@@ -2365,10 +2383,14 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
                 "Each live-edit must have a unique :id");
         }
         // Reuse existing slot (inline expansion or re-eval)
-        if (!seen_this_build && live_edit_ids_count < MAX_LIVE_SLOTS) {
+        if (!seen_this_build && live_edit_ids_count < MAX_IDS_PER_BUILD) {
             strncpy(live_edit_ids_seen[live_edit_ids_count], id_buf, MAX_LIVE_SLOT_ID - 1);
             live_edit_ids_seen[live_edit_ids_count][MAX_LIVE_SLOT_ID - 1] = '\0';
             live_edit_ids_count++;
+        }
+        // Register in shared cross-output table
+        if (shared_live_edit_ids && inline_depth == 0) {
+            shared_live_edit_ids->add(id_buf);
         }
         // Update bounds (may have changed on re-eval)
         pool.live_slots[pre_existing].min_val = min_val;
@@ -2380,18 +2402,23 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
         return pool.make_slot_load((uint16_t)pre_existing);
     }
 
-    // First time seeing this id — record it
-    if (live_edit_ids_count < MAX_LIVE_SLOTS) {
+    // First time seeing this id — record it in both local and shared tables
+    if (live_edit_ids_count < MAX_IDS_PER_BUILD) {
         strncpy(live_edit_ids_seen[live_edit_ids_count], id_buf, MAX_LIVE_SLOT_ID - 1);
         live_edit_ids_seen[live_edit_ids_count][MAX_LIVE_SLOT_ID - 1] = '\0';
         live_edit_ids_count++;
+    }
+    if (shared_live_edit_ids && inline_depth == 0) {
+        shared_live_edit_ids->add(id_buf);
     }
 
     // 5. Allocate slot
     int16_t slot_idx = pool.alloc_live_slot(id_buf, seed, min_val, max_val);
     if (slot_idx < 0) {
-        return report_error_at(form_start, 1,
-            "Too many live-edit slots (max 32)",
+        return report_error_at_cat(DiagnosticCategory::Overflow, form_start, 1,
+            MAX_LIVE_SLOTS == 256
+                ? "too many live-edit slots (max 256)"
+                : "too many live-edit slots (max 32)",
             "Remove unused live-edit declarations");
     }
 
@@ -2707,15 +2734,58 @@ GraphBuildResult build_output_graph(
     CellStore& cells,
     const SourceArena& source,
     const char* source_base,
-    StateResourceRegistry* registry
+    StateResourceRegistry* registry,
+    SharedLiveEditIDs* shared_ids
 ) {
     GraphBuilder builder(pool, cells, source);
     builder.source_base = source_base;
     builder.registry = registry;
+    builder.shared_live_edit_ids = shared_ids;
     Scope root_scope = {};
     TimeContext ctx = { pool.make_raw_time_load() };
 
     uint16_t root = builder.compile_expr(ts, root_scope, ctx);
+
+    // Warning #3: check for live-edit slots allocated but never read in this graph.
+    // Walk from root, collect all SlotLoad imm values, then check which freshly
+    // allocated slots (those with index >= live_slot_count_at_start) are missing.
+    if (!builder.has_error && root != NODE_NONE &&
+        pool.live_slot_count > builder.live_slot_count_at_start) {
+        // Collect referenced slot indices via DFS from root
+        bool slot_referenced[MAX_LIVE_SLOTS] = {};
+        uint16_t walk_stack[MAX_TOTAL_NODES];
+        uint16_t walk_top = 0;
+        bool visited[MAX_TOTAL_NODES] = {};
+        walk_stack[walk_top++] = root;
+        while (walk_top > 0) {
+            uint16_t ni = walk_stack[--walk_top];
+            if (ni == NODE_NONE || ni >= pool.node_count || visited[ni]) continue;
+            visited[ni] = true;
+            const Node& n = pool.nodes[ni];
+            if (n.op == NodeOp::SlotLoad) {
+                uint16_t slot_idx = (uint16_t)n.imm;
+                if (slot_idx < MAX_LIVE_SLOTS) slot_referenced[slot_idx] = true;
+            }
+            if (n.input_a != NODE_NONE && walk_top < MAX_TOTAL_NODES) walk_stack[walk_top++] = n.input_a;
+            if (n.input_b != NODE_NONE && walk_top < MAX_TOTAL_NODES) walk_stack[walk_top++] = n.input_b;
+            if (n.input_c != NODE_NONE && walk_top < MAX_TOTAL_NODES) walk_stack[walk_top++] = n.input_c;
+        }
+
+        // Emit warnings for unreferenced freshly-allocated slots
+        for (uint16_t s = builder.live_slot_count_at_start;
+             s < pool.live_slot_count; s++) {
+            if (!slot_referenced[s] &&
+                builder.diagnostic_count < MAX_DIAGNOSTICS) {
+                builder.diagnostics[builder.diagnostic_count++] = {
+                    DiagnosticSeverity::Warning,
+                    DiagnosticCategory::Boundary,
+                    0, 0,
+                    "live-edit slot allocated but never read in this signal graph",
+                    "Ensure the live-edit value is used in the output expression"
+                };
+            }
+        }
+    }
 
     GraphBuildResult result;
     result.root_node = root;

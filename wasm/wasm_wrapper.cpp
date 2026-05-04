@@ -580,6 +580,34 @@ extern "C"
             snprintf(numbuf, sizeof(numbuf), "%.15g", slot.seed);
             json.field_raw("seed", String(numbuf));
 
+            // Variant tag
+            const char* variant_str = "numeric";
+            if (slot.variant == sig::NodePool::SlotVariant::Boolean) variant_str = "boolean";
+            else if (slot.variant == sig::NodePool::SlotVariant::Keyword) variant_str = "keyword";
+            json.field("variant", variant_str);
+
+            // Step
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.step);
+            json.field_raw("step", String(numbuf));
+
+            // Precision
+            json.field("precision", slot.precision);
+
+            // Options (array of keyword strings, for keyword slots)
+            {
+                String opts_arr = "[";
+                if (slot.variant == sig::NodePool::SlotVariant::Keyword && slot.options_count > 0) {
+                    for (uint8_t j = 0; j < slot.options_count; j++) {
+                        if (j > 0) opts_arr += ",";
+                        opts_arr += "\"";
+                        opts_arr += slot.options[j];
+                        opts_arr += "\"";
+                    }
+                }
+                opts_arr += "]";
+                json.field_raw("options", opts_arr);
+            }
+
             json.object_end();
         }
 

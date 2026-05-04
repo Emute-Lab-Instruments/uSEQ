@@ -48,7 +48,19 @@ static EvalResult make_error(const char* message, const char* suggestion) {
 // ── Cold-path form evaluation ───────────────────────────────────────────────
 
 static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
-                            const char* source, uint32_t source_length);
+                            const char* source, uint32_t source_length,
+                            SharedLiveEditIDs* shared_ids = nullptr);
+
+// ── Live-edit argument rejection helper ────────────────────────────────────
+// Returns true if the next form in the token stream is (live-edit ...).
+// Does not consume any tokens.
+
+static bool next_is_live_edit(const TokenStream& ts) {
+    if (ts.pos + 1 >= ts.count) return false;
+    if (ts.tokens[ts.pos].kind != TokenKind::LParen) return false;
+    if (ts.tokens[ts.pos + 1].kind != TokenKind::Symbol) return false;
+    return ts.tokens[ts.pos + 1].symbol == GraphBuilder::sym.live_edit;
+}
 
 // ── Source span helpers ─────────────────────────────────────────────────────
 
@@ -267,7 +279,16 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     }
     SymbolID sym = name_tok.symbol;
 
-    // Parse init value — must be a number literal for simplicity
+    // Parse init value — must be a number literal for simplicity.
+    // Specifically reject live-edit in this position (§4.1.9).
+    if (next_is_live_edit(ts)) {
+        // Skip to closing paren
+        while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) ts.consume();
+        ts.expect(TokenKind::RParen);
+        return make_error(
+            "live-edit is not valid here — defstate initial value must be a literal number",
+            "Try: (defstate counter 0 (+ counter 1))");
+    }
     Token init_tok = ts.consume();
     if (init_tok.kind != TokenKind::Number) {
         return make_error("defstate initial value must be a number",
@@ -426,7 +447,8 @@ static EvalResult do_nudge_time(TokenStream& ts, EngineState& state) {
 
 static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
                                     SignalEngine& engine,
-                                    const char* source, uint32_t source_length) {
+                                    const char* source, uint32_t source_length,
+                                    SharedLiveEditIDs* shared_ids = nullptr) {
     uint16_t output_index = GraphBuilder::resolve_output_index(output_sym);
     if (output_index == NODE_NONE) {
         return make_error("Unknown output", "Try: (a1 expression)");
@@ -455,7 +477,7 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
     // Build the signal graph
     GraphBuildResult result = build_output_graph(engine.pool, ts,
                                                  engine.cells, engine.arena, source,
-                                                 &engine.registry);
+                                                 &engine.registry, shared_ids);
 
     if (result.has_error) {
         engine.pool.outputs[output_index].valid = false;
@@ -572,7 +594,8 @@ EvalResult eval_expression(const char* source, uint32_t length,
 // ── Top-level eval ──────────────────────────────────────────────────────────
 
 static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
-                            const char* source, uint32_t source_length) {
+                            const char* source, uint32_t source_length,
+                            SharedLiveEditIDs* shared_ids) {
     Token tok = ts.peek();
 
     if (tok.kind == TokenKind::Number) {
@@ -769,11 +792,26 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
 
         // Transport / time management
         if (op == sym.set_bpm) {
+            if (next_is_live_edit(ts)) {
+                // Skip to closing paren
+                while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) ts.consume();
+                ts.expect(TokenKind::RParen);
+                return make_error(
+                    "live-edit is not allowed as a direct argument of set-bpm",
+                    "live-edit must be used inside an output expression like (a1 ...)");
+            }
             EvalResult r = do_set_bpm(ts, engine);
             ts.expect(TokenKind::RParen);
             return r;
         }
         if (op == sym.set_time_sig) {
+            if (next_is_live_edit(ts)) {
+                while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) ts.consume();
+                ts.expect(TokenKind::RParen);
+                return make_error(
+                    "live-edit is not allowed as a direct argument of set-time-sig",
+                    "live-edit must be used inside an output expression like (a1 ...)");
+            }
             EvalResult r = do_set_time_sig(ts, engine);
             ts.expect(TokenKind::RParen);
             return r;
@@ -784,11 +822,25 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             return r;
         }
         if (op == sym.set_time_offset) {
+            if (next_is_live_edit(ts)) {
+                while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) ts.consume();
+                ts.expect(TokenKind::RParen);
+                return make_error(
+                    "live-edit is not allowed as a direct argument of set-time-offset",
+                    "live-edit must be used inside an output expression like (a1 ...)");
+            }
             EvalResult r = do_set_time_offset(ts, engine.state);
             ts.expect(TokenKind::RParen);
             return r;
         }
         if (op == sym.nudge_time) {
+            if (next_is_live_edit(ts)) {
+                while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) ts.consume();
+                ts.expect(TokenKind::RParen);
+                return make_error(
+                    "live-edit is not allowed as a direct argument of nudge-time",
+                    "live-edit must be used inside an output expression like (a1 ...)");
+            }
             EvalResult r = do_nudge_time(ts, engine.state);
             ts.expect(TokenKind::RParen);
             return r;
@@ -864,7 +916,7 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         // Output assignment
         if (GraphBuilder::is_output_symbol(op)) {
             EvalResult r = do_output_assign(op, ts, engine,
-                                            source, source_length);
+                                            source, source_length, shared_ids);
             ts.expect(TokenKind::RParen);
             return r;
         }
@@ -873,7 +925,7 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         if (op == sym.do_ || op == sym.scope) {
             EvalResult last = make_ok();
             while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
-                last = eval_form(ts, engine, source, source_length);
+                last = eval_form(ts, engine, source, source_length, shared_ids);
             }
             ts.expect(TokenKind::RParen);
             return last;
@@ -924,10 +976,13 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
     ts.count = count;
     ts.pos = 0;
 
+    // Cross-output live-edit ID tracking — cleared per eval batch
+    SharedLiveEditIDs shared_ids;
+
     // Handle multiple forms (implicit do)
     EvalResult last = make_ok();
     while (!ts.at_end() && ts.peek().kind != TokenKind::Eof) {
-        last = eval_form(ts, engine, source, length);
+        last = eval_form(ts, engine, source, length, &shared_ids);
         if (last.kind == EvalResult::Error) return last;
     }
 

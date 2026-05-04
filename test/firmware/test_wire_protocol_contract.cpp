@@ -276,11 +276,21 @@ TEST_CASE("F5 [§5.2] hello response has type:\"response\", mode, fw, config",
 TEST_CASE("F6 [§5.8] set-live-inputs request is accepted and ack has correct shape",
           "[contract][wire-protocol]")
 {
+    // Set up engine with pre-allocated live-edit slots so the handler has
+    // somewhere to write.
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+    const char* setup_code =
+        "(a1 (+ (live-edit 0.5 :id \"knob1\" :min 0 :max 1)"
+        "       (live-edit 0 :id \"toggle1\" :min 0 :max 1)))";
+    sig::eval_cold(setup_code, (uint32_t)strlen(setup_code), engine);
+
     firmware::SerialProtocol sp;
     sp.init();
+    sp.engine = &engine;
 
     // Build a set-live-inputs payload with two slots and a requestId.
-    // Shape: {"type":"set-live-inputs","slots":{"knob1":0.5,"toggle1":true},"requestId":"req-x"}
     const char* payload =
         "{\"type\":\"set-live-inputs\","
         "\"slots\":{\"knob1\":0.5,\"toggle1\":true},"
@@ -290,9 +300,6 @@ TEST_CASE("F6 [§5.8] set-live-inputs request is accepted and ack has correct sh
     char code_buf[256] = {};
 
     StdoutCapture cap;
-    // dispatch_message is the internal helper that read_command delegates to.
-    // Using it directly lets us inject a message without going through the
-    // ring buffer — the cleaner testable entry point per the design note.
     bool is_eval = sp.dispatch_message(payload, payload_len, code_buf, sizeof(code_buf));
     auto out = cap.drain();
 
@@ -307,15 +314,22 @@ TEST_CASE("F6 [§5.8] set-live-inputs request is accepted and ack has correct sh
     REQUIRE(json.find("\"type\":\"response\"") != std::string::npos);
     REQUIRE(json.find("\"success\":true") != std::string::npos);
     REQUIRE(json.find("\"requestId\":\"req-x\"") != std::string::npos);
-    // Two slots were provided — applied must be 2.
+    // Two slots were provided and both exist — applied must be 2.
     REQUIRE(json.find("\"applied\":2") != std::string::npos);
 }
 
 TEST_CASE("F6b [§5.8] set-live-inputs fire-and-forget (no requestId) emits no response",
           "[contract][wire-protocol]")
 {
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+    const char* setup_code = "(a1 (live-edit 0.5 :id \"knob1\" :min 0 :max 1))";
+    sig::eval_cold(setup_code, (uint32_t)strlen(setup_code), engine);
+
     firmware::SerialProtocol sp;
     sp.init();
+    sp.engine = &engine;
 
     const char* payload =
         "{\"type\":\"set-live-inputs\","
@@ -334,10 +348,190 @@ TEST_CASE("F6b [§5.8] set-live-inputs fire-and-forget (no requestId) emits no r
     REQUIRE(out.empty());
 }
 
-// TODO(live-edit): slot-table integration test — verify that dispatched slot
-// values are actually written to the runtime and read back on the next eval.
-// Blocked until live-edit.md §5.3 slot table is implemented in the compiler
-// and runtime. Add test here alongside F6 when that lands.
+// ── F6c–F6g — slot-table integration tests for set-live-inputs ──────────
+//
+// These verify that the firmware handler actually writes values into the
+// signal engine's live slot table, not just that the JSON ack is correct.
+
+TEST_CASE("F6c [§5.8] value actually lands in slot table after set-live-inputs",
+          "[contract][wire-protocol][live-edit]")
+{
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+    const char* code = "(a1 (live-edit 0.5 :id \"vol\" :min 0 :max 1))";
+    sig::eval_cold(code, (uint32_t)strlen(code), engine);
+
+    REQUIRE(engine.pool.live_slot_count == 1);
+    REQUIRE(engine.pool.live_slots[0].value == Approx(0.5));
+
+    firmware::SerialProtocol sp;
+    sp.init();
+    sp.engine = &engine;
+
+    const char* payload =
+        "{\"type\":\"set-live-inputs\","
+        "\"slots\":{\"vol\":0.75},"
+        "\"requestId\":\"req-c\"}";
+    char buf[256] = {};
+    StdoutCapture cap;
+    sp.dispatch_message(payload, strlen(payload), buf, sizeof(buf));
+    cap.drain();
+
+    // The slot value must have been updated by the handler.
+    REQUIRE(engine.pool.live_slots[0].value == Approx(0.75));
+}
+
+TEST_CASE("F6d [§5.8] unknown slot ID is silently dropped (applied=0)",
+          "[contract][wire-protocol][live-edit]")
+{
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+    const char* code = "(a1 (live-edit 0.5 :id \"vol\" :min 0 :max 1))";
+    sig::eval_cold(code, (uint32_t)strlen(code), engine);
+
+    firmware::SerialProtocol sp;
+    sp.init();
+    sp.engine = &engine;
+
+    // Send a value for a slot ID that was never allocated.
+    const char* payload =
+        "{\"type\":\"set-live-inputs\","
+        "\"slots\":{\"nonexistent\":0.9},"
+        "\"requestId\":\"req-d\"}";
+    char buf[256] = {};
+    StdoutCapture cap;
+    sp.dispatch_message(payload, strlen(payload), buf, sizeof(buf));
+    auto out = cap.drain();
+    auto json = extract_last_json(out);
+
+    // applied must be 0 — unknown IDs are dropped, not counted.
+    REQUIRE(json.find("\"applied\":0") != std::string::npos);
+    // The existing slot must be unchanged.
+    REQUIRE(engine.pool.live_slots[0].value == Approx(0.5));
+}
+
+TEST_CASE("F6e [§5.8] NaN/Inf values are rejected, slot retains previous value",
+          "[contract][wire-protocol][live-edit]")
+{
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+    const char* code = "(a1 (live-edit 0.5 :id \"vol\" :min 0 :max 1))";
+    sig::eval_cold(code, (uint32_t)strlen(code), engine);
+
+    firmware::SerialProtocol sp;
+    sp.init();
+    sp.engine = &engine;
+
+    // JSON doesn't natively support NaN/Inf, but atof("NaN") and atof("Infinity")
+    // produce those values. The handler must reject them.
+    // Test with null (not a number) — should be skipped entirely.
+    {
+        const char* payload =
+            "{\"type\":\"set-live-inputs\","
+            "\"slots\":{\"vol\":null},"
+            "\"requestId\":\"req-e1\"}";
+        char buf[256] = {};
+        StdoutCapture cap;
+        sp.dispatch_message(payload, strlen(payload), buf, sizeof(buf));
+        auto out = cap.drain();
+        auto json = extract_last_json(out);
+        REQUIRE(json.find("\"applied\":0") != std::string::npos);
+        REQUIRE(engine.pool.live_slots[0].value == Approx(0.5));
+    }
+
+    // Test with a string value (not numeric) — should be skipped.
+    {
+        const char* payload =
+            "{\"type\":\"set-live-inputs\","
+            "\"slots\":{\"vol\":\"not-a-number\"},"
+            "\"requestId\":\"req-e2\"}";
+        char buf[256] = {};
+        StdoutCapture cap;
+        sp.dispatch_message(payload, strlen(payload), buf, sizeof(buf));
+        auto out = cap.drain();
+        auto json = extract_last_json(out);
+        REQUIRE(json.find("\"applied\":0") != std::string::npos);
+        REQUIRE(engine.pool.live_slots[0].value == Approx(0.5));
+    }
+}
+
+TEST_CASE("F6f [§5.8] value is clamped to slot [min,max] range",
+          "[contract][wire-protocol][live-edit]")
+{
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+    // Slot with range [0.2, 0.8]
+    const char* code = "(a1 (live-edit 0.5 :id \"vol\" :min 0.2 :max 0.8))";
+    sig::eval_cold(code, (uint32_t)strlen(code), engine);
+
+    firmware::SerialProtocol sp;
+    sp.init();
+    sp.engine = &engine;
+
+    // Send value above max — should be clamped to 0.8
+    {
+        const char* payload =
+            "{\"type\":\"set-live-inputs\","
+            "\"slots\":{\"vol\":5.0},"
+            "\"requestId\":\"req-f1\"}";
+        char buf[256] = {};
+        StdoutCapture cap;
+        sp.dispatch_message(payload, strlen(payload), buf, sizeof(buf));
+        cap.drain();
+        REQUIRE(engine.pool.live_slots[0].value == Approx(0.8));
+    }
+
+    // Send value below min — should be clamped to 0.2
+    {
+        const char* payload =
+            "{\"type\":\"set-live-inputs\","
+            "\"slots\":{\"vol\":-1.0},"
+            "\"requestId\":\"req-f2\"}";
+        char buf[256] = {};
+        StdoutCapture cap;
+        sp.dispatch_message(payload, strlen(payload), buf, sizeof(buf));
+        cap.drain();
+        REQUIRE(engine.pool.live_slots[0].value == Approx(0.2));
+    }
+}
+
+TEST_CASE("F6g [§5.8] multiple slots in one message all apply",
+          "[contract][wire-protocol][live-edit]")
+{
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+    const char* code =
+        "(a1 (+ (live-edit 0.1 :id \"a\" :min 0 :max 1)"
+        "       (live-edit 0.2 :id \"b\" :min 0 :max 1)"
+        "       (live-edit 0.3 :id \"c\" :min 0 :max 1)))";
+    sig::eval_cold(code, (uint32_t)strlen(code), engine);
+    REQUIRE(engine.pool.live_slot_count == 3);
+
+    firmware::SerialProtocol sp;
+    sp.init();
+    sp.engine = &engine;
+
+    const char* payload =
+        "{\"type\":\"set-live-inputs\","
+        "\"slots\":{\"a\":0.9,\"b\":0.8,\"c\":0.7},"
+        "\"requestId\":\"req-g\"}";
+    char buf[256] = {};
+    StdoutCapture cap;
+    sp.dispatch_message(payload, strlen(payload), buf, sizeof(buf));
+    auto out = cap.drain();
+    auto json = extract_last_json(out);
+
+    // All three must apply.
+    REQUIRE(json.find("\"applied\":3") != std::string::npos);
+    REQUIRE(engine.pool.live_slots[0].value == Approx(0.9));
+    REQUIRE(engine.pool.live_slots[1].value == Approx(0.8));
+    REQUIRE(engine.pool.live_slots[2].value == Approx(0.7));
+}
 
 // ── F7 — binary STREAM frame layout (§6.1) ──────────────────────────────
 
