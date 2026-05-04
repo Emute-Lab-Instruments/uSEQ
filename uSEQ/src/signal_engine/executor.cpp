@@ -1,15 +1,14 @@
 #include "executor.h"
+#include "eval_ops.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
 namespace sig {
 
 // ── Single-node evaluation ──────────────────────────────────────────────────
+// Load ops and data ops need runtime context and are handled here directly.
+// Pure-math ops delegate to the shared eval_ops.h functions.
 
 static inline double eval_node(
     const Node& n,
@@ -25,6 +24,7 @@ static inline double eval_node(
     const double* state_values
 ) {
     switch (n.op) {
+        // ── Load ops (runtime context required) ─────────────────────────
         case NodeOp::Const:       return n.imm;
         case NodeOp::RawTimeLoad: return t;
         case NodeOp::LoadState:   return state_values[(uint16_t)n.imm];
@@ -33,49 +33,9 @@ static inline double eval_node(
         case NodeOp::InputLoad:   return hw_inputs[(uint16_t)n.imm];
         case NodeOp::PrevOutputLoad:
             return prev_output_values[(uint16_t)n.imm];
-        case NodeOp::Add:  return a + b;
-        case NodeOp::Sub:  return a - b;
-        case NodeOp::Mul:  return a * b;
-        case NodeOp::Div:  return (b != 0.0) ? a / b : 0.0;
-        case NodeOp::Mod:  return (b != 0.0) ? fmod(a, b) : 0.0;
-        case NodeOp::Expt: return pow(a, b);
-        case NodeOp::Min:  return (a < b) ? a : b;
-        case NodeOp::Max:  return (a > b) ? a : b;
+        case NodeOp::SlotLoad: return 0.0; // handled in execution loop
 
-        case NodeOp::Neg:   return -a;
-        case NodeOp::Abs:   return fabs(a);
-        case NodeOp::Floor: return floor(a);
-        case NodeOp::Ceil:  return ceil(a);
-        case NodeOp::Frac:  return a - floor(a);
-        case NodeOp::Sqrt:  return sqrt(fabs(a));
-        case NodeOp::Clamp: return (a < b) ? b : (a > c) ? c : a;
-
-        case NodeOp::Sin:  return sin(a);
-        case NodeOp::Cos:  return cos(a);
-        case NodeOp::Tan:  return tan(a);
-
-        case NodeOp::USin:   return (sin(a * 2.0 * M_PI) + 1.0) * 0.5;
-        case NodeOp::UCos:   return (cos(a * 2.0 * M_PI) + 1.0) * 0.5;
-        case NodeOp::Tri:    return 1.0 - fabs(2.0 * (a - floor(a)) - 1.0);
-        case NodeOp::Sqr:    return ((a - floor(a)) < 0.5) ? 1.0 : 0.0;
-        case NodeOp::Pulse:  return ((a - floor(a)) < b) ? 1.0 : 0.0;
-
-        case NodeOp::CmpGt: return (a > b)  ? 1.0 : 0.0;
-        case NodeOp::CmpLt: return (a < b)  ? 1.0 : 0.0;
-        case NodeOp::CmpGe: return (a >= b) ? 1.0 : 0.0;
-        case NodeOp::CmpLe: return (a <= b) ? 1.0 : 0.0;
-        case NodeOp::CmpEq: return (a == b) ? 1.0 : 0.0;
-
-        case NodeOp::Not: return (a == 0.0) ? 1.0 : 0.0;
-        case NodeOp::And: return (a != 0.0 && b != 0.0) ? 1.0 : 0.0;
-        case NodeOp::Or:  return (a != 0.0 || b != 0.0) ? 1.0 : 0.0;
-
-        case NodeOp::Select: return (a != 0.0) ? b : c;
-
-        case NodeOp::BiToUni: return (a + 1.0) * 0.5;
-        case NodeOp::UniToBi: return a * 2.0 - 1.0;
-        case NodeOp::Lerp:    return a + (b - a) * c;
-        case NodeOp::Scale:   return c * (b - a) + a;
+        // ── Data ops (need data_pool arrays) ────────────────────────────
         case NodeOp::VecIndex: {
             uint16_t tid = (uint16_t)n.imm;
             uint16_t off = data_offsets[tid];
@@ -98,16 +58,52 @@ static inline double eval_node(
             return data_pool[off + i0] + (data_pool[off + i1] - data_pool[off + i0]) * frac;
         }
 
-        case NodeOp::HashIndex: {
-            // Deterministic hash matching old simple_hashing_function
-            uint32_t v = (uint32_t)(int32_t)a;
-            v = ((v >> 16) ^ v) * 0x45d9f3bu;
-            v = ((v >> 16) ^ v) * 0x45d9f3bu;
-            v = (v >> 16) ^ v;
-            return (double)(v & 0x7fffffffu) / (double)0x7fffffffu;
-        }
+        // ── Pure-math ops (shared with constant folding) ────────────────
+        // Unary
+        case NodeOp::Neg:
+        case NodeOp::Abs:
+        case NodeOp::Floor:
+        case NodeOp::Ceil:
+        case NodeOp::Frac:
+        case NodeOp::Sqrt:
+        case NodeOp::Sin:
+        case NodeOp::Cos:
+        case NodeOp::Tan:
+        case NodeOp::USin:
+        case NodeOp::UCos:
+        case NodeOp::Tri:
+        case NodeOp::Sqr:
+        case NodeOp::Not:
+        case NodeOp::BiToUni:
+        case NodeOp::UniToBi:
+        case NodeOp::HashIndex:
+            return eval_unary_op(n.op, a);
 
-        case NodeOp::SlotLoad: return 0.0; // handled in execution loop
+        // Binary
+        case NodeOp::Add:
+        case NodeOp::Sub:
+        case NodeOp::Mul:
+        case NodeOp::Div:
+        case NodeOp::Mod:
+        case NodeOp::Expt:
+        case NodeOp::Min:
+        case NodeOp::Max:
+        case NodeOp::Pulse:
+        case NodeOp::CmpGt:
+        case NodeOp::CmpLt:
+        case NodeOp::CmpGe:
+        case NodeOp::CmpLe:
+        case NodeOp::CmpEq:
+        case NodeOp::And:
+        case NodeOp::Or:
+            return eval_binary_op(n.op, a, b);
+
+        // Ternary
+        case NodeOp::Clamp:
+        case NodeOp::Lerp:
+        case NodeOp::Scale:
+        case NodeOp::Select:
+            return eval_ternary_op(n.op, a, b, c);
 
         default: return 0.0;
     }
