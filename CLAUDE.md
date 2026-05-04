@@ -129,11 +129,11 @@ arduino-cli compile --fqbn rp2040:rp2040:generic:boot2=boot2_w25q080_2_padded_ch
 ./scripts/test.sh
 
 # Run specific test suite
-./scripts/test.sh -s value      # Value API tests
-./scripts/test.sh -s environment # Environment API tests  
-./scripts/test.sh -s parser     # Parser API tests
-./scripts/test.sh -s interpreter # Interpreter API tests
-./scripts/test.sh -s builtins   # Builtin functions tests
+./scripts/test.sh -s signal_engine       # Core signal engine tests
+./scripts/test.sh -s signal_engine_golden # Golden semantic tests
+./scripts/test.sh -s firmware_e2e        # Firmware end-to-end tests
+./scripts/test.sh -s flash_storage       # Flash persistence round-trips
+./scripts/test.sh -s ugens              # Unit generator tests
 
 # Run with verbose output
 ./scripts/test.sh -v
@@ -153,106 +153,98 @@ python scripts/serve_wasm.py
 
 ### Project Structure
 ```
-/uSEQ/                          # Main firmware (Arduino project)
-├── uSEQ.ino                   # Arduino entry point
-├── src/
-│   ├── modulisp/              # ModuLisp interpreter core
-│   │   ├── modulisp.h/cpp     # Main ModuLisp class
-│   │   ├── modulisp_api.cpp   # API implementation
-│   │   ├── modulisp_eval.cpp  # Evaluation logic
-│   │   ├── modulisp_time.cpp  # Timing functions
-│   │   └── lisp/              # Core LISP interpreter
-│   │       ├── parser.cpp/h        # S-expression parsing
-│   │       ├── value.cpp/h         # Value types and operations
-│   │       ├── environment.cpp/h   # Variable scoping
-│   │       ├── interpreter.cpp/h   # Core evaluation engine
-│   │       └── generated_builtins.cpp/h # Auto-generated functions
-│   ├── uSEQ.h/cpp             # Main uSEQ class (inherits from ModuLisp)
-│   ├── uSEQ_*.cpp             # Hardware-specific implementations
-│   ├── utils/                 # Utility functions
-│   └── dsp/                   # DSP processing (tempo estimation, filters)
+/uSEQ/src/
+├── signal_engine/             # Signal compiler and runtime
+│   ├── graph_builder.{h,cpp}  # Compiler: ModuLisp → node graph
+│   ├── node_pool.{h,cpp}      # CSE, constant folding, node storage
+│   ├── executor.{h,cpp}       # Per-sample hot-path evaluation
+│   ├── cold_eval.{h,cpp}      # Cold eval: REPL, cell assign, output def
+│   ├── cell_store.{h,cpp}     # Named cells and data tables
+│   ├── token.{h,cpp}          # Tokenizer
+│   ├── diagnostics.{h,cpp}    # Structured error reporting
+│   ├── state_registry.{h,cpp} # State-identity resource registry
+│   ├── signal_engine.h        # SignalEngine composition struct
+│   ├── types.h                # Shared types (Node, Cell, Output, etc.)
+│   └── symbols.def            # X-macro symbol definitions
+├── firmware/                  # Hardware abstraction
+│   ├── firmware.{h,cpp}       # Composition root, init(), tick() loop
+│   ├── hardware_io.{h,cpp}    # All pin I/O, variant pin maps, LEDs
+│   ├── serial_protocol.{h,cpp}# JSON wire protocol dispatch
+│   ├── flash_storage.{h,cpp}  # LittleFS persistence
+│   ├── i2c_network.{h,cpp}    # Multi-module I2C communication
+│   ├── dsp_engine.{h,cpp}     # Core 1 stub (P3)
+│   └── utils/                 # piopwm.h, ResponsiveAnalogRead
+├── utils/                     # String, JSON builder, log, serial_message
+├── modulisp/lisp/symbol_intern.h  # Symbol interning (shared)
+└── ports/                     # IStorage.h, MockStorage.h (testability)
 
-/interfaces/useqedit/           # Python-based live coding editor
-/hardware/                      # KiCad PCB designs (v0.1, v0.2, v1.0)
-/test/                         # Comprehensive test suite
-/scripts/                      # Build and utility scripts
-/docs/                         # Documentation
+/wasm/wasm_wrapper.cpp         # WASM bindings (15 exports)
+/test/                         # signal_engine/ and firmware/ test suites
+/docs/specs/                   # Normative specs (MAIN.md is the index)
+/scripts/                      # Build, test, flash scripts
 ```
 
-### Key Classes and Components
+### Key Components
 
-1. **ModuLisp** (`/uSEQ/src/modulisp/`)
-   - Main interpreter class that extends base `Interpreter`
-   - Handles timing, API functions, and module-specific features
-   - Key files: `modulisp.h/cpp`, `modulisp_api.cpp`, `modulisp_eval.cpp`
+1. **Signal Engine** (`signal_engine/`)
+   - Compiles ModuLisp to a node DAG, evaluates per-sample via flat arrays
+   - `graph_builder.cpp` — compiler with form dispatch table, X-macro symbols
+   - `executor.cpp` — hot path: linear scan of topological order, zero allocation
+   - `cold_eval.cpp` — cold path: parses + compiles on eval, manages cells/outputs
+   - `node_pool.h` — hash-consed node pool with CSE + constant folding
 
-2. **uSEQ** (`/uSEQ/src/`)
-   - Hardware interface class that extends `ModuLisp`
-   - Manages I/O, I2C communication, LED control, flash storage
-   - Handles JSON serial protocol (hello, ping, stream-config, eval dispatch)
-   - Key files: `uSEQ.h/cpp`, `uSEQ_api.cpp`, `uSEQ_io.cpp`, `uSEQ_i2c.cpp`, `uSEQ_update.cpp`
+2. **Firmware** (`firmware/`)
+   - Thin wrapper: reads inputs → runs engine → writes outputs
+   - `hardware_io.cpp` — all variant pin maps inline under `#ifdef` guards
+   - `serial_protocol.cpp` — JSON wire protocol (hello, ping, eval, stream-config)
+   - `flash_storage.cpp` — LittleFS persistence with CRC32 validation
 
-3. **JSON Protocol** (`/uSEQ/src/utils/`)
-   - `log.cpp` / `log.h`: `Protocol` namespace — JSON mode toggle, request tracking, response sending
-   - `json_builder.h`: Lightweight fluent `JsonBuilder` for constructing JSON without external libraries
-   - `serial_message.h`: Wire-level constants (start marker `0x1F`, message type bytes)
-   - Protocol is negotiated via `hello` handshake; supports `ping`, `stream-config`, and `eval` requests
-   - Transport builtins push state changes via the `meta` field in eval responses
-
-4. **LISP Interpreter** (`/uSEQ/src/modulisp/lisp/`)
-   - Complete LISP implementation with parser, evaluator, environment
-   - Supports lists, symbols, numbers, strings, lambdas, macros
-   - Generated builtins from EDN specifications
+3. **JSON Protocol** (`utils/`)
+   - `log.cpp/h`: `Protocol` namespace — JSON mode toggle, request tracking
+   - `json_builder.h`: Lightweight fluent JSON builder (no external libs)
+   - `serial_message.h`: Wire-level constants (start marker `0x1F`)
 
 ## Error Handling and Diagnostics
 
-The signal-engine compiler produces structured diagnostics that flow through to the browser editor as inline annotations. The on-wire data shapes and WASM ABI live in `docs/specs/diagnostics.md`; the failure semantics (LKG, health states, REPL-vs-output channels) live in `docs/specs/failure-model.md`.
+The signal-engine compiler produces structured diagnostics that flow through to the browser editor as inline annotations. Specs: `docs/specs/diagnostics.md` (wire format), `docs/specs/failure-model.md` (LKG, health states).
 
 ### Key files
 
-- `uSEQ/src/modulisp/diagnostic.h` — `SourceSpan`, `Diagnostic`, `DiagnosticSeverity`, `DiagnosticCategory` types, plus `severity_to_cstr()`/`category_to_cstr()` helpers
-- `uSEQ/src/modulisp/bytecode_vm.cpp` — compiler uses `report()` (fatal) and `report_and_continue()` (non-fatal, emits placeholder and continues). Checkpoint/rollback truncates speculative diagnostics. `warn_if_non_numeric()` catches type errors at compile time. `find_fuzzy_match()` suggests corrections for typos.
-- `uSEQ/src/modulisp/modulisp_interpreter.h` — interpreter owns `std::vector<Diagnostic> m_diagnostics`, accessed via `get_diagnostics()`, `clear_diagnostics()`, `has_diagnostics_error()`
-- `uSEQ/src/modulisp/lisp/parser.cpp` — populates `SourceSpan` on every `Value` node during parsing; reports syntax errors as `Diagnostic` objects
-- `uSEQ/src/modulisp/lisp/value.h` — `Value` has a `SourceSpan span` field (in the padding gap, zero size overhead)
+- `signal_engine/diagnostics.{h,cpp}` — `Diagnostic`, `DiagnosticSeverity`, `DiagnosticCategory`, `severity_to_cstr()`, `category_to_cstr()`, fuzzy matching
+- `signal_engine/graph_builder.cpp` — compiler uses `report_error_at_cat()` (fatal) and `report_and_continue()` (non-fatal). Fuzzy matching suggests corrections for typos.
+- `signal_engine/cold_eval.cpp` — `SignalEngine` owns diagnostics vector, accessed via `get_diagnostics()`, `clear_diagnostics()`
 - `wasm/wasm_wrapper.cpp` — `useq_last_diagnostics()` (JSON array from last eval) and `useq_active_diagnostics()` (per-output health state)
-- `uSEQ/src/uSEQ.cpp` — firmware includes diagnostics in serial JSON eval responses
+- `firmware/serial_protocol.cpp` — firmware includes diagnostics in serial JSON eval responses
 
 ### Diagnostic flow
 
 ```
-User code → Parser (spans) → VM Compiler (diagnostics) → Interpreter (m_diagnostics)
+User code → Tokenizer (token.cpp) → GraphBuilder (diagnostics) → SignalEngine
   → WASM useq_last_diagnostics() → Frontend JSON parse → CodeMirror inline annotations
 ```
 
 ### Adding a new error
 
-1. In the compiler (`bytecode_vm.cpp`), call `report_and_continue()` for non-fatal or `report()` for fatal:
+1. In the compiler (`graph_builder.cpp`), call `report_error_at_cat()` for fatal or `report_and_continue()` for non-fatal:
    ```cpp
-   return report_and_continue(DiagnosticCategory::Arity,
-          expr.span, "fn needs N values", "Try: (fn arg1 arg2)");
+   return report_error_at_cat(DiagnosticCategory::Arity,
+          span_start, span_len, "fn needs N values", "Try: (fn arg1 arg2)");
    ```
-2. Use plain language — no "Numeric VM", no "arity", no jargon
+2. Use plain language — no jargon in user-facing messages
 3. Always include a `suggestion` with working example code
-4. The diagnostic will automatically propagate through the WASM ABI to the editor
+4. The diagnostic propagates automatically through the WASM ABI to the editor
 
 ### Important constraints
 
 - `ninja -j4` — never compile with full parallelism (bricks the machine)
 - Diagnostics are compile-time only — never allocated on the per-sample hot path
-- `Value::error()` still exists as an internal sentinel; the `is_error()` check at the `CALL_INTRINSIC` boundary converts it to a structured diagnostic
 
 ## Development Workflows
 
-### Adding New LISP Functions
-1. For built-in functions: Add to `/scripts/builtins.edn` and regenerate
-2. For ModuLisp API: Add to `modulisp_api.cpp` using `MODULISP_FUNC` macro
-3. For uSEQ-specific: Add to `uSEQ_api.cpp` using `USEQ_FUNC` macro
-
 ### Hardware Configuration
-- Pin mappings: `/uSEQ/src/uSEQ/pinmap.h`
-- Module settings: `/uSEQ/src/uSEQ/configure.h`
-- LISP settings: `/uSEQ/src/modulisp/lisp/configure.h`
+- Pin maps: defined inline in `firmware/hardware_io.cpp` under per-variant `#ifdef` guards
+- Variant selection: PlatformIO environments in `platformio.ini` pass `-D MUSICTHING` etc.
+- No separate configure.h — feature flags are PIO build flags
 
 ### Live Coding Interface
 ```bash
@@ -306,20 +298,25 @@ The firmware supports multiple hardware configurations:
 
 ## Real-time Constraints
 
-- **Dual-core Architecture**: LISP on core 0, DSP on core 1
+- **Dual-core Architecture**: Signal engine on core 0, core 1 reserved (P3 DSP stub)
 - **Timing System**: Functional rendering with phasors (beat, bar, phrase, section)
 - **Update Rate**: Runs as fast as possible, not fixed quantum
+- **Hot path (executor.cpp)**: Zero allocation, no virtual dispatch, linear scan
 - **I2C Networking**: Multi-module communication for synchronized performance
 
 ## Testing Strategy
 
-The project includes comprehensive API tests covering:
-- **Value API**: Construction, type checking, conversions, operators
-- **Environment API**: Variable storage, scoping, inheritance
-- **Parser API**: String parsing, structure recognition
-- **Interpreter API**: Expression evaluation, function application
-- **Builtin Functions**: Generated function implementations
-- **ModuLisp API**: Module-specific functionality
+Test suites in `test/signal_engine/` and `test/firmware/`:
+- **signal_engine**: Core compiler + executor (136 test cases)
+- **signal_engine_golden**: Golden semantic tests (data-driven, 1000+ assertions)
+- **signal_engine_phase4**: Advanced features (robustness, edge cases)
+- **signal_engine_robustness**: Fuzz and stress tests
+- **ugens**: State-bearing unit generators (slew, env-follow, etc.)
+- **firmware_e2e**: Full tick-loop integration tests
+- **wire_protocol_contract**: Serial protocol contract tests
+- **flash_storage**: Persistence round-trip tests (via MockStorage)
+- **output_classification**: Output type classification
+- **live_edit**: Live-edit state identity tests
 
 Run tests frequently during development to ensure stability.
 
@@ -339,8 +336,10 @@ Run tests frequently during development to ensure stability.
 
 ## Critical Files to Understand
 
-1. `/uSEQ/src/modulisp/modulisp.h` - Main interpreter interface
-2. `/uSEQ/src/uSEQ.h` - Hardware abstraction layer
-3. `/uSEQ/src/modulisp/lisp/interpreter.cpp` - Core evaluation logic
-4. `/test/test_*.cpp` - Test suites showing API usage
-5. `/interfaces/useqedit/useqedit.py` - Live coding interface
+1. `uSEQ/src/signal_engine/signal_engine.h` — composition struct (owns CellStore, NodePool, SourceArena)
+2. `uSEQ/src/signal_engine/graph_builder.cpp` — the compiler (ModuLisp → node DAG)
+3. `uSEQ/src/signal_engine/executor.cpp` — the hot path (per-sample node evaluation)
+4. `uSEQ/src/signal_engine/cold_eval.cpp` — cold path (REPL eval, cell/output management)
+5. `uSEQ/src/firmware/firmware.cpp` — tick loop (the main runtime loop)
+6. `wasm/wasm_wrapper.cpp` — WASM bindings (15 exports for the web editor)
+7. `test/signal_engine/test_signal_engine_golden.cpp` — golden semantic tests
