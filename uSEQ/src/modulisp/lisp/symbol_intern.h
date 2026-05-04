@@ -71,9 +71,13 @@ private:
     SymbolIntern& operator=(const SymbolIntern&) = delete;
 };
 
-// Convenience function for quick access
+// Convenience functions for quick access
 inline SymbolIntern::SymbolID internSymbol(const String& symbol) {
     return SymbolIntern::getInstance().intern(symbol);
+}
+
+inline SymbolIntern::SymbolID internSymbol(const char* str, size_t len) {
+    return SymbolIntern::getInstance().intern(String(str, (unsigned int)len));
 }
 
 inline const String& getSymbolString(SymbolIntern::SymbolID id) {

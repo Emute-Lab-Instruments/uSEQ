@@ -4,8 +4,7 @@
 #include <cstdio>
 
 #ifdef ARDUINO
-#include <hardware/flash.h>
-#include <hardware/sync.h>
+#include <LittleFS.h>
 #endif
 
 namespace firmware {
@@ -31,27 +30,7 @@ uint32_t crc32(const uint8_t* data, size_t length) {
 // ── Platform Constants ─────────────────────────────────────────────────────
 
 #ifdef ARDUINO
-
-#ifndef FLASH_SECTOR_SIZE
-#define FLASH_SECTOR_SIZE (4 * 1024)
-#endif
-
-#ifndef PICO_FLASH_SIZE_BYTES
-#define PICO_FLASH_SIZE_BYTES (2 * 1024 * 1024)
-#endif
-
-// Reserve the last 8 sectors (32 KB) for state storage.
-// This is well beyond the typical firmware size.
-static constexpr size_t FLASH_STATE_SECTORS = 8;
-static constexpr size_t FLASH_STATE_SIZE = FLASH_STATE_SECTORS * FLASH_SECTOR_SIZE;
-static constexpr uint32_t FLASH_STATE_OFFSET =
-    PICO_FLASH_SIZE_BYTES - FLASH_STATE_SIZE;
-
-// XIP_BASE is provided by the Pico SDK; flash reads via memory-mapped pointer.
-static const uint8_t* flash_read_ptr() {
-    return reinterpret_cast<const uint8_t*>(XIP_BASE + FLASH_STATE_OFFSET);
-}
-
+static const char* FLASH_STATE_FILE = "/state.bin";
 #endif // ARDUINO
 
 // ── Serialization Helpers ──────────────────────────────────────────────────
@@ -475,14 +454,16 @@ static bool check_magic(const uint8_t* buf, size_t buf_size) {
 
 #ifdef ARDUINO
 
-// ── RP2040 Flash Implementation ────────────────────────────────────────────
+// ── RP2040 LittleFS Implementation ────────────────────────────────────────
 
 void FlashStorage::init() {
-    // Nothing to initialise on RP2040; flash is memory-mapped.
+    if (!LittleFS.begin()) {
+        LittleFS.format();
+        LittleFS.begin();
+    }
 }
 
 bool FlashStorage::save(const sig::SignalEngine& engine) {
-    // Serialize into a stack/heap buffer
     uint8_t* buf = new uint8_t[FLASH_MAX_STATE_SIZE];
     if (!buf) return false;
 
@@ -493,43 +474,65 @@ bool FlashStorage::save(const sig::SignalEngine& engine) {
         return false;
     }
 
-    // Pad to sector boundary for flash write
-    size_t write_size = total;
-    size_t remainder = write_size % FLASH_SECTOR_SIZE;
-    if (remainder != 0) {
-        write_size += FLASH_SECTOR_SIZE - remainder;
-    }
-    if (write_size > FLASH_STATE_SIZE) {
+    File f = LittleFS.open(FLASH_STATE_FILE, "w");
+    if (!f) {
         delete[] buf;
-        return false; // state too large
+        return false;
     }
-
-    // Disable interrupts, erase, program
-    uint32_t interrupts = save_and_disable_interrupts();
-    flash_range_erase(FLASH_STATE_OFFSET, write_size);
-    flash_range_program(FLASH_STATE_OFFSET, buf, write_size);
-    restore_interrupts(interrupts);
-
+    size_t written = f.write(buf, total);
+    f.close();
     delete[] buf;
-    return true;
+    return written == total;
 }
 
 bool FlashStorage::load(sig::SignalEngine& engine) {
-    const uint8_t* flash = flash_read_ptr();
-    if (!check_magic(flash, FLASH_STATE_SIZE)) return false;
+    if (!LittleFS.exists(FLASH_STATE_FILE)) return false;
 
-    return deserialize(flash, FLASH_STATE_SIZE, engine);
+    File f = LittleFS.open(FLASH_STATE_FILE, "r");
+    if (!f) return false;
+
+    size_t file_size = f.size();
+    if (file_size < FLASH_HEADER_SIZE || file_size > FLASH_MAX_STATE_SIZE) {
+        f.close();
+        return false;
+    }
+
+    uint8_t* buf = new uint8_t[file_size];
+    if (!buf) { f.close(); return false; }
+
+    size_t bytes_read = f.read(buf, file_size);
+    f.close();
+
+    if (bytes_read != file_size) {
+        delete[] buf;
+        return false;
+    }
+
+    if (!check_magic(buf, file_size)) {
+        delete[] buf;
+        return false;
+    }
+
+    bool ok = deserialize(buf, file_size, engine);
+    delete[] buf;
+    return ok;
 }
 
 bool FlashStorage::has_saved_state() {
-    const uint8_t* flash = flash_read_ptr();
-    return check_magic(flash, FLASH_STATE_SIZE);
+    if (!LittleFS.exists(FLASH_STATE_FILE)) return false;
+    File f = LittleFS.open(FLASH_STATE_FILE, "r");
+    if (!f) return false;
+    size_t sz = f.size();
+    if (sz < FLASH_HEADER_SIZE) { f.close(); return false; }
+    uint8_t magic[5];
+    f.read(magic, 5);
+    f.close();
+    return magic[0] == 'u' && magic[1] == 'S' && magic[2] == 'E'
+        && magic[3] == 'Q' && magic[4] == '\0';
 }
 
 void FlashStorage::erase() {
-    uint32_t interrupts = save_and_disable_interrupts();
-    flash_range_erase(FLASH_STATE_OFFSET, FLASH_STATE_SIZE);
-    restore_interrupts(interrupts);
+    LittleFS.remove(FLASH_STATE_FILE);
 }
 
 #else
