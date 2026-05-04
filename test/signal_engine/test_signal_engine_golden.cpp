@@ -1694,3 +1694,117 @@ TEST_CASE("State: integrate accumulates rate over time",
         REQUIRE(h.tick("a1", 2*dt) == Approx(2 * 3.0 * dt));
     }
 }
+
+// ── Top-level expression eval (scratch isolation) ──────────────────────────
+
+TEST_CASE("Golden: top-level bar returns value at injected time",
+          "[golden][scratch_eval]") {
+    GoldenHarness h;
+    // At 120 BPM, beat period = 0.5s. bar = fmod(t * bpm/60, 1) at t=0.125
+    // beat = fmod(0.125 * 2, 1) = 0.25
+    h.engine.state.current_time = 0.125;
+    h.engine.state.current_dt = 0.0;
+    EvalResult r = h.eval_result("bar");
+    REQUIRE(r.kind == EvalResult::Number);
+    // bar = fmod(t * bpm / 60 / beats_per_bar, 1.0) = fmod(0.125*120/60/4, 1) = fmod(0.0625, 1) = 0.0625
+    REQUIRE(r.number == Approx(0.0625).margin(1e-9));
+}
+
+TEST_CASE("Golden: top-level (* bar 0.5) returns number",
+          "[golden][scratch_eval]") {
+    GoldenHarness h;
+    h.engine.state.current_time = 0.0;
+    EvalResult r = h.eval_result("(* bar 0.5)");
+    REQUIRE(r.kind == EvalResult::Number);
+    // At t=0, bar = 0, so (* 0 0.5) = 0
+    REQUIRE(r.number == Approx(0.0));
+}
+
+TEST_CASE("Golden: top-level eval-at-time returns number",
+          "[golden][scratch_eval]") {
+    GoldenHarness h;
+    h.engine.state.current_time = 0.0;
+    EvalResult r = h.eval_result("(eval-at-time 0.5 bar)");
+    REQUIRE(r.kind == EvalResult::Number);
+    // eval-at-time 0.5 bar: bar at t=0.5 at 120bpm 4/4 = fmod(0.5*120/60/4, 1) = fmod(0.25, 1) = 0.25
+    REQUIRE(r.number == Approx(0.25).margin(1e-9));
+}
+
+TEST_CASE("Golden: top-level vector returns text with samples",
+          "[golden][scratch_eval]") {
+    GoldenHarness h;
+    h.engine.state.current_time = 0.0;
+    EvalResult r = h.eval_result("[(eval-at-time 0 bar) (eval-at-time 0.5 bar)]");
+    REQUIRE(r.kind == EvalResult::Text);
+    // Should contain [0 0.25] or similar
+    REQUIRE(r.text != nullptr);
+    REQUIRE(r.text_length > 0);
+    std::string text(r.text, r.text_length);
+    REQUIRE(text[0] == '[');
+    REQUIRE(text[text.size()-1] == ']');
+}
+
+TEST_CASE("Golden: repeated top-level eval doesn't grow live node pool",
+          "[golden][scratch_eval]") {
+    GoldenHarness h;
+    h.engine.state.current_time = 0.0;
+
+    uint16_t initial_count = h.engine.pool.node_count;
+
+    for (int i = 0; i < 10; i++) {
+        EvalResult r = h.eval_result("(* bar 0.5)");
+        REQUIRE(r.kind == EvalResult::Number);
+    }
+
+    REQUIRE(h.engine.pool.node_count == initial_count);
+}
+
+TEST_CASE("Golden: repeated top-level vector eval doesn't grow live data tables",
+          "[golden][scratch_eval]") {
+    GoldenHarness h;
+    h.engine.state.current_time = 0.0;
+
+    uint8_t initial_tables = h.engine.cells.data_table_count;
+
+    for (int i = 0; i < 5; i++) {
+        EvalResult r = h.eval_result("[(eval-at-time 0 bar) (eval-at-time 0.5 bar)]");
+        REQUIRE(r.kind == EvalResult::Text);
+    }
+
+    REQUIRE(h.engine.cells.data_table_count == initial_tables);
+}
+
+TEST_CASE("Golden: invalid top-level signal expression returns error",
+          "[golden][scratch_eval]") {
+    GoldenHarness h;
+    EvalResult r = h.eval_result("(nonexistent-function bar)");
+    REQUIRE(r.kind == EvalResult::Error);
+    REQUIRE(r.diagnostic_count > 0);
+}
+
+TEST_CASE("Golden: defined cell visible in top-level expression",
+          "[golden][scratch_eval]") {
+    GoldenHarness h;
+    h.eval_ok("(define freq 440)");
+    h.engine.state.current_time = 0.0;
+    EvalResult r = h.eval_result("(* freq 2)");
+    REQUIRE(r.kind == EvalResult::Number);
+    REQUIRE(r.number == Approx(880.0));
+}
+
+TEST_CASE("Golden: repeated set with expression doesn't grow live pool",
+          "[golden][scratch_eval]") {
+    GoldenHarness h;
+    h.eval_ok("(define x 1)");
+
+    uint16_t initial_nodes = h.engine.pool.node_count;
+
+    for (int i = 0; i < 10; i++) {
+        h.eval_ok("(set x (+ 1 2))");
+    }
+
+    REQUIRE(h.engine.pool.node_count == initial_nodes);
+    EvalResult r = h.eval_result("x");
+    REQUIRE(r.kind == EvalResult::Number);
+    REQUIRE(r.number == Approx(3.0));
+}

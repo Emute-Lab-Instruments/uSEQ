@@ -12,8 +12,10 @@ namespace sig {
 // Transport and timing state managed by cold-path commands.
 
 struct EngineState {
-    double time_offset = 0.0;
-    bool is_playing    = true;
+    double time_offset   = 0.0;
+    bool is_playing      = true;
+    double current_time  = 0.0;
+    double current_dt    = 0.0;
 };
 
 // ── Output Source Storage ───────────────────────────────────────────────────
@@ -60,7 +62,8 @@ struct SignalEngine {
     OutputSource output_sources[MAX_OUTPUTS] = {};
     StateUpdateSource state_sources[MAX_STATE_SLOTS] = {};
 
-    // Convenience: initialise timing cells and reset state.
+    NodePool scratch_pool;
+
     void init_defaults(double bpm = 120.0, int beats_per_bar = 4,
                        int bars_per_phrase = 4, int phrases_per_section = 4);
 };
@@ -69,6 +72,14 @@ struct SignalEngine {
 // Handles everything that isn't signal sampling: define, defn, set-bpm, etc.
 
 EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine);
+
+// ── Top-Level Expression Evaluation ────────────────────────────────────────
+// Compile and execute a signal expression in scratch isolation. Used for
+// top-level queries (bare symbols, unknown forms, vector eval). Does not
+// commit state or mutate live output programs.
+
+EvalResult eval_expression(const char* source, uint32_t length,
+                           SignalEngine& engine);
 
 // ── Bulk Recompilation ──────────────────────────────────────────────────────
 // Recompile all outputs that have stored source text.  Used after flash load

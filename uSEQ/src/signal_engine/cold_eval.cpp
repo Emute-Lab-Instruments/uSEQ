@@ -3,6 +3,7 @@
 #include "graph_builder.h"
 #include "executor.h"
 #include "../modulisp/lisp/symbol_intern.h"
+#include <cstdio>
 #include <cstring>
 
 namespace sig {
@@ -197,28 +198,30 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
         engine.cells.cells[sym].revision++;
         engine.cells.cells[sym].value = val_tok.number;
     } else {
-        // Non-numeric: compile expression, evaluate once, store scalar result
-        GraphBuildResult gr = build_output_graph(engine.pool, ts,
+        // Non-numeric: compile in scratch pool, evaluate once, store result.
+        // This avoids leaking nodes/CSE/data into the live pool.
+        uint8_t saved_tables = engine.cells.data_table_count;
+        engine.scratch_pool.reset();
+
+        GraphBuildResult gr = build_output_graph(engine.scratch_pool, ts,
                                                   engine.cells, engine.arena, source);
         if (gr.has_error) {
+            engine.cells.data_table_count = saved_tables;
             return make_error("set: expression could not be evaluated",
                               "Try: (set x 42)");
         }
 
-        // If the graph root is a compile-time constant, just read imm
-        if (engine.pool.nodes[gr.root_node].op == NodeOp::Const) {
+        if (engine.scratch_pool.nodes[gr.root_node].op == NodeOp::Const) {
             engine.cells.cells[sym].kind = CellKind::Number;
-            engine.cells.cells[sym].value = engine.pool.nodes[gr.root_node].imm;
+            engine.cells.cells[sym].value = engine.scratch_pool.nodes[gr.root_node].imm;
             engine.cells.cells[sym].revision++;
         } else {
-            // Non-constant expression: execute at t=0 to get a scalar value.
-            // Temporarily install as output 0, execute, then restore.
-            uint16_t saved_root = engine.pool.outputs[0].root_node;
-            bool saved_valid = engine.pool.outputs[0].valid;
+            engine.scratch_pool.outputs[0].root_node = gr.root_node;
+            engine.scratch_pool.outputs[0].valid = true;
+            engine.scratch_pool.rebuild_execution_order();
 
-            engine.pool.outputs[0].root_node = gr.root_node;
-            engine.pool.outputs[0].valid = true;
-            engine.pool.rebuild_execution_order();
+            memcpy(engine.scratch_pool.state_values, engine.pool.state_values,
+                   sizeof(engine.pool.state_values));
 
             double cell_vals[MAX_CELLS];
             engine.cells.snapshot_values(cell_vals, MAX_CELLS);
@@ -227,8 +230,8 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
             double outputs[MAX_OUTPUTS] = {};
 
             ExecutionContext ctx;
-            ctx.t = 0.0;
-            ctx.dt = 0.0;
+            ctx.t = engine.state.current_time;
+            ctx.dt = engine.state.current_dt;
             ctx.cell_values = cell_vals;
             ctx.hw_inputs = hw_inputs;
             ctx.data_pool = engine.cells.data_pool;
@@ -237,17 +240,14 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
             ctx.prev_outputs = engine.pool.prev_output_values;
             ctx.output_values = outputs;
             ctx.workspace = workspace;
-            execute_all_outputs(engine.pool, ctx);
+            execute_all_outputs(engine.scratch_pool, ctx);
 
             engine.cells.cells[sym].kind = CellKind::Number;
             engine.cells.cells[sym].value = outputs[0];
             engine.cells.cells[sym].revision++;
-
-            // Restore previous output 0
-            engine.pool.outputs[0].root_node = saved_root;
-            engine.pool.outputs[0].valid = saved_valid;
-            engine.pool.rebuild_execution_order();
         }
+
+        engine.cells.data_table_count = saved_tables;
     }
 
     on_cell_changed(sym, engine);
@@ -483,6 +483,88 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
     return make_ok();
 }
 
+// ── Scratch-isolated expression evaluation ─────────────────────────────────
+
+EvalResult eval_expression(const char* source, uint32_t length,
+                           SignalEngine& engine) {
+    Token tokens[MAX_TOKENS];
+    Diagnostic parse_errors[8];
+    uint8_t parse_error_count = 0;
+
+    uint16_t count = TokenStream::tokenize(source, length, tokens, MAX_TOKENS,
+                                            parse_errors, &parse_error_count);
+    if (parse_error_count > 0) {
+        EvalResult r;
+        r.kind = EvalResult::Error;
+        memcpy(r.diagnostics, parse_errors,
+               parse_error_count * sizeof(Diagnostic));
+        r.diagnostic_count = parse_error_count;
+        return r;
+    }
+    if (count == 0) return make_ok();
+
+    TokenStream ts;
+    memcpy(ts.tokens, tokens, count * sizeof(Token));
+    ts.count = count;
+    ts.pos = 0;
+
+    // Save CellStore data table state (compilation may append vector literals)
+    uint8_t saved_table_count = engine.cells.data_table_count;
+
+    // Reset scratch pool
+    engine.scratch_pool.reset();
+
+    // Compile into scratch pool
+    GraphBuildResult result = build_output_graph(
+        engine.scratch_pool, ts, engine.cells, engine.arena, source);
+
+    if (result.has_error) {
+        engine.cells.data_table_count = saved_table_count;
+        EvalResult r;
+        r.kind = EvalResult::Error;
+        memcpy(r.diagnostics, result.diagnostics,
+               result.diagnostic_count * sizeof(Diagnostic));
+        r.diagnostic_count = result.diagnostic_count;
+        return r;
+    }
+
+    // Install as output 0 and build execution order
+    engine.scratch_pool.outputs[0].root_node = result.root_node;
+    engine.scratch_pool.outputs[0].valid = true;
+    engine.scratch_pool.rebuild_execution_order();
+
+    // Mirror live state values into scratch pool for LoadState nodes
+    memcpy(engine.scratch_pool.state_values, engine.pool.state_values,
+           sizeof(engine.pool.state_values));
+
+    // Snapshot cell values
+    double cell_values[MAX_CELLS];
+    engine.cells.snapshot_values(cell_values, MAX_CELLS);
+
+    // Execute one sample
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    ExecutionContext ctx;
+    ctx.t = engine.state.current_time;
+    ctx.dt = engine.state.current_dt;
+    ctx.cell_values = cell_values;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = engine.cells.data_pool;
+    ctx.data_offsets = engine.cells.data_offsets;
+    ctx.data_lengths = engine.cells.data_lengths;
+    ctx.prev_outputs = engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(engine.scratch_pool, ctx);
+
+    // Restore CellStore data table state
+    engine.cells.data_table_count = saved_table_count;
+
+    return make_number(outputs[0]);
+}
+
 // ── Top-level eval ──────────────────────────────────────────────────────────
 
 static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
@@ -500,7 +582,82 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         if (sym < MAX_CELLS && engine.cells.cells[sym].kind == CellKind::Number) {
             return make_number(engine.cells.cells[sym].value);
         }
-        return make_ok();
+        // Try as a signal expression (e.g. bar, beat, phrase)
+        return eval_expression(
+            source + tok.span_start, tok.span_len, engine);
+    }
+
+    if (tok.kind == TokenKind::LBracket) {
+        // Top-level vector: evaluate each element via scratch eval, return text
+        ts.consume(); // eat '['
+
+        // Reset scratch pool once for the whole vector
+        engine.scratch_pool.reset();
+        uint8_t saved_table_count = engine.cells.data_table_count;
+
+        static char vec_buf[512];
+        uint16_t buf_pos = 0;
+        vec_buf[buf_pos++] = '[';
+        bool first = true;
+        bool any_error = false;
+        EvalResult last_error = {};
+
+        while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
+            // Get source slice for this element
+            Token elem_start = ts.peek();
+
+            // Skip the element form
+            if (elem_start.kind == TokenKind::LParen) {
+                int depth = 0;
+                do {
+                    Token t = ts.consume();
+                    if (t.kind == TokenKind::LParen) depth++;
+                    else if (t.kind == TokenKind::RParen) depth--;
+                } while (depth > 0 && !ts.at_end());
+            } else {
+                ts.consume();
+            }
+
+            uint32_t elem_span_start = elem_start.span_start;
+            Token prev = ts.tokens[ts.pos > 0 ? ts.pos - 1 : 0];
+            uint32_t elem_span_end = prev.span_start + prev.span_len;
+
+            if (source && elem_span_end > elem_span_start &&
+                elem_span_end <= source_length) {
+                EvalResult er = eval_expression(
+                    source + elem_span_start,
+                    elem_span_end - elem_span_start, engine);
+                if (er.kind == EvalResult::Error) {
+                    any_error = true;
+                    last_error = er;
+                    break;
+                }
+                if (!first && buf_pos < sizeof(vec_buf) - 20) vec_buf[buf_pos++] = ' ';
+                first = false;
+                int written = snprintf(vec_buf + buf_pos,
+                                       sizeof(vec_buf) - buf_pos,
+                                       "%.15g", er.number);
+                if (written > 0) buf_pos += (uint16_t)written;
+            }
+        }
+
+        // Skip to closing bracket
+        while (ts.peek().kind != TokenKind::RBracket && !ts.at_end())
+            ts.consume();
+        ts.expect(TokenKind::RBracket);
+
+        engine.cells.data_table_count = saved_table_count;
+
+        if (any_error) return last_error;
+
+        if (buf_pos < sizeof(vec_buf) - 1) vec_buf[buf_pos++] = ']';
+        vec_buf[buf_pos] = '\0';
+
+        EvalResult r;
+        r.kind = EvalResult::Text;
+        r.text = vec_buf;
+        r.text_length = buf_pos;
+        return r;
     }
 
     if (tok.kind == TokenKind::LParen) {
@@ -717,12 +874,22 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             return last;
         }
 
-        // Unknown form at top level — skip and return ok
-        while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
-            ts.consume();
+        // Unknown form at top level — try as signal expression.
+        // Extract the full form source from the opening '(' through ')'.
+        {
+            uint32_t form_start = tok.span_start; // position of '('
+            // Skip remaining tokens to find the closing ')'
+            while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
+                ts.consume();
+            }
+            Token rparen = ts.consume(); // eat ')'
+            uint32_t form_end = rparen.span_start + rparen.span_len;
+            if (source && form_end > form_start && form_end <= source_length) {
+                return eval_expression(
+                    source + form_start, form_end - form_start, engine);
+            }
+            return make_ok();
         }
-        ts.expect(TokenKind::RParen);
-        return make_ok();
     }
 
     return make_error("Unexpected input", "Try: (define name value) or (a1 expression)");

@@ -315,6 +315,9 @@ extern "C"
             g_last_diagnostic_count = 0;
             g_projection_fork.valid = false;
 
+            g_engine->state.current_time = g_current_time;
+            g_engine->state.current_dt = g_current_time - g_prev_tick_time;
+
             uint32_t length = (uint32_t)strlen(input);
             sig::EvalResult result = sig::eval_cold(input, length, *g_engine);
 
