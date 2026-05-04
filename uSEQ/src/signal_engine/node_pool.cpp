@@ -43,11 +43,9 @@ double eval_binop(NodeOp op, double a, double b) {
         case NodeOp::Mul:   return a * b;
         case NodeOp::Div:   return (b != 0.0) ? a / b : 0.0;
         case NodeOp::Mod:   return (b != 0.0) ? fmod(a, b) : 0.0;
-        case NodeOp::Pow:   return pow(b, a);  // legacy reversed: (pow a b) = b^a
-        case NodeOp::Expt:  return pow(a, b);  // standard order: (expt a b) = a^b
+        case NodeOp::Expt:  return pow(a, b);
         case NodeOp::Min:   return (a < b) ? a : b;
         case NodeOp::Max:   return (a > b) ? a : b;
-        case NodeOp::Fmod:  return (b != 0.0) ? fmod(a, b) : 0.0;
         case NodeOp::Pulse: return ((a - floor(a)) < b) ? 1.0 : 0.0;
         case NodeOp::CmpGt: return (a > b)  ? 1.0 : 0.0;
         case NodeOp::CmpLt: return (a < b)  ? 1.0 : 0.0;
@@ -64,7 +62,7 @@ double eval_ternary(NodeOp op, double a, double b, double c) {
     switch (op) {
         case NodeOp::Clamp:  return (a < b) ? b : (a > c) ? c : a;
         case NodeOp::Lerp:   return a + (b - a) * c;
-        case NodeOp::Scale:  return a * (c - b) + b;
+        case NodeOp::Scale:  return c * (b - a) + a;
         case NodeOp::Select: return (a != 0.0) ? b : c;
         default:             return 0.0;
     }
@@ -197,6 +195,55 @@ uint16_t NodePool::make_state_load(uint16_t state_slot) {
     n.flags = 0;  // state is time-varying (changes each tick)
     n.imm = (double)state_slot;
     return intern_node(n);
+}
+
+uint16_t NodePool::make_slot_load(uint16_t slot_index) {
+    Node n;
+    n.op = NodeOp::SlotLoad;
+    n.flags = 0;  // live slots change externally per tick
+    n.imm = (double)slot_index;
+    return intern_node(n);
+}
+
+int16_t NodePool::find_live_slot(const char* id) const {
+    for (uint16_t i = 0; i < live_slot_count; i++) {
+        if (strncmp(live_slots[i].id, id, MAX_LIVE_SLOT_ID) == 0) {
+            return (int16_t)i;
+        }
+    }
+    return -1;
+}
+
+int16_t NodePool::alloc_live_slot(const char* id, double seed, double min_val, double max_val) {
+    int16_t existing = find_live_slot(id);
+    if (existing >= 0) {
+        live_slots[existing].min_val = min_val;
+        live_slots[existing].max_val = max_val;
+        live_slots[existing].seed = seed;
+        // Reclamp existing value to new bounds
+        double& v = live_slots[existing].value;
+        if (v < min_val) v = min_val;
+        if (v > max_val) v = max_val;
+        return existing;
+    }
+    if (live_slot_count >= MAX_LIVE_SLOTS) return -1;
+    uint16_t idx = live_slot_count++;
+    strncpy(live_slots[idx].id, id, MAX_LIVE_SLOT_ID - 1);
+    live_slots[idx].id[MAX_LIVE_SLOT_ID - 1] = '\0';
+    live_slots[idx].value = seed;
+    live_slots[idx].min_val = min_val;
+    live_slots[idx].max_val = max_val;
+    live_slots[idx].seed = seed;
+    return (int16_t)idx;
+}
+
+void NodePool::set_live_slot_value(const char* id, double value) {
+    int16_t idx = find_live_slot(id);
+    if (idx < 0) return;
+    double clamped = value;
+    if (clamped < live_slots[idx].min_val) clamped = live_slots[idx].min_val;
+    if (clamped > live_slots[idx].max_val) clamped = live_slots[idx].max_val;
+    live_slots[idx].value = clamped;
 }
 
 uint16_t NodePool::make_dt_load() {

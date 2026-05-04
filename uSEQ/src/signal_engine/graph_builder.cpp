@@ -381,7 +381,7 @@ uint16_t GraphBuilder::expand_beat(TimeContext& ctx) {
     uint16_t bpm = pool.make_cell_load(sym.bpm);
     uint16_t rate = pool.make_binop(NodeOp::Div, bpm, pool.make_const(60.0));
     uint16_t phase = pool.make_binop(NodeOp::Mul, ctx.t_node, rate);
-    return pool.make_binop(NodeOp::Fmod, phase, pool.make_const(1.0));
+    return pool.make_binop(NodeOp::Mod, phase, pool.make_const(1.0));
 }
 
 uint16_t GraphBuilder::expand_bar(TimeContext& ctx) {
@@ -390,7 +390,7 @@ uint16_t GraphBuilder::expand_bar(TimeContext& ctx) {
     uint16_t rate = pool.make_binop(NodeOp::Div,
                         pool.make_binop(NodeOp::Div, bpm, pool.make_const(60.0)), bpb);
     uint16_t phase = pool.make_binop(NodeOp::Mul, ctx.t_node, rate);
-    return pool.make_binop(NodeOp::Fmod, phase, pool.make_const(1.0));
+    return pool.make_binop(NodeOp::Mod, phase, pool.make_const(1.0));
 }
 
 uint16_t GraphBuilder::expand_phrase(TimeContext& ctx) {
@@ -401,7 +401,7 @@ uint16_t GraphBuilder::expand_phrase(TimeContext& ctx) {
                         pool.make_binop(NodeOp::Div,
                             pool.make_binop(NodeOp::Div, bpm, pool.make_const(60.0)), bpb), bpp);
     uint16_t phase = pool.make_binop(NodeOp::Mul, ctx.t_node, rate);
-    return pool.make_binop(NodeOp::Fmod, phase, pool.make_const(1.0));
+    return pool.make_binop(NodeOp::Mod, phase, pool.make_const(1.0));
 }
 
 uint16_t GraphBuilder::expand_section(TimeContext& ctx) {
@@ -414,7 +414,7 @@ uint16_t GraphBuilder::expand_section(TimeContext& ctx) {
                             pool.make_binop(NodeOp::Div,
                                 pool.make_binop(NodeOp::Div, bpm, pool.make_const(60.0)), bpb), bpp), pps);
     uint16_t phase = pool.make_binop(NodeOp::Mul, ctx.t_node, rate);
-    return pool.make_binop(NodeOp::Fmod, phase, pool.make_const(1.0));
+    return pool.make_binop(NodeOp::Mod, phase, pool.make_const(1.0));
 }
 
 uint16_t GraphBuilder::expand_beat_num(TimeContext& ctx) {
@@ -672,13 +672,14 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
     if (is_unary_math(op)) return compile_unary_math(unary_sym_to_op(op), ts, scope, ctx);
 
     if (is_binary_math(op)) {
-        NodeOp nop = NodeOp::Pow;
-        // pow: legacy reversed order — (pow a b) computes b^a
-        if (op == sym.pow_)  nop = NodeOp::Pow;
-        // expt: standard math order — (expt a b) computes a^b
+        NodeOp nop = NodeOp::Expt;
+        bool swap_args = false;
+        if (op == sym.pow_)  { nop = NodeOp::Expt; swap_args = true; } // (pow a b) = b^a
         if (op == sym.expt)  nop = NodeOp::Expt;
         if (op == sym.mod_)  nop = NodeOp::Mod;
         if (op == sym.pulse) nop = NodeOp::Pulse;
+        if (swap_args)
+            return compile_binary_math_swapped(nop, ts, scope, ctx);
         return compile_binary_math(nop, ts, scope, ctx);
     }
 
@@ -753,7 +754,7 @@ uint16_t GraphBuilder::compile_offset(TokenStream& ts, Scope& scope, TimeContext
 uint16_t GraphBuilder::compile_loop_at(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t duration = compile_expr(ts, scope, ctx);
     if (duration == NODE_NONE) return NODE_NONE;
-    TimeContext inner = { pool.make_binop(NodeOp::Fmod, ctx.t_node, duration) };
+    TimeContext inner = { pool.make_binop(NodeOp::Mod, ctx.t_node, duration) };
     return compile_expr(ts, scope, inner);
 }
 
@@ -1117,6 +1118,24 @@ uint16_t GraphBuilder::compile_binary_math(NodeOp op, TokenStream& ts,
     return pool.make_binop(op, a, b);
 }
 
+uint16_t GraphBuilder::compile_binary_math_swapped(NodeOp op, TokenStream& ts,
+                                            Scope& scope, TimeContext& ctx) {
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "This function needs 2 values",
+            "Try: (pow 2 10) — computes 10 raised to 2");
+    }
+    uint16_t a = compile_expr(ts, scope, ctx);
+    if (a == NODE_NONE) return NODE_NONE;
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "This function needs 2 values, but only got 1",
+            "Add another argument");
+    }
+    uint16_t b = compile_expr(ts, scope, ctx);
+    return pool.make_binop(op, b, a);
+}
+
 uint16_t GraphBuilder::compile_ternary_math(NodeOp op, TokenStream& ts,
                                              Scope& scope, TimeContext& ctx) {
     // Arity check: needs exactly 3 arguments
@@ -1246,7 +1265,7 @@ uint16_t GraphBuilder::compile_euclid(TokenStream& ts, Scope& scope, TimeContext
 
     // idx = (step_idx * active) % total
     uint16_t product = pool.make_binop(NodeOp::Mul, step_idx, active);
-    uint16_t idx = pool.make_binop(NodeOp::Fmod, product, total);
+    uint16_t idx = pool.make_binop(NodeOp::Mod, product, total);
 
     // hit = idx < active
     uint16_t hit = pool.make_binop(NodeOp::CmpLt, idx, active);

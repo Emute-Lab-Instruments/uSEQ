@@ -14,11 +14,10 @@ enum class NodeOp : uint8_t {
     RawTimeLoad,    // loads the single 't' input
     CellLoad,       // imm = cell_id
     InputLoad,      // imm = input_index (hardware input channel)
-    DataLoad,       // input_a = index_node, imm = data_table_id
     PrevOutputLoad, // imm = output_index; previous tick's value
 
     // Binary arithmetic
-    Add, Sub, Mul, Div, Mod, Pow, Expt, Min, Max,
+    Add, Sub, Mul, Div, Mod, Expt, Min, Max,
 
     // Unary math
     Neg, Abs, Floor, Ceil, Frac, Sqrt, Clamp,
@@ -27,7 +26,7 @@ enum class NodeOp : uint8_t {
     Sin, Cos, Tan,
 
     // Domain waveforms (operate on phase [0,1))
-    USin, UCos, USinBi, UCosBi,
+    USin, UCos,
     Tri, Sqr, Pulse,
 
     // Comparison (1.0 true, 0.0 false)
@@ -43,14 +42,10 @@ enum class NodeOp : uint8_t {
     VecIndex,   // input_a=fractional_index, imm=table_id; floor, wrap
     VecLerp,    // input_a=fractional_index, imm=table_id; lerp
 
-    // Modular arithmetic
-    Fmod,       // input_a=value, input_b=modulus
-
     // Range conversion
     BiToUni,    // [-1,1] → [0,1]
     UniToBi,    // [0,1] → [-1,1]
     Scale,      // 3 inputs: value, out_min, out_max ([0,1]→[min,max])
-    Scale5,     // 5 inputs: value, in_min, in_max, out_min, out_max
     Lerp,       // 3 inputs: a, b, t → a + (b-a)*t
 
     // Deterministic hash (pure function of input)

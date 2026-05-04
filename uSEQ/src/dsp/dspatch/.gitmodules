@@ -1,3 +1,0 @@
-[submodule "include/fast_any"]
-	path = include/fast_any
-	url = https://github.com/cross-platform/fast_any.git

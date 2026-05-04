@@ -90,20 +90,6 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
         if (c == '[') { Token t; t.kind = TokenKind::LBracket; t.span_start = (uint16_t)i; t.span_len = 1; emit(t); i++; continue; }
         if (c == ']') { Token t; t.kind = TokenKind::RBracket; t.span_start = (uint16_t)i; t.span_len = 1; emit(t); i++; continue; }
 
-        // Quote shorthand: 'x → (quote x)
-        if (c == '\'') {
-            Token lp; lp.kind = TokenKind::LParen; lp.span_start = (uint16_t)i; lp.span_len = 1; emit(lp);
-            Token qt; qt.kind = TokenKind::Symbol; qt.span_start = (uint16_t)i; qt.span_len = 1;
-            qt.symbol = internSymbol("quote");
-            emit(qt);
-            i++;
-            // The next expression will be parsed normally, then we need an RParen.
-            // We don't inject the RParen here — the parser handles quote as a special form.
-            // Actually, for proper quote expansion we DO need to handle this.
-            // For now, skip quote handling (it's a compile error in signal context anyway).
-            continue;
-        }
-
         // String literal
         if (c == '"') {
             uint32_t start = i;

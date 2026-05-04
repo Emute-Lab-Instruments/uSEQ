@@ -139,6 +139,8 @@ struct GraphBuilder {
                                 Scope& scope, TimeContext& ctx);
     uint16_t compile_binary_math(NodeOp op, TokenStream& ts,
                                  Scope& scope, TimeContext& ctx);
+    uint16_t compile_binary_math_swapped(NodeOp op, TokenStream& ts,
+                                          Scope& scope, TimeContext& ctx);
     uint16_t compile_ternary_math(NodeOp op, TokenStream& ts,
                                   Scope& scope, TimeContext& ctx);
 

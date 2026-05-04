@@ -652,10 +652,9 @@ TEST_CASE("Constant folding: all binary ops", "[signal_engine][node_pool]") {
     REQUIRE(fold_bin(NodeOp::Div, 10.0, 4.0) == 2.5);
     REQUIRE(fold_bin(NodeOp::Div, 1.0, 0.0) == 0.0); // guarded
     REQUIRE(fold_bin(NodeOp::Mod, 7.0, 3.0) == Approx(1.0));
-    REQUIRE(fold_bin(NodeOp::Pow, 2.0, 10.0) == Approx(100.0)); // pow(b,a) = 10^2
+    REQUIRE(fold_bin(NodeOp::Expt, 10.0, 2.0) == Approx(100.0)); // expt(a,b) = a^b
     REQUIRE(fold_bin(NodeOp::Min, 3.0, 7.0) == 3.0);
     REQUIRE(fold_bin(NodeOp::Max, 3.0, 7.0) == 7.0);
-    REQUIRE(fold_bin(NodeOp::Fmod, 7.0, 3.0) == Approx(1.0));
     REQUIRE(fold_bin(NodeOp::CmpGt, 5.0, 3.0) == 1.0);
     REQUIRE(fold_bin(NodeOp::CmpGt, 3.0, 5.0) == 0.0);
     REQUIRE(fold_bin(NodeOp::CmpLt, 3.0, 5.0) == 1.0);

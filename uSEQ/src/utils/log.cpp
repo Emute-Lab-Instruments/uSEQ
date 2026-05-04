@@ -1,6 +1,5 @@
 #include "log.h"
 #include "json_builder.h"
-#include "logger_bridge.h"
 
 #include <cstdio>
 #include <iostream>
@@ -158,11 +157,6 @@ void message_editor(const String& s)
 
 void println(const String& s)
 {
-    if (auto L = get_global_logger())
-    {
-        L->info(s);
-    }
-
 #ifdef ARDUINO
     if (Protocol::request_active())
     {

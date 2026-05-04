@@ -8,7 +8,6 @@ namespace sig {
 
 const char* severity_to_cstr(DiagnosticSeverity s) {
     switch (s) {
-        case DiagnosticSeverity::Hint:    return "hint";
         case DiagnosticSeverity::Warning: return "warning";
         case DiagnosticSeverity::Error:   return "error";
     }

@@ -49,50 +49,10 @@ public:
         return id_to_symbol[id];
     }
 
-    // Check if a symbol is already interned
-    bool isInterned(const String& symbol) const {
-        return symbol_to_id.find(symbol) != symbol_to_id.end();
-    }
-
     // Get ID without interning (returns INVALID_ID if not found)
     SymbolID getID(const String& symbol) const {
         auto it = symbol_to_id.find(symbol);
         return (it != symbol_to_id.end()) ? it->second : INVALID_ID;
-    }
-
-    // Pre-intern common symbols at startup for even better performance
-    void preinternCommonSymbols() {
-        // Common LISP symbols
-        intern("lambda");
-        intern("fn");
-        intern("if");
-        intern("def");
-        intern("let");
-        intern("quote");
-        intern("list");
-        intern("car");
-        intern("cdr");
-        intern("cons");
-        intern("nil");
-        intern("t");
-
-        // Common operators
-        intern("+");
-        intern("-");
-        intern("*");
-        intern("/");
-        intern("=");
-        intern("<");
-        intern(">");
-        intern("<=");
-        intern(">=");
-
-        // ModuLisp specific
-        intern("sig");
-        intern("note");
-        intern("cc");
-        intern("gate");
-        intern("cv");
     }
 
 private:

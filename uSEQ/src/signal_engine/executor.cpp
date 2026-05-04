@@ -33,22 +33,12 @@ static inline double eval_node(
         case NodeOp::InputLoad:   return hw_inputs[(uint16_t)n.imm];
         case NodeOp::PrevOutputLoad:
             return prev_output_values[(uint16_t)n.imm];
-        case NodeOp::DataLoad: {
-            uint16_t tid = (uint16_t)n.imm;
-            uint16_t off = data_offsets[tid];
-            uint16_t len = data_lengths[tid];
-            if (len == 0) return 0.0;
-            int index = ((int)a % len + len) % len;
-            return data_pool[off + index];
-        }
-
         case NodeOp::Add:  return a + b;
         case NodeOp::Sub:  return a - b;
         case NodeOp::Mul:  return a * b;
         case NodeOp::Div:  return (b != 0.0) ? a / b : 0.0;
         case NodeOp::Mod:  return (b != 0.0) ? fmod(a, b) : 0.0;
-        case NodeOp::Pow:  return pow(b, a);  // legacy reversed: (pow a b) = b^a
-        case NodeOp::Expt: return pow(a, b);  // standard order: (expt a b) = a^b
+        case NodeOp::Expt: return pow(a, b);
         case NodeOp::Min:  return (a < b) ? a : b;
         case NodeOp::Max:  return (a > b) ? a : b;
 
@@ -66,8 +56,6 @@ static inline double eval_node(
 
         case NodeOp::USin:   return (sin(a * 2.0 * M_PI) + 1.0) * 0.5;
         case NodeOp::UCos:   return (cos(a * 2.0 * M_PI) + 1.0) * 0.5;
-        case NodeOp::USinBi: return sin(a * 2.0 * M_PI);
-        case NodeOp::UCosBi: return cos(a * 2.0 * M_PI);
         case NodeOp::Tri:    return 1.0 - fabs(2.0 * (a - floor(a)) - 1.0);
         case NodeOp::Sqr:    return ((a - floor(a)) < 0.5) ? 1.0 : 0.0;
         case NodeOp::Pulse:  return ((a - floor(a)) < b) ? 1.0 : 0.0;
@@ -84,13 +72,10 @@ static inline double eval_node(
 
         case NodeOp::Select: return (a != 0.0) ? b : c;
 
-        case NodeOp::Fmod:   return (b != 0.0) ? fmod(a, b) : 0.0;
         case NodeOp::BiToUni: return (a + 1.0) * 0.5;
         case NodeOp::UniToBi: return a * 2.0 - 1.0;
         case NodeOp::Lerp:    return a + (b - a) * c;
         case NodeOp::Scale:   return c * (b - a) + a;
-        case NodeOp::Scale5:  return 0.0; // TODO: 5-input not representable in 3-input node
-
         case NodeOp::VecIndex: {
             uint16_t tid = (uint16_t)n.imm;
             uint16_t off = data_offsets[tid];

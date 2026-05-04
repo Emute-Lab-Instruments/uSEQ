@@ -12,7 +12,7 @@ struct CellStore;
 // Compatible with the existing diagnostic.h types but using static strings
 // (no heap allocation for messages).
 
-enum class DiagnosticSeverity : uint8_t { Hint, Warning, Error };
+enum class DiagnosticSeverity : uint8_t { Warning, Error };
 
 enum class DiagnosticCategory : uint8_t {
     Syntax,        // parse errors
