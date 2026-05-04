@@ -10,7 +10,7 @@
 #include <Arduino.h>
 #include <hardware/gpio.h>
 #include <hardware/pio.h>
-#include "../uSEQ/piopwm.h"
+#include "utils/piopwm.h"
 #include "../utils/serial_message.h"
 
 // PIO PWM helpers (same as in the old io_manager)
