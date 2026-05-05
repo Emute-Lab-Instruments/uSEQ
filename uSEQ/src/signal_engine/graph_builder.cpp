@@ -354,10 +354,10 @@ uint16_t GraphBuilder::resolve_output_index(SymbolID op) {
 
 uint16_t GraphBuilder::resolve_hardware_input(SymbolID sym_id) {
     const String& name = getSymbolString(sym_id);
-    if (name == "in1")  return 0;
-    if (name == "in2")  return 1;
-    if (name == "ain1") return 2;
-    if (name == "ain2") return 3;
+    if (name == "in1")  return 0;   // INP_I1
+    if (name == "in2")  return 1;   // INP_I2
+    if (name == "ain1") return 8;   // INP_AI1 (was incorrectly 2, which is INP_M1)
+    if (name == "ain2") return 9;   // INP_AI2 (was incorrectly 3, which is INP_M2)
     // knobs, etc. can be added later
     return NODE_NONE;
 }

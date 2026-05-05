@@ -79,7 +79,7 @@ TEST_CASE("Classification: if with pure branches is pure", "[classification]") {
 TEST_CASE("Classification: hardware input is input-dep", "[classification]") {
     auto [cls, mask] = classify_with_mask("ain1");
     REQUIRE(cls == OutputClass::InputDep);
-    REQUIRE((mask & (1u << 2)) != 0);  // ain1 = input channel 2
+    REQUIRE((mask & (1u << 8)) != 0);  // ain1 = INP_AI1 (input channel 8)
 }
 
 TEST_CASE("Classification: expression using hardware input is input-dep", "[classification]") {
@@ -90,7 +90,7 @@ TEST_CASE("Classification: expression using hardware input is input-dep", "[clas
 TEST_CASE("Classification: multiple inputs tracked in mask", "[classification]") {
     auto [cls, mask] = classify_with_mask("(+ ain1 ain2)");
     REQUIRE(cls == OutputClass::InputDep);
-    REQUIRE((mask & 0xCu) == 0xCu);  // ain1=ch2 + ain2=ch3 → bits 2,3
+    REQUIRE((mask & 0x300u) == 0x300u);  // ain1=INP_AI1(ch8) + ain2=INP_AI2(ch9) → bits 8,9
 }
 
 TEST_CASE("Classification: if with input condition is input-dep", "[classification]") {

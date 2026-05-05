@@ -18,8 +18,7 @@ SOURCES=(
     "uSEQ/src/utils/itoa.cpp"
     "uSEQ/src/utils/log.cpp"
     "uSEQ/src/utils/error_messages.cpp"
-    "uSEQ/src/utils/logger_bridge.cpp"
-    "uSEQ/src/utils/default_logger.cpp"
+    "uSEQ/src/utils/flags.cpp"
     "uSEQ/src/utils.cpp"
 
     # Signal engine
@@ -30,6 +29,7 @@ SOURCES=(
     "uSEQ/src/signal_engine/executor.cpp"
     "uSEQ/src/signal_engine/graph_builder.cpp"
     "uSEQ/src/signal_engine/cold_eval.cpp"
+    "uSEQ/src/signal_engine/state_registry.cpp"
 )
 
 # Compiler flags (matching meson.build standalone_args)

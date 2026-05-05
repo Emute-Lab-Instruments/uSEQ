@@ -243,11 +243,11 @@ TEST_CASE("UGen: slew limits rate of change", "[ugens][slew]") {
     // Use ain1 (bare symbol, not function call) as input
     h.assign_ok("a1", "(slew ain1 10.0)");
 
-    h.hw_inputs[2] = 0.0; // ain1 = input index 2
+    h.hw_inputs[8] = 0.0; // ain1 = INP_AI1 (index 8)
     REQUIRE(h.tick("a1", 0.0) == Approx(0.0));
 
     // Jump target to 1.0, dt=0.1, max_step = 10*0.1 = 1.0
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     REQUIRE(h.tick("a1", 0.1) == Approx(1.0)); // delta=1.0 ≤ step=1.0
 }
 
@@ -255,11 +255,11 @@ TEST_CASE("UGen: slew clamps when target changes too fast", "[ugens][slew]") {
     GoldenHarness h;
     h.assign_ok("a1", "(slew ain1 1.0)");
 
-    h.hw_inputs[2] = 0.0;
+    h.hw_inputs[8] = 0.0;
     REQUIRE(h.tick("a1", 0.0) == Approx(0.0));
 
     // Target jumps to 10, max_step = 1.0*0.1 = 0.1
-    h.hw_inputs[2] = 10.0;
+    h.hw_inputs[8] = 10.0;
     double val = h.tick("a1", 0.1);
     REQUIRE(val == Approx(0.1));
 
@@ -273,7 +273,7 @@ TEST_CASE("UGen: one-pole low-pass filter", "[ugens][one-pole]") {
     GoldenHarness h;
     h.assign_ok("a1", "(one-pole ain1 10.0)");
 
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     REQUIRE(h.tick("a1", 0.0) == Approx(0.0)); // initial state = 0
 
     // dt=0.01, alpha = min(1, 2*pi*10*0.01) ≈ 0.628
@@ -288,7 +288,7 @@ TEST_CASE("UGen: env-follow tracks absolute input", "[ugens][env-follow]") {
     GoldenHarness h;
     h.assign_ok("a1", "(env-follow ain1 100.0 10.0)");
 
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     REQUIRE(h.tick("a1", 0.0) == Approx(0.0));
 
     // dt=0.01, attack=100, a_coeff = min(1, 100*0.01) = 1.0
@@ -300,7 +300,7 @@ TEST_CASE("UGen: env-follow tracks absolute input", "[ugens][env-follow]") {
 TEST_CASE("UGen: envelope-follower is alias", "[ugens][env-follow][alias]") {
     GoldenHarness h;
     h.assign_ok("a1", "(envelope-follower ain1 100.0 10.0)");
-    h.hw_inputs[2] = 0.5;
+    h.hw_inputs[8] = 0.5;
     REQUIRE(h.tick("a1", 0.0) == Approx(0.0));
 }
 
@@ -310,25 +310,25 @@ TEST_CASE("UGen: sah samples on rising edge", "[ugens][sah]") {
     GoldenHarness h;
     h.assign_ok("a1", "(sah ain1 ain2)");
 
-    h.hw_inputs[2] = 0.42; // input
-    h.hw_inputs[3] = 0.0;  // trigger low
+    h.hw_inputs[8] = 0.42; // input
+    h.hw_inputs[9] = 0.0;  // trigger low
     REQUIRE(h.tick("a1", 0.0) == Approx(0.0)); // initial = 0, no trigger
 
     // Trigger rises: ain2 goes from 0 → 1 (> 0.5)
-    h.hw_inputs[3] = 1.0;
+    h.hw_inputs[9] = 1.0;
     double val = h.tick("a1", 0.1);
     REQUIRE(val == Approx(0.42)); // sampled the input
 
     // Trigger stays high, input changes — should hold
-    h.hw_inputs[2] = 0.99;
+    h.hw_inputs[8] = 0.99;
     val = h.tick("a1", 0.2);
     REQUIRE(val == Approx(0.42)); // still holding
 
     // Trigger goes low, then high again with new value
-    h.hw_inputs[3] = 0.0;
+    h.hw_inputs[9] = 0.0;
     h.tick("a1", 0.3);
-    h.hw_inputs[2] = 0.77;
-    h.hw_inputs[3] = 1.0;
+    h.hw_inputs[8] = 0.77;
+    h.hw_inputs[9] = 1.0;
     val = h.tick("a1", 0.4);
     REQUIRE(val == Approx(0.77)); // sampled new value
 }
@@ -337,11 +337,11 @@ TEST_CASE("UGen: latch is alias for sah", "[ugens][sah][alias]") {
     GoldenHarness h;
     h.assign_ok("a1", "(latch ain1 ain2)");
 
-    h.hw_inputs[2] = 0.5;
-    h.hw_inputs[3] = 0.0;
+    h.hw_inputs[8] = 0.5;
+    h.hw_inputs[9] = 0.0;
     h.tick("a1", 0.0);
 
-    h.hw_inputs[3] = 1.0;
+    h.hw_inputs[9] = 1.0;
     REQUIRE(h.tick("a1", 0.1) == Approx(0.5));
 }
 
@@ -384,28 +384,28 @@ TEST_CASE("UGen: toggle flips on rising edge", "[ugens][toggle]") {
     GoldenHarness h;
     h.assign_ok("a1", "(toggle ain1)");
 
-    h.hw_inputs[2] = 0.0;
+    h.hw_inputs[8] = 0.0;
     REQUIRE(h.tick("a1", 0.0) == Approx(0.0)); // initial = 0
 
     // Trigger rises → toggle: 0 → 1
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     REQUIRE(h.tick("a1", 0.1) == Approx(1.0));
 
     // Trigger stays high → no change
     REQUIRE(h.tick("a1", 0.2) == Approx(1.0));
 
     // Trigger goes low → no change
-    h.hw_inputs[2] = 0.0;
+    h.hw_inputs[8] = 0.0;
     REQUIRE(h.tick("a1", 0.3) == Approx(1.0));
 
     // Trigger rises again → toggle: 1 → 0
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     REQUIRE(h.tick("a1", 0.4) == Approx(0.0));
 
     // And again → 0 → 1
-    h.hw_inputs[2] = 0.0;
+    h.hw_inputs[8] = 0.0;
     h.tick("a1", 0.5);
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     REQUIRE(h.tick("a1", 0.6) == Approx(1.0));
 }
 
@@ -415,22 +415,22 @@ TEST_CASE("UGen: count increments on trigger", "[ugens][count]") {
     GoldenHarness h;
     h.assign_ok("a1", "(count ain1)");
 
-    h.hw_inputs[2] = 0.0;
+    h.hw_inputs[8] = 0.0;
     REQUIRE(h.tick("a1", 0.0) == Approx(0.0));
 
     // Rising edge → count = 1
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     REQUIRE(h.tick("a1", 0.1) == Approx(1.0));
 
     // Still high → no increment
     REQUIRE(h.tick("a1", 0.2) == Approx(1.0));
 
     // Low → no increment
-    h.hw_inputs[2] = 0.0;
+    h.hw_inputs[8] = 0.0;
     REQUIRE(h.tick("a1", 0.3) == Approx(1.0));
 
     // Rising again → count = 2
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     REQUIRE(h.tick("a1", 0.4) == Approx(2.0));
 }
 
@@ -438,27 +438,27 @@ TEST_CASE("UGen: count with :reset", "[ugens][count]") {
     GoldenHarness h;
     h.assign_ok("a1", "(count ain1 :reset ain2)");
 
-    h.hw_inputs[2] = 0.0; // trigger
-    h.hw_inputs[3] = 0.0; // reset
+    h.hw_inputs[8] = 0.0; // trigger
+    h.hw_inputs[9] = 0.0; // reset
     h.tick("a1", 0.0);
 
     // Count up: 2 triggers
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     h.tick("a1", 0.1);
-    h.hw_inputs[2] = 0.0;
+    h.hw_inputs[8] = 0.0;
     h.tick("a1", 0.2);
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     REQUIRE(h.tick("a1", 0.3) == Approx(2.0));
 
     // Reset with rising edge on ain2
-    h.hw_inputs[3] = 1.0;
+    h.hw_inputs[9] = 1.0;
     REQUIRE(h.tick("a1", 0.4) == Approx(0.0)); // count reset to 0
 
     // Count again after reset: trigger goes low then high
-    h.hw_inputs[2] = 0.0;
-    h.hw_inputs[3] = 0.0;
+    h.hw_inputs[8] = 0.0;
+    h.hw_inputs[9] = 0.0;
     h.tick("a1", 0.5); // trigger low, reset low
-    h.hw_inputs[2] = 1.0;
+    h.hw_inputs[8] = 1.0;
     REQUIRE(h.tick("a1", 0.6) == Approx(1.0));
 }
 

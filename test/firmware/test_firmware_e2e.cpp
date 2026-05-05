@@ -14,8 +14,8 @@ TEST_CASE("A1: Sine passthrough — ain1 to a1", "[e2e][input]") {
     FirmwareTestHarness h;
     h.init();
 
-    // Inject 10Hz sine into ain1 (input index 2)
-    h.set_input_sine(2, 10.0, 0.5, 0.5);
+    // Inject 10Hz sine into ain1 (input index 8 - INP_AI1)
+    h.set_input_sine(8, 10.0, 0.5, 0.5);
 
     // Route input directly to output: (a1 ain1)
     auto r = h.eval("(a1 ain1)");
@@ -66,9 +66,9 @@ TEST_CASE("A3: Multiple inputs simultaneously", "[e2e][input]") {
     FirmwareTestHarness h;
     h.init();
 
-    // ain1 (index 2) = 5Hz sine, ain2 (index 3) = 3Hz triangle
-    h.set_input_sine(2, 5.0, 0.4, 0.5);
-    h.set_input_triangle(3, 3.0, 0.3, 0.5);
+    // ain1 (index 8 - INP_AI1) = 5Hz sine, ain2 (index 9 - INP_AI2) = 3Hz triangle
+    h.set_input_sine(8, 5.0, 0.4, 0.5);
+    h.set_input_triangle(9, 3.0, 0.3, 0.5);
 
     auto r1 = h.eval("(a1 ain1)");
     REQUIRE(r1.kind != sig::EvalResult::Error);
@@ -105,17 +105,17 @@ TEST_CASE("A4: Input range — constant values", "[e2e][input]") {
     REQUIRE(r.kind != sig::EvalResult::Error);
 
     // Test 0.0
-    h.set_input_value(2, 0.0);
+    h.set_input_value(8, 0.0);
     h.run_ticks(1);
     REQUIRE(h.get_output(0) == Approx(0.0).margin(0.01));
 
     // Test 1.0
-    h.set_input_value(2, 1.0);
+    h.set_input_value(8, 1.0);
     h.run_ticks(1);
     REQUIRE(h.get_output(0) == Approx(1.0).margin(0.01));
 
     // Test 0.5
-    h.set_input_value(2, 0.5);
+    h.set_input_value(8, 0.5);
     h.run_ticks(1);
     REQUIRE(h.get_output(0) == Approx(0.5).margin(0.01));
 }
@@ -129,7 +129,7 @@ TEST_CASE("B1: Amplitude scaling", "[e2e][signal_chain]") {
     h.init();
 
     // Input: sine(10Hz, amp=0.5, offset=0.5) → range [0.0, 1.0]
-    h.set_input_sine(2, 10.0, 0.5, 0.5);
+    h.set_input_sine(8, 10.0, 0.5, 0.5);
 
     auto r = h.eval("(a1 (* ain1 0.5))");
     REQUIRE(r.kind != sig::EvalResult::Error);
@@ -150,7 +150,7 @@ TEST_CASE("B2: DC offset shift", "[e2e][signal_chain]") {
     h.init();
 
     // Input: sine(10Hz, amp=0.25, offset=0.5) → DC = 0.5
-    h.set_input_sine(2, 10.0, 0.25, 0.5);
+    h.set_input_sine(8, 10.0, 0.25, 0.5);
 
     auto r = h.eval("(a1 (+ ain1 0.1))");
     REQUIRE(r.kind != sig::EvalResult::Error);
@@ -171,7 +171,7 @@ TEST_CASE("B3: Clamp", "[e2e][signal_chain]") {
     h.init();
 
     // Input: sine(10Hz, amp=0.5, offset=0.5) → range [0.0, 1.0]
-    h.set_input_sine(2, 10.0, 0.5, 0.5);
+    h.set_input_sine(8, 10.0, 0.5, 0.5);
 
     auto r = h.eval("(a1 (clamp 0.3 0.7 ain1))");
     REQUIRE(r.kind != sig::EvalResult::Error);
@@ -193,7 +193,7 @@ TEST_CASE("B4: Inversion", "[e2e][signal_chain]") {
     FirmwareTestHarness h;
     h.init();
 
-    h.set_input_sine(2, 10.0, 0.5, 0.5);
+    h.set_input_sine(8, 10.0, 0.5, 0.5);
 
     auto r = h.eval("(a1 (- 1.0 ain1))");
     REQUIRE(r.kind != sig::EvalResult::Error);
@@ -219,7 +219,7 @@ TEST_CASE("B5: Rectification — abs doubles frequency", "[e2e][signal_chain]") 
     // Sine centered at 0.5, so (- ain1 0.5) ranges [-0.5, 0.5]
     // abs of that ranges [0, 0.5], and has double the zero-crossings at the
     // abs midpoint.
-    h.set_input_sine(2, 10.0, 0.5, 0.5);
+    h.set_input_sine(8, 10.0, 0.5, 0.5);
 
     auto r = h.eval("(a1 (abs (- ain1 0.5)))");
     REQUIRE(r.kind != sig::EvalResult::Error);

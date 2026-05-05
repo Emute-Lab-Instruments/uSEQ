@@ -550,8 +550,8 @@ TEST_CASE("Golden semantics: outputs, prev, inputs, and batch execution",
 
     SECTION("hardware input leaves read injected input values") {
         GoldenHarness h;
-        h.hw_inputs[0] = 1.0;   // in1
-        h.hw_inputs[2] = 0.25;  // ain1
+        h.hw_inputs[0] = 1.0;   // in1 (INP_I1)
+        h.hw_inputs[8] = 0.25;  // ain1 (INP_AI1)
         h.assign_ok("a1", "(+ in1 ain1)");
         REQUIRE(h.sample("a1", 0.0) == Approx(1.25));
     }

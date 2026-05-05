@@ -108,6 +108,23 @@ static uint16_t resolve_output_name(const char* name) {
     }
 }
 
+// Evaluate any signal expression at a given time via the cold eval scratch
+// pool. Names that aren't output sinks (e.g. "bar", "beat", "(+ bar 0.5)")
+// are compiled, executed once, and the numeric result is returned.
+static double eval_expression_at_time(const char* expr, double t) {
+    if (!g_engine) return std::numeric_limits<double>::quiet_NaN();
+    double saved_time = g_engine->state.current_time;
+    double saved_dt = g_engine->state.current_dt;
+    g_engine->state.current_time = t;
+    g_engine->state.current_dt = t - g_prev_tick_time;
+    uint32_t len = (uint32_t)strlen(expr);
+    sig::EvalResult result = sig::eval_expression(expr, len, *g_engine);
+    g_engine->state.current_time = saved_time;
+    g_engine->state.current_dt = saved_dt;
+    if (result.kind == sig::EvalResult::Number) return result.number;
+    return std::numeric_limits<double>::quiet_NaN();
+}
+
 static bool has_active_state() {
     return g_engine && g_engine->pool.state_slot_count > 0;
 }
@@ -411,8 +428,10 @@ extern "C"
         }
 
         uint16_t output_index = resolve_output_name(name);
-        if (output_index == sig::NODE_NONE ||
-            !g_engine->pool.outputs[output_index].valid) {
+        if (output_index == sig::NODE_NONE) {
+            return eval_expression_at_time(name, time_seconds);
+        }
+        if (!g_engine->pool.outputs[output_index].valid) {
             return std::numeric_limits<double>::quiet_NaN();
         }
 
@@ -925,7 +944,15 @@ extern "C"
                 json_result += "\":[";
 
                 uint16_t idx = output_indices[c];
-                if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
+                if (idx == sig::NODE_NONE) {
+                    for (int s = 0; s < num_samples; s++) {
+                        if (s > 0) json_result += ",";
+                        char val_buf[32];
+                        snprintf(val_buf, sizeof(val_buf), "%.15g",
+                                 eval_expression_at_time(outputs[c].c_str(), t_array[s]));
+                        json_result += val_buf;
+                    }
+                } else if (g_engine->pool.outputs[idx].valid) {
                     uint16_t row = index_to_row[idx];
                     for (int s = 0; s < num_samples; s++) {
                         if (s > 0) json_result += ",";
@@ -935,7 +962,6 @@ extern "C"
                         json_result += val_buf;
                     }
                 } else {
-                    // Output not active — fill with NaN
                     for (int s = 0; s < num_samples; s++) {
                         if (s > 0) json_result += ",";
                         json_result += "null";
@@ -1052,14 +1078,16 @@ extern "C"
                 double* row = buf + (c * num_samples);
                 uint16_t idx = output_indices[c];
 
-                if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
+                if (idx == sig::NODE_NONE) {
+                    for (int s = 0; s < num_samples; s++)
+                        row[s] = eval_expression_at_time(outputs[c].c_str(), t_array[s]);
+                } else if (g_engine->pool.outputs[idx].valid) {
                     uint16_t active_row = index_to_row[idx];
                     memcpy(row, &batch_buf[active_row * num_samples],
                            num_samples * sizeof(double));
                 } else {
-                    for (int s = 0; s < num_samples; s++) {
+                    for (int s = 0; s < num_samples; s++)
                         row[s] = std::numeric_limits<double>::quiet_NaN();
-                    }
                 }
             }
 
@@ -1172,9 +1200,13 @@ extern "C"
 
             for (int c = 0; c < num_channels; c++) {
                 uint16_t idx = output_indices[c];
-                buf[c] = (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid)
-                    ? tick_outputs[idx]
-                    : std::numeric_limits<double>::quiet_NaN();
+                if (idx == sig::NODE_NONE) {
+                    buf[c] = eval_expression_at_time(outputs[c].c_str(), tick_time);
+                } else {
+                    buf[c] = g_engine->pool.outputs[idx].valid
+                        ? tick_outputs[idx]
+                        : std::numeric_limits<double>::quiet_NaN();
+                }
             }
 
             // ── Phase 2: projection ────────────────────────────────
@@ -1223,7 +1255,10 @@ extern "C"
             for (int c = 0; c < num_channels; c++) {
                 double* row = proj_buf + (c * proj_count);
                 uint16_t idx = output_indices[c];
-                if (idx != sig::NODE_NONE && g_engine->pool.outputs[idx].valid) {
+                if (idx == sig::NODE_NONE) {
+                    for (int s = 0; s < proj_count; s++)
+                        row[s] = eval_expression_at_time(outputs[c].c_str(), t_array[s]);
+                } else if (g_engine->pool.outputs[idx].valid) {
                     uint16_t active_row = index_to_row[idx];
                     memcpy(row, &batch_buf[active_row * proj_count],
                            proj_count * sizeof(double));
