@@ -355,6 +355,8 @@ void HardwareIO::init()
     analogWriteFreq(100000);
     analogWriteResolution(11);
 
+    // ── LED PIO PWM setup ───────────────────────────────────────────────
+#ifdef ENABLE_LED_CONTROL
 #if !defined(USEQHARDWARE_EXPANDER_OUT_0_1) && !defined(MUSICTHING)
     // PIO PWM for LED outputs (MUSICTHING and Expander use analogWrite instead)
     uint offset  = pio_add_program(pio0, &pwm_program);
@@ -367,6 +369,7 @@ void HardwareIO::init()
         hw_pio_pwm_set_period(pio_inst, sm, (1u << 11) - 1);
     }
 #endif
+#endif // ENABLE_LED_CONTROL
 
     // ── Configure input pin modes ───────────────────────────────────────
 #if defined(MUSICTHING)
@@ -389,28 +392,37 @@ void HardwareIO::init()
     pinMode(MUX_LOGIC_B_PIN, OUTPUT);
 
 #elif defined(USEQHARDWARE_1_0)
+#ifdef ENABLE_DIGITAL_IO
     pinMode(PIN_I1, INPUT_PULLUP);
     pinMode(PIN_I2, INPUT_PULLUP);
+#endif
+#ifdef ENABLE_ANALOG_INPUTS
     analogReadResolution(11);
     pinMode(PIN_AI1, INPUT);
     pinMode(PIN_AI2, INPUT);
+#endif
     pinMode(PIN_SWITCH_M1, INPUT_PULLUP);
     pinMode(PIN_SWITCH_T1, INPUT_PULLUP);
     pinMode(PIN_SWITCH_T2, INPUT_PULLUP);
 
 #elif defined(USEQHARDWARE_0_2)
+#ifdef ENABLE_DIGITAL_IO
     pinMode(PIN_I1, INPUT_PULLUP);
     pinMode(PIN_I2, INPUT_PULLUP);
+#endif
     pinMode(PIN_SWITCH_M1, INPUT_PULLUP);
     pinMode(PIN_SWITCH_M2, INPUT_PULLUP);
     pinMode(PIN_SWITCH_T1, INPUT_PULLUP);
     pinMode(PIN_SWITCH_T2, INPUT_PULLUP);
+#ifdef ENABLE_ENCODER_INPUT
     pinMode(PIN_SWITCH_R1, INPUT_PULLUP);
     pinMode(PIN_ROTARYENC_A, INPUT_PULLUP);
     pinMode(PIN_ROTARYENC_B, INPUT_PULLUP);
 #endif
+#endif
 
     // ── Configure LED pin modes ─────────────────────────────────────────
+#ifdef ENABLE_LED_CONTROL
     for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
         pinMode(OUTPUT_LED_PINS[i], OUTPUT_2MA);
         gpio_set_slew_rate(OUTPUT_LED_PINS[i], GPIO_SLEW_RATE_SLOW);
@@ -422,6 +434,7 @@ void HardwareIO::init()
     pinMode(LED_I1, OUTPUT_2MA);
     pinMode(LED_I2, OUTPUT_2MA);
 #endif
+#endif // ENABLE_LED_CONTROL
 
 #else
     // ── Desktop build — set counts only ──────────────────────────────────
@@ -500,8 +513,10 @@ void HardwareIO::read_inputs()
 
 #elif defined(USEQHARDWARE_1_0)
     // ── Digital gate inputs ──────────────────────────────────────────────
+#ifdef ENABLE_DIGITAL_IO
     inputs[INP_I1] = 1.0 - digitalRead(PIN_I1);
     inputs[INP_I2] = 1.0 - digitalRead(PIN_I2);
+#endif
 
     // ── Toggle switch (3-way) ────────────────────────────────────────────
     int ts_a = 1 - digitalRead(PIN_SWITCH_T1);
@@ -514,32 +529,40 @@ void HardwareIO::read_inputs()
     inputs[INP_M1] = 1.0 - digitalRead(PIN_SWITCH_M1);
 
     // ── Analog inputs with median filter ─────────────────────────────────
+#ifdef ENABLE_ANALOG_INPUTS
     int raw_ai1 = analogRead(PIN_AI1);
     int raw_ai2 = analogRead(PIN_AI2);
     inputs[INP_AI1] = s_ai1_filter.process(raw_ai1) * RECP_2048;
     inputs[INP_AI2] = s_ai2_filter.process(raw_ai2) * RECP_2048;
 
+#ifdef ENABLE_LED_CONTROL
     // LED feedback for analog inputs
     int ai2_sq = (raw_ai2 * raw_ai2) >> 11;
     analogWrite(LED_AI2, ai2_sq);
+#endif
+#endif // ENABLE_ANALOG_INPUTS
 
 #elif defined(USEQHARDWARE_0_2)
     // ── Digital gate inputs ──────────────────────────────────────────────
+#ifdef ENABLE_DIGITAL_IO
     inputs[INP_I1] = 1.0 - digitalRead(PIN_I1);
     inputs[INP_I2] = 1.0 - digitalRead(PIN_I2);
+#endif
 
     // ── Switches ─────────────────────────────────────────────────────────
     inputs[INP_T1]  = 1.0 - digitalRead(PIN_SWITCH_T1);
-    inputs[INP_RS1] = 1.0 - digitalRead(PIN_SWITCH_R1);
     inputs[INP_M1]  = 1.0 - digitalRead(PIN_SWITCH_M1);
     inputs[INP_M2]  = 1.0 - digitalRead(PIN_SWITCH_M2);
     inputs[INP_T2]  = 1.0 - digitalRead(PIN_SWITCH_T2);
 
     // ── Rotary encoder ───────────────────────────────────────────────────
+#ifdef ENABLE_ENCODER_INPUT
+    inputs[INP_RS1] = 1.0 - digitalRead(PIN_SWITCH_R1);
     int8_t rot = read_rotary();
     if (rot) {
         inputs[INP_R1] += rot;
     }
+#endif
 #endif
 
 #endif // ARDUINO
@@ -569,6 +592,7 @@ void HardwareIO::write_outputs()
             scaled = MAX_PWM_I - scaled;
         }
 
+#ifdef ENABLE_LED_CONTROL
         // LED (exponential curve)
         int led_val = scaled;
         led_val = (led_val * led_val) >> 11;
@@ -585,6 +609,7 @@ void HardwareIO::write_outputs()
         uint sm = static_cast<uint>(i % 4);
         hw_pio_pwm_set_level(pio_inst, sm, static_cast<uint32_t>(led_val));
 #endif
+#endif // ENABLE_LED_CONTROL
 
         // Write output pin
 #if defined(MUSICTHING)
@@ -601,6 +626,7 @@ void HardwareIO::write_outputs()
     }
 
     // ── Binary outputs (indices num_continuous_outs .. num_continuous_outs+num_binary_outs-1)
+#ifdef ENABLE_DIGITAL_IO
     for (int i = 0; i < num_binary_outs; i++) {
         int out_idx = num_continuous_outs + i;
         double val  = outputs[out_idx];
@@ -614,13 +640,16 @@ void HardwareIO::write_outputs()
         if (pin_idx < HW_NUM_OUTPUTS) {
             digitalWrite(OUTPUT_PINS[pin_idx], dv);
 
+#ifdef ENABLE_LED_CONTROL
             // LED proportional
             int led_val = static_cast<int>(val * MAX_PWM);
             if (led_val > MAX_PWM_I) led_val = MAX_PWM_I;
             if (led_val < 0) led_val = 0;
             analogWrite(OUTPUT_LED_PINS[pin_idx], led_val);
+#endif
         }
     }
+#endif // ENABLE_DIGITAL_IO
 
     // ── Serial outputs (indices starting at num_continuous_outs + num_binary_outs)
     // Serial outputs are virtual — they are sent over the serial wire, not
@@ -636,10 +665,7 @@ void HardwareIO::write_outputs()
 
 void HardwareIO::update_leds()
 {
-#ifdef ARDUINO
-    // LED state is updated as part of write_outputs() for output-coupled
-    // LEDs.  This method exists for additional LED feedback that isn't
-    // directly tied to an output value (e.g. input activity LEDs).
+#if defined(ARDUINO) && defined(ENABLE_LED_CONTROL)
 
 #if defined(USEQHARDWARE_1_0)
     // Reflect gate input activity on input LEDs
@@ -647,7 +673,7 @@ void HardwareIO::update_leds()
     digitalWrite(LED_I2, inputs[INP_I2] > 0.5 ? HIGH : LOW);
 #endif
 
-#endif // ARDUINO
+#endif // ARDUINO && ENABLE_LED_CONTROL
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -660,10 +686,12 @@ void HardwareIO::update_leds()
 void HardwareIO::boot_led_amber()
 {
 #ifdef ARDUINO
+#ifdef ENABLE_LED_CONTROL
     // Turn on all output LEDs at medium brightness to signal "booting"
     for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
         analogWrite(OUTPUT_LED_PINS[i], MAX_PWM_I / 2);
     }
+#endif
     // Onboard LED on
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, HIGH);
@@ -673,10 +701,12 @@ void HardwareIO::boot_led_amber()
 void HardwareIO::boot_led_green()
 {
 #ifdef ARDUINO
+#ifdef ENABLE_LED_CONTROL
     // Turn off all output LEDs — normal tick loop will drive them
     for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
         analogWrite(OUTPUT_LED_PINS[i], 0);
     }
+#endif
     // Brief onboard LED flash to signal ready, then off
     digitalWrite(LED_BUILTIN, HIGH);
     delay(50);
@@ -687,17 +717,21 @@ void HardwareIO::boot_led_green()
 void HardwareIO::boot_led_error_flash()
 {
 #ifdef ARDUINO
-    // Rapid flash pattern: 3 quick blinks on all output LEDs
+    // Rapid flash pattern: 3 quick blinks
     for (int blink = 0; blink < 3; blink++) {
+#ifdef ENABLE_LED_CONTROL
         for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
             analogWrite(OUTPUT_LED_PINS[i], MAX_PWM_I);
         }
+#endif
         digitalWrite(LED_BUILTIN, HIGH);
         delay(80);
 
+#ifdef ENABLE_LED_CONTROL
         for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
             analogWrite(OUTPUT_LED_PINS[i], 0);
         }
+#endif
         digitalWrite(LED_BUILTIN, LOW);
         delay(80);
     }

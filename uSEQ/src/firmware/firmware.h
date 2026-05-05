@@ -6,10 +6,12 @@
 #include "../signal_engine/signal_engine.h"
 #include "hardware_io.h"
 #include "serial_protocol.h"
-#include "flash_storage.h"
 
 // Optional modules — only included when feature flags are defined
-// (configure.h must be included before this header for these to resolve)
+#if defined(ENABLE_FLASH_STORAGE)
+#include "flash_storage.h"
+#endif
+
 #if defined(ENABLE_I2C_NETWORKING)
 #include "i2c_network.h"
 #endif
@@ -22,10 +24,16 @@ namespace firmware {
 
 struct Firmware {
     // ── Owned Modules ──────────────────────────────────────────────────────
-    sig::SignalEngine engine;
     HardwareIO io;
     SerialProtocol serial;
+
+#ifdef ENABLE_SIGNAL_ENGINE
+    sig::SignalEngine engine;
+#endif
+
+#ifdef ENABLE_FLASH_STORAGE
     FlashStorage flash;
+#endif
 
 #ifdef ENABLE_I2C_NETWORKING
     I2CNetwork i2c;
@@ -37,10 +45,13 @@ struct Firmware {
 
     // ── Tick State ─────────────────────────────────────────────────────────
     char code_buffer[2048]                        = {};
-    double cell_snapshot[sig::MAX_CELLS]           = {};
     double output_values[sig::MAX_OUTPUTS]         = {};
-    double workspace[sig::MAX_TOTAL_NODES]         = {};
     double prev_tick_time                          = 0.0;
+
+#ifdef ENABLE_SIGNAL_ENGINE
+    double cell_snapshot[sig::MAX_CELLS]           = {};
+    double workspace[sig::MAX_TOTAL_NODES]         = {};
+#endif
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
     void init();

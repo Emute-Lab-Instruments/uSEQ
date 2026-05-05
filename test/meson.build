@@ -10,8 +10,12 @@ test_args = [
   '-DNO_ETL',
   '-D__not_in_flash(section)=',
   '-D__not_in_flash_func(x)=',
+  '-DENABLE_SIGNAL_ENGINE',
   '-std=c++17'
 ]
+
+# Firmware tests need flash storage + signal engine
+firmware_test_args = test_args + ['-DENABLE_FLASH_STORAGE']
 
 # Include directories
 test_inc = include_directories('../uSEQ', '../uSEQ/src')
@@ -73,7 +77,7 @@ flash_storage_test_exe = executable(
   'test_flash_storage',
   sources : ['signal_engine/test_flash_storage.cpp'],
   include_directories : test_inc,
-  cpp_args : test_args + ['-DENABLE_FLASH_STORAGE'],
+  cpp_args : firmware_test_args,
   cpp_pch : test_pch_file,
   dependencies : [firmware_dep, math_dep]
 )
@@ -86,7 +90,7 @@ firmware_e2e_test_exe = executable(
   'test_firmware_e2e',
   sources : ['firmware/test_firmware_e2e.cpp'],
   include_directories : test_inc,
-  cpp_args : test_args,
+  cpp_args : firmware_test_args,
   cpp_pch : test_pch_file,
   dependencies : [firmware_dep, math_dep]
 )
@@ -97,7 +101,7 @@ firmware_e2e2_test_exe = executable(
   'test_firmware_e2e_part2',
   sources : ['firmware/test_firmware_e2e_part2.cpp'],
   include_directories : test_inc,
-  cpp_args : test_args,
+  cpp_args : firmware_test_args,
   cpp_pch : test_pch_file,
   dependencies : [firmware_dep, math_dep]
 )
@@ -110,7 +114,7 @@ firmware_fuzz_test_exe = executable(
   'test_firmware_fuzz',
   sources : ['firmware/test_firmware_fuzz.cpp'],
   include_directories : test_inc,
-  cpp_args : test_args,
+  cpp_args : firmware_test_args,
   cpp_pch : test_pch_file,
   dependencies : [firmware_dep, math_dep]
 )
@@ -126,12 +130,28 @@ wire_protocol_contract_test_exe = executable(
   'test_wire_protocol_contract',
   sources : ['firmware/test_wire_protocol_contract.cpp'],
   include_directories : test_inc,
-  cpp_args : test_args,
+  cpp_args : firmware_test_args,
   cpp_pch : test_pch_file,
   dependencies : [firmware_dep, math_dep]
 )
 
 test('wire_protocol_contract_test', wire_protocol_contract_test_exe, timeout: 30)
+
+# ===== Devtools Debug Protocol Contract Tests =====
+# Encodes the contract for the devtools debug wire protocol.
+# Tests exercise dt::handle_debug_message() actions: capabilities,
+# configure, query, status.
+
+devtools_contract_test_exe = executable(
+  'test_devtools_contract',
+  sources : ['firmware/test_devtools_contract.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args + ['-DUSEQ_DEVTOOLS=1'],
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, devtools_dep, math_dep]
+)
+
+test('devtools_contract_test', devtools_contract_test_exe, timeout: 30)
 
 # ===== Live-Edit Slot Tests =====
 

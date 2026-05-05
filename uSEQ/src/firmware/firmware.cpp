@@ -1,5 +1,6 @@
 #include "firmware.h"
 #include "../utils/time.h"
+#include "../devtools/devtools.h"
 #include <cstring>
 
 #ifdef ARDUINO
@@ -18,14 +19,20 @@ void Firmware::init()
     io.init();
 
     // 2. LED → amber (booting)
+#ifdef ENABLE_LED_CONTROL
     io.boot_led_amber();
+#endif
 
     // 3. Serial protocol (USB CDC, baud rate)
+#ifdef ENABLE_SIGNAL_ENGINE
     serial.engine = &engine;
+#endif
     serial.init();
 
     // 4. Flash storage (on-chip filesystem)
+#ifdef ENABLE_FLASH_STORAGE
     flash.init();
+#endif
 
     // 5. Optional: I2C multi-module network
 #ifdef ENABLE_I2C_NETWORKING
@@ -33,10 +40,12 @@ void Firmware::init()
 #endif
 
     // 6. Signal engine: intern well-known symbols, set timing defaults
+#ifdef ENABLE_SIGNAL_ENGINE
     sig::GraphBuilder::init_symbols();
     engine.init_defaults();
 
     // 7. Flash load + recompile
+#ifdef ENABLE_FLASH_STORAGE
     if (flash.has_saved_state()) {
         if (flash.load(engine)) {
             sig::recompile_all_outputs(engine);
@@ -44,14 +53,25 @@ void Firmware::init()
             io.boot_led_error_flash();
         }
     }
+#endif
+#endif // ENABLE_SIGNAL_ENGINE
 
-    // 8. LED → green (ready)
+    // 8. DevTools (compile-time gated)
+#ifdef ENABLE_SIGNAL_ENGINE
+    dt::init(&engine);
+#else
+    dt::init(nullptr);
+#endif
+
+    // 9. LED → green (ready)
+#ifdef ENABLE_LED_CONTROL
     io.boot_led_green();
+#endif
 
-    // 9. Enable watchdog (200ms timeout) — must come after all init
+    // 10. Enable watchdog (200ms timeout) — must come after all init
     watchdog_init();
 
-    // 10. Tell the editor we're alive
+    // 11. Tell the editor we're alive
     serial.send_ready();
 }
 
@@ -61,13 +81,22 @@ void Firmware::init()
 
 void Firmware::tick()
 {
+    dt::tick_begin();
+
     // ── 1. Time ────────────────────────────────────────────────────────────
+#ifdef ENABLE_SIGNAL_ENGINE
     const double t = get_system_time_seconds() + engine.state.time_offset;
+#else
+    const double t = get_system_time_seconds();
+#endif
 
     // ── 2. Read hardware inputs ────────────────────────────────────────────
+    dt::mark("input");
     io.read_inputs();
 
     // ── 3. Serial: non-blocking command intake ─────────────────────────────
+    dt::mark("serial");
+#ifdef ENABLE_SIGNAL_ENGINE
     if (serial.has_incoming()) {
         if (serial.read_command(code_buffer, sizeof(code_buffer))) {
             // Determine actual length (read_command null-terminates)
@@ -80,8 +109,24 @@ void Firmware::tick()
             serial.send_eval_response(result);
         }
     }
+#else
+    // Without signal engine, still process protocol messages (hello, ping, etc.)
+    // If editor sends an eval, respond with an error instead of silently dropping.
+    if (serial.has_incoming()) {
+        if (serial.read_command(code_buffer, sizeof(code_buffer))) {
+            sig::EvalResult err;
+            err.kind = sig::EvalResult::Error;
+            static const char msg[] = "signal engine not available";
+            err.text = msg;
+            err.text_length = sizeof(msg) - 1;
+            serial.send_eval_response(err);
+        }
+    }
+#endif
 
     // ── 4. Execute signal graph ────────────────────────────────────────────
+    dt::mark("execute");
+#ifdef ENABLE_SIGNAL_ENGINE
     if (engine.state.is_playing) {
         // Snapshot cell values for this tick (immutable view for executor)
         engine.cells.snapshot_values(cell_snapshot, sig::MAX_CELLS);
@@ -103,23 +148,50 @@ void Firmware::tick()
         sig::commit_state(engine.pool, workspace);
         prev_tick_time = t;
     }
-    // When paused: output_values retain their last-known-good values,
-    // which get written to hardware below.
+#endif
+    // When paused (or no engine): output_values retain their last-known-good
+    // values, which get written to hardware below.
 
     // ── 5. Write outputs and update LEDs ───────────────────────────────────
+    dt::mark("output");
     for (size_t i = 0; i < sig::MAX_OUTPUTS; ++i) {
         io.outputs[i] = output_values[i];
     }
     io.write_outputs();
+#ifdef ENABLE_LED_CONTROL
     io.update_leds();
+#endif
 
     // ── 6. Commit outputs (LKG update for next tick) ───────────────────────
+    dt::mark("lkg");
+#ifdef ENABLE_SIGNAL_ENGINE
     if (engine.state.is_playing) {
         sig::commit_outputs(engine.pool, output_values);
     }
+#endif
 
     // ── 7. Opportunistic stream data for visualisation ─────────────────────
+    dt::mark("stream");
     serial.send_stream_data(output_values, sig::MAX_OUTPUTS);
+    dt::tick_end();
+#if USEQ_DEVTOOLS
+    {
+        bool can_wr = true;
+#ifdef ARDUINO
+        can_wr = Serial.availableForWrite() > 0;
+#endif
+        dt::emit_streaming([](const char* s, size_t n) {
+#ifdef ARDUINO
+            Serial.write(reinterpret_cast<const uint8_t*>(s), n);
+            Serial.write('\n');
+#else
+            fwrite(s, 1, n, stdout);
+            putchar('\n');
+            fflush(stdout);
+#endif
+        }, can_wr);
+    }
+#endif
 
     // ── 8. Watchdog kick ──────────────────────────────────────────────────
     watchdog_kick();

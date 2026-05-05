@@ -62,6 +62,11 @@ if get_option('minimal_build')
   message('Building minimal configuration without optional features')
 endif
 
+if get_option('enable_signal_engine')
+  standalone_args += '-DENABLE_SIGNAL_ENGINE'
+  message('Signal engine enabled')
+endif
+
 if get_option('enable_dsp')
   standalone_args += '-DENABLE_DSP_ENGINE'
   standalone_args += '-DENABLE_TEMPO_ESTIMATOR'
@@ -84,6 +89,11 @@ if get_option('enable_leds')
   standalone_args += '-DENABLE_LED_CONTROL'
   standalone_args += '-DENABLE_RGB_LED'
   message('LED control support enabled')
+endif
+
+if get_option('enable_devtools')
+  standalone_args += '-DUSEQ_DEVTOOLS=1'
+  message('Devtools telemetry enabled')
 endif
 
 # === STATIC LIBRARIES FOR PROPER DEPENDENCY TRACKING ===
@@ -111,6 +121,23 @@ utils_dep = declare_dependency(
   include_directories : src_inc
 )
 
+# Devtools library - compile-time-gated telemetry instrumentation
+devtools_inc = include_directories('uSEQ/src/devtools')
+devtools_lib = static_library('useq_devtools',
+  'uSEQ/src/devtools/devtools.cpp',
+  include_directories : [src_inc, devtools_inc],
+  cpp_args : standalone_args,
+  cpp_pch : pch_file,
+  dependencies : utils_dep,
+  override_options : unity_override_options
+)
+
+devtools_dep = declare_dependency(
+  link_with : devtools_lib,
+  include_directories : [src_inc, devtools_inc],
+  dependencies : utils_dep
+)
+
 # Signal engine library - depends on utils (symbol_intern.h is header-only)
 signal_engine_lib = static_library('useq_signal_engine',
   'uSEQ/src/signal_engine/diagnostics.cpp',
@@ -124,14 +151,14 @@ signal_engine_lib = static_library('useq_signal_engine',
   include_directories : src_inc,
   cpp_args : standalone_args,
   cpp_pch : pch_file,
-  dependencies : utils_dep,
+  dependencies : [utils_dep, devtools_dep],
   override_options : unity_override_options
 )
 
 signal_engine_dep = declare_dependency(
   link_with : signal_engine_lib,
   include_directories : src_inc,
-  dependencies : utils_dep
+  dependencies : [utils_dep, devtools_dep]
 )
 
 # Firmware scaffold library - composition root and hardware modules
