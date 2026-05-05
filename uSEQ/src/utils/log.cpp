@@ -1,27 +1,181 @@
 #include "log.h"
+#include "json_builder.h"
 
+#include <cstdio>
 #include <iostream>
+
+namespace
+{
+struct JsonProtocolState
+{
+    bool json_mode_enabled = false;
+    bool request_active    = false;
+    String request_id      = "";
+    String text_buffer     = "";
+};
+
+JsonProtocolState& state()
+{
+    static JsonProtocolState s;
+    return s;
+}
+
+#ifdef ARDUINO
+void write_serial_json(const String& payload)
+{
+    if (!Serial.availableForWrite())
+    {
+        return;
+    }
+
+    Serial.write(SerialMsg::message_begin_marker);
+    Serial.write((u_int8_t)SerialMsg::serial_message_types::JSON);
+    Serial.println(payload);
+}
+#else
+void write_serial_json(const String&)
+{
+    // Desktop build has no serial transport; JSON responses are ignored.
+}
+#endif
+} // namespace
+
+namespace Protocol
+{
+void enable_json_mode() { state().json_mode_enabled = true; }
+
+void disable_json_mode()
+{
+    state().json_mode_enabled = false;
+    state().request_active    = false;
+    state().text_buffer       = "";
+    state().request_id        = "";
+}
+
+bool json_mode_enabled() { return state().json_mode_enabled; }
+
+void begin_request(const String& request_id)
+{
+    state().request_active = true;
+    state().request_id     = request_id;
+    state().text_buffer    = "";
+}
+
+void finish_request()
+{
+    state().request_active = false;
+    state().request_id     = "";
+    state().text_buffer    = "";
+}
+
+bool request_active() { return state().request_active; }
+
+void append_request_text(const String& line)
+{
+    auto& json_state = state();
+    if (!json_state.request_active)
+    {
+        return;
+    }
+
+    if (json_state.text_buffer.length() > 0)
+    {
+        json_state.text_buffer += "\n";
+    }
+    json_state.text_buffer += line;
+}
+
+String consume_request_text()
+{
+    String copy = state().text_buffer;
+    state().text_buffer = "";
+    return copy;
+}
+
+void send_json_response(bool success, const String& text,
+                        const std::optional<String>& meta,
+                        const String& request_id,
+                        const std::optional<String>& diagnostics_json)
+{
+    JsonBuilder b;
+    b.object_begin()
+        .field("type", "response")
+        .field("success", success)
+        .field("console", text)
+        .field("text", text);
+
+    if (meta && meta->length() > 0)
+    {
+        b.field_raw("meta", *meta);
+    }
+    else
+    {
+        b.field_null("meta");
+    }
+
+    if (diagnostics_json && diagnostics_json->length() > 0)
+    {
+        b.field_raw("diagnostics", *diagnostics_json);
+    }
+
+    b.field("requestId", request_id)
+        .object_end();
+
+    write_serial_json(b.build());
+}
+
+void send_json_error(const String& request_id, const String& message)
+{
+    send_json_response(false, message, std::nullopt, request_id);
+}
+
+void send_raw_json(const String& payload) { write_serial_json(payload); }
+} // namespace Protocol
 
 void message_editor(const String& s)
 {
-    if (Serial.availableForWrite())
+#ifdef ARDUINO
+    if (Protocol::request_active())
     {
-        Serial.write(SerialMsg::message_begin_marker);
-        Serial.write((u_int8_t)SerialMsg::serial_message_types::MSG_TO_EDITOR);
-        Serial.println(s);
-        // Serial.write(SerialMsg::message_end_marker);
+        Protocol::append_request_text(s);
+        return;
     }
+
+    if (Protocol::json_mode_enabled())
+    {
+        Protocol::send_json_response(true, s, std::nullopt, String());
+        return;
+    }
+
+    // Legacy framed-text (TEXT/MSG_TO_EDITOR bytes) removed per wire-protocol
+    // spec §5.6.  firmware::Firmware always enables json_mode before reaching
+    // this point, so the branch above is the live path.
+#else
+    std::cout << "[EDITOR] " << s.c_str() << std::endl;
+#endif
 }
 
 void println(const String& s)
 {
-    if (Serial.availableForWrite())
+#ifdef ARDUINO
+    if (Protocol::request_active())
     {
-        Serial.write(SerialMsg::message_begin_marker);
-        Serial.write((u_int8_t)SerialMsg::serial_message_types::TEXT);
-        Serial.println(s);
-        // Serial.write(SerialMsg::message_end_marker);
+        Protocol::append_request_text(s);
+        return;
     }
+
+    if (Protocol::json_mode_enabled())
+    {
+        Protocol::send_json_response(true, s, std::nullopt, String());
+        return;
+    }
+
+    // Legacy framed-text (TEXT byte) removed per wire-protocol spec §5.6.
+    // firmware::Firmware always enables json_mode before reaching this point,
+    // so the branch above is the live path.
+#else
+    std::cout << s.c_str() << std::endl;
+#endif
 }
 
 // ERRORS
@@ -46,14 +200,6 @@ void report_evaluation_error(const String& error_msg, String atom)
                  ", the following error ocurred:\n    " + error_msg;
     report_error(msg);
 }
-
-// void error_num_args_incorrect(String function_name, String expected,
-//                               int num_received)
-// {
-//     print("ERROR: ");
-//     print("(" + function_name + ") Expected " + String(num_expected));
-//     print("\\n");
-// }
 
 String comp_to_string(NumArgsComparison comp)
 {
@@ -140,7 +286,13 @@ void report_custom_function_error(const String& function_name, const String& msg
     report_error("(`" + function_name + "`) " + msg);
 }
 
-int free_heap() { return rp2040.getFreeHeap() / 1024; }
+int free_heap() { 
+    #ifdef ARDUINO
+    return rp2040.getFreeHeap() / 1024; 
+    #else
+    return 1000000; // Dummy value for non-Arduino environments
+    #endif
+}
 
 // DebugLogger
 

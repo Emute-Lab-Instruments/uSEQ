@@ -40,7 +40,7 @@ void input_checking_thread()
 
         mtx.lock();
         io::last_received_code = String(input.c_str()); // Safely update the command
-        io::new_code_waiting   = true; // Set the new command flag
+        io::new_code_waiting   = true;                  // Set the new command flag
         mtx.unlock();
     }
 }
@@ -65,6 +65,7 @@ bool is_new_input_waiting() { return new_code_waiting; }
 /*     return 0; */
 /* } */
 
-/* bool read_user_input(String* out) { return static_cast<bool>(std::getline(std::cin, *out)); } */
+/* bool read_user_input(String* out) { return
+ * static_cast<bool>(std::getline(std::cin, *out)); } */
 
 #endif // IO_H_

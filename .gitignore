@@ -10,12 +10,12 @@ tmp/
 .cache/
 build/
 out/
-# Let's leave this checked in for now,
-# helps users skip a step when building the firmware
-# LispLibrary.h
-
 .vscode
 
+# Debug/test executables and temporary files
+debug_*
+test_simple_*
+*.disabled
 
 interfaces/useqedit/__pycache__/Buffer.cpython-310.pyc
 
@@ -50,3 +50,23 @@ hardware/version1.0/useq1/jlcpcb/
 hardware/version1.0/useq1/useq-backups/
 
 hardware/version1.0/useq1/useq1-backups/
+samples/buttercup.wav
+samples/buttercup.bin
+samples/headers.c
+samples/ixilang_audio.bin
+samples/ixilangRedux_audio.bin
+samples/load.sh
+.emscripten_cache
+# PlatformIO build system
+.pio/
+.platformio/
+.vscode/
+.clang_complete
+.gcc-flags.json
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
+
+# Local dev tools (not for distribution)
+tools/

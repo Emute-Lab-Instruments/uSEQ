@@ -1,0 +1,90 @@
+#include "cell_store.h"
+#include "../modulisp/lisp/symbol_intern.h"
+#include <cstring>
+
+namespace sig {
+
+// ── SourceArena ─────────────────────────────────────────────────────────────
+
+uint32_t SourceArena::store(const char* text, uint32_t length) {
+    if (write_head + length > SOURCE_ARENA_SIZE) return UINT32_MAX;
+    uint32_t offset = write_head;
+    memcpy(data + write_head, text, length);
+    write_head += length;
+    return offset;
+}
+
+const char* SourceArena::read(uint32_t offset) const {
+    if (offset >= SOURCE_ARENA_SIZE) return nullptr;
+    return data + offset;
+}
+
+void SourceArena::reset() {
+    write_head = 0;
+}
+
+// ── CellStore ───────────────────────────────────────────────────────────────
+
+uint16_t CellStore::store_data_table(const double* values, uint16_t count) {
+    if (data_table_count >= MAX_DATA_TABLES) return UINT8_MAX;
+
+    // Find where to append in the pool
+    uint16_t pool_offset = 0;
+    if (data_table_count > 0) {
+        uint16_t last = data_table_count - 1;
+        pool_offset = data_offsets[last] + data_lengths[last];
+    }
+
+    if (pool_offset + count > MAX_DATA_ENTRIES) return UINT8_MAX;
+
+    uint16_t table_id = data_table_count;
+    data_offsets[table_id] = pool_offset;
+    data_lengths[table_id] = count;
+    memcpy(data_pool + pool_offset, values, count * sizeof(double));
+    data_table_count++;
+
+    return table_id;
+}
+
+const double* CellStore::get_data_table(uint16_t table_id, uint16_t& out_length) const {
+    if (table_id >= data_table_count) {
+        out_length = 0;
+        return nullptr;
+    }
+    out_length = data_lengths[table_id];
+    return data_pool + data_offsets[table_id];
+}
+
+void CellStore::snapshot_values(double* out, size_t max_count) const {
+    size_t n = max_count < MAX_CELLS ? max_count : MAX_CELLS;
+    for (size_t i = 0; i < n; i++) {
+        out[i] = cells[i].value;
+    }
+}
+
+void CellStore::init_timing_defaults(double bpm, int beats_per_bar,
+                                     int bars_per_phrase, int phrases_per_section) {
+    auto& si = SymbolIntern::getInstance();
+
+    SymbolID bpm_sym = si.intern("bpm");
+    cells[bpm_sym].kind     = CellKind::Number;
+    cells[bpm_sym].value    = bpm;
+    cells[bpm_sym].revision = 1;
+
+    SymbolID bpb_sym = si.intern("beats-per-bar");
+    cells[bpb_sym].kind     = CellKind::Number;
+    cells[bpb_sym].value    = (double)beats_per_bar;
+    cells[bpb_sym].revision = 1;
+
+    SymbolID bpp_sym = si.intern("bars-per-phrase");
+    cells[bpp_sym].kind     = CellKind::Number;
+    cells[bpp_sym].value    = (double)bars_per_phrase;
+    cells[bpp_sym].revision = 1;
+
+    SymbolID pps_sym = si.intern("phrases-per-section");
+    cells[pps_sym].kind     = CellKind::Number;
+    cells[pps_sym].value    = (double)phrases_per_section;
+    cells[pps_sym].revision = 1;
+}
+
+} // namespace sig

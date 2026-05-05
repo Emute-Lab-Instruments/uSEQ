@@ -5,4 +5,4 @@ cd "$(dirname "$0")/.."
 
 # Run Meson setup and Ninja
 meson setup build
-ninja -C build
+ninja -j4 -C build

@@ -1,0 +1,188 @@
+#include "token.h"
+#include "../modulisp/lisp/symbol_intern.h"
+#include <cstring>
+#include <cstdlib>
+
+namespace sig {
+
+// ── TokenStream methods ─────────────────────────────────────────────────────
+
+Token TokenStream::peek() const {
+    if (pos < count) return tokens[pos];
+    Token eof;
+    eof.kind = TokenKind::Eof;
+    return eof;
+}
+
+Token TokenStream::consume() {
+    if (pos < count) return tokens[pos++];
+    Token eof;
+    eof.kind = TokenKind::Eof;
+    return eof;
+}
+
+bool TokenStream::expect(TokenKind kind) {
+    if (pos < count && tokens[pos].kind == kind) {
+        pos++;
+        return true;
+    }
+    return false;
+}
+
+void TokenStream::rewind(uint16_t position) {
+    pos = position;
+}
+
+bool TokenStream::at_end() const {
+    return pos >= count || tokens[pos].kind == TokenKind::Eof;
+}
+
+// ── Tokenizer ───────────────────────────────────────────────────────────────
+
+static bool is_symbol_char(char c) {
+    if (c <= ' ') return false;
+    switch (c) {
+        case '(': case ')': case '[': case ']':
+        case '"': case '\'': case ';': case ',':
+            return false;
+        default:
+            return true;
+    }
+}
+
+static bool is_digit(char c) { return c >= '0' && c <= '9'; }
+
+uint16_t TokenStream::tokenize(const char* source, uint32_t length,
+                                Token* out, uint16_t max_tokens,
+                                Diagnostic* errors, uint8_t* error_count) {
+    uint16_t count = 0;
+    uint32_t i = 0;
+
+    auto emit = [&](Token t) {
+        if (count < max_tokens) out[count++] = t;
+    };
+
+    auto emit_error = [&](uint32_t pos, uint16_t len, const char* msg) {
+        if (errors && error_count && *error_count < 8) {
+            errors[*error_count] = {
+                DiagnosticSeverity::Error, DiagnosticCategory::Syntax,
+                (uint16_t)pos, len, msg, nullptr
+            };
+            (*error_count)++;
+        }
+    };
+
+    while (i < length) {
+        char c = source[i];
+
+        // Skip whitespace
+        if (c <= ' ') { i++; continue; }
+
+        // Skip comments
+        if (c == ';') {
+            while (i < length && source[i] != '\n') i++;
+            continue;
+        }
+
+        // Parens and brackets
+        if (c == '(') { Token t; t.kind = TokenKind::LParen; t.span_start = (uint16_t)i; t.span_len = 1; emit(t); i++; continue; }
+        if (c == ')') { Token t; t.kind = TokenKind::RParen; t.span_start = (uint16_t)i; t.span_len = 1; emit(t); i++; continue; }
+        if (c == '[') { Token t; t.kind = TokenKind::LBracket; t.span_start = (uint16_t)i; t.span_len = 1; emit(t); i++; continue; }
+        if (c == ']') { Token t; t.kind = TokenKind::RBracket; t.span_start = (uint16_t)i; t.span_len = 1; emit(t); i++; continue; }
+
+        // String literal
+        if (c == '"') {
+            uint32_t start = i;
+            i++; // skip opening quote
+            uint32_t str_start = i;
+            while (i < length && source[i] != '"') {
+                if (source[i] == '\\' && i + 1 < length) i++; // skip escape
+                i++;
+            }
+            if (i >= length) {
+                emit_error((uint32_t)start, (uint16_t)(i - start),
+                           "Unterminated string");
+                break;
+            }
+            Token t;
+            t.kind = TokenKind::String;
+            t.span_start = (uint16_t)start;
+            t.span_len = (uint16_t)(i + 1 - start);
+            t.string.offset = str_start;
+            t.string.length = (uint16_t)(i - str_start);
+            emit(t);
+            i++; // skip closing quote
+            continue;
+        }
+
+        // Number (including negative numbers)
+        if (is_digit(c) || (c == '-' && i + 1 < length && is_digit(source[i + 1])) ||
+            (c == '.' && i + 1 < length && is_digit(source[i + 1]))) {
+            uint32_t start = i;
+            char* end_ptr = nullptr;
+            double val = strtod(source + i, &end_ptr);
+            if (end_ptr > source + i) {
+                // Check that the character after the number is not a symbol char
+                // (to avoid parsing "2x" as number 2 followed by symbol x)
+                uint32_t num_end = (uint32_t)(end_ptr - source);
+                Token t;
+                t.kind = TokenKind::Number;
+                t.span_start = (uint16_t)start;
+                t.span_len = (uint16_t)(num_end - start);
+                t.number = val;
+                emit(t);
+                i = num_end;
+                continue;
+            }
+        }
+
+        // Symbol
+        if (is_symbol_char(c)) {
+            uint32_t start = i;
+            while (i < length && is_symbol_char(source[i])) i++;
+            // Intern the symbol
+            // We need a temporary null-terminated string
+            char buf[256];
+            uint32_t sym_len = i - start;
+            if (sym_len >= sizeof(buf)) sym_len = sizeof(buf) - 1;
+            memcpy(buf, source + start, sym_len);
+            buf[sym_len] = '\0';
+
+            // Check if it's actually a number (e.g., "-1" when preceded by space)
+            char* end_ptr = nullptr;
+            double val = strtod(buf, &end_ptr);
+            if (end_ptr == buf + sym_len) {
+                Token t;
+                t.kind = TokenKind::Number;
+                t.span_start = (uint16_t)start;
+                t.span_len = (uint16_t)sym_len;
+                t.number = val;
+                emit(t);
+                continue;
+            }
+
+            Token t;
+            t.kind = TokenKind::Symbol;
+            t.span_start = (uint16_t)start;
+            t.span_len = (uint16_t)sym_len;
+            t.symbol = SymbolIntern::getInstance().intern(String(buf));
+            emit(t);
+            continue;
+        }
+
+        // Unknown character
+        emit_error(i, 1, "Unexpected character");
+        i++;
+    }
+
+    // Append EOF
+    Token eof;
+    eof.kind = TokenKind::Eof;
+    eof.span_start = (uint16_t)length;
+    eof.span_len = 0;
+    emit(eof);
+
+    return count;
+}
+
+} // namespace sig

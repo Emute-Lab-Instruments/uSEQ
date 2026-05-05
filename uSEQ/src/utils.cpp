@@ -1,6 +1,9 @@
 #include "utils.h"
 #include <algorithm>
-// #include <iterator>
+
+#if defined(ARDUINO)
+#include "uSEQ/hardware_output.h"
+#endif
 
 float scale_value(float x, float in_min, float in_max, float out_min, float out_max)
 {
@@ -52,11 +55,11 @@ void flash_builtin(int sleep, int times = 10)
 {
     for (int i = 0; i < times; i++)
     {
-        digitalWrite(LED_BUILTIN, HIGH);
+        HardwareOutput::digital(LED_BUILTIN, HIGH);
         // turn the LED on (HIGH is the voltage level)
         delay(sleep);
         // wait for a second
-        digitalWrite(LED_BUILTIN, LOW);
+        HardwareOutput::digital(LED_BUILTIN, LOW);
         // turn the LED off by making the voltage LOW
         delay(sleep);
     }
@@ -64,9 +67,9 @@ void flash_builtin(int sleep, int times = 10)
 
 #else
 
-void flash_builtin(int sleep, int times = 10) {}
+void flash_builtin(int /*sleep*/, int /*times*/ = 10) {}
 double millis() { return 0.0; }
 double micros() { return 0.0; }
 
-void delay(int x) {}
+void delay(int /*x*/) {}
 #endif

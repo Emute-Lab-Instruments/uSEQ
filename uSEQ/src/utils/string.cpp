@@ -21,6 +21,8 @@
 */
 
 #include "string.h"
+#include <climits>
+#include <cmath>
 
 #ifdef ARDUINO
 
@@ -30,7 +32,7 @@
 
 // nothing
 
-#elif defined(USE_ARDUINO_STR)
+#elif defined(USE_ARDUINO_STR) || defined(USE_OWN_ARDUINO_STR)
 
 /*
   String library for Wiring & Arduino
@@ -53,10 +55,10 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#include "Common.h"
-#include "String.h"
-#include "deprecated-avr-comp/avr/dtostrf.h"
+#include "common.h"
+#include "dtostrf.h"
 #include "itoa.h"
+#include "string.h"
 
 #include <float.h>
 
@@ -78,7 +80,7 @@ String::String(const char* cstr)
 {
     init();
     if (cstr)
-        copy(cstr, strlen(cstr));
+        copy(cstr, static_cast<unsigned int>(strlen(cstr)));
 }
 
 String::String(const char* cstr, unsigned int length)
@@ -163,8 +165,10 @@ String::String(float value, unsigned char decimalPlaces)
                                          1 /* '-' */ + 1 /* '.' */ + 1 /* '\0' */;
     init();
     char buf[FLOAT_BUF_SIZE];
-    decimalPlaces = min(decimalPlaces, FLT_MAX_DECIMAL_PLACES);
-    *this         = dtostrf(value, (decimalPlaces + 2), decimalPlaces, buf);
+    decimalPlaces =
+        min(decimalPlaces, static_cast<unsigned char>(FLT_MAX_DECIMAL_PLACES));
+    *this = dtostrf(value, static_cast<signed char>(decimalPlaces + 2),
+                    decimalPlaces, buf);
 }
 
 String::String(double value, unsigned char decimalPlaces)
@@ -173,8 +177,21 @@ String::String(double value, unsigned char decimalPlaces)
                                           1 /* '-' */ + 1 /* '.' */ + 1 /* '\0' */;
     init();
     char buf[DOUBLE_BUF_SIZE];
-    decimalPlaces = min(decimalPlaces, DBL_MAX_DECIMAL_PLACES);
-    *this         = dtostrf(value, (decimalPlaces + 2), decimalPlaces, buf);
+    decimalPlaces =
+        min(decimalPlaces, static_cast<unsigned char>(DBL_MAX_DECIMAL_PLACES));
+
+    // Check if the value is a whole number (no fractional part)
+    if (value == floor(value) && value >= INT_MIN && value <= INT_MAX)
+    {
+        // Format as integer (no decimal places)
+        *this = dtostrf(value, 1, 0, buf);
+    }
+    else
+    {
+        // Format with specified decimal places
+        *this = dtostrf(value, static_cast<signed char>(decimalPlaces + 2),
+                        decimalPlaces, buf);
+    }
 }
 
 String::~String()
@@ -293,7 +310,7 @@ String& String::operator=(String&& rval)
 String& String::operator=(const char* cstr)
 {
     if (cstr)
-        copy(cstr, strlen(cstr));
+        copy(cstr, static_cast<unsigned int>(strlen(cstr)));
     else
         invalidate();
 
@@ -333,7 +350,7 @@ bool String::concat(const char* cstr)
 {
     if (!cstr)
         return false;
-    return concat(cstr, strlen(cstr));
+    return concat(cstr, static_cast<unsigned int>(strlen(cstr)));
 }
 
 bool String::concat(char c) { return concat(&c, 1); }
@@ -634,7 +651,7 @@ int String::indexOf(char ch, unsigned int fromIndex) const
     const char* temp = strchr(buffer + fromIndex, ch);
     if (temp == NULL)
         return -1;
-    return temp - buffer;
+    return static_cast<int>(temp - buffer);
 }
 
 int String::indexOf(const String& s2) const { return indexOf(s2, 0); }
@@ -646,7 +663,7 @@ int String::indexOf(const String& s2, unsigned int fromIndex) const
     const char* found = strstr(buffer + fromIndex, s2.buffer);
     if (found == NULL)
         return -1;
-    return found - buffer;
+    return static_cast<int>(found - buffer);
 }
 
 int String::lastIndexOf(char theChar) const { return lastIndexOf(theChar, len - 1); }
@@ -661,7 +678,7 @@ int String::lastIndexOf(char ch, unsigned int fromIndex) const
     buffer[fromIndex + 1] = tempchar;
     if (temp == NULL)
         return -1;
-    return temp - buffer;
+    return static_cast<int>(temp - buffer);
 }
 
 int String::lastIndexOf(const String& s2) const
@@ -682,7 +699,7 @@ int String::lastIndexOf(const String& s2, unsigned int fromIndex) const
         if (!p)
             break;
         if ((unsigned int)(p - buffer) <= fromIndex)
-            found = p - buffer;
+            found = static_cast<int>(p - buffer);
     }
     return found;
 }
@@ -815,7 +832,7 @@ void String::toLowerCase(void)
         return;
     for (char* p = buffer; *p; p++)
     {
-        *p = tolower(*p);
+        *p = static_cast<char>(tolower(*p));
     }
 }
 
@@ -825,7 +842,7 @@ void String::toUpperCase(void)
         return;
     for (char* p = buffer; *p; p++)
     {
-        *p = toupper(*p);
+        *p = static_cast<char>(toupper(*p));
     }
 }
 
@@ -839,7 +856,7 @@ void String::trim(void)
     char* end = buffer + len - 1;
     while (isspace(*end) && end >= begin)
         end--;
-    len = end + 1 - begin;
+    len = static_cast<unsigned int>(end + 1 - begin);
     if (begin > buffer)
         memmove(buffer, begin, len);
     buffer[len] = 0;

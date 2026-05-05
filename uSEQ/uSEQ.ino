@@ -1,45 +1,34 @@
-// NOTE: if this is set to 1, a /ton/ of debug info
-// will be printed out through Serial.
-// - Open with e.g. VSCode to get block collapse toggling
-// - How should this be integrated with the editor so that it
-//   doesn't pollute the console out?
-#define USEQ_DEBUG 0
+// uSEQ firmware entry point
+// Uses the new composition-based firmware architecture (firmware::Firmware).
+
 #define USE_NOT_IN_FLASH 1
 
-// NOTE: this doesn't seem to carry over to "uSEQ/configure.h"
-// (through "uSEQ.h") so it's being redefined there
-// Seems like it should work since the headers are included after
-// this define - maybe an issue with Arduino IDE?
-// #define USEQHARDWARE_0_2
+bool core1_separate_stack = true;
 
-#include "src/uSEQ.h"
+#include "src/firmware/firmware.h"
 
-// NOTE: this has to be done here, as opposed to e.g. inside uSEQ::init,
-// to prevent anything trying to write to serial before it's been set up
-// (e.g. for debugging purposes)
-void init_serial()
-{
-    Serial.begin(115200);
-    Serial.setTimeout(2);
-}
-
-void init_random()
-{
-#if USEQ_DEBUG
-    // Fix random seed for debugging purposes
-    randomSeed(123);
-#else
-    randomSeed(analogRead(0));
-#endif
-}
-
-uSEQ u;
+static firmware::Firmware fw;
 
 void setup()
 {
-    init_serial();
-    init_random();
-    u.init();
+    Serial.begin();
+    Serial.setTimeout(2);
+    fw.init();
 }
 
-void loop() { u.tick(); }
+void __not_in_flash_func(loop)()
+{
+    fw.tick();
+}
+
+#ifdef ENABLE_DSP_ENGINE
+void setup1()
+{
+    fw.dsp.init();
+}
+
+void __not_in_flash_func(loop1)()
+{
+    fw.dsp.tick();
+}
+#endif

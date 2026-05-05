@@ -1,6 +1,22 @@
-# Document Title
+# Changelog
 
-1.0 -> 1.0.1
+## 1.2.0 (Protocol Enhancements)
+
+### Additions
+- JSON protocol handlers: `hello` (negotiation with ioConfig), `ping` (heartbeat), `stream-config` (channel configuration)
+- `useq-get-transport-state` builtin — returns `"playing"`, `"paused"`, or `"stopped"`
+- Transport state push via `meta` field in JSON eval responses
+- `console` field in JSON responses (editor prefers this over `text`)
+- `JsonBuilder` utility class (`utils/json_builder.h`) for structured JSON construction
+- `Protocol::send_raw_json()` for sending pre-built JSON payloads
+
+### Changes
+- `handle_json_serial_request` now dispatches on request type instead of rejecting non-eval requests
+- Transport builtins (`useq-play`, `useq-pause`, `useq-stop`, `useq-rewind`) set `m_pending_transport_meta` for automatic state reporting
+
+---
+
+## 1.0 -> 1.0.1
 bb280b0..cc04555
 
 # Fixes
