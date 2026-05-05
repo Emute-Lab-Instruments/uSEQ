@@ -678,7 +678,7 @@ void uSEQ::check_and_handle_user_input()
                 m_should_quit = true;
             }
             // EXECUTE NOW
-            if (first_byte == SerialMsg::execute_now_marker /*'@'*/)
+            if (first_byte == m_execute_now_marker /*'@'*/)
             {
                 // Clear error queue
                 error_msg_q.clear();
