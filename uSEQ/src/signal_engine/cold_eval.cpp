@@ -933,13 +933,25 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
 
         // Unknown form at top level — try as signal expression.
         // Extract the full form source from the opening '(' through ')'.
+        // Track paren/bracket depth so nested forms (e.g. (eval-at-time T (* 0.5 bar)))
+        // don't terminate the slice at the first inner ')' and leave the outer
+        // ')' dangling for the next eval_form iteration.
         {
             uint32_t form_start = tok.span_start; // position of '('
-            // Skip remaining tokens to find the closing ')'
-            while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
+            int depth = 0;
+            while (!ts.at_end()) {
+                Token nxt = ts.peek();
+                if (depth == 0 && nxt.kind == TokenKind::RParen) break;
                 ts.consume();
+                if (nxt.kind == TokenKind::LParen ||
+                    nxt.kind == TokenKind::LBracket) {
+                    depth++;
+                } else if (nxt.kind == TokenKind::RParen ||
+                           nxt.kind == TokenKind::RBracket) {
+                    if (depth > 0) depth--;
+                }
             }
-            Token rparen = ts.consume(); // eat ')'
+            Token rparen = ts.consume(); // eat outer ')'
             uint32_t form_end = rparen.span_start + rparen.span_len;
             if (source && form_end > form_start && form_end <= source_length) {
                 return eval_expression(
