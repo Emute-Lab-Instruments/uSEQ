@@ -426,6 +426,7 @@ TEST_CASE("D3: Gates pattern [1 0 1 0]", "[e2e][rhythm]") {
     h.init();
     // 120 BPM → 1 beat = 500 ticks
     // gates [1 0 1 0] over one beat: 4 steps, each 125 ticks
+    // Default width=0.5: gate on for first 50% of each step
 
     auto r = h.eval("(d1 (gates [1 0 1 0] beat))");
     REQUIRE(r.kind != sig::EvalResult::Error);
@@ -436,13 +437,14 @@ TEST_CASE("D3: Gates pattern [1 0 1 0]", "[e2e][rhythm]") {
     auto out = h.get_captured(8);
     REQUIRE(dsp::all_finite(out));
 
-    // First quarter: high (step 0 = 1)
-    REQUIRE(dsp::segment_is(out, 0, 100, 1.0, 0.15));
-    // Second quarter: low (step 1 = 0)
+    // Step 0 (value=1): on for first half, off for second half
+    REQUIRE(dsp::segment_is(out, 0, 50, 1.0, 0.15));
+    REQUIRE(dsp::segment_is(out, 75, 125, 0.0, 0.15));
+    // Step 1 (value=0): always off
     REQUIRE(dsp::segment_is(out, 150, 250, 0.0, 0.15));
-    // Third quarter: high (step 2 = 1)
-    REQUIRE(dsp::segment_is(out, 250, 350, 1.0, 0.15));
-    // Fourth quarter: low (step 3 = 0)
+    // Step 2 (value=1): on for first half
+    REQUIRE(dsp::segment_is(out, 250, 300, 1.0, 0.15));
+    // Step 3 (value=0): always off
     REQUIRE(dsp::segment_is(out, 400, 500, 0.0, 0.15));
 }
 

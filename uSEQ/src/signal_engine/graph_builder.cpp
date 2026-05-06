@@ -1188,14 +1188,27 @@ uint16_t GraphBuilder::compile_step(TokenStream& ts, Scope& scope, TimeContext& 
 
 uint16_t GraphBuilder::compile_gates(SymbolID op, TokenStream& ts,
                                       Scope& scope, TimeContext& ctx) {
-    // gates/trigs use step internally, then threshold
+    // (gates data)              — width=0.5, phase=beat
+    // (gates data phase)        — width=0.5
+    // (gates data width phase)  — explicit width (duty cycle 0-1)
     DataRef data = resolve_data_table(ts, scope, ctx);
     if (!data.ok) return NODE_NONE;
 
+    uint16_t width;
     uint16_t phase;
     if (ts.peek().kind != TokenKind::RParen) {
-        phase = compile_expr(ts, scope, ctx);
+        uint16_t arg2 = compile_expr(ts, scope, ctx);
+        if (ts.peek().kind != TokenKind::RParen) {
+            // 3 args: (gates data width phase)
+            width = arg2;
+            phase = compile_expr(ts, scope, ctx);
+        } else {
+            // 2 args: (gates data phase)
+            width = pool.make_const(0.5);
+            phase = arg2;
+        }
     } else {
+        width = pool.make_const(0.5);
         phase = expand_beat(ctx);
     }
 
@@ -1209,8 +1222,16 @@ uint16_t GraphBuilder::compile_gates(SymbolID op, TokenStream& ts,
     vec_node.flags = 0;
     uint16_t raw = pool.intern_node(vec_node);
 
-    // gates: value > 0
-    return pool.make_binop(NodeOp::CmpGt, raw, pool.make_const(0.0));
+    if (op == sym.trigs) {
+        // trigs: value > 0 (no width — instantaneous trigger)
+        return pool.make_binop(NodeOp::CmpGt, raw, pool.make_const(0.0));
+    }
+
+    // gates: on when value > 0 AND fractional phase within step < width
+    uint16_t is_on = pool.make_binop(NodeOp::CmpGt, raw, pool.make_const(0.0));
+    uint16_t frac = pool.make_binop(NodeOp::Sub, scaled, idx);
+    uint16_t in_width = pool.make_binop(NodeOp::CmpLt, frac, width);
+    return pool.make_binop(NodeOp::Mul, is_on, in_width);
 }
 
 uint16_t GraphBuilder::compile_euclid(TokenStream& ts, Scope& scope, TimeContext& ctx) {

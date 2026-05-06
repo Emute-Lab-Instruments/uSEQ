@@ -3472,32 +3472,53 @@ TEST_CASE("neg unary negation", "[signal_engine][unary][neg]") {
     }
 }
 
-// ── trigs alias ─────────────────────────────────────────────────────────────
+// ── trigs (binary, no width gating) ─────────────────────────────────────────
 
-TEST_CASE("trigs is alias for gates", "[signal_engine][sequence][trigs]") {
-    // Both should produce identical results with same pattern and phase
-    SECTION("trigs matches gates at phase 0") {
-        double gates_val = eval_at("(gates [1 0 1 0] beat)", 0.0);
-        double trigs_val = eval_at("(trigs [1 0 1 0] beat)", 0.0);
-        REQUIRE(gates_val == trigs_val);
+TEST_CASE("trigs is binary gate (no width)", "[signal_engine][sequence][trigs]") {
+    // trigs: value > 0, always on for the full step duration
+    SECTION("trigs on at step start") {
+        double val = eval_at("(trigs [1 0 1 0] beat)", 0.0);
+        REQUIRE(val == 1.0);
     }
 
-    SECTION("trigs matches gates at phase 0.125") {
-        double gates_val = eval_at("(gates [1 0 1 0] beat)", 0.125);
-        double trigs_val = eval_at("(trigs [1 0 1 0] beat)", 0.125);
-        REQUIRE(gates_val == trigs_val);
+    SECTION("trigs on at step midpoint") {
+        // beat phase 0.125 at 120bpm: index 1, value 0 → off
+        // but phase 0.0625 → index 0, value 1 → on (regardless of frac)
+        double val = eval_at("(trigs [1 0 1 0] beat)", 0.0);
+        REQUIRE(val == 1.0);
     }
 
-    SECTION("trigs matches gates at phase 0.25") {
-        double gates_val = eval_at("(gates [1 0 1 0] beat)", 0.25);
-        double trigs_val = eval_at("(trigs [1 0 1 0] beat)", 0.25);
-        REQUIRE(gates_val == trigs_val);
+    SECTION("trigs off for zero value") {
+        double val = eval_at("(trigs [1 0 1 0] beat)", 0.125);
+        REQUIRE(val == 0.0);
+    }
+}
+
+// ── gates with width ────────────────────────────────────────────────────────
+
+TEST_CASE("gates: default width 0.5", "[signal_engine][sequence][gates]") {
+    // (gates [1 0 1 0] beat) — 2 args, width defaults to 0.5
+    SECTION("on at step start (frac=0 < 0.5)") {
+        double val = eval_at("(gates [1 0 1 0] beat)", 0.0);
+        REQUIRE(val == 1.0);
     }
 
-    SECTION("trigs matches gates at phase 0.375") {
-        double gates_val = eval_at("(gates [1 0 1 0] beat)", 0.375);
-        double trigs_val = eval_at("(trigs [1 0 1 0] beat)", 0.375);
-        REQUIRE(gates_val == trigs_val);
+    SECTION("off for zero value") {
+        double val = eval_at("(gates [1 0 1 0] beat)", 0.125);
+        REQUIRE(val == 0.0);
+    }
+}
+
+TEST_CASE("gates: explicit width", "[signal_engine][sequence][gates]") {
+    // (gates [1 1 1 1] width phase) — all steps on, width controls duty cycle
+    SECTION("width 1.0 keeps gate on for full step") {
+        double val = eval_at("(gates [1 1 1 1] 1.0 beat)", 0.0);
+        REQUIRE(val == 1.0);
+    }
+
+    SECTION("width 0.0 turns gate off immediately") {
+        double val = eval_at("(gates [1 1 1 1] 0.0 beat)", 0.0);
+        REQUIRE(val == 0.0);
     }
 }
 

@@ -1113,15 +1113,19 @@ TEST_CASE("Golden semantics: alias semantics verification",
         }
     }
 
-    SECTION("trigs and gates produce identical results") {
+    SECTION("trigs is binary (no width), gates has 50% duty cycle") {
         GoldenHarness h;
-        h.assign_ok("a1", "(gates [1 0 1 0] beat)");
-        h.assign_ok("a2", "(trigs [1 0 1 0] beat)");
-        auto w1 = h.sample_window("a1", 0.0, 0.49, 10);
-        auto w2 = h.sample_window("a2", 0.0, 0.49, 10);
-        for (size_t i = 0; i < w1.size(); ++i) {
-            INFO("i: " << i);
-            REQUIRE(w1[i] == Approx(w2[i]));
+        h.assign_ok("a1", "(gates [1 1 1 1] beat)");
+        h.assign_ok("a2", "(trigs [1 1 1 1] beat)");
+        // trigs stays on for the whole step; gates turns off at 50%
+        auto wg = h.sample_window("a1", 0.0, 0.49, 10);
+        auto wt = h.sample_window("a2", 0.0, 0.49, 10);
+        // At the start of a step both should be 1
+        REQUIRE(wg[0] == 1.0);
+        REQUIRE(wt[0] == 1.0);
+        // trigs should always be 1 for a non-zero pattern
+        for (size_t i = 0; i < wt.size(); ++i) {
+            REQUIRE(wt[i] == 1.0);
         }
     }
 
