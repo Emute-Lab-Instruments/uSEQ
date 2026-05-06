@@ -25,7 +25,8 @@
 
 Firmware side:
 
-- `uSEQ/src/firmware/serial_protocol.{h,cpp}` — `SerialProtocol`: RX ring buffer, JSON message extraction, `dispatch_message()`, `handle_hello()`, `handle_ping()`, `handle_stream_config()`, `handle_set_live_inputs()`, `send_eval_response()`, `send_stream_data()`, `send_diagnostics()`, `send_log()`, `send_ready()`
+- `uSEQ/src/firmware/serial_protocol.{h,cpp}` — `SerialProtocol`: RX ring buffer, JSON message extraction, `dispatch_message()`, `handle_hello()`, `handle_ping()`, `handle_stream_config()`, `handle_set_live_inputs()`, `send_eval_response()`, `send_stream_data()`, `send_diagnostics()`, `send_log()`, `send_ready()`. Dispatches `debug` messages to the devtools subsystem.
+- `uSEQ/src/devtools/devtools.{h,cpp}` — `debug` message handler: capability negotiation, channel configuration, query dispatch, streaming telemetry. Compile-gated behind `USEQ_DEVTOOLS`.
 - `uSEQ/src/firmware/firmware.{h,cpp}` — `Firmware::tick()` (drains serial, dispatches eval, emits stream frames)
 - `uSEQ/src/utils/serial_message.h` — wire-level constants: start marker (`0x1F`), message type bytes (`STREAM`, `INPUT_SET`), rate limits
 - `uSEQ/src/utils/json_builder.h` — `JsonBuilder`: lightweight fluent JSON construction (no external library)
@@ -261,7 +262,7 @@ mechanisms.
 ### 5.3 `stream-config` (editor → device, request)
 
 Sent by the editor after a successful hello, using the io config from the
-hello response. (See `uSEQ/src/firmware/serial_protocol.cpp` — handle_stream_config parses channel configs, updates stream_rate_limit_us and stream_channel_enabled[].)
+hello response. (See `uSEQ/src/firmware/serial_protocol.cpp` — handle_stream_config parses channel configs, updates `stream_rate_limit_us` and the `stream_channels[]` array of `StreamChannel{enabled, source, source_idx, on_change_only}`.)
 
 ```json
 {
@@ -650,7 +651,31 @@ Exit calibration takeover and resume normal operation.
 After a successful `calibrate-end`, the device resumes normal output
 behaviour. Stream frames resume if they were suspended during takeover.
 
-### 5.16 Calibration response conventions
+### 5.16 `debug` (editor → device, request)
+
+Dev-build-only telemetry and introspection. Gated behind `USEQ_DEVTOOLS` at compile time. Release-build devices ignore this message type per §3.4.
+
+```json
+{"type":"debug","action":"capabilities","requestId":"req-30"}
+{"type":"debug","action":"configure","channels":{"tick":"stream"},"requestId":"req-31"}
+{"type":"debug","action":"query","channel":"state","requestId":"req-32"}
+{"type":"debug","action":"status","requestId":"req-33"}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | Always `"debug"`. |
+| `action` | string | yes | One of `"capabilities"`, `"configure"`, `"query"`, `"status"`. |
+| `requestId` | string | yes | Per §5.1. |
+
+Additional fields depend on `action`. See [devtools.md](devtools.md) for
+the full channel catalog, response shapes, and streaming semantics.
+
+**Delivery.** Unsolicited `debug` frames (streaming telemetry) are
+**opportunistic** — dropped if TX is full, matching stream-frame
+semantics (§3.2).
+
+### 5.17 Calibration response conventions
 
 All `calibrate-*` requests are **must-deliver** (the device blocks
 briefly on TX backpressure rather than dropping). Response shapes follow
@@ -699,9 +724,18 @@ index (the 24-slot a/d/s space defined in [firmware.md §4.4](firmware.md));
 the wire uses a stream-only channel namespace advertised in `hello`.
 
 6.3 **Rate.** Limited by the most recent `stream-config.maxRateHz`
-(default 30 Hz). Devices MAY emit fewer frames than the cap when a
-channel's value has not changed (implementation-defined). Devices MUST
-NOT emit faster than the cap.
+(default 30 Hz from the editor). The firmware's built-in default rate
+cap is 100 Hz (`serial_message_rate_limit` in `serial_message.h`),
+which applies before `stream-config` arrives. Devices MAY emit fewer
+frames than the cap when a channel's value has not changed
+(implementation-defined). Devices MUST NOT emit faster than the cap.
+
+6.3.1 **Default streaming (before `stream-config`).** On entering JSON
+mode (after hello), the device streams **only channel 1 (time)** at the
+firmware default rate (100 Hz). All other channels are disabled until
+the editor sends `stream-config` to enable them. This ensures the wire
+is not saturated during the handshake window and that the editor
+receives a time reference immediately for clock synchronization.
 
 6.4 **Drop policy.** Stream frames are **opportunistic** — the device
 drops them if its TX buffer is full ([failure-model.md](failure-model.md)).

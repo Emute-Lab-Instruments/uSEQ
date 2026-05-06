@@ -30,15 +30,6 @@
 
 namespace firmware {
 
-// ── Stream Channel Configuration ──────────────────────────────────────────
-// Per-channel enable/rate from stream-config messages.
-
-struct StreamChannelConfig {
-    int id           = 0;
-    bool enabled     = true;
-    int max_rate_hz  = 0;
-};
-
 // ── Serial Protocol ───────────────────────────────────────────────────────
 
 struct SerialProtocol {
@@ -55,7 +46,8 @@ struct SerialProtocol {
 
     // ── Send (opportunistic — may be dropped if TX full) ───────────────────
     void send_diagnostics(const sig::Diagnostic* diags, uint8_t count);
-    void send_stream_data(const double* values, size_t count);
+    void send_stream_data(const double* output_values, size_t output_count,
+                          const double* input_values = nullptr, size_t input_count = 0);
 
     // ── Control messages ───────────────────────────────────────────────────
     void handle_handshake();
@@ -75,9 +67,24 @@ struct SerialProtocol {
                           char* buf, size_t buf_size);
 
     // ── Stream config state (read by tick loop) ────────────────────────────
+    // Stream channels are a separate namespace from output indices:
+    //   wire channel 1 = time (always index 0 internally)
+    //   wire channels 2+ = editor-subscribed signals (ain1, ain2, etc.)
+    // The editor sends stream-config to define which signals map to which channels.
+    static constexpr uint8_t MAX_STREAM_CHANNELS = 10;
+
+    enum class StreamSource : uint8_t { Time = 0, Output = 1, Input = 2 };
+    struct StreamChannel {
+        bool enabled        = false;
+        StreamSource source = StreamSource::Time;
+        uint8_t source_idx  = 0;     // index into output_values[] or inputs[]
+        bool on_change_only = false;  // only send when value differs from last sent
+        double last_sent    = 0.0;    // for change detection
+    };
+    StreamChannel stream_channels[MAX_STREAM_CHANNELS] = {};
+    uint8_t num_stream_channels = 1; // channel 0 (time) active by default
     unsigned long stream_rate_limit_us = SerialMsg::serial_message_rate_limit;
-    bool stream_channel_enabled[sig::MAX_OUTPUTS] = {};
-    uint8_t num_stream_channels = 0;
+    double m_current_time = 0.0; // set by tick loop each frame
 
     // ── Hardware config (set by Firmware before init) ──────────────────────
     uint8_t num_serial_ins  = 0;
@@ -101,8 +108,11 @@ private:
     // ── JSON mode (enabled after hello handshake) ──────────────────────────
     bool m_json_mode       = false;
 
-    // ── Current request tracking ───────────────────────────────────────────
+    // ── Current request tracking ──────────────────────────────��────────────
     char m_request_id[64]  = {};
+
+    // ── Stream rate limiting ──────────────────────────────────────────────
+    unsigned long m_last_stream_us = 0;
 
     // ── Internal helpers ───────────────────────────────────────────────────
     void drain_serial_into_rx_buf();

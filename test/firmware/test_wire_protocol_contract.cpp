@@ -545,7 +545,13 @@ TEST_CASE("F7 [§6.1] outbound STREAM frame is exactly 11 bytes "
     firmware::SerialProtocol sp;
     sp.init();
     sp.num_serial_outs = 2;
-    for (size_t i = 0; i < sig::MAX_OUTPUTS; ++i) sp.stream_channel_enabled[i] = true;
+    // Configure two output channels using the StreamChannel API.
+    for (uint8_t ch = 0; ch < 2; ++ch) {
+        sp.stream_channels[ch].enabled    = true;
+        sp.stream_channels[ch].source     = firmware::SerialProtocol::StreamSource::Output;
+        sp.stream_channels[ch].source_idx = ch;
+    }
+    sp.num_stream_channels = 2;
 
     double values[2] = { 0.25, 0.75 };
     sp.send_stream_data(values, 2);

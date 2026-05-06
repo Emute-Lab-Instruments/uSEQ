@@ -129,9 +129,12 @@ void SerialProtocol::init(unsigned long baud_rate)
     m_json_mode     = false;
     m_request_id[0] = '\0';
 
-    // Default: all stream channels enabled
-    for (size_t i = 0; i < sig::MAX_OUTPUTS; ++i)
-        stream_channel_enabled[i] = true;
+    // Default: only channel 0 (time) enabled at 100Hz
+    for (size_t i = 0; i < MAX_STREAM_CHANNELS; ++i)
+        stream_channels[i] = StreamChannel{};
+    stream_channels[0].enabled = true;
+    stream_channels[0].source = StreamSource::Time;
+    num_stream_channels = 1;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -259,13 +262,13 @@ bool SerialProtocol::dispatch_message(const char* payload, size_t len,
 
     if (code_len == 0)
     {
-        // Malformed eval request — no code field
+        // Empty code — no-op success
         JsonBuilder b;
         b.object_begin()
             .field("type", "response")
-            .field("success", false)
-            .field("console", "Malformed JSON request: missing code field")
-            .field("text", "Malformed JSON request: missing code field")
+            .field("success", true)
+            .field("console", "")
+            .field("text", "")
             .field_null("meta")
             .field("requestId", m_request_id)
             .object_end();
@@ -394,31 +397,59 @@ void SerialProtocol::send_diagnostics(const sig::Diagnostic* diags, uint8_t coun
     write_json_str(b.build().c_str());
 }
 
-void SerialProtocol::send_stream_data(const double* values, size_t count)
+void SerialProtocol::send_stream_data(const double* output_values, size_t output_count,
+                                      const double* input_values, size_t input_count)
 {
-    // Stream data uses the binary wire format for efficiency:
-    //   [0x1F] [STREAM=0] [channel_byte] [8 bytes double] ...
-    // This matches the existing IOManager::serial_write format.
-
 #ifdef ARDUINO
-    if (!Serial.availableForWrite()) return;
+    if (!m_json_mode) return;
+    if (!Serial) return;
 
-    for (size_t i = 0; i < count; ++i)
-    {
-        if (i >= sig::MAX_OUTPUTS) break;
-        if (!stream_channel_enabled[i]) continue;
+    unsigned long now = micros();
+    if (stream_rate_limit_us > 0) {
+        if (now - m_last_stream_us < stream_rate_limit_us) return;
+    }
+    m_last_stream_us = now;
+
+    static constexpr size_t FRAME_SIZE = 11;
+
+    for (uint8_t ch = 0; ch < num_stream_channels; ++ch) {
+        StreamChannel& sc = stream_channels[ch];
+        if (!sc.enabled) continue;
+
+        double val;
+        switch (sc.source) {
+            case StreamSource::Time:
+                val = m_current_time;
+                break;
+            case StreamSource::Output:
+                val = (sc.source_idx < output_count) ? output_values[sc.source_idx] : 0.0;
+                break;
+            case StreamSource::Input:
+                val = (input_values && sc.source_idx < input_count) ? input_values[sc.source_idx] : 0.0;
+                break;
+            default:
+                val = 0.0;
+                break;
+        }
+
+        if (sc.on_change_only && val == sc.last_sent) continue;
+
+        if (Serial.availableForWrite() < static_cast<int>(FRAME_SIZE)) return;
 
         Serial.write(SerialMsg::message_begin_marker);
         Serial.write(static_cast<uint8_t>(SerialMsg::serial_message_types::STREAM));
-        Serial.write(static_cast<uint8_t>(i + 1)); // 1-indexed channel
-        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&values[i]);
+        Serial.write(static_cast<uint8_t>(ch + 1)); // 1-indexed on wire
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&val);
         for (size_t b = 0; b < 8; ++b)
             Serial.write(bytes[b]);
+
+        sc.last_sent = val;
     }
 #else
-    (void)values;
-    (void)count;
-    // Desktop: stream data is not sent to stdout
+    (void)output_values;
+    (void)output_count;
+    (void)input_values;
+    (void)input_count;
 #endif
 }
 
@@ -535,8 +566,9 @@ void SerialProtocol::handle_ping(const char* /*payload*/, size_t /*len*/)
 
 void SerialProtocol::handle_stream_config(const char* payload, size_t len)
 {
-    // Parse maxRateHz
+    // Parse maxRateHz (cap at 100Hz)
     int max_rate = extract_int(payload, len, "maxRateHz", 0);
+    if (max_rate > 100) max_rate = 100;
     if (max_rate > 0)
     {
         stream_rate_limit_us =
@@ -544,11 +576,18 @@ void SerialProtocol::handle_stream_config(const char* payload, size_t len)
         if (stream_rate_limit_us == 0) stream_rate_limit_us = 1;
     }
 
-    // Parse channels array — lightweight scan for id/enabled fields
+    // Reset all channels, then re-populate from the config
+    // Channel 0 (time) is always present
+    for (size_t i = 0; i < MAX_STREAM_CHANNELS; ++i)
+        stream_channels[i] = StreamChannel{};
+    stream_channels[0].enabled = true;
+    stream_channels[0].source = StreamSource::Time;
+    num_stream_channels = 1;
+
+    // Parse channels array
     const char* channels_start = find_field_value(payload, len, "channels");
     if (channels_start && *channels_start == '[')
     {
-        // Walk through the array looking for objects with "id" and "enabled"
         const char* end = payload + len;
         const char* p = channels_start + 1;
         int depth = 0;
@@ -567,28 +606,53 @@ void SerialProtocol::handle_stream_config(const char* payload, size_t len)
                 if (depth == 0 && obj_start)
                 {
                     size_t obj_len = static_cast<size_t>(p - obj_start + 1);
-                    int ch_id = extract_int(obj_start, obj_len, "id", -1);
-                    if (ch_id >= 1 && ch_id <= static_cast<int>(sig::MAX_OUTPUTS))
+
+                    // Check enabled
+                    const char* ev = find_field_value(obj_start, obj_len, "enabled");
+                    bool enabled = true;
+                    if (ev && strncmp(ev, "false", 5) == 0) enabled = false;
+
+                    if (enabled && num_stream_channels < MAX_STREAM_CHANNELS)
                     {
-                        // Check "enabled" field — default true
-                        const char* ev = find_field_value(obj_start, obj_len, "enabled");
-                        bool enabled = true;
-                        if (ev)
-                        {
-                            if (strncmp(ev, "false", 5) == 0) enabled = false;
+                        // Parse name to determine source
+                        char name[16] = {};
+                        extract_string(obj_start, obj_len, "name", name, sizeof(name));
+
+                        // Parse direction
+                        char dir[8] = {};
+                        extract_string(obj_start, obj_len, "direction", dir, sizeof(dir));
+
+                        StreamChannel& sc = stream_channels[num_stream_channels];
+                        sc.enabled = true;
+
+                        if (strcmp(name, "time") == 0) {
+                            // Time already at channel 0, skip duplicate
+                            continue;
+                        } else if (strncmp(dir, "input", 5) == 0) {
+                            // Input channels: ssin1→AI1(idx 8), ssin2→AI2(idx 9)
+                            sc.source = StreamSource::Input;
+                            if (strcmp(name, "ssin1") == 0) sc.source_idx = 8;
+                            else if (strcmp(name, "ssin2") == 0) sc.source_idx = 9;
+                            else sc.source_idx = 0;
+                            sc.on_change_only = true;
+                        } else {
+                            // Output channels: s1-s8 → output indices 16-23
+                            sc.source = StreamSource::Output;
+                            if (name[0] == 's' && name[1] >= '1' && name[1] <= '8' && name[2] == '\0') {
+                                sc.source_idx = 16 + (name[1] - '1');
+                            } else {
+                                sc.source_idx = 0;
+                            }
                         }
 
-                        stream_channel_enabled[ch_id - 1] = enabled;
-
-                        if (static_cast<uint8_t>(ch_id) > num_stream_channels)
-                            num_stream_channels = static_cast<uint8_t>(ch_id);
+                        num_stream_channels++;
                     }
                     obj_start = nullptr;
                 }
             }
             else if (*p == ']' && depth == 0)
             {
-                break; // end of channels array
+                break;
             }
             ++p;
         }
