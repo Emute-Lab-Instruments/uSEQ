@@ -192,9 +192,13 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.15 [firmware.md](firmware.md) — firmware composition, tick loop, dual-core split, boot/recovery, watchdog, hardware variants, persistence surface.
 
+6.15.1 [hardware-io.md](hardware-io.md) — physical pin maps, input sampling (filtering, interrupts, ADC), output writing (PWM, SPI DAC, PIO), LED feedback system, boot LED sequences.
+
 6.16 [wire-protocol.md](wire-protocol.md) — byte-level and message-level contract over USB CDC serial between the firmware and a host editor. Single source of truth for what crosses the wire.
 
 6.17 [visualisation-projection.md](visualisation-projection.md) — WASM/runtime support for editor visualisation projection: live-state ticks, projection forks, reset-fill, frontier extension, and the combined tick/project ABI semantics.
+
+6.18 [devtools.md](devtools.md) — compile-time-gated firmware instrumentation and runtime-controllable telemetry. `dt::` namespace API for tick profiling, events, counters, gauges. Wire protocol `debug` message type for agent-driven debugging.
 
 ---
 

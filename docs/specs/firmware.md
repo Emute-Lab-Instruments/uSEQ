@@ -31,7 +31,7 @@ Variant selection is compile-time via PlatformIO environments in `platformio.ini
 1.1 The firmware is a **composition of independent modules**, not an inheritance hierarchy. Each module has one responsibility and communicates through explicit data:
 
 - `SignalEngine` — owns all interpreter state (cells, node graphs, output slots).
-- `HardwareIO` — pin access, input sampling (with ResponsiveAnalogRead filtering), output writing (PWM + SPI DAC), indicator LEDs.
+- `HardwareIO` — pin access, input sampling, output writing (PWM + SPI DAC), indicator LEDs.  See [hardware-io.md](hardware-io.md) for pin maps, filtering, and LED details.
 - `SerialProtocol` — JSON wire protocol over USB serial.
 - `FlashStorage` — preset save/load via LittleFS on on-chip flash.
 - `I2CNetwork` — multi-module communication (leader election, tempo sync, value broadcasting).
@@ -59,13 +59,15 @@ The `Firmware` struct is the composition root, instantiated once. `HardwareIO` n
 
 3.1 **Boot sequence:**
 
-1. Hardware init (pins, ADC, LEDs, serial).
-2. LED → amber (booting).
-3. Signal engine init: register builtins, set defaults (BPM 120, 4/4).
-4. Mount LittleFS. If a saved state file exists and passes CRC32 validation, load it and recompile all outputs. On checksum mismatch or missing file the engine starts with defaults.
-5. LED → green (ready).
-6. Send `{"type":"ready","version":"..."}` over serial. This frame is advisory; the editor does not wait for it and may send `hello` immediately after opening the port.
-7. Enable the watchdog and enter the tick loop.
+1. Hardware init (pins, ADC, PIO PWM, LEDs, PDM timer, gate interrupts).
+2. Boot LED animation (variant-specific LED chase — see [hardware-io.md §6](hardware-io.md)).
+3. Serial protocol init.
+4. Signal engine init: register builtins, set defaults (BPM 120, 4/4).
+5. Mount LittleFS. If a saved state file exists and passes CRC32 validation, load it and recompile all outputs. On checksum mismatch or missing file the engine starts with defaults.  On flash load failure, `boot_led_error_flash()`.
+6. LED → green (all LEDs off, onboard LED flash — ready).
+7. Enable the watchdog.
+8. Send `{"type":"ready","version":"..."}` over serial. This frame is advisory; the editor does not wait for it and may send `hello` immediately after opening the port.
+9. Enter the tick loop.
 
 3.2 **LED indicator states** (user-visible minimum contract):
 
@@ -107,7 +109,7 @@ Indices beyond the variant's physical count are skipped by `write_outputs()`; th
 
 4.5 **Music Thing SPI DAC.** The Music Thing variant uses an MCP4822 SPI DAC for the first two continuous outputs (aL, aR). These are driven via SPI writes, not analogWrite(). Outputs a3/a4 use PWM. The DAC SPI pins are defined in `hardware_io.cpp` under `#ifdef MUSICTHING`. **Status: not yet implemented in the new firmware — currently uses analogWrite() as a placeholder.**
 
-4.6 **Input filtering.** Analog inputs use ResponsiveAnalogRead for adaptive-threshold smoothing with noise gating and activity detection. This is critical for stable knob/CV behaviour in a live performance context. The Music Thing variant additionally uses 4x oversampling on mux-based inputs. **Status: currently using a simple EMA placeholder — ResponsiveAnalogRead needs to be restored.**
+4.6 **Input filtering.** Analog input filtering is variant-specific.  USEQHARDWARE_1_0 uses a **median-of-51 filter** (fixed-size, no heap allocation) matching the original production firmware.  Music Thing uses **ResponsiveAnalogRead** with 4x oversampling on mux-based inputs.  See [hardware-io.md §3](hardware-io.md) for full details.
 
 ## 5. Persistence Surface
 
@@ -157,8 +159,10 @@ These are known discrepancies between what this spec describes and what the firm
 
 | Gap | Spec says | Current state | Priority |
 |---|---|---|---|
-| SPI DAC | Music Thing aL/aR use MCP4822 SPI DAC | Uses analogWrite() placeholder | P1 (blocks hardware verification) |
-| ResponsiveAnalogRead | Adaptive-threshold analog smoothing | Simple EMA placeholder | P1 (blocks hardware verification) |
 | LittleFS | Persistence via LittleFS filesystem | Raw flash sector writes with CRC32 | P2 |
 | I2C networking | Full leader/follower with tempo sync and value broadcast | Skeletal stub | P2 |
 | DSPEngine | Optional core 1 audio synthesis | Hollow stub | P3 |
+
+Previously listed gaps that have been resolved:
+- **SPI DAC** — Music Thing aL/aR now use MCP4822 SPI DAC via `dac_write()`.
+- **Input filtering** — v1.0 uses median-of-51 matching original firmware; Music Thing uses ResponsiveAnalogRead with 4x oversampling.  See [hardware-io.md §3](hardware-io.md).
