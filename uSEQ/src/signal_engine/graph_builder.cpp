@@ -492,6 +492,28 @@ uint16_t GraphBuilder::compile_expr(TokenStream& ts, Scope& scope, TimeContext& 
                 }
             }
         }
+        // Catch unconsumed arguments: if the form compiled without error but
+        // left extra tokens before the closing paren, report a clear arity
+        // error naming the function.  Previously these extras silently
+        // desynchronised the token stream, producing confusing errors later.
+        if (!has_error && ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
+            auto& si = SymbolIntern::getInstance();
+            const String& name = si.getString(op_tok.symbol);
+            char msg[128];
+            snprintf(msg, sizeof(msg),
+                     "'%s' got more arguments than expected",
+                     name.c_str());
+            result = report_error_at_cat(DiagnosticCategory::Arity,
+                op_tok.span_start, op_tok.span_len,
+                msg, "Remove the extra arguments");
+            while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
+                if (ts.peek().kind == TokenKind::LParen) {
+                    skip_form(ts);
+                } else {
+                    ts.consume();
+                }
+            }
+        }
         ts.expect(TokenKind::RParen);
         return result;
     }
