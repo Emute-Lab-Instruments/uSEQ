@@ -10,29 +10,44 @@ namespace sig {
 using SymbolID = SymbolIntern::SymbolID;
 
 // ── Limits ──────────────────────────────────────────────────────────────────
-constexpr size_t MAX_CELLS          = 512;
+// Firmware builds use smaller limits to fit within the RP2040's 264 KB SRAM.
+// WASM/desktop builds keep generous limits since memory is plentiful.
+// MAX_CELLS must exceed the number of built-in symbols (~177) since cells
+// are indexed by SymbolID and user-defined names follow the built-ins.
+
+#ifdef ARDUINO
+constexpr size_t MAX_CELLS             = 256;
+constexpr size_t MAX_TOTAL_NODES       = 360;
+constexpr size_t MAX_DATA_ENTRIES      = 512;
+constexpr size_t MAX_DATA_TABLES       = 32;
+constexpr size_t MAX_LIVE_SLOTS        = 16;
+constexpr size_t MAX_LIVE_SLOT_OPTIONS = 8;
+constexpr size_t SOURCE_ARENA_SIZE     = 4096;
+constexpr size_t CSE_TABLE_SIZE        = MAX_TOTAL_NODES;
+constexpr size_t MAX_OUTPUT_DEPS       = 32;
+constexpr size_t MAX_STATE_SLOTS       = 16;
+#else
+constexpr size_t MAX_CELLS             = 512;
+constexpr size_t MAX_TOTAL_NODES       = 1024;
+constexpr size_t MAX_DATA_ENTRIES      = 2048;
+constexpr size_t MAX_DATA_TABLES       = 64;
+constexpr size_t MAX_LIVE_SLOTS        = 256;
+constexpr size_t MAX_LIVE_SLOT_OPTIONS = 16;
+constexpr size_t SOURCE_ARENA_SIZE     = 16384;
+constexpr size_t CSE_TABLE_SIZE        = MAX_TOTAL_NODES * 2;
+constexpr size_t MAX_OUTPUT_DEPS       = 64;
+constexpr size_t MAX_STATE_SLOTS       = 32;
+#endif
+
 constexpr size_t MAX_CALLABLE_PARAMS = 8;
-constexpr size_t MAX_DATA_ENTRIES   = 2048;
-constexpr size_t MAX_DATA_TABLES    = 64;
-constexpr size_t MAX_TOTAL_NODES    = 1024;
 constexpr size_t MAX_OUTPUTS        = 42;
 constexpr size_t MAX_SCOPE_DEPTH    = 32;
 constexpr size_t MAX_LOCAL_BINDINGS = 32;
 constexpr size_t MAX_DIAGNOSTICS    = 16;
 constexpr size_t MAX_INLINE_DEPTH   = 16;
-constexpr size_t MAX_OUTPUT_DEPS    = 64;
-constexpr size_t MAX_STATE_SLOTS    = 32;
-#ifdef ARDUINO
-constexpr size_t MAX_LIVE_SLOTS     = 32;
-#else
-constexpr size_t MAX_LIVE_SLOTS     = 256;
-#endif
 constexpr size_t MAX_LIVE_SLOT_ID   = 32;
-constexpr size_t MAX_LIVE_SLOT_OPTIONS = 16;
 constexpr size_t MAX_LIVE_SLOT_OPTION_LEN = 32;
 constexpr size_t MAX_TOKENS         = 256;
-constexpr size_t SOURCE_ARENA_SIZE  = 16384;
-constexpr size_t CSE_TABLE_SIZE     = MAX_TOTAL_NODES * 2;
 constexpr size_t BATCH_CHUNK_SIZE   = 256;
 
 constexpr uint16_t NODE_NONE        = 0xFFFF;

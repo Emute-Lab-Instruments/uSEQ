@@ -14,6 +14,7 @@
 #include "utils/piopwm.h"
 #include "utils/ResponsiveAnalogRead.h"
 #include "../utils/serial_message.h"
+#include <algorithm>
 
 // PIO PWM helpers (same as in the old io_manager)
 static inline void hw_pio_pwm_set_level(PIO pio, uint sm, uint32_t level) {
@@ -258,25 +259,71 @@ static int oversample_adc(int pin) {
 #endif
 
 #if defined(ARDUINO) && defined(USEQHARDWARE_1_0)
-// Simple median-of-3 filter for analog inputs on v1.0
-struct MedianFilter3 {
-    int buf[3] = {};
-    int idx    = 0;
 
-    int process(int val) {
+// Median-of-51 filter matching the original production firmware.
+// Fixed-size to avoid heap allocation on embedded.
+struct MedianFilter51 {
+    static constexpr int SIZE   = 51;
+    static constexpr int CENTER = SIZE / 2;
+
+    double buf[SIZE] = {};
+    double tmp[SIZE] = {};
+    int    idx   = 0;
+    int    count = 0;
+
+    double process(double val) {
         buf[idx] = val;
-        idx = (idx + 1) % 3;
-        // Sort three values
-        int a = buf[0], b = buf[1], c = buf[2];
-        if (a > b) { int t = a; a = b; b = t; }
-        if (b > c) { int t = b; b = c; c = t; }
-        if (a > b) { int t = a; a = b; b = t; }
-        return b;  // median
+        idx = (idx + 1) % SIZE;
+        if (count < SIZE) count++;
+        int n = count;
+        for (int i = 0; i < n; i++) tmp[i] = buf[i];
+        int center = n / 2;
+        std::nth_element(tmp, tmp + center, tmp + n);
+        return tmp[center];
     }
 };
 
-static MedianFilter3 s_ai1_filter;
-static MedianFilter3 s_ai2_filter;
+static MedianFilter51 s_ai1_filter;
+static MedianFilter51 s_ai2_filter;
+
+// PDM driver for LED_AI1 — runs on a 150µs hardware repeating timer,
+// independent of the main loop.  pdm_w is updated in read_inputs().
+static float pdm_y   = 0;
+static float pdm_err = 0;
+static volatile float pdm_w = 0;
+
+static bool pdm_timer_callback(repeating_timer_t*) {
+    pdm_y   = pdm_w > pdm_err ? 1 : 0;
+    pdm_err = pdm_y - pdm_w + pdm_err;
+    digitalWrite(LED_AI1, pdm_y == 1 ? HIGH : LOW);
+    return true;
+}
+
+static void start_pdm_timer() {
+    static repeating_timer_t pdm_timer;
+    add_repeating_timer_us(150, pdm_timer_callback, NULL, &pdm_timer);
+}
+
+// Gate input ISR state — latches rising edges so short pulses aren't missed.
+static volatile uint8_t s_gate1_state   = 0;
+static volatile uint8_t s_gate2_state   = 0;
+static volatile uint8_t s_gate1_latched = 0;
+static volatile uint8_t s_gate2_latched = 0;
+
+static void gate1_isr() {
+    uint8_t val = 1 - digitalRead(PIN_I1);
+    s_gate1_state = val;
+    if (val) s_gate1_latched = 1;
+    digitalWrite(LED_I1, val);
+}
+
+static void gate2_isr() {
+    uint8_t val = 1 - digitalRead(PIN_I2);
+    s_gate2_state = val;
+    if (val) s_gate2_latched = 1;
+    digitalWrite(LED_I2, val);
+}
+
 #endif
 
 #if defined(ARDUINO) && defined(USEQHARDWARE_0_2)
@@ -395,6 +442,8 @@ void HardwareIO::init()
 #ifdef ENABLE_DIGITAL_IO
     pinMode(PIN_I1, INPUT_PULLUP);
     pinMode(PIN_I2, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(PIN_I1), gate1_isr, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(PIN_I2), gate2_isr, CHANGE);
 #endif
 #ifdef ENABLE_ANALOG_INPUTS
     analogReadResolution(11);
@@ -422,8 +471,21 @@ void HardwareIO::init()
 #endif
 
     // ── Configure LED pin modes ─────────────────────────────────────────
+    // On variants where continuous-output LEDs are PIO-driven (v1.0, v0.2),
+    // pwm_program_init above already set the pin function to PIO via
+    // pio_gpio_init. Calling pinMode here would call gpio_init, which resets
+    // the function back to SIO and steals the pin from PIO — leaving the
+    // analog LEDs stuck low. Skip those indices; only configure non-PIO LED
+    // pins (digital LEDs on v1.0/v0.2, all LEDs on MUSICTHING/Expander).
 #ifdef ENABLE_LED_CONTROL
     for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
+#if !defined(USEQHARDWARE_EXPANDER_OUT_0_1) && !defined(MUSICTHING)
+        if (i < HW_NUM_CONTINUOUS) {
+            // PIO-managed; only adjust slew rate (function stays PIO).
+            gpio_set_slew_rate(OUTPUT_LED_PINS[i], GPIO_SLEW_RATE_SLOW);
+            continue;
+        }
+#endif
         pinMode(OUTPUT_LED_PINS[i], OUTPUT_2MA);
         gpio_set_slew_rate(OUTPUT_LED_PINS[i], GPIO_SLEW_RATE_SLOW);
     }
@@ -433,6 +495,7 @@ void HardwareIO::init()
     pinMode(LED_AI2, OUTPUT_2MA);
     pinMode(LED_I1, OUTPUT_2MA);
     pinMode(LED_I2, OUTPUT_2MA);
+    start_pdm_timer();
 #endif
 #endif // ENABLE_LED_CONTROL
 
@@ -512,10 +575,17 @@ void HardwareIO::read_inputs()
     else                inputs[INP_ZSWITCH] = 1.0;
 
 #elif defined(USEQHARDWARE_1_0)
-    // ── Digital gate inputs ──────────────────────────────────────────────
+    // ── Digital gate inputs (interrupt-driven with edge latching) ────────
 #ifdef ENABLE_DIGITAL_IO
-    inputs[INP_I1] = 1.0 - digitalRead(PIN_I1);
-    inputs[INP_I2] = 1.0 - digitalRead(PIN_I2);
+    {
+        uint8_t g1 = s_gate1_state;
+        if (s_gate1_latched) { g1 = 1; s_gate1_latched = 0; }
+        inputs[INP_I1] = static_cast<double>(g1);
+
+        uint8_t g2 = s_gate2_state;
+        if (s_gate2_latched) { g2 = 1; s_gate2_latched = 0; }
+        inputs[INP_I2] = static_cast<double>(g2);
+    }
 #endif
 
     // ── Toggle switch (3-way) ────────────────────────────────────────────
@@ -532,11 +602,12 @@ void HardwareIO::read_inputs()
 #ifdef ENABLE_ANALOG_INPUTS
     int raw_ai1 = analogRead(PIN_AI1);
     int raw_ai2 = analogRead(PIN_AI2);
-    inputs[INP_AI1] = s_ai1_filter.process(raw_ai1) * RECP_2048;
-    inputs[INP_AI2] = s_ai2_filter.process(raw_ai2) * RECP_2048;
+    inputs[INP_AI1] = s_ai1_filter.process(raw_ai1 * RECP_2048);
+    inputs[INP_AI2] = s_ai2_filter.process(raw_ai2 * RECP_2048);
 
 #ifdef ENABLE_LED_CONTROL
-    // LED feedback for analog inputs
+    int ai1_sq = (raw_ai1 * raw_ai1) >> 11;
+    pdm_w = ai1_sq / 2048.0f;
     int ai2_sq = (raw_ai2 * raw_ai2) >> 11;
     analogWrite(LED_AI2, ai2_sq);
 #endif
@@ -594,17 +665,24 @@ void HardwareIO::write_outputs()
 
 #ifdef ENABLE_LED_CONTROL
         // LED (exponential curve)
-        int led_val = scaled;
-        led_val = (led_val * led_val) >> 11;
+        // For inverted hardware, LED shows the logical value (what the user
+        // specified), not the inverted physical value. Use the un-inverted
+        // output value for the brightness curve.
+        int led_val;
         if constexpr (INVERT_ANALOG) {
-            led_val = MAX_PWM_I - led_val;
+            // Use original output value, not inverted scaled
+            led_val = static_cast<int>(val * MAX_PWM);
+            if (led_val > MAX_PWM_I) led_val = MAX_PWM_I;
+        } else {
+            led_val = scaled;
         }
+        led_val = (led_val * led_val) >> 11;
 
         // Write LED
-#if defined(USEQHARDWARE_EXPANDER_OUT_0_1) || defined(MUSICTHING)
+#if defined(MUSICTHING) || defined(USEQHARDWARE_EXPANDER_OUT_0_1)
         analogWrite(OUTPUT_LED_PINS[i], led_val);
 #else
-        // Use PIO PWM for LED on standard hardware
+        // Standard hardware (v1.0, v0.2): use PIO PWM
         PIO pio_inst = (i < 4) ? pio0 : pio1;
         uint sm = static_cast<uint>(i % 4);
         hw_pio_pwm_set_level(pio_inst, sm, static_cast<uint32_t>(led_val));
@@ -625,11 +703,12 @@ void HardwareIO::write_outputs()
 #endif
     }
 
-    // ── Binary outputs (indices num_continuous_outs .. num_continuous_outs+num_binary_outs-1)
+    // ── Binary outputs ────────────────────────────────────────────────────
+    // Signal engine indices: d1=8, d2=9, ... (see graph_builder resolve_output_index)
+    // Hardware pins: OUTPUT_PINS[num_continuous_outs + i]
 #ifdef ENABLE_DIGITAL_IO
     for (int i = 0; i < num_binary_outs; i++) {
-        int out_idx = num_continuous_outs + i;
-        double val  = outputs[out_idx];
+        double val  = outputs[8 + i];
 
         uint8_t dv = (val > 0.0) ? 1 : 0;
         if constexpr (INVERT_DIGITAL) {
@@ -666,13 +745,8 @@ void HardwareIO::write_outputs()
 void HardwareIO::update_leds()
 {
 #if defined(ARDUINO) && defined(ENABLE_LED_CONTROL)
-
-#if defined(USEQHARDWARE_1_0)
-    // Reflect gate input activity on input LEDs
-    digitalWrite(LED_I1, inputs[INP_I1] > 0.5 ? HIGH : LOW);
-    digitalWrite(LED_I2, inputs[INP_I2] > 0.5 ? HIGH : LOW);
-#endif
-
+    // v1.0: gate input LEDs are driven by ISR (gate1_isr/gate2_isr)
+    // for instant response — no work needed here.
 #endif // ARDUINO && ENABLE_LED_CONTROL
 }
 
@@ -683,16 +757,36 @@ void HardwareIO::update_leds()
 // present on all hardware variants.  The onboard LED (LED_BUILTIN) is also
 // used as a secondary indicator where available.
 
+// Helper: set an output LED value using the correct peripheral.
+// Continuous output LEDs (indices < HW_NUM_CONTINUOUS) on standard hardware
+// use PIO PWM — analogWrite would steal the pin from PIO.
+static inline void set_output_led(int i, int value)
+{
+#ifdef ARDUINO
+#if !defined(USEQHARDWARE_EXPANDER_OUT_0_1) && !defined(MUSICTHING)
+    if (i < HW_NUM_CONTINUOUS) {
+        PIO pio_inst = (i < 4) ? pio0 : pio1;
+        uint sm = static_cast<uint>(i % 4);
+        hw_pio_pwm_set_level(pio_inst, sm, static_cast<uint32_t>(value));
+    } else {
+        analogWrite(OUTPUT_LED_PINS[i], value);
+    }
+#else
+    analogWrite(OUTPUT_LED_PINS[i], value);
+#endif
+#else
+    (void)i; (void)value;
+#endif
+}
+
 void HardwareIO::boot_led_amber()
 {
 #ifdef ARDUINO
 #ifdef ENABLE_LED_CONTROL
-    // Turn on all output LEDs at medium brightness to signal "booting"
     for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
-        analogWrite(OUTPUT_LED_PINS[i], MAX_PWM_I / 2);
+        set_output_led(i, MAX_PWM_I / 2);
     }
 #endif
-    // Onboard LED on
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, HIGH);
 #endif
@@ -702,12 +796,10 @@ void HardwareIO::boot_led_green()
 {
 #ifdef ARDUINO
 #ifdef ENABLE_LED_CONTROL
-    // Turn off all output LEDs — normal tick loop will drive them
     for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
-        analogWrite(OUTPUT_LED_PINS[i], 0);
+        set_output_led(i, 0);
     }
 #endif
-    // Brief onboard LED flash to signal ready, then off
     digitalWrite(LED_BUILTIN, HIGH);
     delay(50);
     digitalWrite(LED_BUILTIN, LOW);
@@ -717,11 +809,10 @@ void HardwareIO::boot_led_green()
 void HardwareIO::boot_led_error_flash()
 {
 #ifdef ARDUINO
-    // Rapid flash pattern: 3 quick blinks
     for (int blink = 0; blink < 3; blink++) {
 #ifdef ENABLE_LED_CONTROL
         for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
-            analogWrite(OUTPUT_LED_PINS[i], MAX_PWM_I);
+            set_output_led(i, MAX_PWM_I);
         }
 #endif
         digitalWrite(LED_BUILTIN, HIGH);
@@ -729,13 +820,109 @@ void HardwareIO::boot_led_error_flash()
 
 #ifdef ENABLE_LED_CONTROL
         for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
-            analogWrite(OUTPUT_LED_PINS[i], 0);
+            set_output_led(i, 0);
         }
 #endif
         digitalWrite(LED_BUILTIN, LOW);
         delay(80);
     }
 #endif
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// boot_led_animation()
+// ═══════════════════════════════════════════════════════════════════════════
+// Variant-specific LED chase animation matching the original production
+// firmware.  Runs early during boot as a visual "I'm alive" indicator.
+
+void HardwareIO::boot_led_animation()
+{
+#ifdef ARDUINO
+#ifdef ENABLE_LED_CONTROL
+
+#if defined(USEQHARDWARE_1_0)
+    int d = 30;
+    for (int i = 0; i < 8; i++) {
+        digitalWrite(LED_AI1, HIGH);
+        delay(d);
+        digitalWrite(LED_AI2, HIGH);
+        delay(d);
+        set_output_led(0, MAX_PWM_I);   // A1
+        digitalWrite(LED_AI1, LOW);
+        delay(d);
+        set_output_led(1, MAX_PWM_I);   // A2
+        digitalWrite(LED_AI2, LOW);
+        delay(d);
+        set_output_led(2, MAX_PWM_I);   // A3
+        set_output_led(0, 0);           // A1 off
+        delay(d);
+        set_output_led(5, MAX_PWM_I);   // D3
+        set_output_led(1, 0);           // A2 off
+        delay(d);
+        set_output_led(4, MAX_PWM_I);   // D2
+        set_output_led(2, 0);           // A3 off
+        delay(d);
+        set_output_led(3, MAX_PWM_I);   // D1
+        set_output_led(5, 0);           // D3 off
+        delay(d);
+        digitalWrite(LED_I2, HIGH);
+        set_output_led(4, 0);           // D2 off
+        delay(d);
+        digitalWrite(LED_I1, HIGH);
+        set_output_led(3, 0);           // D1 off
+        delay(d);
+        digitalWrite(LED_I2, LOW);
+        delay(d);
+        digitalWrite(LED_I1, LOW);
+        delay(d);
+        d -= 3;
+    }
+
+#elif defined(USEQHARDWARE_0_2)
+    // v0.2 output_led_pins: A1=0, A2=1, D1=2, D2=3, D3=4, D4=5
+    int d = 30;
+    for (int i = 0; i < 8; i++) {
+        digitalWrite(LED_I1, HIGH);
+        delay(d);
+        set_output_led(0, MAX_PWM_I);   // A1
+        delay(d);
+        set_output_led(2, MAX_PWM_I);   // D1
+        digitalWrite(LED_I1, LOW);
+        delay(d);
+        set_output_led(4, MAX_PWM_I);   // D3
+        set_output_led(0, 0);           // A1 off
+        delay(d);
+        set_output_led(5, MAX_PWM_I);   // D4
+        set_output_led(2, 0);           // D1 off
+        delay(d);
+        set_output_led(3, MAX_PWM_I);   // D2
+        set_output_led(4, 0);           // D3 off
+        delay(d);
+        set_output_led(1, MAX_PWM_I);   // A2
+        set_output_led(5, 0);           // D4 off
+        delay(d);
+        digitalWrite(LED_I2, HIGH);
+        set_output_led(3, 0);           // D2 off
+        delay(d);
+        set_output_led(1, 0);           // A2 off
+        delay(d);
+        digitalWrite(LED_I2, LOW);
+        delay(d);
+        d -= 3;
+    }
+
+#else
+    // Fallback: amber glow
+    for (int i = 0; i < HW_NUM_OUTPUTS; i++) {
+        set_output_led(i, MAX_PWM_I / 2);
+    }
+#endif
+
+#endif // ENABLE_LED_CONTROL
+
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, HIGH);
+#endif // ARDUINO
 }
 
 } // namespace firmware

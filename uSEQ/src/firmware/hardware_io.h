@@ -29,9 +29,11 @@ struct HardwareIO {
 
     // ── Boot LED Sequence ─────────────────────────────────────────────────
     // Uses output LEDs to signal boot state.
-    // - boot_led_amber(): all output LEDs on (booting)
+    // - boot_led_animation(): variant-specific LED chase (or amber fallback)
+    // - boot_led_amber(): all output LEDs on (booting — used as a static fallback)
     // - boot_led_green(): all output LEDs off (ready — normal tick takes over)
     // - boot_led_error_flash(): rapid flash pattern (error during boot)
+    void boot_led_animation();
     void boot_led_amber();
     void boot_led_green();
     void boot_led_error_flash();

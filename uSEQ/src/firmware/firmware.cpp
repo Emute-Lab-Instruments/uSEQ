@@ -18,15 +18,17 @@ void Firmware::init()
     // 1. Hardware I/O (pins, DACs, ADCs, LEDs)
     io.init();
 
-    // 2. LED → amber (booting)
+    // 2. LED boot animation (variant-specific chase, or amber fallback)
 #ifdef ENABLE_LED_CONTROL
-    io.boot_led_amber();
+    io.boot_led_animation();
 #endif
 
     // 3. Serial protocol (USB CDC, baud rate)
 #ifdef ENABLE_SIGNAL_ENGINE
     serial.engine = &engine;
 #endif
+    serial.num_serial_outs = io.num_serial_outs;
+    serial.num_serial_ins  = 2; // ain1, ain2 — the only inputs the editor subscribes to
     serial.init();
 
     // 4. Flash storage (on-chip filesystem)
@@ -99,12 +101,13 @@ void Firmware::tick()
 #ifdef ENABLE_SIGNAL_ENGINE
     if (serial.has_incoming()) {
         if (serial.read_command(code_buffer, sizeof(code_buffer))) {
-            // Determine actual length (read_command null-terminates)
             uint32_t len = 0;
             while (len < sizeof(code_buffer) && code_buffer[len] != '\0') {
                 len++;
             }
 
+            engine.state.current_time = t;
+            engine.state.current_dt = t - prev_tick_time;
             sig::EvalResult result = sig::eval_cold(code_buffer, len, engine);
             serial.send_eval_response(result);
         }
@@ -153,10 +156,12 @@ void Firmware::tick()
     // values, which get written to hardware below.
 
     // ── 5. Write outputs and update LEDs ───────────────────────────────────
+    // io.outputs mirrors engine output_values directly (engine layout:
+    // a1-a8=0-7, d1-d8=8-15, s1-s8=16-23). hardware_io::write_outputs()
+    // knows the layout and routes to the right pins.
     dt::mark("output");
-    for (size_t i = 0; i < sig::MAX_OUTPUTS; ++i) {
+    for (size_t i = 0; i < sig::MAX_OUTPUTS; ++i)
         io.outputs[i] = output_values[i];
-    }
     io.write_outputs();
 #ifdef ENABLE_LED_CONTROL
     io.update_leds();
@@ -172,7 +177,9 @@ void Firmware::tick()
 
     // ── 7. Opportunistic stream data for visualisation ─────────────────────
     dt::mark("stream");
-    serial.send_stream_data(output_values, sig::MAX_OUTPUTS);
+    serial.m_current_time = t;
+    serial.send_stream_data(output_values, sig::MAX_OUTPUTS,
+                            io.inputs, firmware::MAX_HW_INPUTS);
     dt::tick_end();
 #if USEQ_DEVTOOLS
     {
