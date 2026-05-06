@@ -596,8 +596,6 @@ void HardwareIO::write_outputs()
         // LED (exponential curve)
         int led_val = scaled;
         led_val = (led_val * led_val) >> 11;
-        if (led_val > MAX_PWM_I) led_val = MAX_PWM_I;
-        if (led_val < 0) led_val = 0;
         if constexpr (INVERT_ANALOG) {
             led_val = MAX_PWM_I - led_val;
         }
