@@ -313,17 +313,72 @@ static volatile uint8_t s_gate2_latched = 0;
 static void gate1_isr() {
     uint8_t val = 1 - digitalRead(PIN_I1);
     s_gate1_state = val;
-    if (val) s_gate1_latched = 1;
+    if (val) {
+        s_gate1_latched = 1;
+        // External-clock mailbox (see ext_clock_read_pulse).
+        extern volatile uint32_t s_ext_clk_i1_us;
+        extern volatile uint8_t  s_ext_clk_i1_seq;
+        s_ext_clk_i1_us  = (uint32_t)micros();
+        s_ext_clk_i1_seq++;
+    }
     digitalWrite(LED_I1, val);
 }
 
 static void gate2_isr() {
     uint8_t val = 1 - digitalRead(PIN_I2);
     s_gate2_state = val;
-    if (val) s_gate2_latched = 1;
+    if (val) {
+        s_gate2_latched = 1;
+        extern volatile uint32_t s_ext_clk_i2_us;
+        extern volatile uint8_t  s_ext_clk_i2_seq;
+        s_ext_clk_i2_us  = (uint32_t)micros();
+        s_ext_clk_i2_seq++;
+    }
     digitalWrite(LED_I2, val);
 }
 
+#endif
+
+// ── External clock pulse mailbox ───────────────────────────────────────────
+// Single-slot per input. Writers: gate ISR (USEQHARDWARE_1_0) or polled
+// rising-edge detection at the end of read_inputs() (other variants).
+// Reader: ClockSync::tick() in the main loop.
+//
+// `_us` is `micros()` cast to uint32_t (wraps at ~71 min, fine for delta math).
+// `_seq` increments on every recorded pulse and wraps at 256; readers compare
+// against their own last-seen seq to detect new pulses without losing edges.
+//
+// volatile is sufficient on the RP2040 single-core path used by the tick
+// loop: 32-bit aligned writes to uint32_t and 8-bit writes to uint8_t are
+// each atomic w.r.t. interrupt preemption, and we never need to read the
+// pair atomically — readers tolerate seeing a slightly stale `_us` paired
+// with a fresh `_seq` (they'll see the matching `_us` on the next call).
+volatile uint32_t s_ext_clk_i1_us  = 0;
+volatile uint8_t  s_ext_clk_i1_seq = 0;
+volatile uint32_t s_ext_clk_i2_us  = 0;
+volatile uint8_t  s_ext_clk_i2_seq = 0;
+
+#ifdef ARDUINO
+// Previous polled gate values, for rising-edge detection on variants without
+// ISRs (MUSICTHING, USEQHARDWARE_0_2). Updated by poll_ext_clock_edges()
+// after read_inputs() has populated inputs[INP_I1]/inputs[INP_I2].
+static uint8_t s_polled_prev_i1 = 0;
+static uint8_t s_polled_prev_i2 = 0;
+
+static inline void poll_ext_clock_edges(const double* inputs) {
+    uint8_t cur1 = inputs[INP_I1] > 0.5 ? 1 : 0;
+    uint8_t cur2 = inputs[INP_I2] > 0.5 ? 1 : 0;
+    if (cur1 && !s_polled_prev_i1) {
+        s_ext_clk_i1_us  = (uint32_t)micros();
+        s_ext_clk_i1_seq++;
+    }
+    if (cur2 && !s_polled_prev_i2) {
+        s_ext_clk_i2_us  = (uint32_t)micros();
+        s_ext_clk_i2_seq++;
+    }
+    s_polled_prev_i1 = cur1;
+    s_polled_prev_i2 = cur2;
+}
 #endif
 
 #if defined(ARDUINO) && defined(USEQHARDWARE_0_2)
@@ -636,7 +691,29 @@ void HardwareIO::read_inputs()
 #endif
 #endif
 
+    // Populate ext-clock mailbox via polled rising-edge detection on variants
+    // that don't have a gate ISR (anything except USEQHARDWARE_1_0).
+    // On v1.0, the ISR has already updated the mailbox.
+#if !defined(USEQHARDWARE_1_0)
+    poll_ext_clock_edges(inputs);
+#endif
+
 #endif // ARDUINO
+}
+
+// ── External-clock pulse mailbox accessor ──────────────────────────────────
+
+void ext_clock_read_pulse(uint8_t input, uint32_t& out_us, uint8_t& out_seq) {
+    if (input == 1) {
+        out_us  = s_ext_clk_i1_us;
+        out_seq = s_ext_clk_i1_seq;
+    } else if (input == 2) {
+        out_us  = s_ext_clk_i2_us;
+        out_seq = s_ext_clk_i2_seq;
+    } else {
+        out_us  = 0;
+        out_seq = 0;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

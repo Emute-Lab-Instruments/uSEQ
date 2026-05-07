@@ -179,13 +179,44 @@ for instant visual feedback with zero main-loop latency.
 The rising-edge latch is a new addition.  The original production firmware
 used interrupt-driven reads and ISR-driven LEDs (same as now), but wrote
 the pin state directly to the input array without latching — a short pulse
-that arrived and departed between ticks could be missed by the main loop
-(though the ISR still processed it for external clock tracking).  The
-original ISR also called `update_clock_from_external()` on rising edges
-when the clock source was set to external; in the current firmware, tempo
-estimation is handled separately.
+that arrived and departed between ticks could be missed by the main loop.
 
 On other variants, gate inputs are polled via `digitalRead` in `read_inputs()`.
+
+### 3.2.1 External Clock Sync
+
+When configured via `(set-clock-ext input [divisor])`, gate input rising edges
+drive tempo estimation that updates the `bpm` cell in real time. `input` is 1
+or 2; the optional whole-number divisor is pulses per beat and defaults to 1.
+`(set-clock-int)` restores the internal source, `(get-clock-source)` returns
+0/1/2, and `(reset-clock-ext)` clears estimator/tracker state.
+`(reset-clock-int)` resets logical transport time to zero without changing the
+user-visible time offset.
+
+1. **Mailbox**.  On every rising edge, a writer (the v1.0 ISR, or a polled
+   rising-edge detector at the end of `read_inputs()` on other variants)
+   stores `(uint32_t)micros()` into `s_ext_clk_iN_us` and increments
+   `s_ext_clk_iN_seq`.  The seq counter wraps at 256; readers use it only
+   for change detection.  Writes are atomic w.r.t. interrupt preemption on
+   the single-core path used by the tick loop.
+2. **Drain**.  `ClockSync::tick()` (called from `Firmware::tick()` after
+   `read_inputs()`) compares the seq against its last-seen value.  On a
+   new pulse it feeds the timestamp to a fixed-size moving-average
+   `TempoEstimator` (5-sample window).
+3. **Update**.  Once the filter has warmed up, BPM = `60_000_000 / avg_us
+   / divisor` (MIDI convention: divisor = pulses per beat).  The result
+   is written directly to the `bpm` cell — no `on_cell_changed` is invoked.
+   The write bumps `CellStore::store_revision`, causing the firmware to refresh
+   its cached cell snapshot without rebuilding the graph.
+4. **Phase lock**.  Every `divisor` pulses (one beat) the tracker
+   advances; at each bar boundary the transport time is snapped to the
+   nearest bar by adjusting `EngineState::transport_offset`. The user-visible
+   `time_offset` is unchanged; the snap takes effect on the next tick to avoid
+   a within-tick discontinuity.
+
+Tempo estimation runs in the main loop, not the ISR — the ISR does the
+absolute minimum (timestamp + seq increment) so it can be brief and safe
+on any platform.
 
 ### 3.3 Toggle Switch (v1.0, 3-way)
 

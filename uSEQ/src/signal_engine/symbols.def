@@ -180,6 +180,11 @@ SYM(useq_play,           "useq-play",            side_effect)
 SYM(useq_pause,          "useq-pause",           side_effect)
 SYM(useq_stop,           "useq-stop",            side_effect)
 SYM(useq_rewind,         "useq-rewind",          side_effect)
+SYM(set_clock_ext,       "set-clock-ext",        side_effect)
+SYM(set_clock_int,       "set-clock-int",        side_effect)
+SYM(get_clock_source,    "get-clock-source",     side_effect)
+SYM(reset_clock_ext,     "reset-clock-ext",      side_effect)
+SYM(reset_clock_int,     "reset-clock-int",      side_effect)
 
 // ── Derived timing ─────────────────────────────────────────────────────────
 SYM(beat_dur,            "beat-dur",             none)

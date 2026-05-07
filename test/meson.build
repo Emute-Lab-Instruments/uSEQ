@@ -123,6 +123,17 @@ json_cursor_test_exe = executable(
 
 test('json_cursor_test', json_cursor_test_exe)
 
+clock_sync_test_exe = executable(
+  'test_clock_sync',
+  sources : ['firmware/test_clock_sync.cpp'],
+  include_directories : test_inc,
+  cpp_args : firmware_test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [firmware_dep, math_dep]
+)
+
+test('clock_sync_test', clock_sync_test_exe, timeout: 30)
+
 firmware_e2e2_test_exe = executable(
   'test_firmware_e2e_part2',
   sources : ['firmware/test_firmware_e2e_part2.cpp'],

@@ -158,6 +158,13 @@ void Firmware::tick()
     }
 #endif
 
+    // ── 3c. External clock sync (drains gate-pulse mailbox, updates BPM
+    //         cell + nudges time_offset to align with the external clock).
+    //         No-op when clock_source = 0 (internal).
+#ifdef ENABLE_SIGNAL_ENGINE
+    clock_sync.tick(engine, t);
+#endif
+
     // ── 4. Execute signal graph ────────────────────────────────────────────
     dt::mark("execute");
 #ifdef ENABLE_SIGNAL_ENGINE

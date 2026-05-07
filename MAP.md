@@ -17,7 +17,8 @@ compiler/control runtime. The canonical language entry point is
   capabilities
   (`build_info.h`), CRC-protected manufacturing identity
   (`factory_identity.{h,cpp}`), and I2C host/expander runtime; see
-  `docs/specs/i2c-expander.md` for the output-expander wire contract.
+  `docs/specs/i2c-expander.md` for the output-expander wire contract;
+  `clock_sync.{h,cpp}` owns external-gate tempo estimation and phase lock.
 - `uSEQ/src/ports/` — platform interfaces and test doubles, including the
   fixed-capacity fake I2C bus used by native host/expander simulation.
 - `uSEQ/src/utils/json_cursor.h` — allocation-free bounded JSON field/object/

@@ -15,6 +15,10 @@ namespace sig {
 // ── Engine State ───────────────────────────────────────────────────────────
 // Transport and timing state managed by cold-path commands.
 
+// Clock source for tempo: internal (free-running) or driven by a gate input.
+// Stored as uint8_t so EngineState stays POD-friendly across the engine/firmware
+// boundary; the firmware-side ClockSync module interprets the values.
+//   0 = internal, 1 = external on input I1, 2 = external on input I2
 struct EngineState {
     double time_offset   = 0.0;
     // Internal transport-origin correction. Kept separate from the
@@ -76,6 +80,10 @@ struct EngineState {
         has_pause_anchor = true;
         is_playing = false;
     }
+
+    uint8_t clock_source        = 0;     // see comment above
+    uint8_t ext_clock_divisor   = 1;     // pulses per beat (MIDI: typically 1, 2, 4, 24)
+    bool    ext_clock_reset     = false; // one-shot: firmware resets tracker, then clears
 };
 
 // ── Output Source Storage ───────────────────────────────────────────────────

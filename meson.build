@@ -171,6 +171,7 @@ signal_engine_dep = declare_dependency(
 firmware_lib = static_library('useq_firmware',
   'uSEQ/src/firmware/firmware.cpp',
   'uSEQ/src/firmware/hardware_io.cpp',
+  'uSEQ/src/firmware/clock_sync.cpp',
   'uSEQ/src/firmware/serial_protocol.cpp',
   'uSEQ/src/firmware/serial_protocol_dispatch.cpp',
   'uSEQ/src/firmware/serial_protocol_encoding.cpp',

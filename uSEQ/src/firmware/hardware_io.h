@@ -39,6 +39,14 @@ struct HardwareIO {
     void boot_led_error_flash();
 };
 
+// External-clock pulse mailbox. Populated by the gate ISR (USEQHARDWARE_1_0)
+// or by polled rising-edge detection in read_inputs() (other variants).
+// The seq counter wraps at 256 — callers compare against their last-seen
+// value to detect new pulses, so the absolute count doesn't matter.
+//
+// `input` is 1 or 2 (matching I1 / I2). Out-of-range inputs return seq=0.
+void ext_clock_read_pulse(uint8_t input, uint32_t& out_us, uint8_t& out_seq);
+
 } // namespace firmware
 
 #endif // FIRMWARE_HARDWARE_IO_H

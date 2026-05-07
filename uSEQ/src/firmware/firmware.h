@@ -6,6 +6,7 @@
 #include "../signal_engine/signal_engine.h"
 #include "hardware_io.h"
 #include "serial_protocol.h"
+#include "clock_sync.h"
 
 // Optional modules — only included when feature flags are defined
 #if defined(ENABLE_FLASH_STORAGE)
@@ -29,6 +30,7 @@ struct Firmware {
 
 #ifdef ENABLE_SIGNAL_ENGINE
     sig::SignalEngine engine;
+    ClockSync clock_sync;
 #endif
 
 #ifdef ENABLE_FLASH_STORAGE

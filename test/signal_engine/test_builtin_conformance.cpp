@@ -155,6 +155,11 @@ static const TopLevelCase kTopLevelCases[] = {
     {"useq-pause", "side_effect", nullptr, "(useq-pause)", "(useq-pause 1)"},
     {"useq-stop", "side_effect", nullptr, "(useq-stop)", "(useq-stop 1)"},
     {"useq-rewind", "side_effect", nullptr, "(useq-rewind)", "(useq-rewind 1)"},
+    {"set-clock-ext", "side_effect", nullptr, "(set-clock-ext 1 4)", "(set-clock-ext 3)"},
+    {"set-clock-int", "side_effect", nullptr, "(set-clock-int)", "(set-clock-int 1)"},
+    {"get-clock-source", "side_effect", nullptr, "(get-clock-source)", "(get-clock-source 1)"},
+    {"reset-clock-ext", "side_effect", nullptr, "(reset-clock-ext)", "(reset-clock-ext 1)"},
+    {"reset-clock-int", "side_effect", nullptr, "(reset-clock-int)", "(reset-clock-int 1)"},
     {"synth", "side_effect", nullptr, "(synth \"osc/sine\" :freq 440)", "(synth)"},
     {"with-state-id", "control", nullptr, "(with-state-id \"catalogue-wrapper\" (synth \"osc/sine\" :freq 440))", "(with-state-id \"catalogue-wrapper\")"},
 };

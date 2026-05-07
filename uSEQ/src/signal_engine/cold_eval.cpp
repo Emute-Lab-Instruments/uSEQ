@@ -2086,6 +2086,89 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
 }
 #endif
 
+// ── Clock source management ─────────────────────────────────────────────────
+// Sets EngineState clock fields; the firmware tick loop reads these and
+// reconfigures its ClockSync module. On non-hardware builds (WASM, desktop)
+// these still set the state — they just have no observable effect since no
+// gate pulses arrive.
+
+static EvalResult do_set_clock_ext(TokenStream& ts, EngineState& state) {
+    Token input_tok = ts.consume();
+    if (input_tok.kind != TokenKind::Number ||
+        !std::isfinite(input_tok.number) ||
+        std::floor(input_tok.number) != input_tok.number) {
+        return make_error("set-clock-ext needs input 1 or 2 and an optional divisor",
+                          "Try: (set-clock-ext 1 1)");
+    }
+    int input = (int)input_tok.number;
+    if (input != 1 && input != 2) {
+        return make_error("set-clock-ext input must be 1 or 2",
+                          "Try: (set-clock-ext 1 1) or (set-clock-ext 2 4)");
+    }
+
+    int divisor = 1;
+    if (ts.peek().kind == TokenKind::Number) {
+        Token div_tok = ts.consume();
+        if (!std::isfinite(div_tok.number) || div_tok.number < 1.0 ||
+            div_tok.number > 255.0 ||
+            std::floor(div_tok.number) != div_tok.number) {
+            return make_error(
+                "set-clock-ext divisor must be a whole number from 1 to 255",
+                "Try: (set-clock-ext 1 4)");
+        }
+        divisor = (int)div_tok.number;
+    } else if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("set-clock-ext divisor must be a number",
+                          "Try: (set-clock-ext 1 4)");
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("set-clock-ext accepts an input and optional divisor",
+                          "Try: (set-clock-ext 1 4)");
+    }
+
+    state.clock_source = (uint8_t)input;
+    state.ext_clock_divisor = (uint8_t)divisor;
+    state.ext_clock_reset = true;
+    return make_ok();
+}
+
+static EvalResult clock_command_no_args(TokenStream& ts, const char* name) {
+    if (ts.peek().kind == TokenKind::RParen) return make_ok();
+    static char message[96];
+    std::snprintf(message, sizeof(message), "%s accepts no arguments", name);
+    return make_error(message, nullptr);
+}
+
+static EvalResult do_set_clock_int(TokenStream& ts, EngineState& state) {
+    EvalResult arity = clock_command_no_args(ts, "set-clock-int");
+    if (arity.kind == EvalResult::Error) return arity;
+    state.clock_source = 0;
+    return make_ok();
+}
+
+static EvalResult do_get_clock_source(TokenStream& ts, EngineState& state) {
+    EvalResult arity = clock_command_no_args(ts, "get-clock-source");
+    if (arity.kind == EvalResult::Error) return arity;
+    EvalResult r;
+    r.kind = EvalResult::Number;
+    r.number = (double)state.clock_source;
+    return r;
+}
+
+static EvalResult do_reset_clock_ext(TokenStream& ts, EngineState& state) {
+    EvalResult arity = clock_command_no_args(ts, "reset-clock-ext");
+    if (arity.kind == EvalResult::Error) return arity;
+    state.ext_clock_reset = true;
+    return make_ok();
+}
+
+static EvalResult do_reset_clock_int(TokenStream& ts, EngineState& state) {
+    EvalResult arity = clock_command_no_args(ts, "reset-clock-int");
+    if (arity.kind == EvalResult::Error) return arity;
+    state.rewind();
+    return make_ok();
+}
+
 // ── Output assignment ───────────────────────────────────────────────────────
 
 static EvalResult do_unassign(TokenStream& ts, SignalEngine& engine) {
@@ -2746,6 +2829,33 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             return r;
         }
 #endif
+
+        // Clock source management
+        if (op == sym.set_clock_ext) {
+            EvalResult r = do_set_clock_ext(ts, engine.state);
+            ts.expect(TokenKind::RParen);
+            return r;
+        }
+        if (op == sym.set_clock_int) {
+            EvalResult r = do_set_clock_int(ts, engine.state);
+            ts.expect(TokenKind::RParen);
+            return r;
+        }
+        if (op == sym.get_clock_source) {
+            EvalResult r = do_get_clock_source(ts, engine.state);
+            ts.expect(TokenKind::RParen);
+            return r;
+        }
+        if (op == sym.reset_clock_ext) {
+            EvalResult r = do_reset_clock_ext(ts, engine.state);
+            ts.expect(TokenKind::RParen);
+            return r;
+        }
+        if (op == sym.reset_clock_int) {
+            EvalResult r = do_reset_clock_int(ts, engine.state);
+            ts.expect(TokenKind::RParen);
+            return r;
+        }
 
         // zeros — create a vector of N zeros
         if (op == sym.zeros_) {
