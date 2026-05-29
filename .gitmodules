@@ -1,3 +1,0 @@
-[submodule "uSEQ/src/dsp/uSeqGens/memlp"]
-	path = uSEQ/src/dsp/uSeqGens/memlp
-	url = git@github.com:MusicallyEmbodiedML/memlp.git

@@ -70,3 +70,6 @@ samples/load.sh
 
 # Local dev tools (not for distribution)
 tools/
+
+# Claude Code agent worktrees (never commit)
+.claude/worktrees/
