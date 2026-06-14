@@ -95,6 +95,10 @@ struct GraphBuilder {
     SymbolID inline_stack[MAX_INLINE_DEPTH] = {};
     uint8_t inline_depth = 0;
 
+    // Syntactic nesting-depth guard for compile_expr recursion (RP2040 stack
+    // protection — see MAX_COMPILE_DEPTH in types.h).
+    uint16_t compile_depth = 0;
+
     // Live-edit: slot count at build start (to detect fresh allocations vs pre-existing)
     uint16_t live_slot_count_at_start = 0;
     // Live-edit ids seen during this build (duplicate detection within one graph).

@@ -151,6 +151,26 @@ static bool has_active_state() {
     return g_engine && g_engine->pool.state_slot_count > 0;
 }
 
+// True if any active output's graph reads a previous-output value via prev().
+// Such feedback outputs (e.g. (a2 (+ (prev a2) 0.01))) have no defstate slot,
+// so has_active_state() misses them, yet the fast batch path computes them
+// incorrectly: prev() would read the stale carried-forward scalar for every
+// sample instead of the immediately-preceding sample within the batch
+// (prev.md §1.4/§1.6). Detecting them here routes the program to the correct
+// sample-sequential batch path.
+static bool has_active_prev_feedback() {
+    if (!g_engine) return false;
+    const sig::NodePool& pool = g_engine->pool;
+    // Scan all exec-ordered nodes once: PrevOutputLoad anywhere in the live
+    // graph means at least one output feeds back through prev().
+    for (uint16_t i = 0; i < pool.exec_count; i++) {
+        uint16_t idx = pool.exec_order[i];
+        if (idx >= pool.node_count) continue;
+        if (pool.nodes[idx].op == sig::NodeOp::PrevOutputLoad) return true;
+    }
+    return false;
+}
+
 // Clone post-tick live state into the projection fork.
 static void reset_projection_fork(double tick_time) {
     memcpy(g_projection_fork.state_values,
@@ -568,8 +588,12 @@ extern "C"
 
     const char* useq_active_diagnostics()
     {
-        // TODO: per-output active diagnostics
-        return alloc_cstr("{}");
+        // Contract (diagnostics.md §4.2): a JSON ARRAY of per-output active
+        // diagnostics. Per-output error/fallback tracking is not yet wired into
+        // the engine (OutputSlot has no runtime error flag), so the empty case
+        // is the correct interim. Returning "[]" (not "{}") keeps the empty-case
+        // parse contract aligned with the TS consumer, which expects an array.
+        return alloc_cstr("[]");
     }
 
     // ---------------------------------------------------------------
@@ -974,7 +998,7 @@ extern "C"
                 t_array[i] = start_time + dt * i;
             }
 
-            if (has_active_state()) {
+            if (has_active_state() || has_active_prev_feedback()) {
                 execute_batch_sequential(t_array.data(), num_samples,
                                           cell_values, num_active_outputs, batch_buf.data());
             } else if (g_engine->pool.batch_workspace) {
@@ -1131,7 +1155,7 @@ extern "C"
             // Batch buffer: active_outputs x num_samples
             std::vector<double> batch_buf(num_active * num_samples, 0.0);
 
-            if (has_active_state()) {
+            if (has_active_state() || has_active_prev_feedback()) {
                 execute_batch_sequential(t_array.data(), num_samples,
                                           cell_values, num_active, batch_buf.data());
             } else if (g_engine->pool.batch_workspace && num_active > 0) {

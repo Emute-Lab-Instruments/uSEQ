@@ -89,9 +89,14 @@ struct OutputDeps {
     SymbolID cells[MAX_OUTPUT_DEPS] = {};
     uint8_t count = 0;
 
-    // Live-edit slot indices referenced by this output's graph
+    // Live-edit slot indices referenced by this output's graph.
+    // slot_count must be wide enough to actually reach MAX_LIVE_SLOTS: on the
+    // WASM build MAX_LIVE_SLOTS == 256, which a uint8_t can never represent, so
+    // a `slot_count < MAX_LIVE_SLOTS` guard with a uint8_t counter is always
+    // true and never fires. uint16_t covers both the firmware (16) and WASM
+    // (256) capacities.
     uint16_t slots[MAX_LIVE_SLOTS] = {};
-    uint8_t slot_count = 0;
+    uint16_t slot_count = 0;
 
     void clear();
     void add(SymbolID sym);

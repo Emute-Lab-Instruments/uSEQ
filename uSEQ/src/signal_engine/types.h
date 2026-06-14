@@ -45,6 +45,11 @@ constexpr size_t MAX_SCOPE_DEPTH    = 32;
 constexpr size_t MAX_LOCAL_BINDINGS = 32;
 constexpr size_t MAX_DIAGNOSTICS    = 16;
 constexpr size_t MAX_INLINE_DEPTH   = 16;
+// Max syntactic nesting depth for compile_expr recursion. compile_expr recurses
+// on nested forms on the small RP2040 stack (inside tick() for live edits), so a
+// pathologically deep program could overflow the hardware stack. This bound
+// aborts compilation with a diagnostic well before that happens.
+constexpr size_t MAX_COMPILE_DEPTH  = 64;
 constexpr size_t MAX_LIVE_SLOT_ID   = 32;
 constexpr size_t MAX_LIVE_SLOT_OPTION_LEN = 32;
 constexpr size_t MAX_TOKENS         = 256;

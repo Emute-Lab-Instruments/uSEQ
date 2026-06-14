@@ -57,9 +57,15 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
                                 Diagnostic* errors, uint8_t* error_count) {
     uint16_t count = 0;
     uint32_t i = 0;
+    bool overflowed = false;
 
     auto emit = [&](Token t) {
-        if (count < max_tokens) out[count++] = t;
+        if (count < max_tokens) {
+            out[count++] = t;
+        } else {
+            // Buffer full: record the overflow instead of silently truncating.
+            overflowed = true;
+        }
     };
 
     auto emit_error = [&](uint32_t pos, uint16_t len, const char* msg) {
@@ -181,6 +187,19 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
     eof.span_start = (uint16_t)length;
     eof.span_len = 0;
     emit(eof);
+
+    // If the token buffer overflowed we dropped tokens (including, possibly,
+    // the EOF). Emit a clear diagnostic instead of silently truncating the
+    // program — silent truncation produces baffling parse errors downstream.
+    if (overflowed) {
+        // Ensure the stream is still well-formed for the parser: force the
+        // final slot to EOF so callers don't read past valid tokens.
+        if (count > 0 && out[count - 1].kind != TokenKind::Eof) {
+            out[count - 1] = eof;
+        }
+        emit_error(0, (uint16_t)(length > 0xFFFF ? 0xFFFF : length),
+                   "Program too large (token limit exceeded)");
+    }
 
     return count;
 }

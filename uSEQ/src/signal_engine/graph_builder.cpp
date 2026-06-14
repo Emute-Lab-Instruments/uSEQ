@@ -436,6 +436,28 @@ uint16_t GraphBuilder::expand_bar_num(TimeContext& ctx) {
 // ── Expression Compilation ──────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_expr(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // Nesting-depth guard: compile_expr recurses on nested forms on the small
+    // RP2040 stack (this runs inside tick() for live edits). Abort with a clear
+    // diagnostic before a deeply-nested program can overflow the hardware stack.
+    // RAII guard decrements on every return path.
+    struct DepthGuard {
+        uint16_t& d;
+        DepthGuard(uint16_t& d_) : d(d_) { ++d; }
+        ~DepthGuard() { --d; }
+    } depth_guard(compile_depth);
+    if (compile_depth > MAX_COMPILE_DEPTH) {
+        Token tok = ts.peek();
+        // Consume one token so error-recovery callers keep making progress.
+        if (tok.kind == TokenKind::LParen) {
+            skip_form(ts);
+        } else if (tok.kind != TokenKind::RParen && tok.kind != TokenKind::Eof) {
+            ts.consume();
+        }
+        return report_error_cat(DiagnosticCategory::Syntax, tok,
+                                "Expression nested too deeply",
+                                "Simplify or split this deeply-nested form");
+    }
+
     // If already in error state, still consume one expression to keep the
     // token stream advancing (prevents infinite loops in variadic callers).
     if (has_error) {

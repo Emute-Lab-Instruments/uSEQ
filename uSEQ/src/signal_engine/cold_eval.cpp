@@ -1135,6 +1135,12 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
     }
 
     engine.pool.rebuild_execution_order();
+
+    // Recompilation may have changed which load ops each output references
+    // (e.g. an output that used to be Pure now reads an input, or a feedback /
+    // state dependency appeared/disappeared). Refresh the classification so
+    // output_class / output_input_mask don't go stale after a cell change.
+    classify_outputs(engine.pool);
 }
 
 } // namespace sig

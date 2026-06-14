@@ -39,7 +39,7 @@ bool OutputDeps::contains(SymbolID sym) const {
 
 void OutputDeps::add_slot(uint16_t slot_index) {
     // Deduplicate
-    for (uint8_t i = 0; i < slot_count; i++) {
+    for (uint16_t i = 0; i < slot_count; i++) {
         if (slots[i] == slot_index) return;
     }
     if (slot_count < MAX_LIVE_SLOTS) {
@@ -48,7 +48,7 @@ void OutputDeps::add_slot(uint16_t slot_index) {
 }
 
 bool OutputDeps::contains_slot(uint16_t slot_index) const {
-    for (uint8_t i = 0; i < slot_count; i++) {
+    for (uint16_t i = 0; i < slot_count; i++) {
         if (slots[i] == slot_index) return true;
     }
     return false;
@@ -346,16 +346,27 @@ void NodePool::rebuild_execution_order() {
     uint16_t stack[MAX_TOTAL_NODES];
     uint16_t stack_top = 0;
 
+    // Cheap inline push helper: refuses to write past the fixed-size stack and
+    // skips nodes already known reachable, which keeps the worst-case stack
+    // depth bounded on dense DAGs (a node reachable via many paths would
+    // otherwise be pushed once per in-edge before being marked).
+    auto push = [&](uint16_t child) {
+        if (child == NODE_NONE || child >= node_count) return;
+        if (reachable[child]) return;
+        if (stack_top >= MAX_TOTAL_NODES) return; // OOB guard: stack full, drop
+        stack[stack_top++] = child;
+    };
+
     for (uint16_t o = 0; o < MAX_OUTPUTS; o++) {
         if (outputs[o].root_node != NODE_NONE) {
-            stack[stack_top++] = outputs[o].root_node;
+            push(outputs[o].root_node);
         }
     }
 
     // Include state update roots in reachability
     for (uint16_t s = 0; s < state_slot_count; s++) {
         if (state_update_roots[s] != NODE_NONE) {
-            stack[stack_top++] = state_update_roots[s];
+            push(state_update_roots[s]);
         }
     }
 
@@ -364,12 +375,9 @@ void NodePool::rebuild_execution_order() {
         if (idx == NODE_NONE || idx >= node_count || reachable[idx]) continue;
         reachable[idx] = true;
         const Node& n = nodes[idx];
-        if (n.input_a != NODE_NONE && n.input_a < node_count)
-            stack[stack_top++] = n.input_a;
-        if (n.input_b != NODE_NONE && n.input_b < node_count)
-            stack[stack_top++] = n.input_b;
-        if (n.input_c != NODE_NONE && n.input_c < node_count)
-            stack[stack_top++] = n.input_c;
+        push(n.input_a);
+        push(n.input_b);
+        push(n.input_c);
     }
 
     // Topological sort via Kahn's algorithm on reachable nodes
@@ -389,23 +397,32 @@ void NodePool::gc_unreachable_nodes() {
     uint16_t stack[MAX_TOTAL_NODES];
     uint16_t stack_top = 0;
 
+    // Cheap inline push helper: refuses to write past the fixed-size stack and
+    // skips nodes already marked live, bounding worst-case depth on dense DAGs.
+    auto push = [&](uint16_t child) {
+        if (child == NODE_NONE || child >= node_count) return;
+        if (live[child]) return;
+        if (stack_top >= MAX_TOTAL_NODES) return; // OOB guard: stack full, drop
+        stack[stack_top++] = child;
+    };
+
     for (uint16_t o = 0; o < MAX_OUTPUTS; o++) {
         if (outputs[o].root_node != NODE_NONE)
-            stack[stack_top++] = outputs[o].root_node;
+            push(outputs[o].root_node);
     }
     // Include state update roots
     for (uint16_t s = 0; s < state_slot_count; s++) {
         if (state_update_roots[s] != NODE_NONE)
-            stack[stack_top++] = state_update_roots[s];
+            push(state_update_roots[s]);
     }
     while (stack_top > 0) {
         uint16_t idx = stack[--stack_top];
         if (idx >= node_count || live[idx]) continue;
         live[idx] = true;
         const Node& n = nodes[idx];
-        if (n.input_a != NODE_NONE) stack[stack_top++] = n.input_a;
-        if (n.input_b != NODE_NONE) stack[stack_top++] = n.input_b;
-        if (n.input_c != NODE_NONE) stack[stack_top++] = n.input_c;
+        push(n.input_a);
+        push(n.input_b);
+        push(n.input_c);
     }
 
     // 2. Build remap table and compact live nodes to front

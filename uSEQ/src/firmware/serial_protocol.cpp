@@ -56,10 +56,14 @@ const char* find_field_value(const char* json, size_t json_len,
 }
 
 // Extract a string value (without quotes) into dst. Returns length or 0.
+// If `truncated` is non-null, it is set true when the value did not fit in dst
+// (so callers can emit a diagnostic instead of silently truncating).
 size_t extract_string(const char* json, size_t json_len,
                       const char* field_name,
-                      char* dst, size_t dst_size)
+                      char* dst, size_t dst_size,
+                      bool* truncated = nullptr)
 {
+    if (truncated) *truncated = false;
     const char* v = find_field_value(json, json_len, field_name);
     if (!v || *v != '"') return 0;
     ++v; // skip opening quote
@@ -88,6 +92,10 @@ size_t extract_string(const char* json, size_t json_len,
         dst[out++] = c;
     }
     dst[out] = '\0';
+    // If we stopped because the destination filled up but the JSON value had
+    // not yet reached its closing quote, the value was truncated.
+    if (truncated && out + 1 >= dst_size && v < end && *v != '"')
+        *truncated = true;
     return out;
 }
 
@@ -257,8 +265,27 @@ bool SerialProtocol::dispatch_message(const char* payload, size_t len,
 
     // Eval message — extract code field
     char code_buf[2048] = {};
+    bool code_truncated = false;
     size_t code_len = extract_string(payload, len, "code",
-                                     code_buf, sizeof(code_buf));
+                                     code_buf, sizeof(code_buf),
+                                     &code_truncated);
+
+    if (code_truncated)
+    {
+        // Refuse to evaluate a silently-truncated program — that would run
+        // arbitrary half-of-a-form code. Emit a clear diagnostic instead.
+        JsonBuilder b;
+        b.object_begin()
+            .field("type", "response")
+            .field("success", false)
+            .field("console", "")
+            .field("text", "Program too large (exceeds receive buffer)")
+            .field_null("meta")
+            .field("requestId", m_request_id)
+            .object_end();
+        write_json_str(b.build().c_str());
+        return false;
+    }
 
     if (code_len == 0)
     {
