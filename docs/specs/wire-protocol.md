@@ -291,7 +291,7 @@ hello response. (See `uSEQ/src/firmware/serial_protocol.cpp` — handle_stream_c
 **Response:** standard ack `{type:"response",requestId,success:true}`.
 
 The reference editor enables all advertised channels at the default rate
-(30 Hz). Editors MAY narrow this if they need to reduce bandwidth.
+(100 Hz). Editors MAY narrow this if they need to reduce bandwidth.
 
 ### 5.4 `ping` (editor → device, request)
 
@@ -724,7 +724,7 @@ index (the 24-slot a/d/s space defined in [firmware.md §4.4](firmware.md));
 the wire uses a stream-only channel namespace advertised in `hello`.
 
 6.3 **Rate.** Limited by the most recent `stream-config.maxRateHz`
-(default 30 Hz from the editor). The firmware's built-in default rate
+(default 100 Hz from the editor). The firmware's built-in default rate
 cap is 100 Hz (`serial_message_rate_limit` in `serial_message.h`),
 which applies before `stream-config` arrives. Devices MAY emit fewer
 frames than the cap when a channel's value has not changed
@@ -761,6 +761,16 @@ live-edit slot writes use the JSON `set-live-inputs` request (§5.8).
 Devices receiving an `INPUT_SET` frame in v1 MUST advance past it (per
 §3.2 / §3.4) without effect.
 
+> **NOTE (editor manual-control path).** The `0x01` `INPUT_SET` binary
+> frame above remains **unimplemented**. The editor's manual-control
+> path (knobs/sliders/MIDI-learn live-edit writes) MUST go via the JSON
+> `set-live-inputs` request (§5.8), **not** a binary frame. An earlier
+> editor build emitted a malformed 10-byte frame
+> (`[0x1F][channel:u8][value:f64]`, with **no** type byte) for these
+> writes; that path is being corrected to route through
+> `set-live-inputs`. Until the slot-registration mechanism is specified,
+> there is no conforming editor → device binary input frame.
+
 ---
 
 ## 7. Limits and Constants
@@ -770,7 +780,7 @@ Devices receiving an `INPUT_SET` frame in v1 MUST advance past it (per
 | Baud rate | 115,200 | USB CDC; not negotiable (1200 is the BOOTSEL trigger, not a runtime mode). |
 | Heartbeat interval | 60 s | Editor-driven. |
 | Heartbeat timeout | 10 s | Editor warns user on miss; does not forcibly disconnect. |
-| Default stream rate | 30 Hz | Editor's `stream-config` initial value. |
+| Default stream rate | 100 Hz | Editor's `stream-config` initial value (`DEFAULT_STREAM_MAX_RATE_HZ`). |
 | Max JSON message length | 2048 bytes | Firmware RX buffer cap. Editors SHOULD stay comfortably below. Oversized messages MAY be truncated. |
 | Hello retry attempts | 8 | Per §4.2. |
 | Hello attempt timeout | ≈ 700 ms | Per §4.2. |

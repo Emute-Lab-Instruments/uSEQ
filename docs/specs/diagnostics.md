@@ -150,18 +150,22 @@ EMSCRIPTEN_KEEPALIVE
 const char* useq_active_diagnostics();
 ```
 
-Returns a JSON object keyed by output slot name, listing every output's currently-active diagnostics. Outputs with no active diagnostics are omitted.
+Returns a JSON **array** of per-output diagnostics. Each entry is a `RuntimeDiagnostic` that carries its own output attribution (the output it belongs to), so a single flat array describes the active state of every output. Outputs with no active diagnostics contribute no entries.
 
 ```json
-{
-  "a1": [{"severity": "error", "category": "arithmetic", ...}],
-  "d3": [{"severity": "warning", ...}]
-}
+[
+  {"output": "a1", "severity": "error", "category": "arithmetic", "message": "..."},
+  {"output": "d3", "severity": "warning", "message": "..."}
+]
 ```
 
-This includes both compile errors from background recompilation (cell-mutation triggered) and runtime errors from the current frame.
+The empty case (all outputs healthy) is `[]`.
+
+This includes both compile errors from background recompilation (cell-mutation triggered) and runtime errors from the current frame. The editor maps each array entry to its corresponding output-health entry via the entry's output attribution.
 
 ### 4.3 `useq_output_diagnostics`
+
+**Deferred — not yet built; the frontend currently polls `useq_active_diagnostics`, which is perf-negligible.** This export does not exist in `wasm/wasm_wrapper.cpp`, `build_wasm.sh`, or `src/contracts/wasmAbi.ts`. The design below is retained as rationale only — do not bind to this phantom export.
 
 ```cpp
 EMSCRIPTEN_KEEPALIVE
