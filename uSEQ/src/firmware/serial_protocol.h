@@ -118,6 +118,13 @@ private:
     void drain_serial_into_rx_buf();
     bool try_extract_message();
 
+    // ── Inbound binary frame demux (§6.5 INPUT_SET) ────────────────────────
+    enum class BinaryFrameResult { Consumed, Incomplete, Skip };
+    // Read the RX ring buffer byte at logical offset from m_rx_head.
+    uint8_t rx_byte_at(size_t offset) const;
+    // Front byte is 0x1F: attempt to consume one complete binary frame.
+    BinaryFrameResult try_consume_binary_frame();
+
     void write_json(const char* payload, size_t len);
     void write_json_str(const char* payload);
     bool can_write();

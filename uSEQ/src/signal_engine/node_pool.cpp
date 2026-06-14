@@ -216,6 +216,13 @@ int16_t NodePool::alloc_live_slot(const char* id, double seed, double min_val, d
 void NodePool::set_live_slot_value(const char* id, double value) {
     int16_t idx = find_live_slot(id);
     if (idx < 0) return;
+    set_live_slot_value_by_index((uint16_t)idx, value);
+}
+
+void NodePool::set_live_slot_value_by_index(uint16_t idx, double value) {
+    // Bounds-check against the live slot capacity. Out-of-range indices are
+    // ignored (wire-protocol §6.5: garbage/stale slot_index → skip).
+    if (idx >= live_slot_count) return;
 
     // §5.9: reject non-finite numbers — slot retains previous value
     if (!std::isfinite(value)) return;

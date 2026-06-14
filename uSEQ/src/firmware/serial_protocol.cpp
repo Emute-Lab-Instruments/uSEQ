@@ -162,18 +162,97 @@ void SerialProtocol::drain_serial_into_rx_buf()
     // Desktop: no serial hardware — input comes through stdin or test harness
 }
 
+uint8_t SerialProtocol::rx_byte_at(size_t offset) const
+{
+    return static_cast<uint8_t>(m_rx_buf[(m_rx_head + offset) % RX_BUF_SIZE]);
+}
+
+SerialProtocol::BinaryFrameResult SerialProtocol::try_consume_binary_frame()
+{
+    // Front byte is the binary frame marker (0x1F). Inspect the type byte and
+    // attempt to consume a complete, fixed-shape frame. Runs allocation-free on
+    // the serial RX hot path.
+    //
+    // Returns:
+    //   Consumed   — a complete frame was parsed and applied; bytes consumed.
+    //   Incomplete — a known frame type, but not all bytes have arrived yet;
+    //                leave the buffer untouched and wait for more input.
+    //   Skip       — unknown/unsupported type byte; caller drops the 0x1F and
+    //                re-discriminates (per spec §3.2).
+
+    // Need at least marker + type byte.
+    if (m_rx_len < 2) return BinaryFrameResult::Incomplete;
+
+    uint8_t type = rx_byte_at(1);
+
+    if (type == static_cast<uint8_t>(SerialMsg::serial_message_types::INPUT_SET))
+    {
+        // §6.5: [0x1F][0x01][count:u16-LE][(slot_index:u16-LE, value:f64-LE)×count]
+        // Header is 4 bytes; each entry is 10 bytes.
+        if (m_rx_len < 4) return BinaryFrameResult::Incomplete;
+
+        uint16_t count = static_cast<uint16_t>(rx_byte_at(2)) |
+                         (static_cast<uint16_t>(rx_byte_at(3)) << 8);
+
+        size_t frame_len = 4 + static_cast<size_t>(count) * 10;
+        if (m_rx_len < frame_len) return BinaryFrameResult::Incomplete;
+
+        // Apply each (slot_index, value) entry directly to the live slots.
+        if (engine)
+        {
+            for (uint16_t e = 0; e < count; ++e)
+            {
+                size_t base = 4 + static_cast<size_t>(e) * 10;
+
+                uint16_t slot_index = static_cast<uint16_t>(rx_byte_at(base)) |
+                                      (static_cast<uint16_t>(rx_byte_at(base + 1)) << 8);
+
+                // Reassemble the f64-LE value byte-by-byte (ring buffer may wrap,
+                // so we cannot memcpy a contiguous region).
+                uint8_t vb[8];
+                for (size_t b = 0; b < 8; ++b)
+                    vb[b] = rx_byte_at(base + 2 + b);
+                double value;
+                memcpy(&value, vb, sizeof(value));
+
+                // Out-of-range slot_index is bounds-checked + dropped inside.
+                engine->pool.set_live_slot_value_by_index(slot_index, value);
+            }
+        }
+
+        // Consume the whole frame regardless of engine presence.
+        m_rx_head = (m_rx_head + frame_len) % RX_BUF_SIZE;
+        m_rx_len -= frame_len;
+        return BinaryFrameResult::Consumed;
+    }
+
+    // Unknown/unsupported binary type — caller drops the marker byte.
+    return BinaryFrameResult::Skip;
+}
+
 bool SerialProtocol::try_extract_message()
 {
     // Scan for a complete JSON message (starts with '{', ends with '\n').
-    // The editor sends bare JSON objects, one per line.
+    // The editor sends bare JSON objects, one per line. Inbound binary frames
+    // (0x1F marker, §3.1/§6.5) are demuxed and applied here too.
 
-    // Skip leading whitespace / garbage
+    // Skip leading whitespace / garbage, handling inbound binary frames inline.
     while (m_rx_len > 0)
     {
         char front = m_rx_buf[m_rx_head];
         if (front == '{') break;
 
-        // Skip non-JSON byte
+        if (static_cast<uint8_t>(front) == SerialMsg::message_begin_marker)
+        {
+            BinaryFrameResult r = try_consume_binary_frame();
+            if (r == BinaryFrameResult::Incomplete)
+                return false;        // wait for the rest of the frame
+            if (r == BinaryFrameResult::Consumed)
+                continue;            // frame applied; re-discriminate
+            // Skip: fall through to drop the marker byte below.
+        }
+
+        // Skip non-JSON / unknown-frame byte
         m_rx_head = (m_rx_head + 1) % RX_BUF_SIZE;
         --m_rx_len;
     }

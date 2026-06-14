@@ -168,6 +168,12 @@ struct NodePool {
                             SlotVariant variant = SlotVariant::Numeric,
                             double step = 0.0, int precision = -1);
     void set_live_slot_value(const char* id, double value);
+    // Fast-path write addressed by array index (wire-protocol §6.5 binary
+    // INPUT_SET). `idx` is a direct index into live_slots[0..live_slot_count).
+    // Out-of-range indices are ignored. Applies the same clamp / variant
+    // coercion as set_live_slot_value(), but skips the string lookup so it is
+    // allocation-free and cheap on the serial RX hot path.
+    void set_live_slot_value_by_index(uint16_t idx, double value);
 
     // WASM batch workspace (heap-allocated once at init, null on firmware)
     std::unique_ptr<double[]> batch_workspace;

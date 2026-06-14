@@ -101,7 +101,7 @@ terminated by a delimiter — their length is determined by the type byte.
 | Type byte | Name | Direction | Payload shape | Total length |
 |-----------|------|-----------|---------------|--------------|
 | `0x00` | `STREAM` | device → editor | `[channel:u8][value:f64-LE]` | 11 bytes |
-| `0x01` | `INPUT_SET` (reserved, v2+) | editor → device | `[count:u16-LE][(slot_index:u16-LE, value:f64-LE) × count]` | 4 + 10·count bytes |
+| `0x01` | `INPUT_SET` (**implemented**) | editor → device | `[count:u16-LE][(slot_index:u16-LE, value:f64-LE) × count]` | 4 + 10·count bytes |
 
 Type bytes outside this table are reserved. Receivers MUST advance one
 byte (i.e. discard the leading `0x1F`) on encountering an unknown type
@@ -741,35 +741,68 @@ receives a time reference immediately for clock synchronization.
 drops them if its TX buffer is full ([failure-model.md](failure-model.md)).
 Visualisation must tolerate gaps.
 
-6.5 **Reserved binary input frame** (`type 0x01`, editor → device):
-**not implemented in v1**. The byte layout is reserved here for future
-high-rate batched live-edit slot writes:
+6.5 **Binary input frame** (`type 0x01`, `INPUT_SET`, editor → device):
+**implemented**. This is the low-latency / high-throughput fast-path for
+manual live control (knob/slider/joystick scrub, MIDI-learn CC) — it
+carries high-rate value updates to live-edit slots that were already
+**declared** via `set-live-inputs` (§5.8). Byte layout:
 
 ```
 [0x1F] [0x01] [count: u16-LE] [(slot_index: u16-LE, value: f64-LE) × count]
   0      1        2..3              4..(4 + 10·count - 1)
 ```
 
-Total: 4 + 10·count bytes.
+Total: 4 + 10·count bytes. Multi-byte fields are little-endian. `value`
+is an IEEE-754 `binary64` (f64-LE). A `count` of 0 is a valid (empty)
+frame.
 
-Using this frame requires a slot-registration step where the editor
-queries the current slot table after each successful eval to obtain a
-stable id → integer-index mapping; the query mechanism is **TBD** and
-will be specified alongside the first implementation. Until then, all
-live-edit slot writes use the JSON `set-live-inputs` request (§5.8).
+**`slot_index` semantics.** `slot_index` is a **direct zero-based index
+into the device's live-slot table** — i.e. the same `live_slots[]` array
+(`engine->pool.live_slots[0 .. live_slot_count)`) that `set-live-inputs`
+(§5.8) writes after resolving its string `:id` keys. Slot indices are
+assigned in **declaration order** by the most recent successful eval
+(the order in which `live-edit` slots are first allocated during graph
+build). A `set-live-inputs` write to `:knob1` and an `INPUT_SET` write to
+that slot's index therefore target the **identical** slot and apply the
+**identical** clamp/variant coercion (numeric clamp to `[min,max]`,
+boolean → 0/1, keyword → option index; non-finite values rejected,
+slot retains its prior value).
 
-Devices receiving an `INPUT_SET` frame in v1 MUST advance past it (per
-§3.2 / §3.4) without effect.
+**Obtaining the index.** The editor learns each slot's index from the
+`liveSlots` array returned by `get-state` (state-sync.md §2) and/or from
+the `set-live-inputs` declaration order: entry *i* in the device's
+live-slot table has `slot_index = i`. Because eval re-allocates the
+table, the editor MUST re-sync its `id → slot_index` map after every
+successful eval; until it has, it should fall back to JSON
+`set-live-inputs` (which is keyed by string `:id` and is robust to
+re-ordering).
 
-> **NOTE (editor manual-control path).** The `0x01` `INPUT_SET` binary
-> frame above remains **unimplemented**. The editor's manual-control
-> path (knobs/sliders/MIDI-learn live-edit writes) MUST go via the JSON
-> `set-live-inputs` request (§5.8), **not** a binary frame. An earlier
-> editor build emitted a malformed 10-byte frame
-> (`[0x1F][channel:u8][value:f64]`, with **no** type byte) for these
-> writes; that path is being corrected to route through
-> `set-live-inputs`. Until the slot-registration mechanism is specified,
-> there is no conforming editor → device binary input frame.
+**Bounds / garbage.** A `slot_index ≥ live_slot_count` is silently
+dropped (consistent with §5.4 "unknown ids are dropped" and the
+project's "garbage: skip" philosophy); other entries in the same frame
+still apply. The frame is fire-and-forget — the device emits **no**
+response or `applied` count. Range/type coercion is applied silently (no
+per-frame diagnostics on the hot path).
+
+Devices parse `INPUT_SET` allocation-free directly in the serial RX
+demux (`SerialProtocol::try_consume_binary_frame` →
+`NodePool::set_live_slot_value_by_index`). An incomplete frame (fewer
+than `4 + 10·count` bytes buffered) is left in the RX buffer until the
+remaining bytes arrive.
+
+> **NOTE (editor manual-control path).** `set-live-inputs` (§5.8) and the
+> `0x01` `INPUT_SET` binary frame are **complementary**, not alternatives:
+> `set-live-inputs` **declares** a live input (binds a string `:id` to a
+> slot, with min/max/variant/options) and is the robust, self-describing
+> path; the §6.5 `INPUT_SET` frame carries **high-rate value updates** to
+> those already-declared slots, addressed by their integer table index,
+> for the lowest-latency manual-control path (knob/slider/joystick scrub,
+> MIDI-learn CC). An earlier editor build emitted a malformed 10-byte
+> frame (`[0x1F][channel:u8][value:f64]`, with **no** type byte and no
+> count); that shape is **not** conforming — the conforming binary write
+> is the type-tagged, length-prefixed `INPUT_SET` frame above. Editors
+> that have not yet synced their `id → slot_index` map after an eval MUST
+> use `set-live-inputs` until the map is rebuilt.
 
 ---
 
@@ -784,7 +817,9 @@ Devices receiving an `INPUT_SET` frame in v1 MUST advance past it (per
 | Max JSON message length | 2048 bytes | Firmware RX buffer cap. Editors SHOULD stay comfortably below. Oversized messages MAY be truncated. |
 | Hello retry attempts | 8 | Per §4.2. |
 | Hello attempt timeout | ≈ 700 ms | Per §4.2. |
-| Live-edit slot cap | 256 | Firmware compile-time cap; see [live-edit.md §5.1](live-edit.md). |
+| Live-edit slot cap | 16 (firmware) / 256 (WASM) | Compile-time `MAX_LIVE_SLOTS` (`signal_engine/types.h`); see [live-edit.md §5.1](live-edit.md). `INPUT_SET` `slot_index` is bounds-checked against the live runtime `live_slot_count`, not this static cap. |
+| `INPUT_SET` `slot_index` | u16 (0…65535) | Wire range; values `≥ live_slot_count` are silently dropped (§6.5). |
+| `INPUT_SET` `count` | u16 (0…65535) | Entries per frame; frame is `4 + 10·count` bytes. `count = 0` is a valid no-op. |
 
 ---
 
@@ -996,8 +1031,10 @@ implementations against this spec.
 - **`TEXT (0x20)` and `MSG_TO_EDITOR (0x64)` type bytes.** Replaced by
   `{type:"log",...}` JSON envelopes.
 - **Inbound 10-byte stream frame** (`[0x1F][channel][value]` editor →
-  device). Replaced semantically by `set-live-inputs` (§5.8); reserved
-  binary INPUT_SET frame (§6.5) covers the future high-rate case.
+  device, no type byte). Malformed/non-conforming. Replaced by
+  `set-live-inputs` (§5.8) for slot **declaration** and the
+  type-tagged, length-prefixed binary `INPUT_SET` frame (§6.5,
+  **implemented**) for high-rate value updates.
 - **`0x65` JSON type-byte prefix.** Both directions now emit bare
   `{ … }\n` with no `0x1F`/`0x65` framing prefix.
 
@@ -1038,6 +1075,10 @@ implementations against this spec.
 - Stop emitting `TEXT (0x20)` and `MSG_TO_EDITOR (0x64)` type bytes;
   migrate to `{type:"log",level,text}` envelopes.
 - Implement `set-live-inputs` handler (when live-edit ships).
+- Implement the binary `INPUT_SET` (§6.5) RX demux (done:
+  `SerialProtocol::try_consume_binary_frame` →
+  `NodePool::set_live_slot_value_by_index`) for the low-latency
+  manual-control fast-path.
 - Remove the legacy `pending_commands` ring buffer in
   `firmware::Firmware`. Add the new quantised-eval queue, drained on
   global-quant-phasor wrap, populated by eval requests with
@@ -1049,9 +1090,16 @@ implementations against this spec.
 
 ## 11. Open / Deferred
 
-11.1 **Slot-registration mechanism for binary `INPUT_SET` (§6.5).** The
-query that returns the post-eval slot table (id → integer index) is
-unspecified pending the first implementation.
+11.1 **Slot-registration sync for binary `INPUT_SET` (§6.5).** The
+firmware side is **implemented**: `slot_index` is a direct index into the
+live-slot table in declaration order, and `get-state`'s `liveSlots` array
+(state-sync.md §2) exposes that table for the editor to build its
+`id → slot_index` map. Remaining open question (editor-side): whether to
+add a lightweight dedicated `slot-table` query frame rather than reusing
+the heavier `get-state` snapshot, and how the editor should atomically
+swap its index map on eval to avoid a window where a stale index targets
+the wrong slot (mitigation today: fall back to `set-live-inputs` until the
+map is re-synced).
 
 11.2 **Per-channel `maxRateHz` in `stream-config` (§5.3).** Currently
 ignored by firmware. Either drop the field or implement honoring it

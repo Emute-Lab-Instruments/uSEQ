@@ -14,8 +14,12 @@ enum serial_message_types
     // {type:"log",...} JSON envelope per wire-protocol spec §5.6.
     // message_end_marker (0x03) removed: never sent by firmware::Firmware.
     // execute_now_marker ('@') removed: wire is immediate-only per spec §1.1.
-    JSON   = 101,
-    STREAM = 0
+    JSON      = 101,
+    STREAM    = 0,
+    // INPUT_SET (wire-protocol §6.5): editor → device high-rate batched
+    // live-edit slot writes. Frame: [0x1F][0x01][count:u16-LE]
+    //                               [(slot_index:u16-LE, value:f64-LE) × count]
+    INPUT_SET = 1
 };
 constexpr unsigned long serial_message_rate_limit = 1000000 / 100 /*Hz*/;
 
