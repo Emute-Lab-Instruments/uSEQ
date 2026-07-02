@@ -1109,6 +1109,35 @@ TEST_CASE("Graph builder: interp function", "[signal_engine][graph_builder]") {
     REQUIRE(outputs[0] == Approx(0.0).margin(1e-6));
 }
 
+// F6: interp/VecLerp returned the wrong element at phase exactly 1.0.
+// At integral phase the fractional weight must be 1.0 (return the LAST table
+// element), not 0.0 (which returned data[len-2]). Golden values at the ends
+// and midpoints for 2- and 3-element tables.
+TEST_CASE("F6: interp reaches the last element at phase 1.0 (2-element table)",
+          "[signal_engine][graph_builder][interp]") {
+    // (interp [0 10] phase): phase drives directly via raw time t.
+    REQUIRE(eval_at("(interp [0 10] t)", 0.0)  == Approx(0.0).margin(1e-9));
+    REQUIRE(eval_at("(interp [0 10] t)", 0.5)  == Approx(5.0).margin(1e-9));
+    // The regression: at phase == 1.0 we must get the LAST element (10), not 0.
+    REQUIRE(eval_at("(interp [0 10] t)", 1.0)  == Approx(10.0).margin(1e-9));
+    // phase > 1.0 clamps to the last element rather than wrapping/underflowing.
+    REQUIRE(eval_at("(interp [0 10] t)", 1.5)  == Approx(10.0).margin(1e-9));
+    // phase < 0 clamps to the first element.
+    REQUIRE(eval_at("(interp [0 10] t)", -0.5) == Approx(0.0).margin(1e-9));
+}
+
+TEST_CASE("F6: interp reaches the last element at phase 1.0 (3-element table)",
+          "[signal_engine][graph_builder][interp]") {
+    // (interp [0 5 10] phase): segment 0 spans phase [0,0.5], segment 1 [0.5,1].
+    REQUIRE(eval_at("(interp [0 5 10] t)", 0.0)  == Approx(0.0).margin(1e-9));
+    REQUIRE(eval_at("(interp [0 5 10] t)", 0.25) == Approx(2.5).margin(1e-9));
+    REQUIRE(eval_at("(interp [0 5 10] t)", 0.5)  == Approx(5.0).margin(1e-9));
+    REQUIRE(eval_at("(interp [0 5 10] t)", 0.75) == Approx(7.5).margin(1e-9));
+    // The regression: at phase == 1.0 we must get the LAST element (10).
+    REQUIRE(eval_at("(interp [0 5 10] t)", 1.0)  == Approx(10.0).margin(1e-9));
+    REQUIRE(eval_at("(interp [0 5 10] t)", 1.5)  == Approx(10.0).margin(1e-9));
+}
+
 TEST_CASE("Graph builder: dm function", "[signal_engine][graph_builder]") {
     // (dm condition default value)
     REQUIRE(eval_at("(dm 1 0 42)", 0.0) == 42.0);

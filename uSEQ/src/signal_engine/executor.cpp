@@ -54,7 +54,14 @@ static inline double eval_node(
             if (i0 < 0) i0 = 0;
             if (i0 >= len - 1) i0 = len - 2;
             int i1 = i0 + 1;
-            double frac = scaled - floor(scaled);
+            // frac relative to the (possibly clamped) i0, not floor(scaled).
+            // At integral phase == 1.0, scaled == len-1 and i0 is clamped to
+            // len-2, so frac == 1.0 and we correctly return the LAST element
+            // (data[len-1]); using floor(scaled) here yielded frac == 0 and the
+            // wrong element (data[len-2]). Also gracefully clamps phase > 1.
+            double frac = scaled - i0;
+            if (frac < 0.0) frac = 0.0;
+            if (frac > 1.0) frac = 1.0;
             return data_pool[off + i0] + (data_pool[off + i1] - data_pool[off + i0]) * frac;
         }
 
