@@ -121,18 +121,28 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
         GraphBuilder::skip_form(ts);
         uint32_t byte_end = span_end_of(ts, ts.pos);
 
+        // Copy the expression source text into the arena FIRST. If the arena
+        // is full, fail the define without touching the cell — otherwise the
+        // cell would keep its OLD source text and dependents would silently
+        // recompile a stale definition (F5).
+        uint32_t offset = UINT32_MAX;
+        uint32_t len = 0;
+        if (source && byte_end > byte_start && byte_end <= source_length) {
+            len = byte_end - byte_start;
+            offset = engine.arena.store(source + byte_start, len);
+            if (offset == UINT32_MAX) {
+                return make_error(
+                    "Program storage is full — definition not applied",
+                    "Free space with (useq-clear) or shorten your program");
+            }
+        }
+
         engine.cells.cells[sym].kind = CellKind::Callable;
         engine.cells.cells[sym].revision++;
         engine.cells.callables[sym].param_count = 0;
-
-        // Copy the expression source text into the arena
-        if (source && byte_end > byte_start && byte_end <= source_length) {
-            uint32_t len = byte_end - byte_start;
-            uint32_t offset = engine.arena.store(source + byte_start, len);
-            if (offset != UINT32_MAX) {
-                engine.cells.callables[sym].source_offset = offset;
-                engine.cells.callables[sym].source_length = len;
-            }
+        if (offset != UINT32_MAX) {
+            engine.cells.callables[sym].source_offset = offset;
+            engine.cells.callables[sym].source_length = len;
         }
     }
 
@@ -158,7 +168,9 @@ static EvalResult do_defn(TokenStream& ts, SignalEngine& engine,
                           "Try: (defn osc [f ph] (sin (* ph f)))");
     }
 
-    CallableInfo& info = engine.cells.callables[sym];
+    // Parse into a local so a failed arena store leaves the old definition
+    // fully intact (params AND source must update atomically).
+    CallableInfo info{};
     info.param_count = 0;
     while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
         Token param = ts.consume();
@@ -175,18 +187,24 @@ static EvalResult do_defn(TokenStream& ts, SignalEngine& engine,
     GraphBuilder::skip_form(ts);
     uint32_t byte_end = span_end_of(ts, ts.pos);
 
-    engine.cells.cells[sym].kind = CellKind::Callable;
-    engine.cells.cells[sym].revision++;
-
-    // Copy the body source text into the arena
+    // Copy the body source text into the arena FIRST. If the arena is full,
+    // fail the defn without touching the cell so dependents never recompile
+    // a half-updated definition (F5).
     if (source && byte_end > byte_start && byte_end <= source_length) {
         uint32_t len = byte_end - byte_start;
         uint32_t offset = engine.arena.store(source + byte_start, len);
-        if (offset != UINT32_MAX) {
-            info.source_offset = offset;
-            info.source_length = len;
+        if (offset == UINT32_MAX) {
+            return make_error(
+                "Program storage is full — definition not applied",
+                "Free space with (useq-clear) or shorten your program");
         }
+        info.source_offset = offset;
+        info.source_length = len;
     }
+
+    engine.cells.callables[sym] = info;
+    engine.cells.cells[sym].kind = CellKind::Callable;
+    engine.cells.cells[sym].revision++;
 
     on_cell_changed(sym, engine);
 
@@ -296,6 +314,31 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     }
     double init_value = init_tok.number;
 
+    // Record the update expression source text FIRST. If the arena is full,
+    // fail the defstate before mutating anything — otherwise the state cell
+    // would keep its OLD update source and dependency changes would silently
+    // recompile a stale update program (F5).
+    uint16_t expr_start = ts.pos;
+    uint32_t byte_start = span_begin(ts, expr_start);
+    uint32_t src_offset = UINT32_MAX;
+    uint32_t src_len = 0;
+    {
+        uint16_t saved = ts.pos;
+        GraphBuilder::skip_form(ts);
+        uint32_t byte_end = span_end_of(ts, ts.pos);
+        ts.rewind(saved);
+
+        if (source && byte_end > byte_start && byte_end <= source_length) {
+            src_len = byte_end - byte_start;
+            src_offset = engine.arena.store(source + byte_start, src_len);
+            if (src_offset == UINT32_MAX) {
+                return make_error(
+                    "Program storage is full — defstate not applied",
+                    "Free space with (useq-clear) or shorten your program");
+            }
+        }
+    }
+
     // Allocate a state slot (if this name already has a state slot, reuse it)
     uint16_t state_slot = NODE_NONE;
     if (sym < MAX_CELLS && engine.cells.cells[sym].kind == CellKind::Number
@@ -307,7 +350,7 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     if (state_slot == NODE_NONE) {
         // New state cell — allocate slot and set initial value
         if (engine.pool.state_slot_count >= MAX_STATE_SLOTS) {
-            return make_error("Too many state variables (max 32)",
+            return make_error(state_slots_exhausted_msg(),
                               "Remove unused defstate declarations");
         }
         state_slot = engine.pool.state_slot_count++;
@@ -322,32 +365,21 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     engine.cells.cells[sym].revision++;
     engine.cells.cells[sym].value = init_value;
 
-    // Record the update expression source text for recompilation
-    uint16_t expr_start = ts.pos;
-    uint32_t byte_start = span_begin(ts, expr_start);
-    {
-        uint16_t saved = ts.pos;
-        GraphBuilder::skip_form(ts);
-        uint32_t byte_end = span_end_of(ts, ts.pos);
-        ts.rewind(saved);
-
-        if (source && byte_end > byte_start && byte_end <= source_length) {
-            uint32_t len = byte_end - byte_start;
-            uint32_t offset = engine.arena.store(source + byte_start, len);
-            if (offset != UINT32_MAX) {
-                engine.state_sources[state_slot].arena_offset = offset;
-                engine.state_sources[state_slot].arena_length = len;
-                engine.state_sources[state_slot].has_source = true;
-            }
-        }
+    if (src_offset != UINT32_MAX) {
+        engine.state_sources[state_slot].arena_offset = src_offset;
+        engine.state_sources[state_slot].arena_length = src_len;
+        engine.state_sources[state_slot].has_source = true;
     }
 
     // Compile the update expression as a signal graph
+    uint8_t saved_tables = engine.cells.data_table_count;
     GraphBuildResult result = build_output_graph(engine.pool, ts,
                                                  engine.cells, engine.arena, source,
-                                                 &engine.registry);
+                                                 &engine.registry, nullptr,
+                                                 (uint16_t)(MAX_OUTPUTS + state_slot));
 
     if (result.has_error) {
+        engine.cells.data_table_count = saved_tables;
         engine.pool.state_update_roots[state_slot] = sig::NODE_NONE;
         return make_error("defstate update expression failed to compile",
                           "Check the update expression");
@@ -360,7 +392,10 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
         engine.state_sources[state_slot].dep_cells[d] = result.dep_cells[d];
     }
 
-    // Rebuild execution order to include state update subgraphs
+    // Reclaim nodes orphaned by the recompile (e.g. the previous update
+    // graph of this state slot), then rebuild execution order to include
+    // state update subgraphs (F4).
+    engine.pool.gc_unreachable_nodes();
     engine.pool.rebuild_execution_order();
     classify_outputs(engine.pool);
 
@@ -454,7 +489,11 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
         return make_error("Unknown output", "Try: (a1 expression)");
     }
 
-    // Record the expression source text for recompilation
+    // Record the expression source text for recompilation. If the arena is
+    // full, FAIL the assignment outright: installing the new graph while
+    // output_sources[i] still points at the OLD text would make the next
+    // dependency change silently recompile — and revert to — the stale
+    // program (F5). The previous program keeps playing.
     uint16_t expr_start_pos = ts.pos;
     uint32_t byte_start = span_begin(ts, expr_start_pos);
     {
@@ -466,20 +505,26 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
         if (source && byte_end > byte_start && byte_end <= source_length) {
             uint32_t len = byte_end - byte_start;
             uint32_t offset = engine.arena.store(source + byte_start, len);
-            if (offset != UINT32_MAX) {
-                engine.output_sources[output_index].arena_offset = offset;
-                engine.output_sources[output_index].arena_length = len;
-                engine.output_sources[output_index].has_source = true;
+            if (offset == UINT32_MAX) {
+                return make_error(
+                    "Program storage is full — output not changed",
+                    "Free space with (useq-clear) or shorten your program");
             }
+            engine.output_sources[output_index].arena_offset = offset;
+            engine.output_sources[output_index].arena_length = len;
+            engine.output_sources[output_index].has_source = true;
         }
     }
 
     // Build the signal graph
+    uint8_t saved_tables = engine.cells.data_table_count;
     GraphBuildResult result = build_output_graph(engine.pool, ts,
                                                  engine.cells, engine.arena, source,
-                                                 &engine.registry, shared_ids);
+                                                 &engine.registry, shared_ids,
+                                                 output_index);
 
     if (result.has_error) {
+        engine.cells.data_table_count = saved_tables;
         engine.pool.outputs[output_index].valid = false;
         EvalResult r;
         r.kind = EvalResult::Error;
@@ -753,24 +798,33 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                     engine.cells.cells[cell_sym].revision++;
                     engine.cells.cells[cell_sym].value = (double)count;
                 } else {
-                    // Expression — store as callable with 0 params
+                    // Expression — store as callable with 0 params.
+                    // Arena store happens FIRST: a full arena fails this
+                    // binding without touching the cell (F5).
                     uint16_t expr_start = ts.pos;
                     uint32_t byte_start = span_begin(ts, expr_start);
                     GraphBuilder::skip_form(ts);
                     uint32_t byte_end = span_end_of(ts, ts.pos);
 
+                    uint32_t off = UINT32_MAX;
+                    uint32_t len = 0;
+                    if (source && byte_end > byte_start &&
+                        byte_end <= source_length) {
+                        len = byte_end - byte_start;
+                        off = engine.arena.store(source + byte_start, len);
+                        if (off == UINT32_MAX) {
+                            return make_error(
+                                "Program storage is full — definition not applied",
+                                "Free space with (useq-clear) or shorten your program");
+                        }
+                    }
+
                     engine.cells.cells[cell_sym].kind = CellKind::Callable;
                     engine.cells.cells[cell_sym].revision++;
                     engine.cells.callables[cell_sym].param_count = 0;
-                    if (source && byte_end > byte_start &&
-                        byte_end <= source_length) {
-                        uint32_t len = byte_end - byte_start;
-                        uint32_t off = engine.arena.store(
-                            source + byte_start, len);
-                        if (off != UINT32_MAX) {
-                            engine.cells.callables[cell_sym].source_offset = off;
-                            engine.cells.callables[cell_sym].source_length = len;
-                        }
+                    if (off != UINT32_MAX) {
+                        engine.cells.callables[cell_sym].source_offset = off;
+                        engine.cells.callables[cell_sym].source_length = len;
                     }
                 }
                 on_cell_changed(cell_sym, engine);
@@ -1032,7 +1086,7 @@ void recompile_all_outputs(SignalEngine& engine) {
 
         GraphBuildResult result = build_output_graph(
             engine.pool, ts, engine.cells, engine.arena, src,
-            &engine.registry);
+            &engine.registry, nullptr, i);
 
         if (!result.has_error) {
             engine.pool.outputs[i].root_node = result.root_node;
@@ -1078,13 +1132,26 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                     ts.count = count;
                     ts.pos = 0;
 
+                    uint8_t saved_tables = engine.cells.data_table_count;
                     GraphBuildResult result = build_output_graph(
                         engine.pool, ts, engine.cells, engine.arena, src,
-                        &engine.registry);
+                        &engine.registry, nullptr, i);
                     if (!result.has_error) {
                         engine.pool.outputs[i].root_node = result.root_node;
                         engine.pool.outputs[i].valid = true;
+
+                        // Refresh the dependency list (F8) — the recompiled
+                        // graph may reference different cells (e.g. a cell
+                        // redefined from a number to an expression pulls in
+                        // the cells that expression reads). Every sibling
+                        // recompile path does this; skipping it here left
+                        // outputs permanently deaf to their new deps.
+                        engine.pool.output_deps[i].clear();
+                        for (uint8_t d = 0; d < result.dep_count; d++) {
+                            engine.pool.output_deps[i].add(result.dep_cells[d]);
+                        }
                     } else {
+                        engine.cells.data_table_count = saved_tables;
                         engine.pool.outputs[i].valid = false;
                     }
                 }
@@ -1120,9 +1187,10 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
             ts.count = count;
             ts.pos = 0;
 
+            uint8_t saved_tables = engine.cells.data_table_count;
             GraphBuildResult result = build_output_graph(
                 engine.pool, ts, engine.cells, engine.arena, src,
-                &engine.registry);
+                &engine.registry, nullptr, (uint16_t)(MAX_OUTPUTS + s));
             if (!result.has_error) {
                 engine.pool.state_update_roots[s] = result.root_node;
                 // Update dependencies
@@ -1130,10 +1198,18 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                 for (uint8_t d = 0; d < result.dep_count; d++) {
                     engine.state_sources[s].dep_cells[d] = result.dep_cells[d];
                 }
+            } else {
+                engine.cells.data_table_count = saved_tables;
             }
         }
     }
 
+    // Reclaim nodes orphaned by the recompiles above (F4). Every sibling
+    // recompile path (eval_output, recompile_all_outputs, do_output_assign)
+    // gc's before rebuilding; without this, live cell edits leak the old
+    // graphs until the fixed node pool (360 nodes on firmware) fills up and
+    // compilation silently fails.
+    engine.pool.gc_unreachable_nodes();
     engine.pool.rebuild_execution_order();
 
     // Recompilation may have changed which load ops each output references

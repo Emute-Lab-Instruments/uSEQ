@@ -26,6 +26,20 @@ void SourceArena::reset() {
 // ── CellStore ───────────────────────────────────────────────────────────────
 
 uint16_t CellStore::store_data_table(const double* values, uint16_t count) {
+    // Content-intern: identical source text compiles to identical tables, and
+    // tables are immutable after storage, so recompiles (on_cell_changed,
+    // output reassign) must reuse the existing table instead of appending a
+    // duplicate — otherwise every recompile of a program containing a vector
+    // literal leaks a table until the pool is exhausted (MAX_DATA_TABLES is
+    // 32 on firmware). Cold path only; linear scan over <= MAX_DATA_TABLES.
+    for (uint16_t t = 0; t < data_table_count; t++) {
+        if (data_lengths[t] != count) continue;
+        if (memcmp(data_pool + data_offsets[t], values,
+                   count * sizeof(double)) == 0) {
+            return t;
+        }
+    }
+
     if (data_table_count >= MAX_DATA_TABLES) return UINT8_MAX;
 
     // Find where to append in the pool

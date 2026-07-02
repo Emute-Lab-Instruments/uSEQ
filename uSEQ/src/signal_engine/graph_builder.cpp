@@ -1658,10 +1658,23 @@ uint16_t GraphBuilder::compile_integrate(TokenStream& ts, Scope& scope, TimeCont
 
 // ── UGen Helpers ───────────────────────────────────────────────────────────
 
+// Shared "state slots exhausted" message, formatted once with the actual
+// firmware/desktop cap (MAX_STATE_SLOTS differs between builds).
+const char* state_slots_exhausted_msg() {
+    static char buf[64];
+    static bool initialized = false;
+    if (!initialized) {
+        snprintf(buf, sizeof(buf), "Too many state variables (max %u)",
+                 (unsigned)MAX_STATE_SLOTS);
+        initialized = true;
+    }
+    return buf;
+}
+
 uint16_t GraphBuilder::alloc_state_slot(double init_value) {
     if (pool.state_slot_count >= MAX_STATE_SLOTS) {
         report_error_at(0, 0,
-            "Too many state variables (max 32)",
+            state_slots_exhausted_msg(),
             "Remove unused integrate or defstate declarations");
         return NODE_NONE;
     }
@@ -1672,17 +1685,28 @@ uint16_t GraphBuilder::alloc_state_slot(double init_value) {
 
 uint16_t GraphBuilder::resolve_or_alloc(StateID state_id, ResourceKind kind,
                                         uint8_t role, double init_value) {
-    if (state_id != 0 && registry) {
-        StateResourceKey key{state_id, kind, role};
-        uint16_t slot = registry->resolve(key, init_value,
-                                          pool.state_values,
-                                          pool.state_slot_count);
-        if (slot == NODE_NONE) {
-            report_error_at(0, 0,
-                "Too many state variables (max 32)",
-                "Remove unused stateful expressions");
+    if (registry) {
+        // Anonymous stateful expressions (no :id) get a structural/positional
+        // key from the build context so recompiling the same program reuses
+        // its slots instead of leaking one per compile (state-identity.md
+        // §2.5). Without a context (scratch evals) fall through to the plain
+        // allocator — scratch pools are reset per eval anyway.
+        if (state_id == 0 && anon_state_context != ANON_STATE_CONTEXT_NONE) {
+            state_id = make_anon_state_id(anon_state_context,
+                                          anon_state_ordinal++);
         }
-        return slot;
+        if (state_id != 0) {
+            StateResourceKey key{state_id, kind, role};
+            uint16_t slot = registry->resolve(key, init_value,
+                                              pool.state_values,
+                                              pool.state_slot_count);
+            if (slot == NODE_NONE) {
+                report_error_at(0, 0,
+                    state_slots_exhausted_msg(),
+                    "Remove unused stateful expressions");
+            }
+            return slot;
+        }
     }
     return alloc_state_slot(init_value);
 }
@@ -2758,6 +2782,13 @@ GraphBuilder::DataRef GraphBuilder::resolve_data_table(TokenStream& ts, Scope& s
             ref.table_id = table_id;
             ref.length = count;
             ref.ok = true;
+        } else {
+            // Table pool exhausted — surface it instead of failing silently
+            // (callers would otherwise report a misleading arity error).
+            report_error_at_cat(DiagnosticCategory::Overflow,
+                tok.span_start, tok.span_len,
+                "Out of data table storage for this vector",
+                "Remove unused vectors or reuse a defined vector name");
         }
         return ref;
     }
@@ -2800,12 +2831,14 @@ GraphBuildResult build_output_graph(
     const SourceArena& source,
     const char* source_base,
     StateResourceRegistry* registry,
-    SharedLiveEditIDs* shared_ids
+    SharedLiveEditIDs* shared_ids,
+    uint16_t anon_state_context
 ) {
     GraphBuilder builder(pool, cells, source);
     builder.source_base = source_base;
     builder.registry = registry;
     builder.shared_live_edit_ids = shared_ids;
+    builder.anon_state_context = anon_state_context;
     Scope root_scope = {};
     TimeContext ctx = { pool.make_raw_time_load() };
 

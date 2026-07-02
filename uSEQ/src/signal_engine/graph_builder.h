@@ -112,6 +112,15 @@ struct GraphBuilder {
     // Context flag: when true, compile_live_edit emits an error
     bool reject_live_edit = false;
 
+    // Anonymous state identity (state-identity.md §2.5): which program this
+    // build compiles (output index, or MAX_OUTPUTS + state slot for defstate
+    // update graphs), and the ordinal of the next anonymous state allocation
+    // within this build. Together they form a structural/positional key so
+    // recompiles of the same program REUSE state slots via the registry
+    // instead of leaking a fresh slot per compile.
+    uint16_t anon_state_context = ANON_STATE_CONTEXT_NONE;
+    uint16_t anon_state_ordinal = 0;
+
     // ── Well-known symbol IDs (populated at init) ───────────────────────
     // Generated from symbols.def — do not edit by hand.
     struct Symbols {
@@ -320,6 +329,10 @@ struct GraphBuilder {
     static void skip_form(TokenStream& ts);
 };
 
+// Shared "Too many state variables (max N)" message with the build's actual
+// MAX_STATE_SLOTS cap baked in (16 on firmware, 32 on desktop/WASM).
+const char* state_slots_exhausted_msg();
+
 // ── Top-level build function ────────────────────────────────────────────────
 
 GraphBuildResult build_output_graph(
@@ -329,7 +342,8 @@ GraphBuildResult build_output_graph(
     const SourceArena& source,
     const char* source_base = nullptr,
     StateResourceRegistry* registry = nullptr,
-    SharedLiveEditIDs* shared_ids = nullptr
+    SharedLiveEditIDs* shared_ids = nullptr,
+    uint16_t anon_state_context = ANON_STATE_CONTEXT_NONE
 );
 
 } // namespace sig

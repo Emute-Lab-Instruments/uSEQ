@@ -46,7 +46,7 @@ print_warning() {
 }
 
 # Available test suites (must match meson test names without the 'uSEQ:' prefix)
-AVAILABLE_TESTS="signal_engine firmware_e2e firmware_e2e_part2 firmware_fuzz signal_engine_golden signal_engine_phase4 signal_engine_robustness signal_engine_probe_smoke flash_storage wire_protocol_contract devtools_contract live_edit output_classification ugen state_identity"
+AVAILABLE_TESTS="signal_engine firmware_e2e firmware_e2e_part2 firmware_fuzz signal_engine_golden signal_engine_phase4 signal_engine_robustness signal_engine_probe_smoke flash_storage wire_protocol_contract devtools_contract live_edit output_classification ugen state_identity resource_reclaim"
 
 # Function to show help
 show_help() {
@@ -74,6 +74,7 @@ OPTIONS:
                         output_classification  - Output type classification
                         ugen                   - Unit generator tests
                         state_identity         - State identity tests
+                        resource_reclaim       - Resource reclamation (pools/arena) tests
     -h, --help        Show this help message
 
 EXAMPLES:
@@ -187,6 +188,7 @@ if [ -n "$SINGLE_TEST" ]; then
         output_classification) meson_test_name="output_classification_test" ;;
         ugen)                 meson_test_name="ugen_test" ;;
         state_identity)       meson_test_name="state_identity_test" ;;
+        resource_reclaim)     meson_test_name="resource_reclaim_test" ;;
     esac
 
     print_status "Running test: $meson_test_name"

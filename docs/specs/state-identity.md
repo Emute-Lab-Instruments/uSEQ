@@ -16,7 +16,8 @@
   `state_update_roots[]`, `state_slot_count`, `NodeOp::LoadState`,
   `NodeOp::LoadDt`.
 - `uSEQ/src/signal_engine/graph_builder.{h,cpp}` - UGen and stateful primitive
-  compilation, keyword argument parsing, current anonymous slot allocation.
+  compilation, keyword argument parsing, anonymous structural identity
+  (output-context + ordinal keys routed through the registry).
 - `uSEQ/src/signal_engine/executor.{h,cpp}` - dense-slot execution and
   `commit_state()`.
 - `uSEQ/src/signal_engine/cold_eval.{h,cpp}` - top-level eval, output
@@ -72,10 +73,14 @@ string equal to a cell symbol is not ambiguous.
 keywords are valid. Dynamic signal values are invalid because they would change
 state identity at sample time.
 
-2.5 If no explicit state ID is supplied, the compiler may use an anonymous
-identity derived from structural context. Anonymous identities are best-effort
-and may not survive arbitrary source edits. Editors should inject explicit IDs
-for stable live-coding behaviour.
+2.5 If no explicit state ID is supplied, the compiler uses an anonymous
+identity derived from structural context: the program being compiled (output
+index, or state slot for `defstate` update graphs) plus the ordinal position
+of the allocation within that compile. Recompiling the same program therefore
+reuses its slots instead of leaking one per compile. Anonymous identities are
+best-effort and may not survive arbitrary source edits (inserting a stateful
+form shifts the ordinals after it). Editors should inject explicit IDs for
+stable live-coding behaviour.
 
 ---
 

@@ -7,6 +7,22 @@ namespace sig {
 
 using StateID = SymbolID;
 
+// ── Anonymous structural identity (state-identity.md §2.5) ─────────────────
+// Stateful expressions without an explicit :id get a synthetic StateID derived
+// from structural context: which program is being compiled (output index, or
+// MAX_OUTPUTS + state slot for defstate update graphs) plus the ordinal
+// position of the allocation within that compile. Compilation is
+// deterministic over source text, so recompiling a program resolves to the
+// same keys and REUSES its slots instead of leaking a fresh slot per
+// recompile. Synthetic IDs live far above any interned SymbolID, so they can
+// never collide with user-supplied :id symbols.
+constexpr StateID  ANON_STATE_ID_BASE      = 0x80000000u;
+constexpr uint16_t ANON_STATE_CONTEXT_NONE = 0xFFFF;
+
+inline StateID make_anon_state_id(uint16_t context, uint16_t ordinal) {
+    return ANON_STATE_ID_BASE | ((StateID)context << 12) | (StateID)ordinal;
+}
+
 enum class ResourceKind : uint8_t {
     OscillatorPhase,
     TriggerMemory,

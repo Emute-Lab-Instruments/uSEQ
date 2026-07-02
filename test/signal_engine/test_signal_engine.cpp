@@ -274,15 +274,40 @@ TEST_CASE("CellStore: multiple data tables", "[signal_engine][cell_store]") {
 TEST_CASE("CellStore: data table overflow", "[signal_engine][cell_store]") {
     CellStore store;
 
-    // Fill up all data tables
-    double one_val[] = {1.0};
+    // Fill up all data tables (distinct contents — identical contents are
+    // content-interned and reuse the existing table)
     for (size_t i = 0; i < MAX_DATA_TABLES; i++) {
-        uint16_t id = store.store_data_table(one_val, 1);
+        double val[] = {(double)i};
+        uint16_t id = store.store_data_table(val, 1);
         REQUIRE(id != UINT8_MAX);
     }
-    // Next should overflow
-    uint16_t overflow_id = store.store_data_table(one_val, 1);
+    // Next distinct table should overflow
+    double fresh_val[] = {12345.0};
+    uint16_t overflow_id = store.store_data_table(fresh_val, 1);
     REQUIRE(overflow_id == UINT8_MAX);
+
+    // But identical contents still resolve to the existing table even when
+    // the pool is full — recompiles of the same source must never overflow.
+    double dup_val[] = {7.0};
+    uint16_t dup_id = store.store_data_table(dup_val, 1);
+    REQUIRE(dup_id == 7);
+}
+
+TEST_CASE("CellStore: data tables are content-interned", "[signal_engine][cell_store]") {
+    CellStore store;
+
+    double a[] = {1.0, 2.0, 3.0};
+    double b[] = {1.0, 2.0, 3.0};
+    double c[] = {1.0, 2.0, 4.0};
+    uint16_t id_a = store.store_data_table(a, 3);
+    uint16_t id_b = store.store_data_table(b, 3);
+    uint16_t id_c = store.store_data_table(c, 3);
+    REQUIRE(id_a == id_b);          // identical contents dedup
+    REQUIRE(id_c != id_a);          // different contents get a fresh table
+    // Same values, different length: no dedup
+    uint16_t id_short = store.store_data_table(a, 2);
+    REQUIRE(id_short != id_a);
+    REQUIRE(store.data_table_count == 3);
 }
 
 TEST_CASE("CellStore: cell revision counter increments", "[signal_engine][cell_store]") {

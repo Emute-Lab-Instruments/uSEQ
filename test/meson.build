@@ -217,3 +217,18 @@ state_identity_test_exe = executable(
 )
 
 test('state_identity_test', state_identity_test_exe)
+
+# ===== Resource Reclamation Tests =====
+# Regression suite for the recompile pipeline's fixed-pool hygiene
+# (state slots, data tables, node pool, source arena) — audit F3/F4/F5/F8.
+
+resource_reclaim_test_exe = executable(
+  'test_resource_reclaim',
+  sources : ['signal_engine/test_resource_reclaim.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('resource_reclaim_test', resource_reclaim_test_exe)
