@@ -3391,6 +3391,96 @@ TEST_CASE("(fast 4 a1) time-warps output reference without error",
     REQUIRE(h.outputs[1] == Approx(0.3));
 }
 
+// F7(b): within-batch prev() feedback must accumulate — each sample reads the
+// immediately-preceding within-batch sample, not the stale carried-forward
+// scalar. This is the engine primitive the WASM sequential batch path
+// (execute_batch_sequential, routed via has_active_prev_feedback) relies on:
+// tick + commit_outputs per sample advances prev_output_values so
+// (a3 (+ (prev a3) 0.25)) yields 0.25, 0.5, 0.75, 1.0, 1.25 across the window.
+TEST_CASE("F7: within-batch prev() feedback accumulates across a window",
+          "[signal_engine][prev][batch]") {
+    MultiOutputHarness h;
+    REQUIRE(h.eval("(a3 (+ (prev a3) 0.25))"));
+
+    // A prev-feedback output must appear as a PrevOutputLoad in the exec order
+    // so the WASM caller's has_active_prev_feedback() scan routes it to the
+    // sample-sequential batch path instead of the (stale-prev) fast path.
+    bool has_prev_load = false;
+    for (uint16_t i = 0; i < h.engine.pool.exec_count; i++) {
+        uint16_t idx = h.engine.pool.exec_order[i];
+        if (idx < h.engine.pool.node_count &&
+            h.engine.pool.nodes[idx].op == NodeOp::PrevOutputLoad) {
+            has_prev_load = true;
+        }
+    }
+    REQUIRE(has_prev_load);
+
+    // a3 is output index 2. Sequential tick+commit must accumulate.
+    const double expected[5] = {0.25, 0.5, 0.75, 1.0, 1.25};
+    for (int s = 0; s < 5; s++) {
+        h.tick(0.0);
+        REQUIRE(h.outputs[2] == Approx(expected[s]));
+        h.commit();
+    }
+}
+
+// F7(c): execute_batch's output row-packing must key on outputs[o].valid — the
+// exact predicate the WASM callers use to count active outputs and build their
+// index_to_row map. Previously execute_batch keyed on root_node != NODE_NONE,
+// which diverges from .valid in the post-compile-fail window (valid==false but
+// root_node preserved), mislabelling one output's samples as another's. Build
+// two active outputs, then simulate that window on the first (valid=false, root
+// preserved) and assert each remaining valid output reads its OWN value.
+TEST_CASE("F7: execute_batch packs rows by valid, not root_node",
+          "[signal_engine][batch][prev]") {
+    NodePool pool;
+    CellStore cells;
+
+    // Output 0 → 0.25, output 1 → 0.75.
+    uint16_t c0 = pool.make_const(0.25);
+    uint16_t c1 = pool.make_const(0.75);
+    pool.outputs[0].root_node = c0;
+    pool.outputs[0].valid = true;
+    pool.outputs[1].root_node = c1;
+    pool.outputs[1].valid = true;
+    pool.rebuild_execution_order();
+    pool.allocate_batch_workspace();
+
+    const size_t N = 4;
+    double t_array[N] = {0.0, 0.1, 0.2, 0.3};
+    double cell_vals[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+
+    // Sanity: both outputs active, row 0 == output 0, row 1 == output 1.
+    {
+        double buf[2 * N] = {};
+        execute_batch(pool, t_array, N, cell_vals, hw_inputs,
+                      cells.data_pool, cells.data_offsets, cells.data_lengths,
+                      buf, 2);
+        for (size_t s = 0; s < N; s++) {
+            REQUIRE(buf[0 * N + s] == Approx(0.25)); // row 0 → output 0
+            REQUIRE(buf[1 * N + s] == Approx(0.75)); // row 1 → output 1
+        }
+    }
+
+    // Post-compile-fail window on output 0: valid=false, root_node preserved.
+    // A caller now counts 1 active output (output 1) and maps output 1 → row 0.
+    pool.outputs[0].valid = false; // root_node c0 still set
+
+    double buf[1 * N] = {};
+    execute_batch(pool, t_array, N, cell_vals, hw_inputs,
+                  cells.data_pool, cells.data_offsets, cells.data_lengths,
+                  buf, 1);
+
+    // Row 0 must carry output 1's value (0.75), NOT the still-rooted output 0
+    // (0.25). Keying on root_node would have written 0.25 into row 0 here.
+    for (size_t s = 0; s < N; s++) {
+        REQUIRE(buf[0 * N + s] == Approx(0.75));
+    }
+
+    pool.free_batch_workspace();
+}
+
 // ── Timing Symbol Tests ────────────────────────────────────────────────────
 
 TEST_CASE("beat-dur returns correct duration at 120 BPM",

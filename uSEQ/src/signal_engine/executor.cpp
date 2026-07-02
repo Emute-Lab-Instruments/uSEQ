@@ -245,13 +245,26 @@ void execute_batch(
             }
         }
 
-        // Copy output values for this chunk
+        // Copy output values for this chunk.
+        // Row-packing MUST match how callers count active outputs and build
+        // their index_to_row map. Callers (wasm_wrapper.cpp) and the other
+        // batch paths (execute_batch_sequential, project_from_fork) all key on
+        // outputs[o].valid, so we do too. Keying on root_node != NODE_NONE here
+        // diverged from that during the post-compile-fail window (valid==false
+        // but root_node preserved), which mislabelled one output's samples as
+        // another's. An output with valid && root_node==NODE_NONE holds only an
+        // LKG scalar and has no register row, so fall back to its lkg_value.
         uint16_t out_idx = 0;
         for (uint16_t o = 0; o < MAX_OUTPUTS && out_idx < num_outputs; o++) {
-            if (pool.outputs[o].root_node != NODE_NONE) {
-                double* src = regs + (size_t)pool.outputs[o].root_node * CHUNK;
+            if (pool.outputs[o].valid) {
                 double* dst = output_buffer + (size_t)out_idx * sample_count + chunk_start;
-                memcpy(dst, src, chunk_size * sizeof(double));
+                if (pool.outputs[o].root_node != NODE_NONE) {
+                    double* src = regs + (size_t)pool.outputs[o].root_node * CHUNK;
+                    memcpy(dst, src, chunk_size * sizeof(double));
+                } else {
+                    double lkg = pool.outputs[o].lkg_value;
+                    for (size_t s = 0; s < chunk_size; s++) dst[s] = lkg;
+                }
                 out_idx++;
             }
         }
