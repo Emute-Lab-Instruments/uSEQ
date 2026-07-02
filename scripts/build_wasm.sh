@@ -19,7 +19,6 @@ SOURCES=(
     "uSEQ/src/utils/log.cpp"
     "uSEQ/src/utils/error_messages.cpp"
     "uSEQ/src/utils/flags.cpp"
-    "uSEQ/src/utils.cpp"
 
     # Signal engine
     "uSEQ/src/signal_engine/diagnostics.cpp"
