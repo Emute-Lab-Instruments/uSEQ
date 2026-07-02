@@ -162,6 +162,21 @@ void SerialProtocol::drain_serial_into_rx_buf()
     // Desktop: no serial hardware — input comes through stdin or test harness
 }
 
+size_t SerialProtocol::rx_inject(const uint8_t* bytes, size_t count)
+{
+    // Test/host seam mirroring drain_serial_into_rx_buf(): copy up to the
+    // ring's free capacity, dropping any overflow (as the UART FIFO would).
+    size_t written = 0;
+    while (written < count && m_rx_len < RX_BUF_SIZE)
+    {
+        size_t write_pos = (m_rx_head + m_rx_len) % RX_BUF_SIZE;
+        m_rx_buf[write_pos] = static_cast<char>(bytes[written]);
+        ++m_rx_len;
+        ++written;
+    }
+    return written;
+}
+
 uint8_t SerialProtocol::rx_byte_at(size_t offset) const
 {
     return static_cast<uint8_t>(m_rx_buf[(m_rx_head + offset) % RX_BUF_SIZE]);
@@ -195,6 +210,17 @@ SerialProtocol::BinaryFrameResult SerialProtocol::try_consume_binary_frame()
                          (static_cast<uint16_t>(rx_byte_at(3)) << 8);
 
         size_t frame_len = 4 + static_cast<size_t>(count) * 10;
+
+        // A frame that can never fit in the RX ring can never be completed by
+        // waiting — returning Incomplete here would deadlock all serial input
+        // forever (a single corrupted count byte would brick the link). Treat
+        // it as a protocol error and Skip so the caller drops the 0x1F marker
+        // and re-discriminates. count is also bounded by the live-slot cap;
+        // anything larger is garbage regardless of how many bytes arrive.
+        if (frame_len > RX_BUF_SIZE ||
+            static_cast<size_t>(count) > sig::MAX_LIVE_SLOTS)
+            return BinaryFrameResult::Skip;
+
         if (m_rx_len < frame_len) return BinaryFrameResult::Incomplete;
 
         // Apply each (slot_index, value) entry directly to the live slots.
@@ -271,7 +297,35 @@ bool SerialProtocol::try_extract_message()
         }
     }
 
-    if (newline_offset == SIZE_MAX) return false; // incomplete message
+    if (newline_offset == SIZE_MAX)
+    {
+        // No terminator yet. Normally we wait for more bytes — but if the ring
+        // is completely full, drain_serial_into_rx_buf() can no longer accept
+        // input, so waiting would deadlock ALL serial RX permanently. The
+        // front byte is already a message start ('{' or 0x1F, ensured by the
+        // resync loop above), so a full ring with no newline means a single
+        // logical message overflowed the buffer. Resync: drop bytes up to the
+        // NEXT message-start marker (or clear entirely if none), and emit a
+        // "line too long" diagnostic so the editor knows its send was dropped.
+        if (m_rx_len == RX_BUF_SIZE)
+        {
+            size_t drop = 1; // skip the current (overflowed) message start
+            while (drop < m_rx_len)
+            {
+                char c = m_rx_buf[(m_rx_head + drop) % RX_BUF_SIZE];
+                if (c == '{' ||
+                    static_cast<uint8_t>(c) == SerialMsg::message_begin_marker)
+                    break;
+                ++drop;
+            }
+            m_rx_head = (m_rx_head + drop) % RX_BUF_SIZE;
+            m_rx_len -= drop;
+
+            send_log("error",
+                     "Message too long (exceeds receive buffer); dropped");
+        }
+        return false; // incomplete message
+    }
 
     // Copy message into linear buffer
     size_t msg_len = newline_offset;

@@ -788,7 +788,22 @@ Devices parse `INPUT_SET` allocation-free directly in the serial RX
 demux (`SerialProtocol::try_consume_binary_frame` →
 `NodePool::set_live_slot_value_by_index`). An incomplete frame (fewer
 than `4 + 10·count` bytes buffered) is left in the RX buffer until the
-remaining bytes arrive.
+remaining bytes arrive — **but only if the frame can ever fit**. A frame
+whose declared length `4 + 10·count` exceeds the RX buffer capacity
+(2048 bytes), or whose `count` exceeds the live-slot cap
+(`MAX_LIVE_SLOTS`), can never be completed by waiting; the device MUST
+treat it as a protocol error, drop the `0x1F` marker, and resync to the
+next message start rather than parking on it forever. (A single
+corrupted `count` byte must not be able to wedge the RX path.)
+
+**RX resync (line/frame too long).** The RX ring buffer is fixed at 2048
+bytes. If a single logical message — a JSON line with no newline, or a
+malformed binary frame — fills the ring so that no further bytes can be
+read, the device MUST NOT stall permanently. It drops the overflowing
+message (advancing the read head to the next `{` or `0x1F` marker, or
+clearing the ring if none) and emits a `{"type":"log","level":"error"}`
+diagnostic ("message too long") so the editor learns its send was
+dropped. Serial input remains live for subsequent messages.
 
 > **NOTE (editor manual-control path).** `set-live-inputs` (§5.8) and the
 > `0x01` `INPUT_SET` binary frame are **complementary**, not alternatives:

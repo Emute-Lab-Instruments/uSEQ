@@ -682,6 +682,107 @@ TEST_CASE("F10 [state-sync §2] get-state includes active outputs",
     REQUIRE(json.find("\"health\"") != std::string::npos);
 }
 
+// ── F12 — RX resync: oversized no-newline line must not deadlock (§7) ────
+//
+// Regression for the serial RX deadlock (audit F2, platform-io finding 1a):
+// a JSON line longer than the RX ring (RX_BUF_SIZE = 2048) with no newline
+// fills the buffer; without a flush/resync path the device stops processing
+// ALL serial input until reboot. After the fix, the parser must drop the
+// overflowing line, emit a "too long" log, and remain able to process a
+// subsequent valid message.
+
+TEST_CASE("F12 [§7] oversized no-newline line resyncs; parser survives",
+          "[contract][wire-protocol]")
+{
+    firmware::SerialProtocol sp;
+    sp.init();
+
+    // Feed a >2048-byte JSON-looking line with NO newline. This starts with
+    // '{' (a valid message start) so it isn't skipped as garbage; it simply
+    // never terminates and overflows the ring.
+    std::string huge = "{\"type\":\"eval\",\"code\":\"";
+    huge.append(4000, 'x'); // well over RX_BUF_SIZE, still no '\n'
+    {
+        StdoutCapture cap;
+        sp.rx_inject(reinterpret_cast<const uint8_t*>(huge.data()), huge.size());
+        // First poll: ring is full, no newline → resync + "too long" log.
+        bool ready = sp.has_incoming();
+        auto out = cap.drain();
+        REQUIRE_FALSE(ready); // the oversized line yields no complete message
+        // A diagnostic log must have been emitted so the editor learns the
+        // send was dropped (not silently swallowed).
+        REQUIRE(out.find("\"type\":\"log\"") != std::string::npos);
+        REQUIRE(out.find("too long") != std::string::npos);
+    }
+
+    // Now send a well-formed message on the SAME parser. If the RX path had
+    // deadlocked, this would never be seen. It must dispatch normally.
+    {
+        StdoutCapture cap;
+        const char* good = "{\"type\":\"ping\",\"requestId\":\"after-huge\"}\n";
+        sp.rx_inject(reinterpret_cast<const uint8_t*>(good), strlen(good));
+
+        REQUIRE(sp.has_incoming());
+        char buf[256] = {};
+        bool is_eval = sp.read_command(buf, sizeof(buf));
+        auto out = cap.drain();
+        auto json = extract_last_json(out);
+
+        REQUIRE_FALSE(is_eval); // ping is handled internally
+        REQUIRE_FALSE(json.empty());
+        REQUIRE(json.find("\"type\":\"response\"") != std::string::npos);
+        REQUIRE(json.find("\"requestId\":\"after-huge\"") != std::string::npos);
+    }
+}
+
+// ── F13 — RX resync: garbage INPUT_SET count must not deadlock (§6.5/§7) ──
+//
+// Regression for the serial RX deadlock (audit F2, platform-io finding 1b):
+// try_consume_binary_frame computes frame_len = 4 + count*10 with count a u16
+// (up to 65535 → ~655KB). For any count where frame_len > RX_BUF_SIZE the old
+// code returned Incomplete forever, so a single corrupted count byte bricked
+// serial. After the fix, such a frame is a protocol error: the 0x1F marker is
+// dropped and the parser resyncs to the next valid message.
+
+TEST_CASE("F13 [§6.5] impossible INPUT_SET count resyncs; parser survives",
+          "[contract][wire-protocol]")
+{
+    firmware::SerialProtocol sp;
+    sp.init();
+    // No engine attached — the frame is rejected before any slot write, so
+    // this exercises the framing guard independently of engine state.
+
+    // Binary INPUT_SET header with count=65535 (frame_len = 4 + 655350 bytes,
+    // far larger than RX_BUF_SIZE and impossible to ever complete).
+    uint8_t frame[4];
+    frame[0] = 0x1F; // message_begin_marker
+    frame[1] = 0x01; // INPUT_SET type byte
+    frame[2] = 0xFF; // count low
+    frame[3] = 0xFF; // count high → 65535
+    sp.rx_inject(frame, sizeof(frame));
+
+    // Poll once: the impossible frame must be skipped (0x1F dropped), not
+    // parked as Incomplete. It produces no complete message on its own.
+    REQUIRE_FALSE(sp.has_incoming());
+
+    // A subsequent valid JSON message must now be processable. If the frame
+    // guard were still returning Incomplete forever, this would never fire.
+    StdoutCapture cap;
+    const char* good = "{\"type\":\"ping\",\"requestId\":\"after-frame\"}\n";
+    sp.rx_inject(reinterpret_cast<const uint8_t*>(good), strlen(good));
+
+    REQUIRE(sp.has_incoming());
+    char buf[256] = {};
+    bool is_eval = sp.read_command(buf, sizeof(buf));
+    auto out = cap.drain();
+    auto json = extract_last_json(out);
+
+    REQUIRE_FALSE(is_eval);
+    REQUIRE_FALSE(json.empty());
+    REQUIRE(json.find("\"type\":\"response\"") != std::string::npos);
+    REQUIRE(json.find("\"requestId\":\"after-frame\"") != std::string::npos);
+}
+
 TEST_CASE("F11 [state-sync §2] get-state without engine returns failure",
           "[contract][state-sync]")
 {

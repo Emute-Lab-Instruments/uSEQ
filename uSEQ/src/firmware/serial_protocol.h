@@ -41,6 +41,13 @@ struct SerialProtocol {
     bool has_incoming();
     bool read_command(char* buf, size_t buf_size);
 
+    // ── Test seam: inject raw bytes into the RX ring buffer ────────────────
+    // Mirrors what drain_serial_into_rx_buf() does from the UART on hardware
+    // (honours the RX_BUF_SIZE cap and drops overflow). Lets desktop tests
+    // exercise the framing/resync path without a serial device. Returns the
+    // number of bytes actually accepted into the ring.
+    size_t rx_inject(const uint8_t* bytes, size_t count);
+
     // ── Send (must-deliver) ────────────────────────────────────────────────
     void send_eval_response(const sig::EvalResult& result);
 
