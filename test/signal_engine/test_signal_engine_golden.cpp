@@ -1279,6 +1279,12 @@ TEST_CASE("Diagnostics: Syntax category",
         h.expect_error("(a1 (for 123 [1 2 3] 1))", DiagnosticCategory::Syntax,
                         "'for' needs a variable name");
     }
+
+    SECTION("unclosed form at EOF is Syntax") {
+        GoldenHarness h;
+        h.expect_error("(a1 (+ 1 2", DiagnosticCategory::Syntax,
+                        "Unclosed form");
+    }
 }
 
 TEST_CASE("Diagnostics: Type category",

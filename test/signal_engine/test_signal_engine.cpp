@@ -166,6 +166,14 @@ TEST_CASE("Tokenizer: edge cases", "[signal_engine][tokenizer]") {
         REQUIRE(error_count > 0);
     }
 
+    SECTION("Unclosed form produces syntax error") {
+        const char* src = "(a1 (+ 1 2";
+        TokenStream::tokenize(src, (uint32_t)strlen(src), tokens, MAX_TOKENS,
+                              errors, &error_count);
+        REQUIRE(error_count > 0);
+        REQUIRE(errors[error_count - 1].category == DiagnosticCategory::Syntax);
+    }
+
     SECTION("String with escape") {
         const char* src = "\"hello\\\"world\"";
         TokenStream::tokenize(src, (uint32_t)strlen(src), tokens, MAX_TOKENS, errors, &error_count);

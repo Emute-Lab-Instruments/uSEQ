@@ -72,6 +72,7 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
     uint16_t count = 0;
     uint32_t i = 0;
     bool overflowed = false;
+    uint32_t delimiter_depth = 0;
 
     auto emit = [&](Token t) {
         if (count < max_tokens) {
@@ -82,14 +83,16 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
         }
     };
 
-    auto emit_error = [&](uint32_t pos, uint16_t len, const char* msg) {
-        if (errors && error_count && *error_count < 8) {
+    auto emit_error = [&](uint32_t pos, uint16_t len, const char* msg,
+                          const char* suggestion = nullptr) {
+        if (!error_count || *error_count >= 8) return;
+        if (errors) {
             errors[*error_count] = {
                 DiagnosticSeverity::Error, DiagnosticCategory::Syntax,
-                (uint16_t)pos, len, msg, nullptr
+                (uint16_t)pos, len, msg, suggestion
             };
-            (*error_count)++;
         }
+        (*error_count)++;
     };
 
     while (i < length) {
@@ -105,10 +108,42 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
         }
 
         // Parens and brackets
-        if (c == '(') { Token t; t.kind = TokenKind::LParen; t.span_start = (uint16_t)i; t.span_len = 1; emit(t); i++; continue; }
-        if (c == ')') { Token t; t.kind = TokenKind::RParen; t.span_start = (uint16_t)i; t.span_len = 1; emit(t); i++; continue; }
-        if (c == '[') { Token t; t.kind = TokenKind::LBracket; t.span_start = (uint16_t)i; t.span_len = 1; emit(t); i++; continue; }
-        if (c == ']') { Token t; t.kind = TokenKind::RBracket; t.span_start = (uint16_t)i; t.span_len = 1; emit(t); i++; continue; }
+        if (c == '(') {
+            Token t; t.kind = TokenKind::LParen; t.span_start = (uint16_t)i; t.span_len = 1;
+            emit(t);
+            delimiter_depth++;
+            i++;
+            continue;
+        }
+        if (c == ')') {
+            Token t; t.kind = TokenKind::RParen; t.span_start = (uint16_t)i; t.span_len = 1;
+            emit(t);
+            if (delimiter_depth == 0) {
+                emit_error(i, 1, "Unexpected closing delimiter");
+            } else {
+                delimiter_depth--;
+            }
+            i++;
+            continue;
+        }
+        if (c == '[') {
+            Token t; t.kind = TokenKind::LBracket; t.span_start = (uint16_t)i; t.span_len = 1;
+            emit(t);
+            delimiter_depth++;
+            i++;
+            continue;
+        }
+        if (c == ']') {
+            Token t; t.kind = TokenKind::RBracket; t.span_start = (uint16_t)i; t.span_len = 1;
+            emit(t);
+            if (delimiter_depth == 0) {
+                emit_error(i, 1, "Unexpected closing delimiter");
+            } else {
+                delimiter_depth--;
+            }
+            i++;
+            continue;
+        }
 
         // String literal
         if (c == '"') {
@@ -212,6 +247,14 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
     eof.span_start = (uint16_t)length;
     eof.span_len = 0;
     emit(eof);
+
+    // EOF is not an implicit closing delimiter.  The parser's expect() calls
+    // are deliberately non-fatal for recovery, so validate the lexical
+    // delimiter balance here before a malformed form can compile as valid.
+    if (delimiter_depth > 0) {
+        emit_error(length, 0, "Unclosed form",
+                   "Add the missing closing delimiter(s)");
+    }
 
     // If the token buffer overflowed we dropped tokens (including, possibly,
     // the EOF). Emit a clear diagnostic instead of silently truncating the
