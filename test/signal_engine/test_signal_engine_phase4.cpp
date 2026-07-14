@@ -471,15 +471,11 @@ TEST_CASE("Phase 4: function-cell cross-references", "[phase4][reactivity]") {
         REQUIRE(h.sample("a1", 0.0) == Approx(115.0));
     }
 
-    SECTION("nested same-function call is rejected as recursive") {
-        // Known limitation: (f (f x)) triggers the recursion guard because
-        // the inner f call sees f already on the inline stack from the outer call.
-        // This is documented, not a Phase 4 regression.
+    SECTION("nested same-function call is not recursive") {
         GoldenHarness h;
         h.eval_ok("(defn dbl [x] (* x 2))");
-        h.eval_ok("(defn quad [x] (dbl (dbl x)))");
-        EvalResult r = h.eval_result("(a1 (quad 3))");
-        REQUIRE(r.kind == EvalResult::Error);
+        h.assign_ok("a1", "(dbl (dbl 3))");
+        REQUIRE(h.sample("a1", 0.0) == Approx(12.0));
     }
 
     SECTION("cell used by multiple functions, all callers update") {

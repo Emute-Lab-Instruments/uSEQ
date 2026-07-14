@@ -1144,22 +1144,20 @@ uint16_t GraphBuilder::compile_call(SymbolID fn_sym, TokenStream& ts,
             "Function call chain is too deep",
             "Simplify by reducing the number of nested function calls");
     }
-    push_inline_stack(fn_sym);
-
-    // Compile arguments
+    // Compile arguments in the caller's context.  The inline stack tracks
+    // callable bodies, not call-site argument expressions: (f (f x)) is a
+    // nested argument call, not recursion in f's body.
     uint16_t arg_nodes[MAX_CALLABLE_PARAMS];
     uint8_t arg_count = 0;
     while (ts.peek().kind != TokenKind::RParen && arg_count < info.param_count && !ts.at_end()) {
         uint16_t arg = compile_expr(ts, scope, ctx);
         if (arg == NODE_NONE) {
-            pop_inline_stack();
             return NODE_NONE;
         }
         arg_nodes[arg_count++] = arg;
     }
 
     if (arg_count != info.param_count) {
-        pop_inline_stack();
         return report_error_cat(DiagnosticCategory::Arity, op_tok,
             "Wrong number of arguments",
             "Check the function definition");
@@ -1167,11 +1165,14 @@ uint16_t GraphBuilder::compile_call(SymbolID fn_sym, TokenStream& ts,
 
     // Check for too many arguments (extras not consumed by the loop)
     if (ts.peek().kind != TokenKind::RParen) {
-        pop_inline_stack();
         return report_error_cat(DiagnosticCategory::Arity, op_tok,
             "Too many arguments",
             "Check the function definition");
     }
+
+    // Keep the callee on the stack only while compiling its body.  A call to
+    // the same function from the body is true recursion and must be rejected.
+    push_inline_stack(fn_sym);
 
     // Create local scope with param bindings
     Scope inner_scope = {};

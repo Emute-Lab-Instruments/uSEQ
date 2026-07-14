@@ -53,6 +53,15 @@
     - eval: "(a1 (rec-f 1))"
       expect_error: true
 
+- name: nested-arg-call-not-recursion
+  spec: functions.md §1.3
+  tags: [smoke, functions]
+  steps:
+    - eval: "(defn f [x] (+ x 1))"
+    - eval: "(a1 (f (f 0)))"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [2.0]
+
 - name: redefining-function-recompiles-callers
   spec: functions.md §1.5, cells.md §1.2
   tags: [full, functions]
