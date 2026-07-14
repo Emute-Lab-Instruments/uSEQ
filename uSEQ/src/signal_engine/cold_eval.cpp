@@ -92,6 +92,10 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
         engine.cells.cells[sym].kind = CellKind::Number;
         engine.cells.cells[sym].revision++;
         engine.cells.cells[sym].value = val_tok.number;
+        // A plain define establishes a fresh, non-state binding. Clear any stale
+        // defstate marker (flags 0x02) — otherwise graph_builder keeps emitting a
+        // state_load from the old slot and this define is silently ignored.
+        engine.cells.cells[sym].flags = 0;
     }
     else if (val_tok.kind == TokenKind::LBracket) {
         // Vector data: [1 2 3 4]
@@ -111,6 +115,7 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
         engine.cells.cells[sym].data_table_id = table_id;
         engine.cells.cells[sym].revision++;
         engine.cells.cells[sym].value = (double)count;
+        engine.cells.cells[sym].flags = 0; // clear stale defstate marker (see above)
     }
     else {
         // Expression — store source text as callable with 0 params
@@ -139,6 +144,7 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
 
         engine.cells.cells[sym].kind = CellKind::Callable;
         engine.cells.cells[sym].revision++;
+        engine.cells.cells[sym].flags = 0; // clear stale defstate marker (see above)
         engine.cells.callables[sym].param_count = 0;
         if (offset != UINT32_MAX) {
             engine.cells.callables[sym].source_offset = offset;

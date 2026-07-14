@@ -232,3 +232,18 @@ resource_reclaim_test_exe = executable(
 )
 
 test('resource_reclaim_test', resource_reclaim_test_exe)
+
+# ===== P1 Compiler Correctness Tests =====
+# Regression suite for the three v1.2.0 "silent wrong value" compiler bugs:
+# time-varying vector elements, define-over-defstate, and >32 let bindings.
+
+compiler_p1_test_exe = executable(
+  'test_compiler_p1',
+  sources : ['signal_engine/test_compiler_p1.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('compiler_p1_test', compiler_p1_test_exe)

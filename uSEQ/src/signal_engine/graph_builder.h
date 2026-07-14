@@ -48,7 +48,9 @@ struct Scope {
     uint8_t local_count = 0;
     Scope* parent       = nullptr;
 
-    void bind(SymbolID name, uint16_t node_index);
+    // Returns false if the local-binding pool is full (caller must report a
+    // diagnostic — a dropped binding would silently resolve to the wrong value).
+    bool bind(SymbolID name, uint16_t node_index);
     const Binding* find(SymbolID name) const;
 };
 

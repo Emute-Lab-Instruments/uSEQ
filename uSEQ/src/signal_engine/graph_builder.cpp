@@ -110,10 +110,12 @@ void GraphBuilder::init_form_table() {
 
 // ── Scope ───────────────────────────────────────────────────────────────────
 
-void Scope::bind(SymbolID name, uint16_t node_index) {
+bool Scope::bind(SymbolID name, uint16_t node_index) {
     if (local_count < MAX_LOCAL_BINDINGS) {
         locals[local_count++] = { name, node_index };
+        return true;
     }
+    return false;
 }
 
 const Scope::Binding* Scope::find(SymbolID name) const {
@@ -866,7 +868,11 @@ uint16_t GraphBuilder::compile_let(TokenStream& ts, Scope& scope, TimeContext& c
                                         "Try: (let [x 1 y 2] (+ x y))");
             }
             uint16_t val = compile_expr(ts, inner, ctx);
-            inner.bind(name_tok.symbol, val);
+            if (!inner.bind(name_tok.symbol, val)) {
+                return report_error_cat(DiagnosticCategory::Overflow, name_tok,
+                    "Too many let bindings in one form (limit 32)",
+                    "Split into nested let forms or reduce the number of bindings");
+            }
         }
         ts.expect(TokenKind::RBracket);
     } else if (tok.kind == TokenKind::LParen) {
@@ -885,7 +891,11 @@ uint16_t GraphBuilder::compile_let(TokenStream& ts, Scope& scope, TimeContext& c
                                             "Try: (let (x 1 y 2) (+ x y))");
                 }
                 uint16_t val = compile_expr(ts, inner, ctx);
-                inner.bind(name_tok.symbol, val);
+                if (!inner.bind(name_tok.symbol, val)) {
+                    return report_error_cat(DiagnosticCategory::Overflow, name_tok,
+                        "Too many let bindings in one form (limit 32)",
+                        "Split into nested let forms or reduce the number of bindings");
+                }
             }
         } else {
             // Nested binding list: ((name1 val1) (name2 val2) ...)
@@ -898,7 +908,11 @@ uint16_t GraphBuilder::compile_let(TokenStream& ts, Scope& scope, TimeContext& c
                                             "Try: (let ((x 1) (y 2)) (+ x y))");
                 }
                 uint16_t val = compile_expr(ts, inner, ctx);
-                inner.bind(name_tok.symbol, val);
+                if (!inner.bind(name_tok.symbol, val)) {
+                    return report_error_cat(DiagnosticCategory::Overflow, name_tok,
+                        "Too many let bindings in one form (limit 32)",
+                        "Split into nested let forms or reduce the number of bindings");
+                }
                 ts.expect(TokenKind::RParen);
             }
         }
@@ -2627,13 +2641,19 @@ uint16_t GraphBuilder::compile_vector_literal(TokenStream& ts, Scope& scope, Tim
     uint16_t count = 0;
 
     while (ts.peek().kind != TokenKind::RBracket && !ts.at_end() && count < 64) {
+        Token elem_tok = ts.peek();
         uint16_t elem = compile_expr(ts, scope, ctx);
         if (is_const(elem)) {
             values[count++] = const_value(elem);
         } else {
-            // Non-constant element — can't create a data table
-            // For now, just use the last value
-            values[count++] = 0.0;
+            // A vector literal lowers to a static double table; a time-varying
+            // per-slot signal can't be represented. Fail loudly rather than
+            // silently substituting 0 (values-types.md §1.7). For time-varying
+            // values iterate with (for x [...] ...).
+            return report_error_at_cat(DiagnosticCategory::Type,
+                elem_tok.span_start, elem_tok.span_len,
+                "Vector elements here must be constant numbers",
+                "Use constants, or iterate with (for x [...] ...) for time-varying values");
         }
     }
     ts.expect(TokenKind::RBracket);
@@ -2767,11 +2787,20 @@ GraphBuilder::DataRef GraphBuilder::resolve_data_table(TokenStream& ts, Scope& s
         double values[64];
         uint16_t count = 0;
         while (ts.peek().kind != TokenKind::RBracket && !ts.at_end() && count < 64) {
+            Token elem_tok = ts.peek();
             uint16_t elem = compile_expr(ts, scope, ctx);
             if (is_const(elem)) {
                 values[count++] = const_value(elem);
             } else {
-                values[count++] = 0.0; // non-const elements default to 0
+                // Data-consuming primitives (step/seq/gates/interp/…) lower a
+                // vector to a static double table read by index, so a per-slot
+                // time-varying signal can't be represented here. Fail loudly
+                // rather than silently substituting 0 (values-types.md §1.7).
+                report_error_at_cat(DiagnosticCategory::Type,
+                    elem_tok.span_start, elem_tok.span_len,
+                    "Vector elements here must be constant numbers",
+                    "Use constants, or iterate with (for x [...] ...) for time-varying values");
+                return ref; // ref.ok == false
             }
         }
         ts.expect(TokenKind::RBracket);
