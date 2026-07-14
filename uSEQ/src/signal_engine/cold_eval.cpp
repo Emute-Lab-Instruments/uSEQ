@@ -482,7 +482,25 @@ static EvalResult do_useq_clear(SignalEngine& engine) {
         engine.output_sources[i].has_source = false;
     }
     engine.pool.exec_count = 0;
+
+    // Clear state resources fully (A4, state-identity.md §4.5). Resetting
+    // only state_slot_count left defstate cell markers (flags 0x02 +
+    // data_table_id), state values/sources/update roots behind — so a
+    // re-defstate of the same name "reused" a slot that no longer existed
+    // and read frozen values.
+    for (uint16_t s = 0; s < MAX_STATE_SLOTS; s++) {
+        engine.pool.state_values[s] = 0.0;
+        engine.pool.state_update_roots[s] = NODE_NONE;
+        engine.state_sources[s] = StateUpdateSource{};
+    }
     engine.pool.state_slot_count = 0;
+    for (uint32_t c = 0; c < MAX_CELLS; c++) {
+        if (engine.cells.cells[c].flags == 0x02) {
+            engine.cells.cells[c].flags = 0;
+            engine.cells.cells[c].data_table_id = 0;
+            engine.cells.cells[c].revision++;
+        }
+    }
     engine.registry.clear();
     return make_ok();
 }
