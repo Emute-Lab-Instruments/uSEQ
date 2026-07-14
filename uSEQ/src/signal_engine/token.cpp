@@ -52,6 +52,20 @@ static bool is_symbol_char(char c) {
 
 static bool is_digit(char c) { return c >= '0' && c <= '9'; }
 
+// A14: strtod accepts hex (0x10), "inf" and "nan" forms — ModuLisp numeric
+// literals are plain decimal only. Restrict number tokens to decimal
+// characters so those forms tokenize as symbols (→ UndefinedName) instead of
+// silently becoming numbers.
+static bool is_plain_number_text(const char* s, uint32_t len) {
+    for (uint32_t k = 0; k < len; k++) {
+        char c = s[k];
+        if (!(is_digit(c) || c == '.' || c == '-' || c == '+' ||
+              c == 'e' || c == 'E'))
+            return false;
+    }
+    return true;
+}
+
 uint16_t TokenStream::tokenize(const char* source, uint32_t length,
                                 Token* out, uint16_t max_tokens,
                                 Diagnostic* errors, uint8_t* error_count) {
@@ -128,17 +142,25 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
             char* end_ptr = nullptr;
             double val = strtod(source + i, &end_ptr);
             if (end_ptr > source + i) {
-                // Check that the character after the number is not a symbol char
-                // (to avoid parsing "2x" as number 2 followed by symbol x)
                 uint32_t num_end = (uint32_t)(end_ptr - source);
-                Token t;
-                t.kind = TokenKind::Number;
-                t.span_start = (uint16_t)start;
-                t.span_len = (uint16_t)(num_end - start);
-                t.number = val;
-                emit(t);
-                i = num_end;
-                continue;
+                // A14: the character after the number must not be a symbol
+                // char ("2x" must tokenize as the symbol 2x, not number 2
+                // followed by symbol x), and the literal itself must be plain
+                // decimal (no 0x/inf/nan strtod forms). Otherwise fall
+                // through to the symbol path.
+                bool clean_tail = num_end >= length ||
+                                  !is_symbol_char(source[num_end]);
+                if (clean_tail &&
+                    is_plain_number_text(source + start, num_end - start)) {
+                    Token t;
+                    t.kind = TokenKind::Number;
+                    t.span_start = (uint16_t)start;
+                    t.span_len = (uint16_t)(num_end - start);
+                    t.number = val;
+                    emit(t);
+                    i = num_end;
+                    continue;
+                }
             }
         }
 
@@ -154,10 +176,13 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
             memcpy(buf, source + start, sym_len);
             buf[sym_len] = '\0';
 
-            // Check if it's actually a number (e.g., "-1" when preceded by space)
+            // Check if it's actually a number (e.g., "-1" when preceded by
+            // space). Restricted to plain decimal text (A14) so strtod's
+            // inf/nan/hex forms stay symbols.
             char* end_ptr = nullptr;
             double val = strtod(buf, &end_ptr);
-            if (end_ptr == buf + sym_len) {
+            if (end_ptr == buf + sym_len &&
+                is_plain_number_text(buf, sym_len)) {
                 Token t;
                 t.kind = TokenKind::Number;
                 t.span_start = (uint16_t)start;

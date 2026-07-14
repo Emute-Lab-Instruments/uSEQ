@@ -306,6 +306,69 @@ TEST_CASE("A12: store_revision bumps on mutating evals", "[audit][a12]") {
     REQUIRE(h.engine.cells.store_revision > r1);
 }
 
+// ── A14: numeric literals are plain decimal with clean boundaries ──────────
+
+TEST_CASE("A14: tokenizer rejects 0x/inf/nan and trailing-symbol numerics",
+          "[audit][a14]") {
+    Harness h;
+
+    Token tokens[64];
+    Diagnostic errs[8];
+    uint8_t err_count = 0;
+
+    auto tokenize_one = [&](const char* src) -> Token {
+        err_count = 0;
+        uint16_t n = TokenStream::tokenize(src, (uint32_t)strlen(src),
+                                           tokens, 64, errs, &err_count);
+        REQUIRE(n >= 1);
+        return tokens[0];
+    };
+
+    // strtod special forms must not become numbers.
+    for (const char* s : {"inf", "nan", "0x10", "-inf", "INF"}) {
+        INFO("source: " << s);
+        Token t = tokenize_one(s);
+        REQUIRE(t.kind == TokenKind::Symbol);
+    }
+
+    // "2x" is one symbol, not number 2 + symbol x.
+    {
+        err_count = 0;
+        const char* s = "2x";
+        uint16_t n = TokenStream::tokenize(s, 2, tokens, 64, errs, &err_count);
+        REQUIRE(n == 2); // symbol + EOF
+        REQUIRE(tokens[0].kind == TokenKind::Symbol);
+        REQUIRE(tokens[0].span_len == 2);
+    }
+
+    // Ordinary literals still tokenize as numbers.
+    struct { const char* src; double v; } good[] = {
+        {"2", 2.0}, {"-1.5", -1.5}, {".5", 0.5}, {"1e3", 1000.0},
+        {"2.5e-2", 0.025},
+    };
+    for (auto& g : good) {
+        INFO("source: " << g.src);
+        Token t = tokenize_one(g.src);
+        REQUIRE(t.kind == TokenKind::Number);
+        REQUIRE(t.number == Approx(g.v));
+    }
+
+    // Boundary chars like ')' still terminate numbers.
+    {
+        const char* s = "(+ 1 2)";
+        err_count = 0;
+        uint16_t n = TokenStream::tokenize(s, (uint32_t)strlen(s),
+                                           tokens, 64, errs, &err_count);
+        REQUIRE(n == 6); // ( + 1 2 ) EOF
+        REQUIRE(tokens[2].kind == TokenKind::Number);
+        REQUIRE(tokens[3].kind == TokenKind::Number);
+    }
+
+    // End-to-end: (a1 2x) errors instead of silently reading 2.
+    EvalResult r = h.eval("(a1 (+ 1 2x))");
+    REQUIRE(r.kind == EvalResult::Error);
+}
+
 // NOTE: the A1 case floods the shared symbol interner past MAX_CELLS, which
 // makes any fresh name interned after it out-of-range. Keep it LAST.
 
