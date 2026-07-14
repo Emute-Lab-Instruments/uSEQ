@@ -39,6 +39,7 @@ void GraphBuilder::init_form_table() {
     };
 
     // Time transforms
+    add(sym.time_as,      &GraphBuilder::compile_eval_at_time);
     add(sym.fast,         &GraphBuilder::compile_fast);
     add(sym.slow,         &GraphBuilder::compile_slow);
     add(sym.offset,       &GraphBuilder::compile_offset);

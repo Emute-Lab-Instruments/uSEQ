@@ -50,6 +50,7 @@ SYM(and_,                "and",                  logic)
 SYM(or_,                 "or",                   logic)
 
 // ── Time transforms ────────────────────────────────────────────────────────
+SYM(time_as,             "time-as",              time_warp)
 SYM(fast,                "fast",                 time_warp)
 SYM(slow,                "slow",                 time_warp)
 SYM(offset,              "offset",               time_warp)

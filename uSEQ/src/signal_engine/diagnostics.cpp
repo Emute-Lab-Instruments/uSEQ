@@ -63,7 +63,7 @@ static const char* const builtin_names[] = {
     "tri", "sqr", "step", "gates", "trigs", "euclid", "eu",
     "seq", "from-list", "interp", "flatseq", "dm", "range", "gatesw",
     "random", "index-rand", "loop-at", "rpulse", "rstep", "ridx", "rwarp",
-    "fast", "slow", "offset", "shift",
+    "time-as", "fast", "slow", "offset", "shift",
     "if", "let", "do", "for", "while", "fn", "lambda",
     "not", "and", "or",
     "define", "def", "defn", "set", "input", "t",
