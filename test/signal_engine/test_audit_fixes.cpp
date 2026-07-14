@@ -114,6 +114,43 @@ TEST_CASE("A4: re-defstate after useq-clear gets a fresh, working slot",
     REQUIRE(h.engine.cells.cells[c].value == Approx(10.0));
 }
 
+// ── A5: scratch eval must not clobber fresh scratch state with live state ──
+// state-identity.md §6.6: scratch evals are isolated. The old code compiled
+// the scratch expression (which writes init values into freshly-allocated
+// scratch slots) and THEN memcpy'd the live pool's state_values over the
+// scratch pool, so a stateful expression evaluated via set/eval read a live
+// state value that happened to share the same slot index instead of its own
+// init.
+
+TEST_CASE("A5: scratch-evaluated stateful expression keeps its init value",
+          "[audit][a5]") {
+    Harness h;
+
+    // Occupy live state slot 0 with a conspicuous value.
+    h.eval_ok("(defstate a5-live 99 (+ a5-live 0))");
+    REQUIRE(h.engine.pool.state_values[0] == Approx(99.0));
+
+    // Scratch-eval a fresh integrator (init 0). It allocates scratch slot 0;
+    // pre-fix this returned 99 (live slot 0 leaked over the fresh init).
+    EvalResult r = h.eval("(integrate 0)");
+    REQUIRE(r.kind == EvalResult::Number);
+    REQUIRE(r.number == Approx(0.0));
+
+    // Reading live named state through a scratch eval still works.
+    EvalResult r2 = h.eval("(+ a5-live 1)");
+    REQUIRE(r2.kind == EvalResult::Number);
+    REQUIRE(r2.number == Approx(100.0));
+
+    // set with a stateful RHS: same isolation rule.
+    h.eval_ok("(set a5-x (integrate 0))");
+    auto& si = SymbolIntern::getInstance();
+    SymbolID x = si.intern(String("a5-x"));
+    REQUIRE(h.engine.cells.cells[x].value == Approx(0.0));
+
+    // Live state untouched by the scratch evals.
+    REQUIRE(h.engine.pool.state_values[0] == Approx(99.0));
+}
+
 // NOTE: the A1 case floods the shared symbol interner past MAX_CELLS, which
 // makes any fresh name interned after it out-of-range. Keep it LAST.
 

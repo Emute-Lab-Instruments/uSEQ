@@ -261,6 +261,14 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
         uint8_t saved_tables = engine.cells.data_table_count;
         engine.scratch_pool.reset();
 
+        // Mirror live state BEFORE compiling (A5, state-identity.md §6.6):
+        // compilation writes init values into freshly-allocated scratch
+        // slots; copying live values afterwards clobbered them, so stateful
+        // expressions in a set/eval saw a stale live value instead of their
+        // own :init.
+        memcpy(engine.scratch_pool.state_values, engine.pool.state_values,
+               sizeof(engine.pool.state_values));
+
         GraphBuildResult gr = build_output_graph(engine.scratch_pool, ts,
                                                   engine.cells, engine.arena, source);
         if (gr.has_error) {
@@ -277,9 +285,6 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
             engine.scratch_pool.outputs[0].root_node = gr.root_node;
             engine.scratch_pool.outputs[0].valid = true;
             engine.scratch_pool.rebuild_execution_order();
-
-            memcpy(engine.scratch_pool.state_values, engine.pool.state_values,
-                   sizeof(engine.pool.state_values));
 
             double cell_vals[MAX_CELLS];
             engine.cells.snapshot_values(cell_vals, MAX_CELLS);
@@ -636,6 +641,13 @@ EvalResult eval_expression(const char* source, uint32_t length,
     // Reset scratch pool
     engine.scratch_pool.reset();
 
+    // Mirror live state values into the scratch pool BEFORE compiling (A5,
+    // state-identity.md §6.6): compiling a stateful expression writes its
+    // init value into a freshly-allocated scratch slot; copying live values
+    // afterwards clobbered those inits.
+    memcpy(engine.scratch_pool.state_values, engine.pool.state_values,
+           sizeof(engine.pool.state_values));
+
     // Compile into scratch pool
     GraphBuildResult result = build_output_graph(
         engine.scratch_pool, ts, engine.cells, engine.arena, source);
@@ -654,10 +666,6 @@ EvalResult eval_expression(const char* source, uint32_t length,
     engine.scratch_pool.outputs[0].root_node = result.root_node;
     engine.scratch_pool.outputs[0].valid = true;
     engine.scratch_pool.rebuild_execution_order();
-
-    // Mirror live state values into scratch pool for LoadState nodes
-    memcpy(engine.scratch_pool.state_values, engine.pool.state_values,
-           sizeof(engine.pool.state_values));
 
     // Snapshot cell values
     double cell_values[MAX_CELLS];
