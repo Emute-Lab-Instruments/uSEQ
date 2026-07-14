@@ -34,10 +34,25 @@ inline double get_system_time_seconds()
 
 #include <Arduino.h>
 
+#if defined(ARDUINO_ARCH_RP2040)
+#include <hardware/timer.h>
+
+inline double get_system_time_seconds()
+{
+    // micros() on the Philhower core returns uint32_t and wraps to 0 after
+    // ~71.6 minutes, snapping engine time back to boot mid-performance (A3).
+    // The RP2040 hardware timer is 64-bit; use it directly.
+    return (double)time_us_64() / 1e6;
+}
+
+#else
+
 inline double get_system_time_seconds()
 {
     return micros() / 1e6;
 }
+
+#endif
 
 #endif
 
