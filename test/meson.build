@@ -47,6 +47,12 @@ signal_engine_probe_exe = executable(
 
 test('signal_engine_probe_smoke', signal_engine_probe_exe)
 
+# JSONL session-mode smoke test (conformance Layer 0 probe protocol)
+probe_session_test = find_program('signal_engine/test_probe_session.sh')
+test('signal_engine_probe_session_smoke', probe_session_test,
+     args : [signal_engine_probe_exe.full_path()],
+     depends : signal_engine_probe_exe)
+
 signal_engine_golden_test_exe = executable(
   'test_signal_engine_golden',
   sources : ['signal_engine/test_signal_engine_golden.cpp'],

@@ -1,0 +1,71 @@
+# Time warps (pure substitution) — docs/specs/time-warps.md
+- name: fast-is-pointwise-time-scaling
+  spec: time-warps.md §3.1
+  tags: [smoke, time-warps]
+  steps:
+    # (fast k expr) == (time-as (* k t) expr); body sees t' = 2t
+    - eval: "(a1 (fast 2 t))"
+    - sample: {output: a1, times: [0.0, 0.5, 1.0]}
+      expect_values: [0.0, 1.0, 2.0]
+
+- name: slow-is-pointwise-time-division
+  spec: time-warps.md §3.1
+  tags: [smoke, time-warps]
+  steps:
+    - eval: "(a1 (slow 4 t))"
+    - sample: {output: a1, times: [0.0, 2.0, 4.0]}
+      expect_values: [0.0, 0.5, 1.0]
+
+- name: offset-shifts-time-in-seconds
+  spec: time-warps.md §3.1
+  tags: [smoke, time-warps]
+  steps:
+    - eval: "(a1 (offset 1.5 t))"
+    - sample: {output: a1, times: [0.0, 1.0]}
+      expect_values: [1.5, 2.5]
+
+- name: shift-is-alias-of-offset
+  spec: time-warps.md §3.1
+  tags: [smoke, time-warps]
+  steps:
+    - eval: "(a1 (shift 1.5 t))"
+    - sample: {output: a1, times: [0.0, 1.0]}
+      expect_values: [1.5, 2.5]
+
+- name: fast-1-is-identity
+  spec: time-warps.md §2.2
+  tags: [smoke, time-warps]
+  steps:
+    - eval: "(a1 (fast 1 beat))"
+    - eval: "(a2 beat)"
+    - sample: {output: a1, times: [0.0, 0.1, 0.3]}
+      expect_values: [0.0, 0.2, 0.6]
+    - sample: {output: a2, times: [0.0, 0.1, 0.3]}
+      expect_values: [0.0, 0.2, 0.6]
+
+- name: offset-0-is-identity
+  spec: time-warps.md §2.2
+  tags: [smoke, time-warps]
+  steps:
+    - eval: "(a1 (offset 0 beat))"
+    - sample: {output: a1, times: [0.1]}
+      expect_values: [0.2]
+
+- name: nested-warps-compose
+  spec: time-warps.md §3.5
+  tags: [full, time-warps]
+  steps:
+    # (fast 2 (slow 4 expr)) == (fast 0.5 expr): body sees t' = t/2
+    - eval: "(a1 (fast 2 (slow 4 t)))"
+    - sample: {output: a1, times: [0.0, 1.0, 2.0]}
+      expect_values: [0.0, 0.5, 1.0]
+
+- name: time-as-rebinds-phasors
+  spec: time-warps.md §2.2, time.md §1.3.1
+  tags: [full, time-warps]
+  steps:
+    # Inside time-as, beat is re-derived from the substituted local t.
+    - eval: "(a1 (time-as (* 2 t) beat))"
+    - sample: {output: a1, times: [0.125]}
+      # local t = 0.25 -> beat = fmod(0.5, 1) = 0.5
+      expect_values: [0.5]

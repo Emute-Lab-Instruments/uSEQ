@@ -1,25 +1,437 @@
 // Signal Engine Probe
 // Standalone executable that evaluates ModuLisp expressions using the new
-// signal engine and outputs JSON results. Compatible with the golden test
-// runner (scripts/run_bytecode_vm_golden.py).
+// signal engine and outputs JSON results.
 //
-// Usage:
-//   signal_engine_probe --code "(+ 1 2)" --output a1 --time 0.0 --bpm 120 --time-sig 4,4
+// Two modes:
 //
-// Output (last line):
-//   {"ok": true, "value": 3.0}
-// or
-//   {"ok": false, "error": "..."}
+// 1. One-shot CLI mode (golden-runner compatible, scripts/run_bytecode_vm_golden.py):
+//      signal_engine_probe --code "(+ 1 2)" --output a1 --time 0.0 --bpm 120 --time-sig 4,4
+//    Output (last line):
+//      {"ok": true, "value": 3.0}
+//    or
+//      {"ok": false, "error": "..."}
+//
+// 2. Session mode (Layer 0 of docs/testing/conformance-and-bench-design.md):
+//      signal_engine_probe --session
+//    JSONL request/response over stdin/stdout. One JSON object per line in,
+//    one JSON object per line out. Ops:
+//      {"op":"eval",   "code":"(define x 5)"}
+//        -> {"ok":true} | {"ok":false,"diagnostics":[{"severity":"error",
+//              "category":"Boundary","span":[5,7],"msg":"..."}]}
+//      {"op":"sample", "output":"a1", "times":[0,0.25,0.5]}
+//        -> {"ok":true,"values":[...]}    (read-only: no state commit)
+//      {"op":"tick",   "t":0.5}           advance engine time (state commits)
+//        -> {"ok":true}
+//      {"op":"clear"}                     useq-clear
+//        -> {"ok":true}
+//      {"op":"health", "output":"a1"}
+//        -> {"ok":true,"health":"running"|"fallback"|"error"|"idle"}
+//      {"op":"config", "opt_level":N}
+//        -> {"ok":false,"error":"unsupported"} for opt_level != 1
+//           (no engine hook exists to disable optimizations)
+//
+// JSON is hand-rolled (both parsing and emission) — no third-party libs.
 
 #include "src/signal_engine/signal_engine.h"
 #include "src/modulisp/lisp/symbol_intern.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
+#include <string>
 
 using namespace sig;
 
-int main(int argc, char* argv[]) {
+// ── Minimal JSON emission helpers ───────────────────────────────────────────
+
+static void json_escape_into(std::string& out, const char* s) {
+    if (!s) return;
+    for (const char* p = s; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                } else {
+                    out += (char)c;
+                }
+        }
+    }
+}
+
+static std::string diagnostics_json(const Diagnostic* diags, uint8_t count) {
+    std::string out = "[";
+    for (uint8_t i = 0; i < count; i++) {
+        const Diagnostic& d = diags[i];
+        if (i) out += ",";
+        out += "{\"severity\":\"";
+        out += severity_to_cstr(d.severity);
+        out += "\",\"category\":\"";
+        out += category_to_cstr(d.category);
+        out += "\",\"span\":[";
+        char buf[48];
+        snprintf(buf, sizeof(buf), "%u,%u", (unsigned)d.span_start,
+                 (unsigned)(d.span_start + d.span_len));
+        out += buf;
+        out += "],\"msg\":\"";
+        json_escape_into(out, d.message ? d.message : "");
+        out += "\"";
+        if (d.suggestion) {
+            out += ",\"suggestion\":\"";
+            json_escape_into(out, d.suggestion);
+            out += "\"";
+        }
+        out += "}";
+    }
+    out += "]";
+    return out;
+}
+
+static void respond(const std::string& s) {
+    fputs(s.c_str(), stdout);
+    fputc('\n', stdout);
+    fflush(stdout);
+}
+
+static void respond_error(const char* msg) {
+    std::string out = "{\"ok\":false,\"error\":\"";
+    json_escape_into(out, msg);
+    out += "\"}";
+    respond(out);
+}
+
+// ── Minimal JSON extraction helpers ─────────────────────────────────────────
+// Just enough to read flat request objects: string fields, number fields,
+// and a flat array of numbers. No nesting needed for the request schema.
+
+// Finds `"key"` followed by ':' at top level of a flat object. Returns
+// pointer to the first non-space char of the value, or nullptr.
+static const char* json_find_value(const char* line, const char* key) {
+    size_t klen = strlen(key);
+    const char* p = line;
+    while ((p = strstr(p, key)) != nullptr) {
+        // must be quoted: preceded by '"' and followed by '"' then ':'
+        if (p > line && p[-1] == '"' && p[klen] == '"') {
+            const char* q = p + klen + 1;
+            while (*q && isspace((unsigned char)*q)) q++;
+            if (*q == ':') {
+                q++;
+                while (*q && isspace((unsigned char)*q)) q++;
+                return q;
+            }
+        }
+        p += 1;
+    }
+    return nullptr;
+}
+
+// Extracts a string value for key into out. Handles \" \\ \n \r \t escapes.
+static bool json_get_string(const char* line, const char* key, std::string& out) {
+    const char* v = json_find_value(line, key);
+    if (!v || *v != '"') return false;
+    v++;
+    out.clear();
+    while (*v && *v != '"') {
+        if (*v == '\\' && v[1]) {
+            v++;
+            switch (*v) {
+                case 'n': out += '\n'; break;
+                case 'r': out += '\r'; break;
+                case 't': out += '\t'; break;
+                case '"': out += '"';  break;
+                case '\\': out += '\\'; break;
+                case '/': out += '/';  break;
+                case 'u': {
+                    // Minimal \uXXXX: only handle ASCII range.
+                    if (v[1] && v[2] && v[3] && v[4]) {
+                        char hex[5] = { v[1], v[2], v[3], v[4], 0 };
+                        long code = strtol(hex, nullptr, 16);
+                        if (code < 0x80) out += (char)code;
+                        v += 4;
+                    }
+                    break;
+                }
+                default: out += *v; break;
+            }
+            v++;
+        } else {
+            out += *v++;
+        }
+    }
+    return *v == '"';
+}
+
+static bool json_get_number(const char* line, const char* key, double& out) {
+    const char* v = json_find_value(line, key);
+    if (!v) return false;
+    char* end = nullptr;
+    double d = strtod(v, &end);
+    if (end == v) return false;
+    out = d;
+    return true;
+}
+
+// Extracts a flat array of numbers for key. Returns count, or -1 on error.
+static int json_get_number_array(const char* line, const char* key,
+                                 double* out, int max_count) {
+    const char* v = json_find_value(line, key);
+    if (!v || *v != '[') return -1;
+    v++;
+    int n = 0;
+    while (*v) {
+        while (*v && (isspace((unsigned char)*v) || *v == ',')) v++;
+        if (*v == ']') return n;
+        char* end = nullptr;
+        double d = strtod(v, &end);
+        if (end == v) return -1;
+        if (n >= max_count) return -1;
+        out[n++] = d;
+        v = end;
+    }
+    return -1; // unterminated
+}
+
+// ── Session state ───────────────────────────────────────────────────────────
+
+struct Session {
+    SignalEngine* engine = nullptr;
+    double prev_tick_time = 0.0;
+    double hw_inputs[32] = {};
+
+    void init(double bpm = 120.0, int beats_per_bar = 4) {
+        engine = new SignalEngine();
+        engine->init_defaults(bpm, beats_per_bar);
+        prev_tick_time = 0.0;
+    }
+
+    // Execute all outputs at time t into output_values.
+    // If commit is true, state slots commit and prev-output values advance
+    // (a "tick"); otherwise the engine is left untouched (a "sample").
+    void execute_at(double t, double* output_values, bool commit) {
+        double cell_vals[MAX_CELLS];
+        engine->cells.snapshot_values(cell_vals, MAX_CELLS);
+        double workspace[MAX_TOTAL_NODES];
+
+        ExecutionContext ctx;
+        ctx.t             = t;
+        ctx.dt            = t - prev_tick_time;
+        ctx.cell_values   = cell_vals;
+        ctx.hw_inputs     = hw_inputs;
+        ctx.data_pool     = engine->cells.data_pool;
+        ctx.data_offsets  = engine->cells.data_offsets;
+        ctx.data_lengths  = engine->cells.data_lengths;
+        ctx.prev_outputs  = engine->pool.prev_output_values;
+        ctx.output_values = output_values;
+        ctx.workspace     = workspace;
+        execute_all_outputs(engine->pool, ctx);
+
+        if (commit) {
+            commit_state(engine->pool, workspace);
+            prev_tick_time = t;
+            for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
+                if (engine->pool.outputs[i].valid) {
+                    engine->pool.prev_output_values[i] = output_values[i];
+                    engine->pool.outputs[i].lkg_value  = output_values[i];
+                }
+            }
+        }
+    }
+};
+
+static bool resolve_output(const char* name, uint16_t& index_out) {
+    uint16_t idx = GraphBuilder::resolve_output_index(
+        SymbolIntern::getInstance().intern(String(name)));
+    if (idx == NODE_NONE) return false;
+    index_out = idx;
+    return true;
+}
+
+// ── Session op handlers ─────────────────────────────────────────────────────
+
+static void op_eval(Session& s, const char* line) {
+    std::string code;
+    if (!json_get_string(line, "code", code)) {
+        respond_error("eval: missing \"code\"");
+        return;
+    }
+    EvalResult result = eval_cold(code.c_str(), (uint32_t)code.size(), *s.engine);
+    s.engine->pool.rebuild_execution_order();
+
+    if (result.kind == EvalResult::Error) {
+        std::string out = "{\"ok\":false,\"diagnostics\":";
+        out += diagnostics_json(result.diagnostics, result.diagnostic_count);
+        out += "}";
+        respond(out);
+        return;
+    }
+
+    std::string out = "{\"ok\":true";
+    if (result.kind == EvalResult::Number) {
+        char buf[48];
+        snprintf(buf, sizeof(buf), "%.17g", result.number);
+        out += ",\"value\":";
+        out += buf;
+    }
+    if (result.diagnostic_count > 0) {
+        out += ",\"diagnostics\":";
+        out += diagnostics_json(result.diagnostics, result.diagnostic_count);
+    }
+    out += "}";
+    respond(out);
+}
+
+static void op_sample(Session& s, const char* line) {
+    std::string output_name;
+    if (!json_get_string(line, "output", output_name)) {
+        respond_error("sample: missing \"output\"");
+        return;
+    }
+    static const int MAX_TIMES = 4096;
+    static double times[MAX_TIMES];
+    int n = json_get_number_array(line, "times", times, MAX_TIMES);
+    if (n < 0) {
+        respond_error("sample: missing or malformed \"times\"");
+        return;
+    }
+
+    uint16_t output_index;
+    if (!resolve_output(output_name.c_str(), output_index) ||
+        s.engine->pool.outputs[output_index].root_node == NODE_NONE) {
+        std::string msg = "Output ";
+        msg += output_name;
+        msg += " not assigned";
+        respond_error(msg.c_str());
+        return;
+    }
+
+    std::string out = "{\"ok\":true,\"values\":[";
+    for (int i = 0; i < n; i++) {
+        double output_values[MAX_OUTPUTS] = {};
+        s.execute_at(times[i], output_values, /*commit=*/false);
+        char buf[48];
+        snprintf(buf, sizeof(buf), "%.17g", output_values[output_index]);
+        if (i) out += ",";
+        out += buf;
+    }
+    out += "]}";
+    respond(out);
+}
+
+static void op_tick(Session& s, const char* line) {
+    double t = 0.0;
+    if (!json_get_number(line, "t", t)) {
+        respond_error("tick: missing \"t\"");
+        return;
+    }
+    double output_values[MAX_OUTPUTS] = {};
+    s.execute_at(t, output_values, /*commit=*/true);
+    respond("{\"ok\":true}");
+}
+
+static void op_clear(Session& s) {
+    static const char* CLEAR = "(useq-clear)";
+    EvalResult result = eval_cold(CLEAR, (uint32_t)strlen(CLEAR), *s.engine);
+    s.engine->pool.rebuild_execution_order();
+    s.prev_tick_time = 0.0;
+    if (result.kind == EvalResult::Error) {
+        respond_error(result.diagnostic_count > 0 &&
+                      result.diagnostics[0].message
+                          ? result.diagnostics[0].message
+                          : "clear failed");
+        return;
+    }
+    respond("{\"ok\":true}");
+}
+
+static void op_health(Session& s, const char* line) {
+    std::string output_name;
+    if (!json_get_string(line, "output", output_name)) {
+        respond_error("health: missing \"output\"");
+        return;
+    }
+    uint16_t output_index;
+    if (!resolve_output(output_name.c_str(), output_index)) {
+        std::string msg = "Unknown output ";
+        msg += output_name;
+        respond_error(msg.c_str());
+        return;
+    }
+    const OutputSlot& slot = s.engine->pool.outputs[output_index];
+    // The engine has no per-output runtime error flag yet (see
+    // docs/specs/failure-model.md); "error" is unreachable from this probe.
+    const char* health = "idle";
+    if (slot.root_node != NODE_NONE) {
+        health = slot.valid ? "running" : "fallback";
+    }
+    std::string out = "{\"ok\":true,\"health\":\"";
+    out += health;
+    out += "\"}";
+    respond(out);
+}
+
+static void op_config(const char* line) {
+    double opt_level = 0.0;
+    if (!json_get_number(line, "opt_level", opt_level)) {
+        respond_error("config: missing \"opt_level\"");
+        return;
+    }
+    // The engine has no hook to disable compile optimizations (CSE, constant
+    // folding are unconditional in NodePool). Per the conformance design doc,
+    // report unsupported rather than pretending. Default optimization level
+    // (anything non-zero) is what already runs, so that is a no-op success.
+    if (opt_level == 0.0) {
+        respond_error("unsupported");
+        return;
+    }
+    respond("{\"ok\":true}");
+}
+
+static int run_session() {
+    Session session;
+    session.init();
+
+    char* line = nullptr;
+    size_t cap = 0;
+    ssize_t len;
+    while ((len = getline(&line, &cap, stdin)) != -1) {
+        // Skip blank lines
+        bool blank = true;
+        for (ssize_t i = 0; i < len; i++)
+            if (!isspace((unsigned char)line[i])) { blank = false; break; }
+        if (blank) continue;
+
+        std::string op;
+        if (!json_get_string(line, "op", op)) {
+            respond_error("missing \"op\"");
+            continue;
+        }
+
+        if (op == "eval")        op_eval(session, line);
+        else if (op == "sample") op_sample(session, line);
+        else if (op == "tick")   op_tick(session, line);
+        else if (op == "clear")  op_clear(session);
+        else if (op == "health") op_health(session, line);
+        else if (op == "config") op_config(line);
+        else {
+            std::string msg = "unknown op: ";
+            msg += op;
+            respond_error(msg.c_str());
+        }
+    }
+    free(line);
+    return 0;
+}
+
+// ── One-shot CLI mode (golden runner compatibility) ─────────────────────────
+
+static int run_one_shot(int argc, char* argv[]) {
     const char* code = nullptr;
     const char* output_name = "a1";
     double time_val = 0.0;
@@ -112,4 +524,13 @@ int main(int argc, char* argv[]) {
 
     printf("{\"ok\": true, \"value\": %.17g}\n", value);
     return 0;
+}
+
+int main(int argc, char* argv[]) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--session") == 0) {
+            return run_session();
+        }
+    }
+    return run_one_shot(argc, argv);
 }

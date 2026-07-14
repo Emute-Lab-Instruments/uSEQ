@@ -1,0 +1,52 @@
+# Cross-output reads and outputs — docs/specs/prev.md, docs/specs/outputs.md
+- name: prev-reads-committed-previous-sample
+  spec: prev.md §1.2
+  tags: [smoke, prev-outputs]
+  steps:
+    - eval: "(a1 0.75)"
+    - tick: 0.0
+    - eval: "(a2 (* (prev a1) 2))"
+    - sample: {output: a2, times: [0.0]}
+      expect_values: [1.5]
+
+- name: bare-output-name-is-prev-sugar
+  spec: prev.md §1.3
+  tags: [smoke, prev-outputs]
+  steps:
+    - eval: "(a1 0.5)"
+    - tick: 0.0
+    - eval: "(a2 (* a1 0.5))"
+    - sample: {output: a2, times: [0.0]}
+      expect_values: [0.25]
+
+- name: first-sample-reads-neutral-default
+  spec: prev.md §1.5
+  tags: [smoke, prev-outputs]
+  steps:
+    # No tick has committed a1 yet -> prev reads the neutral default 0.
+    - eval: "(a1 1)"
+    - eval: "(a2 (+ (prev a1) 10))"
+    - sample: {output: a2, times: [0.0]}
+      expect_values: [10.0]
+
+- name: self-feedback-integrates-per-tick
+  spec: prev.md §1.6
+  tags: [smoke, prev-outputs]
+  steps:
+    - eval: "(a2 (+ (prev a2) 0.25))"
+    - tick: 0.0
+    - tick: 0.001
+    - tick: 0.002
+    - sample: {output: a2, times: [0.002]}
+      # after 3 committed ticks prev(a2) = 0.75; sampling adds one more step
+      expect_values: [1.0]
+
+- name: output-assignment-and-health
+  spec: outputs.md, failure-model.md §5
+  tags: [smoke, prev-outputs]
+  steps:
+    - health: {output: a3, expect: idle}
+    - eval: "(a3 0.1)"
+    - health: {output: a3, expect: running}
+    - sample: {output: a3, times: [0.0]}
+      expect_values: [0.1]

@@ -1,0 +1,76 @@
+# Functions — docs/specs/functions.md
+- name: defn-inlines-at-call-site
+  spec: functions.md §1.2
+  tags: [smoke, functions]
+  steps:
+    - eval: "(defn dbl [x] (* x 2))"
+    - eval: "(a1 (dbl 3))"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [6.0]
+
+- name: lambda-call-inline
+  spec: functions.md §1.1
+  tags: [smoke, functions]
+  steps:
+    - eval: "(a1 ((fn [x y] (+ x y)) 2 3))"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [5.0]
+
+- name: variadic-arithmetic-left-folds
+  spec: functions.md §1.7
+  tags: [smoke, functions]
+  steps:
+    - eval: "(+ 1 2 3 4)"
+      expect_value: 10.0
+    - eval: "(* 2 3 4)"
+      expect_value: 24.0
+    - eval: "(- 10 1 2)"
+      expect_value: 7.0
+
+- name: unary-minus-and-reciprocal
+  spec: functions.md §1.7
+  tags: [smoke, functions]
+  steps:
+    - eval: "(- 5)"
+      expect_value: -5.0
+    - eval: "(/ 4)"
+      expect_value: 0.25
+
+- name: nullary-identities
+  spec: functions.md §1.7
+  tags: [full, functions]
+  steps:
+    - eval: "(+)"
+      expect_value: 0.0
+    - eval: "(*)"
+      expect_value: 1.0
+
+- name: recursion-in-signal-context-rejected
+  spec: functions.md §1.3
+  tags: [smoke, functions, diagnostics]
+  steps:
+    - eval: "(defn rec-f [x] (rec-f x))"
+    - eval: "(a1 (rec-f 1))"
+      expect_error: true
+
+- name: redefining-function-recompiles-callers
+  spec: functions.md §1.5, cells.md §1.2
+  tags: [full, functions]
+  steps:
+    - eval: "(defn g [x] (* x 2))"
+    - eval: "(a1 (g 5))"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [10.0]
+    - eval: "(defn g [x] (* x 3))"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [15.0]
+
+- name: callable-sees-callsite-time-context
+  spec: functions.md §1.8
+  tags: [full, functions, time-warps]
+  steps:
+    # Body inlined under (fast 2 ...) sees the warped t.
+    - eval: "(defn now [] t)"
+    - eval: "(a1 (fast 2 (now)))"
+    - sample: {output: a1, times: [1.0]}
+      expect_values: [2.0]

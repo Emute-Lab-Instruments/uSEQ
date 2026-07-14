@@ -1,0 +1,67 @@
+# Cells and reactivity — docs/specs/cells.md (+ P1b/P1c compiler regressions)
+- name: define-creates-cell
+  spec: cells.md §1.1
+  tags: [smoke, cells]
+  steps:
+    - eval: "(define freq 3)"
+    - eval: "(+ freq 1)"
+      expect_value: 4.0
+
+- name: redefinition-recompiles-dependents
+  spec: cells.md §1.2
+  tags: [smoke, cells]
+  steps:
+    - eval: "(define k 1)"
+    - eval: "(a1 (* k 10))"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [10.0]
+    - eval: "(define k 2)"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [20.0]
+
+- name: cascading-dependencies-propagate
+  spec: cells.md §1.6
+  tags: [smoke, cells]
+  steps:
+    - eval: "(define ca 1)"
+    - eval: "(define cb (+ ca 1))"
+    - eval: "(define cc (+ cb 1))"
+    - eval: "(a1 (+ cc 0))"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [3.0]
+    - eval: "(define ca 10)"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [12.0]
+
+- name: time-varying-cell-inlines
+  spec: cells.md §1.9
+  tags: [smoke, cells]
+  steps:
+    - eval: "(define sweep (+ 200 (* 200 t)))"
+    - eval: "(a1 sweep)"
+    - sample: {output: a1, times: [0.0, 1.0]}
+      expect_values: [200.0, 400.0]
+
+- name: define-over-defstate-takes-effect
+  spec: cells.md §1.1, state.md §2
+  tags: [smoke, cells, audit-regression, p1b]
+  steps:
+    # P1b: define over a defstate name was silently ignored (stale state
+    # marker kept the old state_load alive).
+    - eval: "(defstate p1b-x 3 (+ p1b-x 1))"
+    - eval: "(define p1b-x 7)"
+    - eval: "(+ p1b-x 0)"
+      expect_value: 7.0
+    - eval: "(a1 (+ p1b-x 0))"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [7.0]
+
+- name: let-binding-overflow-is-diagnostic
+  spec: cells.md, failure-model.md §1.2
+  tags: [smoke, cells, audit-regression, p1c]
+  steps:
+    # P1c: let bindings past the 32-binding pool limit were silently
+    # dropped; must be an overflow diagnostic instead.
+    - eval: "(a1 (let [b00 0 b01 1 b02 2 b03 3 b04 4 b05 5 b06 6 b07 7 b08 8 b09 9 b10 10 b11 11 b12 12 b13 13 b14 14 b15 15 b16 16 b17 17 b18 18 b19 19 b20 20 b21 21 b22 22 b23 23 b24 24 b25 25 b26 26 b27 27 b28 28 b29 29 b30 30 b31 31 b32 32] b32))"
+      expect_diagnostic:
+        category: overflow

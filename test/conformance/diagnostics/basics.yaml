@@ -1,0 +1,59 @@
+# Diagnostics — docs/specs/diagnostics.md
+- name: undefined-name-category-and-span
+  spec: diagnostics.md §2
+  tags: [smoke, diagnostics]
+  steps:
+    #        0123456789...
+    - eval: "(a1 (bogus-fn 1))"
+      expect_diagnostic:
+        category: undefinedName
+        span: [5, 13]
+
+- name: syntax-error-on-unbalanced-form
+  spec: diagnostics.md §2, failure-model.md §1.2
+  tags: [smoke, diagnostics]
+  steps:
+    - eval: "(a1 (+ 1 2"
+      expect_diagnostic:
+        category: syntax
+
+- name: unknown-keyword-on-ugen-is-type-error
+  spec: values-types.md §2.3, state-identity.md §8
+  tags: [smoke, diagnostics, audit-regression, a9]
+  steps:
+    - eval: "(a1 (phasor 1 :bogus 3))"
+      expect_diagnostic:
+        category: type
+    - eval: "(a1 (lfo 1 :bogus 3))"
+      expect_diagnostic:
+        category: type
+    - eval: "(a1 (integrate 1 :bogus 3))"
+      expect_diagnostic:
+        category: type
+
+- name: fresh-flag-without-support-is-error
+  spec: values-types.md §2.3, state-identity.md §8
+  tags: [full, diagnostics, audit-regression, a9]
+  steps:
+    - eval: "(a1 (phasor 1 :fresh))"
+      expect_diagnostic:
+        category: type
+
+- name: non-constant-phase-is-error
+  spec: values-types.md §2.4, state-identity.md §8
+  tags: [smoke, diagnostics, audit-regression, a9]
+  steps:
+    # Non-constant :phase must error, not be silently ignored.
+    - eval: "(a1 (phasor 1 :phase (saw 1)))"
+      expect_diagnostic:
+        category: type
+    - eval: "(a1 (lfo 1 :phase (saw 1)))"
+      expect_diagnostic:
+        category: type
+
+- name: known-keywords-still-accepted
+  spec: values-types.md §2.2
+  tags: [full, diagnostics, audit-regression, a9]
+  steps:
+    - eval: "(a1 (phasor 1 :phase 0.25 :id \"p\"))"
+    - eval: "(a2 (lfo 2 :wave :saw :pw 0.3))"

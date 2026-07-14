@@ -1,0 +1,94 @@
+# State identity — docs/specs/state-identity.md (audit A4/A5/A6/A7/A8)
+- name: scratch-eval-keeps-fresh-init
+  spec: state-identity.md §6.6
+  tags: [smoke, state-identity, audit-regression, a5]
+  steps:
+    # Occupy live state slot 0 with a conspicuous value.
+    - eval: "(defstate a5-live 99 (+ a5-live 0))"
+    # Scratch-eval a fresh integrator (init 0): pre-fix this returned 99
+    # (live slot 0 leaked over the fresh scratch init).
+    - eval: "(integrate 0)"
+      expect_value: 0.0
+    # Reading live named state through a scratch eval still works.
+    - eval: "(+ a5-live 1)"
+      expect_value: 100.0
+
+- name: set-with-stateful-rhs-is-isolated
+  spec: state-identity.md §6.6
+  tags: [smoke, state-identity, audit-regression, a5]
+  steps:
+    - eval: "(defstate a5b-live 99 (+ a5b-live 0))"
+    - eval: "(set a5b-x (integrate 0))"
+    - eval: "(+ a5b-x 0)"
+      expect_value: 0.0
+    # Live state untouched by the scratch evals.
+    - eval: "(+ a5b-live 0)"
+      expect_value: 99.0
+
+- name: failed-defstate-rolls-back-binding
+  spec: state-identity.md §6, failure-model.md §2.6
+  tags: [smoke, state-identity, audit-regression, a6]
+  steps:
+    - eval: "(define a6-x 5)"
+    - eval: "(defstate a6-x 0 (no-such-fn 1))"
+      expect_error: true
+    # Old plain-number binding survives intact.
+    - eval: "(+ a6-x 1)"
+      expect_value: 6.0
+
+- name: failed-redefstate-keeps-old-state
+  spec: state-identity.md §6, failure-model.md §2.6
+  tags: [full, state-identity, audit-regression, a6]
+  steps:
+    - eval: "(defstate a6-c 3 (+ a6-c 1))"
+    - eval: "(defstate a6-c 7 (no-such-fn 1))"
+      expect_error: true
+    # Old value and update program intact.
+    - eval: "(+ a6-c 0)"
+      expect_value: 3.0
+
+- name: set-on-defstate-writes-live-slot
+  spec: state-identity.md §6, state.md §2
+  tags: [smoke, state-identity, audit-regression, a7]
+  steps:
+    - eval: "(defstate a7-c 3 (+ a7-c 1))"
+    - eval: "(set a7-c 42)"
+    - eval: "(+ a7-c 0)"
+      expect_value: 42.0
+    - eval: "(set a7-c (+ 10 5))"
+    - eval: "(+ a7-c 0)"
+      expect_value: 15.0
+
+- name: duplicate-active-id-rejected
+  spec: state-identity.md §5.3
+  tags: [smoke, state-identity, audit-regression, a8]
+  steps:
+    # Two oscillators updating the same phase resource in one program.
+    - eval: "(a1 (+ (saw 1 :id \"pA\") (saw 2 :id \"pA\")))"
+      expect_diagnostic:
+        category: boundary
+
+- name: same-id-across-incompatible-primitives-ok
+  spec: state-identity.md §3.5
+  tags: [full, state-identity, audit-regression, a8]
+  steps:
+    # toggle and count resolve to disjoint resources despite sharing :id.
+    - eval: "(a2 (+ (toggle (sqr beat) :id \"x\") (count (sqr beat) :id \"x\")))"
+
+- name: recompile-same-id-is-fine
+  spec: state-identity.md §5
+  tags: [full, state-identity, audit-regression, a8]
+  steps:
+    - eval: "(a3 (saw 1 :id \"pB\"))"
+    - eval: "(a3 (saw 2 :id \"pB\"))"
+
+- name: clear-fully-resets-defstate
+  spec: state-identity.md §6, state.md §2
+  tags: [smoke, state-identity, audit-regression, a4]
+  steps:
+    - eval: "(defstate a4-counter 5 (+ a4-counter 1))"
+    - clear: true
+    # Re-defstate: fresh slot, fresh init (not frozen pre-clear state).
+    - eval: "(defstate a4-counter 10 (+ a4-counter 2))"
+    - eval: "(+ a4-counter 0)"
+      expect_value: 10.0

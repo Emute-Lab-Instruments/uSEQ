@@ -1,0 +1,99 @@
+# Values and types — docs/specs/values-types.md
+- name: numbers-are-doubles
+  spec: values-types.md §1.3
+  tags: [smoke, values-types]
+  steps:
+    - eval: "(+ 1 2)"
+      expect_value: 3.0
+    - eval: "(+ 1.5 2.25)"
+      expect_value: 3.75
+
+- name: integer-and-float-literals-same-value
+  spec: values-types.md §1.3
+  tags: [smoke, values-types]
+  steps:
+    - eval: "(- 1 1.0)"
+      expect_value: 0.0
+
+- name: comparison-returns-1-or-0
+  spec: values-types.md §1.4
+  tags: [smoke, values-types]
+  steps:
+    - eval: "(> 2 1)"
+      expect_value: 1.0
+    - eval: "(> 1 2)"
+      expect_value: 0.0
+    - eval: "(< 1 2)"
+      expect_value: 1.0
+
+- name: unbound-symbol-is-compile-error
+  spec: values-types.md §1.9
+  tags: [smoke, values-types, diagnostics]
+  steps:
+    - eval: "(a1 (+ 1 no-such-name-xyz))"
+      expect_diagnostic:
+        category: undefinedName
+
+- name: vector-data-consumed-by-step
+  spec: values-types.md §1.7
+  tags: [smoke, values-types]
+  steps:
+    - eval: "(a1 (step [10 20 30 40] beat))"
+    - sample: {output: a1, times: [0.0, 0.15, 0.3, 0.45]}
+      # bpm 120 -> beat = fmod(2t, 1); idx = floor(beat * 4)
+      expect_values: [10, 20, 30, 40]
+
+- name: time-varying-vector-element-is-type-error
+  spec: values-types.md §1.7
+  tags: [smoke, values-types, audit-regression, p1a]
+  steps:
+    # P1a: was silently replaced with 0; must be a compile-time Type error.
+    - eval: "(a1 (step [1 (sin beat) 3] beat))"
+      expect_diagnostic:
+        category: type
+
+- name: for-supports-time-varying-elements
+  spec: values-types.md §1.7
+  tags: [full, values-types, p1a]
+  steps:
+    # `for` binds element nodes, so a per-slot signal is fine.
+    - eval: "(a1 (for x [1 2 (+ 1 2)] (+ x 0)))"
+
+- name: tokenizer-rejects-strtod-specials
+  spec: values-types.md §1.3
+  tags: [smoke, values-types, audit-regression, a14]
+  steps:
+    # A14: "inf"/"nan"/"0x…" are symbols, not numbers -> undefined name here.
+    - eval: "(a1 (+ 1 inf))"
+      expect_error: true
+    - eval: "(a1 (+ 1 0x10))"
+      expect_error: true
+
+- name: tokenizer-rejects-trailing-symbol-numeric
+  spec: values-types.md §1.3
+  tags: [smoke, values-types, audit-regression, a14]
+  steps:
+    # A14: "2x" is one symbol, not number 2 + symbol x.
+    - eval: "(a1 (+ 1 2x))"
+      expect_error: true
+
+- name: div-x-x-not-folded-to-1
+  spec: failure-model.md §3.1
+  tags: [smoke, values-types, audit-regression, a10]
+  steps:
+    # A10: runtime defines a/0 = 0, so x/x is 0 at x = 0; the old
+    # Div a a -> 1 fold was unsound.
+    - eval: "(a1 (/ (saw 1) (saw 1)))"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [0.0]
+    - eval: "(a2 (/ t t))"
+    - sample: {output: a2, times: [0.5]}
+      expect_values: [1.0]
+
+- name: division-by-zero-yields-zero
+  spec: failure-model.md §3.1
+  tags: [full, values-types]
+  steps:
+    - eval: "(a1 (/ 1 0))"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [0.0]

@@ -1,0 +1,89 @@
+# Failure model — docs/specs/failure-model.md (+ F-R1/F-R2 runtime-audit repros)
+- name: compile-error-keeps-active-program
+  spec: failure-model.md §2.6
+  tags: [smoke, failure-model, audit-regression, a2]
+  steps:
+    - eval: "(a1 0.75)"
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [0.75]
+    # A compile failure on the same output...
+    - eval: "(a1 (no-such-fn 1 2))"
+      expect_error: true
+    # ...leaves the previous program installed, valid, and running.
+    - health: {output: a1, expect: running}
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [0.75]
+
+- name: compile-error-does-not-affect-other-outputs
+  spec: failure-model.md §1.4
+  tags: [smoke, failure-model]
+  steps:
+    - eval: "(a1 0.25)"
+    - eval: "(a2 (undefined-thing))"
+      expect_error: true
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [0.25]
+    - health: {output: a1, expect: running}
+
+- name: fr1-batch-vis-after-compile-fail-window
+  spec: failure-model.md §2.6
+  tags: [smoke, failure-model, audit-regression, fr1]
+  steps:
+    # F-R1: batch/vis sampling after a compile-fail window used to resurrect
+    # the demoted output mid-batch (heap OOB row packing) and permanently
+    # flip the live valid flag. Post-fix: the failed re-eval is a pure no-op
+    # on the active program set.
+    - eval: "(a1 (slew 1 0.5))"
+    - eval: "(a2 (* t 2))"
+    - sample: {output: a1, times: [0.0, 0.1]}
+    - eval: "(a2 (* t undefined-symbol-xyz))"
+      expect_diagnostic:
+        category: undefinedName
+    # a2 keeps producing the previous program's values...
+    - sample: {output: a2, times: [0.0, 0.5, 1.0]}
+      expect_values: [0.0, 1.0, 2.0]
+    # ...and a sampling/vis pass does not change output health.
+    - health: {output: a2, expect: running}
+    - health: {output: a1, expect: running}
+    # Recovery: a1 still samples correctly after fail + sampling pass.
+    - sample: {output: a1, times: [0.0]}
+
+- name: fr2-bare-dt-program-sees-real-dt
+  spec: signal-model.md, time.md §1.1
+  tags: [smoke, failure-model, audit-regression, fr2]
+  steps:
+    # F-R2: bare-dt programs (no state, no prev feedback) were misrouted to
+    # a fast batch path that hardcoded dt=0, so vis sampled all zeros.
+    # In the session probe, dt = t - prev_tick_time.
+    - eval: "(a1 (* dt 1000))"
+    - tick: 0.0
+    - sample: {output: a1, times: [0.001]}
+      expect_values: [1.0]
+      tol: 1e-6
+    - tick: 0.5
+    - sample: {output: a1, times: [0.502]}
+      expect_values: [2.0]
+      tol: 1e-6
+
+- name: successful-eval-replaces-program
+  spec: failure-model.md §4.1
+  tags: [smoke, failure-model]
+  steps:
+    - eval: "(a1 (no-such 1))"
+      expect_error: true
+    - eval: "(a1 0.5)"
+    - health: {output: a1, expect: running}
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [0.5]
+
+- name: repl-error-vs-output-error
+  spec: failure-model.md §7
+  tags: [full, failure-model]
+  steps:
+    # A scratch REPL error leaves all outputs untouched.
+    - eval: "(a1 0.3)"
+    - eval: "(+ 1 undefined-repl-name)"
+      expect_error: true
+    - health: {output: a1, expect: running}
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [0.3]

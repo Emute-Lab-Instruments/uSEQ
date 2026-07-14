@@ -1,0 +1,53 @@
+# State — docs/specs/state.md
+- name: defstate-initial-value
+  spec: state.md §2
+  tags: [smoke, state]
+  steps:
+    - eval: "(defstate cnt 5 (+ cnt 1))"
+    - eval: "(+ cnt 0)"
+      expect_value: 5.0
+
+- name: defstate-advances-per-tick
+  spec: state.md §2
+  tags: [smoke, state]
+  steps:
+    - eval: "(defstate cnt2 0 (+ cnt2 1))"
+    - eval: "(a1 (+ cnt2 0))"
+    - tick: 0.0
+    - tick: 0.01
+    - tick: 0.02
+    - sample: {output: a1, times: [0.02]}
+      expect_values: [3.0]
+
+- name: integrate-init-is-zero
+  spec: state.md §5
+  tags: [smoke, state]
+  steps:
+    - eval: "(integrate 0)"
+      expect_value: 0.0
+
+- name: integrate-accumulates-rate-times-dt
+  spec: state.md §5
+  tags: [smoke, state]
+  steps:
+    # integrate(2): each committed tick adds rate * dt.
+    - eval: "(a1 (integrate 2))"
+    - tick: 0.0
+    - tick: 0.5
+    - tick: 1.0
+    - sample: {output: a1, times: [1.0]}
+      # 2 * (0.5 + 0.5) = 2.0 accumulated after the two non-zero-dt ticks
+      expect_values: [2.0]
+      tol: 1e-6
+
+- name: sample-is-read-only-no-state-commit
+  spec: state-identity.md §6.6, state.md §2
+  tags: [smoke, state]
+  steps:
+    - eval: "(defstate cnt3 0 (+ cnt3 1))"
+    - eval: "(a1 (+ cnt3 0))"
+    # Sampling many times must NOT advance state.
+    - sample: {output: a1, times: [0.0, 0.1, 0.2, 0.3]}
+      expect_values: [0.0, 0.0, 0.0, 0.0]
+    - eval: "(+ cnt3 0)"
+      expect_value: 0.0
