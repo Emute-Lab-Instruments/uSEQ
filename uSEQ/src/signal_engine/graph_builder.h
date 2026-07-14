@@ -123,6 +123,12 @@ struct GraphBuilder {
     uint16_t anon_state_context = ANON_STATE_CONTEXT_NONE;
     uint16_t anon_state_ordinal = 0;
 
+    // Duplicate-active-:id detection (state-identity.md §5.3/§8.1): slots
+    // claimed with an update root during THIS build. Two stateful forms in
+    // one compiled graph resolving to the same StateResourceKey would both
+    // install update roots on the same slot — ambiguous, must be rejected.
+    bool slot_claimed_this_build[MAX_STATE_SLOTS] = {};
+
     // ── Well-known symbol IDs (populated at init) ───────────────────────
     // Generated from symbols.def — do not edit by hand.
     struct Symbols {

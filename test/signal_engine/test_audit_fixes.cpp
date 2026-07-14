@@ -218,6 +218,29 @@ TEST_CASE("A7: set on a defstate cell updates the live state value",
     REQUIRE(r.number == Approx(15.0));
 }
 
+// ── A8: duplicate active :id in one program is a compile error (§5.3/§8.1) ──
+
+TEST_CASE("A8: duplicate active :id rejected; cross-kind :id sharing allowed",
+          "[audit][a8]") {
+    Harness h;
+
+    // Two oscillators updating the same phase resource in one program —
+    // ambiguous, must be rejected (state-identity.md §5.3).
+    EvalResult r = h.eval("(a1 (+ (saw 1 :id \"pA\") (saw 2 :id \"pA\")))");
+    REQUIRE(r.kind == EvalResult::Error);
+    REQUIRE(r.diagnostic_count >= 1);
+    REQUIRE(r.diagnostics[0].category == DiagnosticCategory::Boundary);
+
+    // Same :id across INCOMPATIBLE primitives resolves to disjoint resources
+    // (§3.5) — toggle and count must not collide on TriggerMemory either.
+    h.eval_ok("(a2 (+ (toggle (sqr beat) :id \"x\") (count (sqr beat) :id \"x\")))");
+
+    // Recompiling the same program with the same :id stays fine (per-build
+    // detection only).
+    h.eval_ok("(a3 (saw 1 :id \"pB\"))");
+    h.eval_ok("(a3 (saw 2 :id \"pB\"))");
+}
+
 // NOTE: the A1 case floods the shared symbol interner past MAX_CELLS, which
 // makes any fresh name interned after it out-of-range. Keep it LAST.
 

@@ -1718,7 +1718,18 @@ uint16_t GraphBuilder::resolve_or_alloc(StateID state_id, ResourceKind kind,
                 report_error_at(0, 0,
                     state_slots_exhausted_msg(),
                     "Remove unused stateful expressions");
+                return slot;
             }
+            // Duplicate active :id (state-identity.md §5.3/§8.1): two
+            // stateful forms in the same compiled graph resolved to the same
+            // resource — both would install update roots on one slot, which
+            // is ambiguous. Reject instead of silently choosing one.
+            if (slot < MAX_STATE_SLOTS && slot_claimed_this_build[slot]) {
+                return report_error_at_cat(DiagnosticCategory::Boundary, 0, 0,
+                    "This :id is already updated by another expression in the same program",
+                    "Fork the :id, or use one state source (e.g. a shared phasor) with pure views");
+            }
+            if (slot < MAX_STATE_SLOTS) slot_claimed_this_build[slot] = true;
             return slot;
         }
     }
@@ -2221,7 +2232,10 @@ uint16_t GraphBuilder::compile_toggle(TokenStream& ts, Scope& scope, TimeContext
 
     uint16_t slot0 = resolve_or_alloc(state_id, ResourceKind::ToggleState, 0, 0.0); // toggle state
     if (slot0 == NODE_NONE) return NODE_NONE;
-    uint16_t slot1 = resolve_or_alloc(state_id, ResourceKind::TriggerMemory, 0, 0.0); // prev trigger
+    // role=1: toggle's trigger memory is a distinct resource from sah's
+    // (role 0) and count's (role 2) — cross-primitive :id sharing must not
+    // collide on the same TriggerMemory slot (A8, state-identity.md §3.2/§3.5).
+    uint16_t slot1 = resolve_or_alloc(state_id, ResourceKind::TriggerMemory, 1, 0.0); // prev trigger
     if (slot1 == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot0);
@@ -2283,7 +2297,9 @@ uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext&
 
     uint16_t slot0 = resolve_or_alloc(state_id, ResourceKind::Counter, 0, 0.0); // counter
     if (slot0 == NODE_NONE) return NODE_NONE;
-    uint16_t slot1 = resolve_or_alloc(state_id, ResourceKind::TriggerMemory, 0, 0.0); // prev trigger
+    // role=2: distinct from sah (0) and toggle (1) — see A8 note in
+    // compile_toggle.
+    uint16_t slot1 = resolve_or_alloc(state_id, ResourceKind::TriggerMemory, 2, 0.0); // prev trigger
     if (slot1 == NODE_NONE) return NODE_NONE;
     uint16_t slot2 = resolve_or_alloc(state_id, ResourceKind::ResetLatch, 0, 0.0); // prev reset
     if (slot2 == NODE_NONE) return NODE_NONE;
