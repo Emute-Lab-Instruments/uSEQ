@@ -190,6 +190,34 @@ TEST_CASE("A6: defstate compile failure rolls back cell and state slot",
     REQUIRE(h.engine.pool.state_values[slot] == Approx(3.0));
 }
 
+// ── A7: set on a defstate cell writes the state slot ────────────────────────
+
+TEST_CASE("A7: set on a defstate cell updates the live state value",
+          "[audit][a7]") {
+    Harness h;
+    auto& si = SymbolIntern::getInstance();
+
+    h.eval_ok("(defstate a7-c 3 (+ a7-c 1))");
+    SymbolID c = si.intern(String("a7-c"));
+    uint16_t slot = h.engine.cells.cells[c].data_table_id;
+    REQUIRE(h.engine.pool.state_values[slot] == Approx(3.0));
+
+    // Numeric set writes the state slot, keeps the state marker.
+    h.eval_ok("(set a7-c 42)");
+    REQUIRE(h.engine.pool.state_values[slot] == Approx(42.0));
+    REQUIRE(h.engine.cells.cells[c].flags == 0x02);
+    REQUIRE(h.engine.cells.cells[c].data_table_id == slot);
+
+    // Expression set too.
+    h.eval_ok("(set a7-c (+ 10 5))");
+    REQUIRE(h.engine.pool.state_values[slot] == Approx(15.0));
+
+    // Reads see the new value.
+    EvalResult r = h.eval("(+ a7-c 0)");
+    REQUIRE(r.kind == EvalResult::Number);
+    REQUIRE(r.number == Approx(15.0));
+}
+
 // NOTE: the A1 case floods the shared symbol interner past MAX_CELLS, which
 // makes any fresh name interned after it out-of-range. Keep it LAST.
 

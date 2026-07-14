@@ -249,12 +249,32 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
     SymbolID sym = name_tok.symbol;
     if (cell_id_out_of_range(sym)) return make_too_many_definitions_error();
 
+    // If the target is a defstate cell (flags 0x02), the live value lives in
+    // pool.state_values[slot], not the cell — a plain cell write was silently
+    // ignored by every LoadState reader (A7). Write the state slot and keep
+    // the marker so the update program keeps running from the new value.
+    // (Mirrors define's handling of stale markers, which clears them instead
+    // because define establishes a fresh non-state binding.)
+    bool is_state_cell = engine.cells.cells[sym].kind == CellKind::Number
+                      && engine.cells.cells[sym].flags == 0x02;
+
+    auto store_number = [&](double v) {
+        if (is_state_cell) {
+            uint16_t slot = (uint16_t)engine.cells.cells[sym].data_table_id;
+            engine.pool.state_values[slot] = v;
+            engine.cells.cells[sym].value = v;
+            engine.cells.cells[sym].revision++;
+        } else {
+            engine.cells.cells[sym].kind = CellKind::Number;
+            engine.cells.cells[sym].revision++;
+            engine.cells.cells[sym].value = v;
+        }
+    };
+
     Token val_tok = ts.peek();
     if (val_tok.kind == TokenKind::Number) {
         ts.consume();
-        engine.cells.cells[sym].kind = CellKind::Number;
-        engine.cells.cells[sym].revision++;
-        engine.cells.cells[sym].value = val_tok.number;
+        store_number(val_tok.number);
     } else {
         // Non-numeric: compile in scratch pool, evaluate once, store result.
         // This avoids leaking nodes/CSE/data into the live pool.
@@ -278,9 +298,7 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
         }
 
         if (engine.scratch_pool.nodes[gr.root_node].op == NodeOp::Const) {
-            engine.cells.cells[sym].kind = CellKind::Number;
-            engine.cells.cells[sym].value = engine.scratch_pool.nodes[gr.root_node].imm;
-            engine.cells.cells[sym].revision++;
+            store_number(engine.scratch_pool.nodes[gr.root_node].imm);
         } else {
             engine.scratch_pool.outputs[0].root_node = gr.root_node;
             engine.scratch_pool.outputs[0].valid = true;
@@ -305,9 +323,7 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
             ctx.workspace = workspace;
             execute_all_outputs(engine.scratch_pool, ctx);
 
-            engine.cells.cells[sym].kind = CellKind::Number;
-            engine.cells.cells[sym].value = outputs[0];
-            engine.cells.cells[sym].revision++;
+            store_number(outputs[0]);
         }
 
         engine.cells.data_table_count = saved_tables;
