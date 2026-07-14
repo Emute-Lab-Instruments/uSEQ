@@ -499,13 +499,33 @@ uint16_t GraphBuilder::compile_expr(TokenStream& ts, Scope& scope, TimeContext& 
             ts.consume();
             return pool.make_const(0.0); // empty list
         }
-        ts.consume();
-        if (op_tok.kind != TokenKind::Symbol) {
-            return report_error_cat(DiagnosticCategory::Syntax, op_tok,
-                                    "Expected a function name after '('",
-                                    "Try: (sin (* t 440))");
+
+        // A nested lambda is a valid callable head:
+        // ((fn [x y] (+ x y)) 2 3)
+        // It must be handled before consuming the head as a normal symbol.
+        // Other non-symbol heads retain the ordinary syntax diagnostic.
+        bool nested_lambda = op_tok.kind == TokenKind::LParen &&
+            ts.pos + 1 < ts.count &&
+            ts.tokens[ts.pos + 1].kind == TokenKind::Symbol &&
+            (ts.tokens[ts.pos + 1].symbol == sym.fn ||
+             ts.tokens[ts.pos + 1].symbol == sym.lambda);
+
+        uint16_t result = NODE_NONE;
+        if (nested_lambda) {
+            result = compile_inline_lambda_call(ts, scope, ctx);
+        } else {
+            // Leave a non-lambda list head intact so error recovery can skip
+            // the complete nested form instead of stopping at its close.
+            if (op_tok.kind != TokenKind::LParen) ts.consume();
+            if (op_tok.kind != TokenKind::Symbol) {
+                result = report_error_cat(DiagnosticCategory::Syntax, op_tok,
+                                          "Expected a function name after '('",
+                                          "Try: (sin (* t 440))");
+            } else {
+                result = compile_form(op_tok.symbol, ts, scope, ctx, op_tok);
+            }
         }
-        uint16_t result = compile_form(op_tok.symbol, ts, scope, ctx, op_tok);
+
         // If compile_form errored, skip any unconsumed args to avoid hangs
         if (has_error) {
             while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
@@ -520,7 +540,8 @@ uint16_t GraphBuilder::compile_expr(TokenStream& ts, Scope& scope, TimeContext& 
         // left extra tokens before the closing paren, report a clear arity
         // error naming the function.  Previously these extras silently
         // desynchronised the token stream, producing confusing errors later.
-        if (!has_error && ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
+        if (!has_error && !nested_lambda &&
+            ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
             auto& si = SymbolIntern::getInstance();
             const String& name = si.getString(op_tok.symbol);
             char msg[128];
@@ -551,6 +572,108 @@ uint16_t GraphBuilder::compile_expr(TokenStream& ts, Scope& scope, TimeContext& 
     return report_error_cat(DiagnosticCategory::Syntax, tok,
                             "Unexpected token",
                             "Expected a number, name, or '('");
+}
+
+uint16_t GraphBuilder::compile_inline_lambda_call(TokenStream& ts,
+                                                   Scope& scope,
+                                                   TimeContext& ctx) {
+    // The caller has identified the next form as a lambda head. Capture its
+    // body before compiling the call arguments, since the arguments live
+    // after the lambda's closing parenthesis in the outer token stream.
+    Token lambda_open = ts.consume(); // '('
+    Token lambda_tok = ts.consume();  // fn or lambda
+    if (lambda_open.kind != TokenKind::LParen ||
+        lambda_tok.kind != TokenKind::Symbol ||
+        (lambda_tok.symbol != sym.fn && lambda_tok.symbol != sym.lambda)) {
+        return report_error_cat(DiagnosticCategory::Syntax, lambda_tok,
+                                "Expected a lambda form",
+                                "Try: ((fn [x] x) 1)");
+    }
+
+    Token params_open = ts.consume();
+    if (params_open.kind != TokenKind::LBracket) {
+        return report_error_cat(DiagnosticCategory::Syntax, params_open,
+                                "Lambda parameters must be in a vector",
+                                "Try: ((fn [x] x) 1)");
+    }
+
+    SymbolID params[MAX_CALLABLE_PARAMS] = {};
+    uint8_t param_count = 0;
+    while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
+        Token param = ts.consume();
+        if (param.kind != TokenKind::Symbol) {
+            return report_error_cat(DiagnosticCategory::Syntax, param,
+                                    "Lambda parameters must be names",
+                                    "Try: ((fn [x] x) 1)");
+        }
+        if (param_count >= MAX_CALLABLE_PARAMS) {
+            return report_error_cat(DiagnosticCategory::Overflow, param,
+                                    "Too many lambda parameters",
+                                    "Use at most 8 parameters");
+        }
+        params[param_count++] = param.symbol;
+    }
+    if (!ts.expect(TokenKind::RBracket)) {
+        return report_error_cat(DiagnosticCategory::Syntax, ts.peek(),
+                                "Lambda parameter vector is not closed",
+                                "Close the parameter vector with ']'");
+    }
+
+    if (ts.peek().kind == TokenKind::RParen || ts.at_end()) {
+        return report_error_cat(DiagnosticCategory::Syntax, ts.peek(),
+                                "Lambda needs a body expression",
+                                "Try: ((fn [x] x) 1)");
+    }
+
+    uint16_t body_start = ts.pos;
+    skip_form(ts);
+    uint16_t body_end = ts.pos;
+    if (ts.peek().kind != TokenKind::RParen) {
+        return report_error_cat(DiagnosticCategory::Arity, ts.peek(),
+                                "Lambda needs exactly one body expression",
+                                "Wrap multiple expressions in (do ...)");
+    }
+    ts.consume(); // close the lambda head
+
+    uint16_t arg_nodes[MAX_CALLABLE_PARAMS] = {};
+    uint8_t arg_count = 0;
+    while (ts.peek().kind != TokenKind::RParen && arg_count < param_count &&
+           !ts.at_end()) {
+        uint16_t arg = compile_expr(ts, scope, ctx);
+        if (arg == NODE_NONE) return NODE_NONE;
+        arg_nodes[arg_count++] = arg;
+    }
+
+    if (arg_count != param_count) {
+        return report_error_cat(DiagnosticCategory::Arity, lambda_tok,
+                                "Wrong number of arguments",
+                                "Check the lambda parameters");
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return report_error_cat(DiagnosticCategory::Arity, lambda_tok,
+                                "Too many arguments",
+                                "Check the lambda parameters");
+    }
+
+    Scope inner_scope = {};
+    inner_scope.parent = &scope;
+    for (uint8_t i = 0; i < arg_count; i++) {
+        if (!inner_scope.bind(params[i], arg_nodes[i])) {
+            return report_error_cat(DiagnosticCategory::Overflow, lambda_tok,
+                                    "Too many lambda bindings",
+                                    "Use fewer parameters in the lambda");
+        }
+    }
+
+    Token body_tokens[MAX_TOKENS];
+    uint16_t body_count = body_end - body_start;
+    memcpy(body_tokens, ts.tokens + body_start, body_count * sizeof(Token));
+
+    TokenStream body_ts;
+    memcpy(body_ts.tokens, body_tokens, body_count * sizeof(Token));
+    body_ts.count = body_count;
+    body_ts.pos = 0;
+    return compile_expr(body_ts, inner_scope, ctx);
 }
 
 // ── Symbol Resolution ───────────────────────────────────────────────────────

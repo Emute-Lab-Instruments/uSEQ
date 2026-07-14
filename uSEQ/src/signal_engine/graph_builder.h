@@ -158,6 +158,8 @@ struct GraphBuilder {
     // ── Compilation entry points ────────────────────────────────────────
 
     uint16_t compile_expr(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_inline_lambda_call(TokenStream& ts, Scope& scope,
+                                        TimeContext& ctx);
     uint16_t compile_symbol(SymbolID sym, Scope& scope, TimeContext& ctx,
                             uint16_t span_start, uint16_t span_len);
     uint16_t compile_form(SymbolID op, TokenStream& ts, Scope& scope,
