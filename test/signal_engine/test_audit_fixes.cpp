@@ -241,6 +241,38 @@ TEST_CASE("A8: duplicate active :id rejected; cross-kind :id sharing allowed",
     h.eval_ok("(a3 (saw 2 :id \"pB\"))");
 }
 
+// ── A9: unknown keywords on stateful primitives error out ──────────────────
+
+TEST_CASE("A9: unknown keywords, :fresh, and non-constant :phase are errors",
+          "[audit][a9]") {
+    Harness h;
+
+    const char* bad_forms[] = {
+        "(a1 (phasor 1 :bogus 3))",
+        "(a1 (lfo 1 :bogus 3))",
+        "(a1 (integrate 1 :bogus 3))",
+        "(a1 (toggle (sqr beat) :bogus 3))",
+        "(a1 (count (sqr beat) :bogus 3))",
+        "(a1 (slew (saw 1) 1 :bogus 3))",
+        "(a1 (live-edit 0.5 :id \"k\" :bogus 3))",
+        "(a1 (phasor 1 :fresh))",
+        // Non-constant :phase must error, not be silently ignored.
+        "(a1 (phasor 1 :phase (saw 1)))",
+        "(a1 (lfo 1 :phase (saw 1)))",
+    };
+    for (const char* f : bad_forms) {
+        INFO("form: " << f);
+        EvalResult r = h.eval(f);
+        REQUIRE(r.kind == EvalResult::Error);
+        REQUIRE(r.diagnostic_count >= 1);
+        REQUIRE(r.diagnostics[0].category == DiagnosticCategory::Type);
+    }
+
+    // Known keywords still work.
+    h.eval_ok("(a1 (phasor 1 :phase 0.25 :id \"p\"))");
+    h.eval_ok("(a2 (lfo 2 :wave :saw :pw 0.3))");
+}
+
 // NOTE: the A1 case floods the shared symbol interner past MAX_CELLS, which
 // makes any fresh name interned after it out-of-range. Keep it LAST.
 

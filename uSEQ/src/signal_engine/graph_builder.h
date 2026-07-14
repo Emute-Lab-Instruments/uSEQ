@@ -239,6 +239,7 @@ struct GraphBuilder {
 
     // UGen helpers
     uint16_t alloc_state_slot(double init_value);
+    uint16_t report_unknown_ugen_keyword(const Token& kw);
     uint16_t resolve_or_alloc(StateID state_id, ResourceKind kind, uint8_t role,
                               double init_value);
     uint16_t build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx, uint16_t default_wave);

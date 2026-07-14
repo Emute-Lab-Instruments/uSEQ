@@ -1650,7 +1650,7 @@ uint16_t GraphBuilder::compile_integrate(TokenStream& ts, Scope& scope, TimeCont
                     "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
-            compile_expr(ts, scope, ctx);
+            return report_unknown_ugen_keyword(kw);
         }
     }
 
@@ -1683,6 +1683,24 @@ const char* state_slots_exhausted_msg() {
         initialized = true;
     }
     return buf;
+}
+
+// Unknown keyword on a stateful primitive — silently swallowing these hid
+// typos and unsupported options (A9, values-types.md §2.3). :fresh is a
+// spec'd-but-unimplemented identity option; reject it explicitly
+// (state-identity.md §8.3).
+uint16_t GraphBuilder::report_unknown_ugen_keyword(const Token& kw) {
+    if (kw.symbol == sym.kw_fresh) {
+        return report_error_cat(DiagnosticCategory::Type, kw,
+            ":fresh is not implemented yet",
+            "Remove :fresh, or use a distinct :id instead");
+    }
+    static char msg[96];
+    const String& kw_str = getSymbolString(kw.symbol);
+    snprintf(msg, sizeof(msg), "Unknown keyword %s for this form",
+             kw_str.c_str());
+    return report_error_cat(DiagnosticCategory::Type, kw, msg,
+        "Check the keyword spelling — try :id (or :wave/:phase/:pw on oscillators)");
 }
 
 uint16_t GraphBuilder::alloc_state_slot(double init_value) {
@@ -1752,7 +1770,12 @@ uint16_t GraphBuilder::compile_phasor(TokenStream& ts, Scope& scope, TimeContext
         ts.consume();
         if (kw.symbol == sym.kw_phase) {
             uint16_t val = compile_expr(ts, scope, ctx);
-            if (is_const(val)) init_phase = const_value(val);
+            if (!is_const(val)) {
+                return report_error_cat(DiagnosticCategory::Type, kw,
+                    ":phase must be a constant number",
+                    "Try: :phase 0.25");
+            }
+            init_phase = const_value(val);
         } else if (kw.symbol == sym.kw_id) {
             Token id_tok = ts.consume();
             if (id_tok.kind == TokenKind::String && source_base) {
@@ -1765,7 +1788,7 @@ uint16_t GraphBuilder::compile_phasor(TokenStream& ts, Scope& scope, TimeContext
                     "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
-            compile_expr(ts, scope, ctx);
+            return report_unknown_ugen_keyword(kw);
         }
     }
 
@@ -1830,7 +1853,12 @@ uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx
             }
         } else if (kw.symbol == sym.kw_phase) {
             uint16_t val = compile_expr(ts, scope, ctx);
-            if (is_const(val)) init_phase = const_value(val);
+            if (!is_const(val)) {
+                return report_error_cat(DiagnosticCategory::Type, kw,
+                    ":phase must be a constant number",
+                    "Try: :phase 0.25");
+            }
+            init_phase = const_value(val);
         } else if (kw.symbol == sym.kw_pw) {
             pulse_width_node = compile_expr(ts, scope, ctx);
         } else if (kw.symbol == sym.kw_id) {
@@ -1845,7 +1873,7 @@ uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx
                     "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
-            compile_expr(ts, scope, ctx);
+            return report_unknown_ugen_keyword(kw);
         }
     }
 
@@ -1913,7 +1941,7 @@ uint16_t GraphBuilder::compile_slew(TokenStream& ts, Scope& scope, TimeContext& 
                     "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
-            compile_expr(ts, scope, ctx);
+            return report_unknown_ugen_keyword(kw);
         }
     }
 
@@ -1972,7 +2000,7 @@ uint16_t GraphBuilder::compile_one_pole(TokenStream& ts, Scope& scope, TimeConte
                     "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
-            compile_expr(ts, scope, ctx);
+            return report_unknown_ugen_keyword(kw);
         }
     }
 
@@ -2049,7 +2077,7 @@ uint16_t GraphBuilder::compile_env_follow(TokenStream& ts, Scope& scope, TimeCon
                     "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
-            compile_expr(ts, scope, ctx);
+            return report_unknown_ugen_keyword(kw);
         }
     }
 
@@ -2121,7 +2149,7 @@ uint16_t GraphBuilder::compile_sah(TokenStream& ts, Scope& scope, TimeContext& c
                     "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
-            compile_expr(ts, scope, ctx);
+            return report_unknown_ugen_keyword(kw);
         }
     }
 
@@ -2177,7 +2205,7 @@ uint16_t GraphBuilder::compile_noise(TokenStream& ts, Scope& scope, TimeContext&
                     "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
-            compile_expr(ts, scope, ctx);
+            return report_unknown_ugen_keyword(kw);
         }
     }
 
@@ -2226,7 +2254,7 @@ uint16_t GraphBuilder::compile_toggle(TokenStream& ts, Scope& scope, TimeContext
                     "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
-            compile_expr(ts, scope, ctx);
+            return report_unknown_ugen_keyword(kw);
         }
     }
 
@@ -2291,7 +2319,7 @@ uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext&
                     "Try: (phasor 1 :id \"my-phase\")");
             }
         } else {
-            compile_expr(ts, scope, ctx);
+            return report_unknown_ugen_keyword(kw);
         }
     }
 
@@ -2441,8 +2469,9 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
             // Accept and skip — compiler-irrelevant metadata
             ts.consume();
         } else {
-            // Unknown keyword — skip its value
-            ts.consume();
+            // Unknown keyword — reject instead of silently skipping (A9,
+            // values-types.md §2.3).
+            return report_unknown_ugen_keyword(kw_tok);
         }
     }
 
