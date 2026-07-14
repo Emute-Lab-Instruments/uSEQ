@@ -1,0 +1,18 @@
+; cascade — deep define chains feeding several outputs. The LAST form
+; redefines a mid-chain cell, so the harness's recompile metric measures the
+; dependency-cascade recompile storm (dep plumbing + recompile latency).
+(define c1 (usin beat))
+(define c2 (+ c1 (* 0.5 (ucos bar))))
+(define c3 (scale 0 1 (tri (fast 2 c2))))
+(define c4 (+ c3 (* 0.25 c2)))
+(define c5 (clamp (* c4 c1) 0 1))
+(define c6 (lerp c5 c3 (usin bar)))
+(define c7 (+ (* 0.5 c6) (* 0.5 c4)))
+(define c8 (scale 0.1 0.9 c7))
+(define c9 (+ c8 (* 0.1 c5)))
+(define c10 (clamp c9 0 1))
+(a1 c10)
+(a2 (* c10 c5))
+(a3 (+ c7 (* 0.2 c3)))
+(s1 (lerp c2 c10 (usin beat)))
+(define c2 (+ c1 (* 0.6 (ucos bar))))

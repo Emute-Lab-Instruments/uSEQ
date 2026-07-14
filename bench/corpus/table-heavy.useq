@@ -1,0 +1,13 @@
+; table-heavy — large vectors driven through step / interp / from-list /
+; gates. Stresses the data-table (cell data pool) path.
+(define tab32 [0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 0.9 0.8 0.7 0.6 0.5 0.4 0.3 0.2 0.1 0 0.15 0.3 0.45 0.6 0.75 0.9 0.75 0.6 0.45 0.3 0.15])
+(define pat16 [1 0 0 1 0 1 1 0 1 0 0 1 1 0 1 0])
+(define ramp16 [0 2 4 6 8 10 12 14 16 14 12 10 8 6 4 2])
+(a1 (step tab32 bar))
+(a2 (interp tab32 beat))
+(a3 (from-list ramp16 (fast 2 bar)))
+(a4 (interp ramp16 (slow 2 bar)))
+(d1 (gates pat16 beat))
+(d2 (step pat16 (fast 4 bar)))
+(s1 (+ (interp tab32 bar) (step ramp16 beat)))
+(s2 (* (interp tab32 (fast 3 beat)) (from-list pat16 bar)))

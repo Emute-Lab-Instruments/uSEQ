@@ -1,0 +1,20 @@
+; compile-stress — deep nesting, many defns with call chains, CSE-heavy
+; repeated subexpressions. Stresses the compiler passes themselves rather
+; than the compiled output.
+; NOTE: same-fn nested composition like (f (f x)) is rejected by the inliner
+; ("calls itself" false positive) — each nesting level uses a distinct fn.
+(defn g1 [x] (+ (* x 1.01) 0.001))
+(defn g2 [x] (+ (* (g1 x) 0.99) 0.002))
+(defn g3 [x] (+ (* (g2 x) 1.02) 0.003))
+(defn g4 [x] (+ (* (g3 x) 0.98) 0.004))
+(defn g5 [x] (+ (* (g4 x) 1.03) 0.005))
+(defn g6 [x] (+ (* (g5 x) 0.97) 0.006))
+(defn g7 [x] (+ (* (g6 x) 1.04) 0.007))
+(defn g8 [x] (+ (* (g7 x) 0.96) 0.008))
+(defn mixp [a b] (+ (* 0.5 a) (* 0.5 b)))
+(define base (usin beat))
+(a1 (mixp (g8 base) (g7 (ucos bar))))
+(a2 (+ (* 0.1 (+ (* 0.2 (+ (* 0.3 (+ (* 0.4 (+ (* 0.5 (+ (* 0.6 (+ (* 0.7 (+ (* 0.8 (+ (* 0.9 base) base)) base)) base)) base)) base)) base)) base)) base)) base))
+(a3 (mixp (+ (g1 base) (g2 base)) (+ (g3 base) (g4 base))))
+(s1 (+ (g8 (tri beat)) (g8 (tri beat)) (g8 (tri bar)) (g8 (tri bar))))
+(s2 (clamp (lerp (scale 0 1 (g6 (usin (fast 2 beat)))) (scale 0 1 (g6 (ucos (slow 2 bar)))) (frac (* beat 0.5))) 0 1))

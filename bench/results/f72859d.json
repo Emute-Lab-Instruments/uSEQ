@@ -1,0 +1,388 @@
+{
+  "git_sha": "f72859d",
+  "workloads": {
+    "cascade": {
+      "cold_eval_median": {
+        "value": 0.377363,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "cold_eval_p99": {
+        "value": 1.08792,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "recompile_median": {
+        "value": 133.599,
+        "unit": "us",
+        "phase": "compile"
+      },
+      "node_count": {
+        "value": 51,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "exec_count": {
+        "value": 51,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "state_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "live_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "ns_per_tick_median": {
+        "value": 666.148,
+        "unit": "ns",
+        "phase": "execute"
+      }
+    },
+    "compile-stress": {
+      "cold_eval_median": {
+        "value": 0.213396,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "cold_eval_p99": {
+        "value": 0.50132,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "recompile_median": {
+        "value": 31.48,
+        "unit": "us",
+        "phase": "compile"
+      },
+      "recompile_arena_exhausted_at": {
+        "value": 139,
+        "unit": "evals",
+        "phase": "compile"
+      },
+      "node_count": {
+        "value": 171,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "exec_count": {
+        "value": 171,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "state_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "live_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "ns_per_tick_median": {
+        "value": 1314.4,
+        "unit": "ns",
+        "phase": "execute"
+      }
+    },
+    "feedback-mesh": {
+      "cold_eval_median": {
+        "value": 0.036772,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "cold_eval_p99": {
+        "value": 0.107688,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "recompile_median": {
+        "value": 4.0585,
+        "unit": "us",
+        "phase": "compile"
+      },
+      "node_count": {
+        "value": 53,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "exec_count": {
+        "value": 53,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "state_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "live_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "ns_per_tick_median": {
+        "value": 475.359,
+        "unit": "ns",
+        "phase": "execute"
+      }
+    },
+    "live-edit": {
+      "cold_eval_median": {
+        "value": 0.134028,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "cold_eval_p99": {
+        "value": 0.158223,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "recompile_median": {
+        "value": 5.2545,
+        "unit": "us",
+        "phase": "compile"
+      },
+      "node_count": {
+        "value": 75,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "exec_count": {
+        "value": 75,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "state_slots": {
+        "value": 3,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "live_slots": {
+        "value": 16,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "ns_per_tick_median": {
+        "value": 702.584,
+        "unit": "ns",
+        "phase": "execute"
+      }
+    },
+    "math-dense": {
+      "cold_eval_median": {
+        "value": 0.048312,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "cold_eval_p99": {
+        "value": 0.241226,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "recompile_median": {
+        "value": 7.01,
+        "unit": "us",
+        "phase": "compile"
+      },
+      "node_count": {
+        "value": 91,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "exec_count": {
+        "value": 91,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "state_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "live_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "ns_per_tick_median": {
+        "value": 963.169,
+        "unit": "ns",
+        "phase": "execute"
+      }
+    },
+    "minimal": {
+      "cold_eval_median": {
+        "value": 0.0008455,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "cold_eval_p99": {
+        "value": 0.001469,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "recompile_median": {
+        "value": 0.6645,
+        "unit": "us",
+        "phase": "compile"
+      },
+      "node_count": {
+        "value": 4,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "exec_count": {
+        "value": 4,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "state_slots": {
+        "value": 1,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "live_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "ns_per_tick_median": {
+        "value": 236.448,
+        "unit": "ns",
+        "phase": "execute"
+      }
+    },
+    "state-heavy": {
+      "cold_eval_median": {
+        "value": 0.074252,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "cold_eval_p99": {
+        "value": 0.314107,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "recompile_median": {
+        "value": 8.9515,
+        "unit": "us",
+        "phase": "compile"
+      },
+      "node_count": {
+        "value": 206,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "exec_count": {
+        "value": 206,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "state_slots": {
+        "value": 23,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "live_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "ns_per_tick_median": {
+        "value": 1442.66,
+        "unit": "ns",
+        "phase": "execute"
+      }
+    },
+    "table-heavy": {
+      "cold_eval_median": {
+        "value": 0.105459,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "cold_eval_p99": {
+        "value": 0.209942,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "recompile_median": {
+        "value": 4.919,
+        "unit": "us",
+        "phase": "compile"
+      },
+      "node_count": {
+        "value": 56,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "exec_count": {
+        "value": 56,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "state_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "live_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "ns_per_tick_median": {
+        "value": 495.801,
+        "unit": "ns",
+        "phase": "execute"
+      }
+    },
+    "typical-set": {
+      "cold_eval_median": {
+        "value": 0.0282895,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "cold_eval_p99": {
+        "value": 0.047794,
+        "unit": "ms",
+        "phase": "compile"
+      },
+      "recompile_median": {
+        "value": 3.756,
+        "unit": "us",
+        "phase": "compile"
+      },
+      "node_count": {
+        "value": 49,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "exec_count": {
+        "value": 49,
+        "unit": "nodes",
+        "phase": "compile"
+      },
+      "state_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "live_slots": {
+        "value": 0,
+        "unit": "slots",
+        "phase": "compile"
+      },
+      "ns_per_tick_median": {
+        "value": 451.31,
+        "unit": "ns",
+        "phase": "execute"
+      }
+    }
+  }
+}

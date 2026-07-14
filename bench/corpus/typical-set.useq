@@ -1,0 +1,10 @@
+; typical-set — 8 outputs mixing phasors, trig, euclid, vectors and inputs
+; (the audit bench patch). Represents a realistic live set.
+(a1 (usin bar))
+(a2 (scale 0.2 0.8 (tri (fast 2 beat))))
+(a3 (step [0 0.25 0.5 0.75] bar))
+(d1 (sqr beat))
+(d2 (euclid 3 8 bar))
+(d3 (pulse (fast 4 beat) 0.2))
+(s1 (+ (* 0.5 (usin beat)) (* 0.5 (ucos bar))))
+(a4 (* (usin beat) in1))

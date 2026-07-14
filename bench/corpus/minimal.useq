@@ -1,0 +1,3 @@
+; minimal — 1 phasor, 1 output. Measures the fixed overhead floor of the
+; compile path and the per-tick execution loop.
+(a1 (phasor 1))

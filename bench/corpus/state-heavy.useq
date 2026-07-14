@@ -1,0 +1,15 @@
+; state-heavy — 24 stateful UGens (slew / one-pole / env-follow / integrate /
+; phasor) spread over 8 outputs, 3 per output. Stresses the per-tick state
+; commit path and state-slot allocation.
+(a1 (slew (one-pole (usin beat) 5) 2))
+(a2 (env-follow (usin (fast 2 beat)) 50 5))
+(a3 (one-pole (slew (tri beat) 4) 8))
+(a4 (slew (env-follow (sqr beat) 30 3) 1))
+(a5 (one-pole (phasor 2) 6))
+(a6 (env-follow (one-pole (ucos bar) 3) 40 4))
+(a7 (slew (phasor 0.5) 3))
+(a8 (one-pole (env-follow (tri (fast 3 beat)) 20 2) 7))
+(s1 (+ (slew (usin bar) 2) (one-pole (ucos beat) 5)))
+(s2 (+ (env-follow (sqr bar) 25 6) (phasor 4)))
+(s3 (+ (one-pole (tri bar) 9) (slew (ucos (fast 2 bar)) 5)))
+(s4 (+ (phasor 3) (env-follow (usin (slow 2 beat)) 15 8)))

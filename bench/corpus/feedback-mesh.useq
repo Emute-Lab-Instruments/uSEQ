@@ -1,0 +1,10 @@
+; feedback-mesh — dense cross-output `prev` reads: every output mixes the
+; previous values of two other outputs. Stresses prev/commit ordering cost.
+(a1 (+ (* 0.4 (prev a2)) (* 0.3 (prev a3)) (* 0.3 (usin beat))))
+(a2 (+ (* 0.4 (prev a3)) (* 0.3 (prev a4)) (* 0.3 (ucos beat))))
+(a3 (+ (* 0.4 (prev a4)) (* 0.3 (prev a1)) (* 0.3 (tri bar))))
+(a4 (+ (* 0.4 (prev a1)) (* 0.3 (prev a2)) (* 0.3 (usin bar))))
+(d1 (pulse (+ beat (* 0.1 (prev a1))) 0.3))
+(d2 (pulse (+ beat (* 0.1 (prev a2))) 0.3))
+(s1 (* (prev a1) (prev a2)))
+(s2 (+ (prev s1) (* 0.5 (prev a3))))

@@ -1,0 +1,10 @@
+; math-dense — saturated division / modulo / trig / pow per tick. Softfloat
+; worst case on M0+ targets; FP-throughput probe on desktop.
+(a1 (/ (sin (* 6.283 beat)) (+ 1.001 (cos (* 3.141 bar)))))
+(a2 (mod (+ (tan (* 0.5 beat)) (sqrt (+ 1 (abs (sin bar))))) 1))
+(a3 (pow (+ 0.5 (* 0.5 (sin (* 12.56 beat)))) 2.5))
+(a4 (/ (+ (sin beat) (cos beat) (sin bar) (cos bar)) (+ 2.001 (sin (* 2 beat)))))
+(s1 (mod (* (pow (abs (cos (* 4 bar))) 1.5) (/ 3.7 (+ 1.1 (sin beat)))) 1))
+(s2 (+ (sqrt (abs (tan (* 0.3 bar)))) (/ (cos (* 5 beat)) (+ 1.5 (abs (sin (* 7 bar)))))))
+(s3 (mod (/ (pow 2 (+ 1 (sin beat))) (+ 1.2 (cos bar))) 2))
+(s4 (* (sin (pow (+ 1 (frac beat)) 3)) (cos (/ 1 (+ 0.5 (frac bar))))))
