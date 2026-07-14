@@ -45,6 +45,12 @@ struct SourceArena {
     // Store source text, return offset. Returns UINT32_MAX on overflow.
     uint32_t store(const char* text, uint32_t length);
 
+    // Re-store source text for a slot. Reuses the slot's existing region when
+    // the new text fits; otherwise appends a fresh region with store().
+    // Returns UINT32_MAX when the fresh region does not fit.
+    uint32_t store_reuse(uint32_t existing_offset, uint32_t existing_length,
+                         const char* text, uint32_t length);
+
     // Read back source text.
     const char* read(uint32_t offset) const;
 

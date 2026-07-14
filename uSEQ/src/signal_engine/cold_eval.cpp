@@ -154,7 +154,10 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
         uint32_t len = 0;
         if (source && byte_end > byte_start && byte_end <= source_length) {
             len = byte_end - byte_start;
-            offset = engine.arena.store(source + byte_start, len);
+            const CallableInfo& previous = engine.cells.callables[sym];
+            offset = engine.arena.store_reuse(
+                previous.source_offset, previous.source_length,
+                source + byte_start, len);
             if (offset == UINT32_MAX) {
                 return make_error(
                     "Program storage is full — definition not applied",
@@ -219,7 +222,10 @@ static EvalResult do_defn(TokenStream& ts, SignalEngine& engine,
     // a half-updated definition (F5).
     if (source && byte_end > byte_start && byte_end <= source_length) {
         uint32_t len = byte_end - byte_start;
-        uint32_t offset = engine.arena.store(source + byte_start, len);
+        const CallableInfo& previous = engine.cells.callables[sym];
+        uint32_t offset = engine.arena.store_reuse(
+            previous.source_offset, previous.source_length,
+            source + byte_start, len);
         if (offset == UINT32_MAX) {
             return make_error(
                 "Program storage is full — definition not applied",
@@ -364,6 +370,15 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     }
     double init_value = init_tok.number;
 
+    // Resolve an existing state slot before storing its update source so a
+    // re-definition can reuse that slot's arena region.
+    uint16_t state_slot = NODE_NONE;
+    if (engine.cells.cells[sym].kind == CellKind::Number
+        && engine.cells.cells[sym].flags == 0x02) {
+        // Existing state cell — reuse its slot, do NOT reset the value.
+        state_slot = (uint16_t)engine.cells.cells[sym].data_table_id;
+    }
+
     // Record the update expression source text FIRST. If the arena is full,
     // fail the defstate before mutating anything — otherwise the state cell
     // would keep its OLD update source and dependency changes would silently
@@ -380,7 +395,16 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
 
         if (source && byte_end > byte_start && byte_end <= source_length) {
             src_len = byte_end - byte_start;
-            src_offset = engine.arena.store(source + byte_start, src_len);
+            uint32_t previous_offset = UINT32_MAX;
+            uint32_t previous_length = 0;
+            if (state_slot != NODE_NONE &&
+                engine.state_sources[state_slot].has_source) {
+                previous_offset = engine.state_sources[state_slot].arena_offset;
+                previous_length = engine.state_sources[state_slot].arena_length;
+            }
+            src_offset = engine.arena.store_reuse(
+                previous_offset, previous_length,
+                source + byte_start, src_len);
             if (src_offset == UINT32_MAX) {
                 return make_error(
                     "Program storage is full — defstate not applied",
@@ -397,13 +421,6 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     uint16_t saved_slot_count = engine.pool.state_slot_count;
 
     // Allocate a state slot (if this name already has a state slot, reuse it)
-    uint16_t state_slot = NODE_NONE;
-    if (engine.cells.cells[sym].kind == CellKind::Number
-        && engine.cells.cells[sym].flags == 0x02) {
-        // Existing state cell — reuse its slot, do NOT reset the value
-        state_slot = (uint16_t)engine.cells.cells[sym].data_table_id;
-    }
-
     bool allocated_new_slot = false;
     if (state_slot == NODE_NONE) {
         // New state cell — allocate slot and set initial value
@@ -595,7 +612,11 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
 
         if (source && byte_end > byte_start && byte_end <= source_length) {
             uint32_t len = byte_end - byte_start;
-            uint32_t offset = engine.arena.store(source + byte_start, len);
+            const OutputSource& previous = engine.output_sources[output_index];
+            uint32_t offset = engine.arena.store_reuse(
+                previous.has_source ? previous.arena_offset : UINT32_MAX,
+                previous.has_source ? previous.arena_length : 0,
+                source + byte_start, len);
             if (offset == UINT32_MAX) {
                 return make_error(
                     "Program storage is full — output not changed",
@@ -911,7 +932,11 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                     if (source && byte_end > byte_start &&
                         byte_end <= source_length) {
                         len = byte_end - byte_start;
-                        off = engine.arena.store(source + byte_start, len);
+                        const CallableInfo& previous =
+                            engine.cells.callables[cell_sym];
+                        off = engine.arena.store_reuse(
+                            previous.source_offset, previous.source_length,
+                            source + byte_start, len);
                         if (off == UINT32_MAX) {
                             return make_error(
                                 "Program storage is full — definition not applied",

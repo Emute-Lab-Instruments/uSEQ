@@ -200,6 +200,32 @@ TEST_CASE("Reclaim: anonymous UGen output survives repeated dependency edits",
     REQUIRE(h.engine.pool.outputs[0].valid);
 }
 
+TEST_CASE("Reclaim: hundreds of identical output re-evals reuse source arena",
+          "[reclaim][arena]") {
+    ReclaimHarness h;
+
+    // Long enough that the old append-only behavior exhausts the desktop
+    // arena during this loop (and exhausts the firmware-sized arena much
+    // earlier), while still being a small, ordinary output expression.
+    const std::string code = "(a1 (+ (usin beat) 123456789))";
+    h.eval_ok(code);
+    const uint32_t head_after_first = h.engine.arena.write_head;
+    REQUIRE(head_after_first > 0);
+
+    for (int i = 0; i < 600; i++) {
+        EvalResult r = h.eval(code);
+        INFO("iteration " << i);
+        if (r.kind == EvalResult::Error && r.diagnostic_count > 0) {
+            INFO("diagnostic: "
+                 << (r.diagnostics[0].message ? r.diagnostics[0].message : ""));
+        }
+        REQUIRE(r.kind != EvalResult::Error);
+    }
+
+    REQUIRE(h.engine.arena.write_head == head_after_first);
+    REQUIRE(h.engine.pool.outputs[0].valid);
+}
+
 // ============================================================================
 // F5: source-arena exhaustion fails loudly instead of reverting outputs
 // ============================================================================
@@ -214,7 +240,7 @@ TEST_CASE("Reclaim: arena exhaustion fails the eval and never reverts the output
 
     // Exhaust the arena, then try to install a new program.
     h.engine.arena.write_head = SOURCE_ARENA_SIZE - 4;
-    EvalResult r = h.eval("(a1 (+ off 999))");
+    EvalResult r = h.eval("(a1 (+ off 9999))");
 
     // Must be an explicit error, not a silent success...
     REQUIRE(r.kind == EvalResult::Error);

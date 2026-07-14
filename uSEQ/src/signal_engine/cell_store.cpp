@@ -7,11 +7,32 @@ namespace sig {
 // ── SourceArena ─────────────────────────────────────────────────────────────
 
 uint32_t SourceArena::store(const char* text, uint32_t length) {
-    if (write_head + length > SOURCE_ARENA_SIZE) return UINT32_MAX;
+    if (write_head > SOURCE_ARENA_SIZE ||
+        length > SOURCE_ARENA_SIZE - write_head) return UINT32_MAX;
     uint32_t offset = write_head;
     memcpy(data + write_head, text, length);
     write_head += length;
     return offset;
+}
+
+uint32_t SourceArena::store_reuse(uint32_t existing_offset,
+                                  uint32_t existing_length,
+                                  const char* text, uint32_t length) {
+    // A source slot owns its whole previous region. A shorter replacement can
+    // occupy that same region without consuming any more arena space.
+    bool existing_region_fits =
+        existing_offset <= SOURCE_ARENA_SIZE &&
+        existing_length <= SOURCE_ARENA_SIZE - existing_offset;
+    if (existing_region_fits && length <= existing_length) {
+        if (length > 0) {
+            // Recompilation can read the old source directly from the arena,
+            // so use memmove for the same-region case as well.
+            memmove(data + existing_offset, text, length);
+        }
+        return existing_offset;
+    }
+
+    return store(text, length);
 }
 
 const char* SourceArena::read(uint32_t offset) const {
