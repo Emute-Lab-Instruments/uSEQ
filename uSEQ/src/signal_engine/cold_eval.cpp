@@ -45,6 +45,25 @@ static EvalResult make_error(const char* message, const char* suggestion) {
     return r;
 }
 
+// Cell/callable arrays are sized MAX_CELLS but symbol IDs are unbounded
+// (the interner keeps handing out fresh IDs). Every cell WRITE path must
+// bounds-check the symbol ID or it writes out of bounds (A1). Read paths
+// already guard.
+static bool cell_id_out_of_range(SymbolID sym) {
+    return sym >= MAX_CELLS;
+}
+
+static EvalResult make_too_many_definitions_error() {
+    EvalResult r;
+    r.kind = EvalResult::Error;
+    r.diagnostics[r.diagnostic_count++] = {
+        DiagnosticSeverity::Error, DiagnosticCategory::Overflow,
+        0, 0, "Too many definitions — no cell space left for this name",
+        "Remove unused definitions or reuse existing names"
+    };
+    return r;
+}
+
 // ── Cold-path form evaluation ───────────────────────────────────────────────
 
 static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
@@ -83,6 +102,7 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
         return make_error("define needs a name", "Try: (define freq 440)");
     }
     SymbolID sym = name_tok.symbol;
+    if (cell_id_out_of_range(sym)) return make_too_many_definitions_error();
 
     Token val_tok = ts.peek();
 
@@ -167,6 +187,7 @@ static EvalResult do_defn(TokenStream& ts, SignalEngine& engine,
         return make_error("defn needs a name", "Try: (defn osc [f ph] (sin (* ph f)))");
     }
     SymbolID sym = name_tok.symbol;
+    if (cell_id_out_of_range(sym)) return make_too_many_definitions_error();
 
     // Parse parameter list
     if (!ts.expect(TokenKind::LBracket)) {
@@ -226,6 +247,7 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
         return make_error("set needs a name", "Try: (set x 42)");
     }
     SymbolID sym = name_tok.symbol;
+    if (cell_id_out_of_range(sym)) return make_too_many_definitions_error();
 
     Token val_tok = ts.peek();
     if (val_tok.kind == TokenKind::Number) {
@@ -302,6 +324,7 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
                           "Try: (defstate counter 0 (+ counter 1))");
     }
     SymbolID sym = name_tok.symbol;
+    if (cell_id_out_of_range(sym)) return make_too_many_definitions_error();
 
     // Parse init value — must be a number literal for simplicity.
     // Specifically reject live-edit in this position (§4.1.9).
@@ -775,6 +798,8 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                                       "Try: (defs [x 1 y 2])");
                 }
                 SymbolID cell_sym = name_tok.symbol;
+                if (cell_id_out_of_range(cell_sym))
+                    return make_too_many_definitions_error();
 
                 if (ts.at_end() || ts.peek().kind == TokenKind::RBracket) {
                     return make_error("defs: each name needs a value",

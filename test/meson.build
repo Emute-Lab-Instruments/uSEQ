@@ -247,3 +247,17 @@ compiler_p1_test_exe = executable(
 )
 
 test('compiler_p1_test', compiler_p1_test_exe)
+
+# ===== v1.2.0 Audit Fix Regression Tests =====
+# One test case per landed 2026-07 audit finding (A-series).
+
+audit_fixes_test_exe = executable(
+  'test_audit_fixes',
+  sources : ['signal_engine/test_audit_fixes.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('audit_fixes_test', audit_fixes_test_exe, timeout: 60)
