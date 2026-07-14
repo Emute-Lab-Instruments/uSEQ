@@ -139,6 +139,14 @@ struct NodePool {
     // Cross-output reads use previous-tick values
     double prev_output_values[MAX_OUTPUTS] = {};
 
+    // Runtime fallback tracking (failure-model.md §2.1/§5): bit i is set when
+    // output i substituted its LKG value on the most recent execution pass
+    // because a non-finite value reached its root (FailureMode::LkgFallback
+    // only). Recomputed on every pass; mutable because execution paths take
+    // `const NodePool&` — this is diagnostic bookkeeping, not graph state.
+    mutable uint64_t runtime_fallback_mask = 0;
+    static_assert(MAX_OUTPUTS <= 64, "runtime_fallback_mask is 64-bit");
+
     // ── Cross-sample state ──────────────────────────────────────────────
     double state_values[MAX_STATE_SLOTS]  = {};       // current state (read during execution)
     uint16_t state_update_roots[MAX_STATE_SLOTS] = {}; // root node for each state's update expr (init to 0, set to NODE_NONE by init)

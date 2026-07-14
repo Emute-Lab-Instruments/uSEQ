@@ -140,6 +140,7 @@ private:
     void handle_ping(const char* payload, size_t len);
     void handle_stream_config(const char* payload, size_t len);
     void handle_set_live_inputs(const char* payload, size_t len);
+    void handle_set_failure_mode(const char* payload, size_t len);
     void handle_get_state(const char* payload, size_t len);
 };
 

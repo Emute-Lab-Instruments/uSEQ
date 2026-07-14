@@ -54,6 +54,19 @@
 
 3.1 **Numerical errors are not silently zeroed at the output level.** Per-node NaN/Inf clamping (if any engine performs it) is an internal hygiene mechanism; the user-observable contract is "if the output goes unhealthy, you fall back to LKG, and you see a diagnostic." The engine must not silently produce subtly-wrong output instead of declaring failure.
 
+3.2 **Configurable failure mode.** The runtime exposes two non-finite policies as a single engine-global option (`sig::FailureMode`, `uSEQ/src/signal_engine/executor.h`):
+
+| Mode | Behaviour |
+|---|---|
+| `lkg` (**default**) | §3.1 semantics: values propagate freely through the node graph; a non-finite value reaching an *output root* substitutes that output's LKG value (or the neutral default per §2.4), marks the output as `fallback` (§5), and surfaces a runtime diagnostic (`useq_active_diagnostics()` on WASM). |
+| `zero` (legacy) | Pre-v1.2 behaviour: every non-finite node result is clamped to `0.0` at the node level. No fallback, no diagnostic. Retained for compatibility with patches that exploited the squash. |
+
+The mode is set over the serial wire protocol via `set-failure-mode` ([wire-protocol.md §5.18](wire-protocol.md)) and on the WASM runtime via `useq_set_failure_mode(0|1)` / `useq_get_failure_mode()`. It is global, not per-output (a per-output variant was considered and rejected as disproportionate wire/UI complexity). It defaults to `lkg` at boot/init and is not persisted by the engine; the editor re-sends its setting on connect.
+
+3.3 **Fallback tracking is per-pass.** The engine recomputes the per-output fallback set (`NodePool::runtime_fallback_mask`) on every execution pass: a sample whose root value is finite clears the output's fallback state. This realises §1.7's transient semantics — a phase-dependent failure shows fallback only while it is actually failing — and §5.2's `fallback → running` transition on healthy reassignment. State-slot commits never accept non-finite values (a poisoned state slot could otherwise never recover); the previous finite state value is retained instead.
+
+> **Status note.** Prior to v1.2.0 the implementation only performed the `zero` squash (spec drift flagged by two independent audits). The `lkg` path above is now implemented and is the default; the squash survives solely as the opt-in legacy mode.
+
 ## 4. Diagnostic Survival
 
 4.1 **Diagnostics survive across evals.** Per-output health is queryable by the editor and shown to the user. A successful eval clears prior diagnostics for *that output* — not for the whole document. The clearing policy is detailed in [diagnostics.md §4.4](diagnostics.md).

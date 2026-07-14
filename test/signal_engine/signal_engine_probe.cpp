@@ -29,6 +29,8 @@
 //      {"op":"config", "opt_level":N}
 //        -> {"ok":false,"error":"unsupported"} for opt_level != 1
 //           (no engine hook exists to disable optimizations)
+//      {"op":"config", "failure_mode":"lkg"|"zero"}
+//        -> {"ok":true}   set non-finite policy (failure-model.md §3)
 //
 // JSON is hand-rolled (both parsing and emission) — no third-party libs.
 
@@ -364,11 +366,18 @@ static void op_health(Session& s, const char* line) {
         return;
     }
     const OutputSlot& slot = s.engine->pool.outputs[output_index];
-    // The engine has no per-output runtime error flag yet (see
-    // docs/specs/failure-model.md); "error" is unreachable from this probe.
+    // Health per failure-model.md §5: runtime fallback (non-finite value at
+    // the output root, LKG substituted) is tracked in the pool's
+    // runtime_fallback_mask, recomputed on every execution pass.
     const char* health = "idle";
     if (slot.root_node != NODE_NONE) {
-        health = slot.valid ? "running" : "fallback";
+        bool in_fallback =
+            (s.engine->pool.runtime_fallback_mask >> output_index) & 1;
+        if (in_fallback) {
+            health = slot.valid ? "fallback" : "error";
+        } else {
+            health = slot.valid ? "running" : "fallback";
+        }
     }
     std::string out = "{\"ok\":true,\"health\":\"";
     out += health;
@@ -377,9 +386,26 @@ static void op_health(Session& s, const char* line) {
 }
 
 static void op_config(const char* line) {
+    // {"op":"config","failure_mode":"lkg"|"zero"} — set the runtime
+    // non-finite policy (failure-model.md §3). Mirrors the wire-protocol
+    // "set-failure-mode" message and useq_set_failure_mode().
+    std::string failure_mode;
+    if (json_get_string(line, "failure_mode", failure_mode)) {
+        if (failure_mode == "lkg") {
+            set_failure_mode(FailureMode::LkgFallback);
+        } else if (failure_mode == "zero") {
+            set_failure_mode(FailureMode::ZeroSquash);
+        } else {
+            respond_error("config: failure_mode must be \"lkg\" or \"zero\"");
+            return;
+        }
+        respond("{\"ok\":true}");
+        return;
+    }
+
     double opt_level = 0.0;
     if (!json_get_number(line, "opt_level", opt_level)) {
-        respond_error("config: missing \"opt_level\"");
+        respond_error("config: missing \"opt_level\" or \"failure_mode\"");
         return;
     }
     // The engine has no hook to disable compile optimizations (CSE, constant

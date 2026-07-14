@@ -267,3 +267,16 @@ audit_fixes_test_exe = executable(
 )
 
 test('audit_fixes_test', audit_fixes_test_exe, timeout: 60)
+
+# ===== Failure-mode tests (failure-model.md §2.1/§3/§5) =====
+
+failure_mode_test_exe = executable(
+  'test_failure_mode',
+  sources : ['signal_engine/test_failure_mode.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('failure_mode_test', failure_mode_test_exe, timeout: 60)

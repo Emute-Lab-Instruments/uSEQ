@@ -620,11 +620,61 @@ extern "C"
     const char* useq_active_diagnostics()
     {
         // Contract (diagnostics.md §4.2): a JSON ARRAY of per-output active
-        // diagnostics. Per-output error/fallback tracking is not yet wired into
-        // the engine (OutputSlot has no runtime error flag), so the empty case
-        // is the correct interim. Returning "[]" (not "{}") keeps the empty-case
-        // parse contract aligned with the TS consumer, which expects an array.
-        return alloc_cstr("[]");
+        // diagnostics; "[]" when every output is healthy. Runtime fallback
+        // (failure-model.md §2.1) is reported from the engine pool's
+        // runtime_fallback_mask — set when a non-finite value reached an
+        // output root and the LKG value was substituted on the most recent
+        // execution pass (FailureMode::LkgFallback only).
+        if (!g_engine || g_engine->pool.runtime_fallback_mask == 0) {
+            return alloc_cstr("[]");
+        }
+
+        JsonBuilder json;
+        json.array_begin_unkeyed();
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+            if (!(g_engine->pool.runtime_fallback_mask & ((uint64_t)1 << i)))
+                continue;
+            // Reverse of resolve_output_name(): a1-a8 = 0-7, d1-d8 = 8-15,
+            // s1-s8 = 16-23. Indices beyond the named ranges are unreachable
+            // from user programs; skip defensively.
+            char name[3] = {0, 0, 0};
+            if (i < 8)       { name[0] = 'a'; name[1] = (char)('1' + i); }
+            else if (i < 16) { name[0] = 'd'; name[1] = (char)('1' + i - 8); }
+            else if (i < 24) { name[0] = 's'; name[1] = (char)('1' + i - 16); }
+            else continue;
+
+            json.object_begin();
+            json.field("output", name);
+            json.field("severity", "warning");
+            json.field("category", "arithmetic");
+            json.field("state", "fallback");
+            json.field("message",
+                       "Non-finite value (NaN/Inf) reached this output; "
+                       "holding the last-known-good value");
+            json.object_end();
+        }
+        json.array_end();
+        return alloc_string(json.build());
+    }
+
+    /**
+     * Set the runtime failure mode (failure-model.md §3):
+     *   0 = LKG fallback (default): non-finite at an output root falls back
+     *       to the last-known-good value and raises a runtime diagnostic.
+     *   1 = legacy zero-squash: every non-finite node result clamps to 0.0.
+     * Returns the mode actually in effect, or -1 for an invalid argument.
+     */
+    int useq_set_failure_mode(int mode)
+    {
+        if (mode != 0 && mode != 1) return -1;
+        sig::set_failure_mode(static_cast<sig::FailureMode>(mode));
+        return mode;
+    }
+
+    /** Read the current runtime failure mode (0 = LKG, 1 = zero-squash). */
+    int useq_get_failure_mode()
+    {
+        return static_cast<int>(sig::get_failure_mode());
     }
 
     // ---------------------------------------------------------------

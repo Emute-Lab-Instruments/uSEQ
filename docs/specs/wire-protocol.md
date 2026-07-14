@@ -696,6 +696,30 @@ points to flash on `calibrate-end { commit: true }`. Individual
 per-step. This protects the user from data loss on disconnect / abort.
 See [calibration.md §6.3](../../docs/specs/calibration.md).
 
+### 5.18 `set-failure-mode` (editor → device, request)
+
+Configure the runtime non-finite failure policy
+([failure-model.md §3.2](failure-model.md)). (See
+`uSEQ/src/firmware/serial_protocol.cpp` — `handle_set_failure_mode`.)
+
+```json
+{"type":"set-failure-mode","mode":"lkg","requestId":"req-9"}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | yes | Always `"set-failure-mode"`. |
+| `mode` | string | yes | `"lkg"` (default — non-finite at an output root falls back to the last-known-good value and raises a runtime diagnostic) or `"zero"` (legacy — every non-finite node result is clamped to `0.0`, no fallback, no diagnostic). |
+| `requestId` | string | optional | Standard response correlation. |
+
+The device responds with the standard `{type:"response",success}`
+envelope; `success: false` (with an explanatory `text`) for any `mode`
+other than `"lkg"` / `"zero"`. The mode is engine-global (not
+per-output), defaults to `"lkg"` at boot, and is not persisted — editors
+that expose the setting re-send it on connect. The WASM runtime
+equivalent is `useq_set_failure_mode(0|1)` (0 = lkg, 1 = zero), keeping
+both transports behind one editor setting.
+
 ---
 
 ## 6. Binary Stream Frames

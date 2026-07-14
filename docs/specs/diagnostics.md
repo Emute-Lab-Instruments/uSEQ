@@ -143,7 +143,7 @@ Spans are eval-relative — they reference offsets into the code string passed t
 
 ### 4.2 `useq_active_diagnostics`
 
-(See `wasm/wasm_wrapper.cpp` — useq_active_diagnostics function, currently returns "{}".)
+(See `wasm/wasm_wrapper.cpp` — useq_active_diagnostics function; reports per-output runtime LKG-fallback entries from `NodePool::runtime_fallback_mask`, see [failure-model.md §3.2](failure-model.md).)
 
 ```cpp
 EMSCRIPTEN_KEEPALIVE

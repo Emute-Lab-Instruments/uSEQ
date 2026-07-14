@@ -6,6 +6,13 @@
 
 namespace sig {
 
+// ── Failure Mode ────────────────────────────────────────────────────────────
+
+static FailureMode g_failure_mode = FailureMode::LkgFallback;
+
+void set_failure_mode(FailureMode mode) { g_failure_mode = mode; }
+FailureMode get_failure_mode() { return g_failure_mode; }
+
 // ── Single-node evaluation ──────────────────────────────────────────────────
 // Load ops and data ops need runtime context and are handled here directly.
 // Pure-math ops delegate to the shared eval_ops.h functions.
@@ -139,22 +146,37 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
                                ctx.prev_outputs, pool.state_values);
         }
 
-        // NaN/Inf guard
-        if (!std::isfinite(result)) result = 0.0;
+        // Per-node NaN/Inf guard — legacy ZeroSquash mode only. In
+        // LkgFallback mode non-finite values propagate to the output root,
+        // where the LKG substitution below declares the failure
+        // (failure-model.md §3.1).
+        if (g_failure_mode == FailureMode::ZeroSquash && !std::isfinite(result))
+            result = 0.0;
 
         ctx.workspace[idx] = result;
     }
 
     // Read output values with LKG fallback
+    uint64_t fallback_mask = 0;
     for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
         if (pool.outputs[i].root_node != NODE_NONE) {
-            ctx.output_values[i] = ctx.workspace[pool.outputs[i].root_node];
+            double v = ctx.workspace[pool.outputs[i].root_node];
+            if (g_failure_mode == FailureMode::LkgFallback &&
+                !std::isfinite(v)) {
+                // Non-finite at the root: substitute the last-known-good
+                // value (or the neutral default when no LKG exists —
+                // failure-model.md §2.4) and record the fallback.
+                v = pool.outputs[i].valid ? pool.outputs[i].lkg_value : 0.0;
+                fallback_mask |= (uint64_t)1 << i;
+            }
+            ctx.output_values[i] = v;
         } else if (pool.outputs[i].valid) {
             // No graph assigned but we have a last-known-good value — use it
             ctx.output_values[i] = pool.outputs[i].lkg_value;
         }
         // else: output was never assigned, leave at caller's init (typically 0)
     }
+    pool.runtime_fallback_mask = fallback_mask;
 }
 
 // ── Post-Tick Commit ───────────────────────────────────────────────────────
@@ -174,7 +196,11 @@ void commit_outputs(NodePool& pool, const double* output_values) {
 void commit_state(NodePool& pool, const double* workspace) {
     for (uint16_t s = 0; s < pool.state_slot_count; ++s) {
         if (pool.state_update_roots[s] != NODE_NONE) {
-            pool.state_values[s] = workspace[pool.state_update_roots[s]];
+            double v = workspace[pool.state_update_roots[s]];
+            // Never commit non-finite state: in LkgFallback mode NaN/Inf can
+            // flow through the workspace, and a poisoned state slot would
+            // never recover. Keep the previous (finite) value instead.
+            if (std::isfinite(v)) pool.state_values[s] = v;
         }
     }
 }
@@ -197,6 +223,7 @@ void execute_batch(
 
     const size_t CHUNK = pool.batch_chunk_size;
     double* regs = pool.batch_workspace.get();
+    uint64_t fallback_mask = 0;
 
     for (size_t chunk_start = 0; chunk_start < sample_count; chunk_start += CHUNK) {
         size_t chunk_size = std::min(CHUNK, sample_count - chunk_start);
@@ -224,7 +251,8 @@ void execute_batch(
                                        data_pool, data_offsets, data_lengths,
                                        pool.prev_output_values,
                                        pool.state_values);
-                if (!std::isfinite(val)) val = 0.0;
+                if (g_failure_mode == FailureMode::ZeroSquash &&
+                    !std::isfinite(val)) val = 0.0;
                 for (size_t s = 0; s < chunk_size; s++) reg_out[s] = val;
             } else {
                 for (size_t s = 0; s < chunk_size; s++) {
@@ -239,7 +267,8 @@ void execute_batch(
                                               data_pool, data_offsets, data_lengths,
                                               pool.prev_output_values,
                                               pool.state_values);
-                    if (!std::isfinite(result)) result = 0.0;
+                    if (g_failure_mode == FailureMode::ZeroSquash &&
+                        !std::isfinite(result)) result = 0.0;
                     reg_out[s] = result;
                 }
             }
@@ -260,7 +289,21 @@ void execute_batch(
                 double* dst = output_buffer + (size_t)out_idx * sample_count + chunk_start;
                 if (pool.outputs[o].root_node != NODE_NONE) {
                     double* src = regs + (size_t)pool.outputs[o].root_node * CHUNK;
-                    memcpy(dst, src, chunk_size * sizeof(double));
+                    if (g_failure_mode == FailureMode::LkgFallback) {
+                        // Non-finite at the root → substitute LKG per sample
+                        // and record the fallback (failure-model.md §10.2).
+                        double lkg = pool.outputs[o].lkg_value;
+                        for (size_t s = 0; s < chunk_size; s++) {
+                            double v = src[s];
+                            if (!std::isfinite(v)) {
+                                v = lkg;
+                                fallback_mask |= (uint64_t)1 << o;
+                            }
+                            dst[s] = v;
+                        }
+                    } else {
+                        memcpy(dst, src, chunk_size * sizeof(double));
+                    }
                 } else {
                     double lkg = pool.outputs[o].lkg_value;
                     for (size_t s = 0; s < chunk_size; s++) dst[s] = lkg;
@@ -269,6 +312,7 @@ void execute_batch(
             }
         }
     }
+    pool.runtime_fallback_mask = fallback_mask;
 }
 
 // ── Output Classification ───────────────────────────────────────────────────

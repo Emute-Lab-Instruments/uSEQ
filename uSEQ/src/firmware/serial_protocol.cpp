@@ -1,4 +1,5 @@
 #include "serial_protocol.h"
+#include "../signal_engine/executor.h"
 #include "../utils/json_builder.h"
 #include "../utils/serial_message.h"
 #include "../modulisp/lisp/symbol_intern.h"
@@ -393,6 +394,11 @@ bool SerialProtocol::dispatch_message(const char* payload, size_t len,
     if (strcmp(type_buf, "get-state") == 0)
     {
         handle_get_state(payload, len);
+        return false;
+    }
+    if (strcmp(type_buf, "set-failure-mode") == 0)
+    {
+        handle_set_failure_mode(payload, len);
         return false;
     }
 
@@ -829,6 +835,35 @@ void SerialProtocol::handle_stream_config(const char* payload, size_t len)
         .field("requestId", m_request_id)
         .object_end();
 
+    write_json_str(b.build().c_str());
+}
+
+void SerialProtocol::handle_set_failure_mode(const char* payload, size_t len)
+{
+    // §5.10: configure the runtime non-finite failure policy
+    // (failure-model.md §3). `mode` is "lkg" (default — non-finite at an
+    // output root falls back to the last-known-good value) or "zero"
+    // (legacy — every non-finite node result clamps to 0.0).
+    char mode_buf[8] = {};
+    extract_string(payload, len, "mode", mode_buf, sizeof(mode_buf));
+
+    bool ok = true;
+    if (strcmp(mode_buf, "lkg") == 0)
+        sig::set_failure_mode(sig::FailureMode::LkgFallback);
+    else if (strcmp(mode_buf, "zero") == 0)
+        sig::set_failure_mode(sig::FailureMode::ZeroSquash);
+    else
+        ok = false;
+
+    JsonBuilder b;
+    b.object_begin()
+        .field("type", "response")
+        .field("success", ok)
+        .field("console", "")
+        .field("text", ok ? "" : "set-failure-mode: mode must be \"lkg\" or \"zero\"")
+        .field_null("meta")
+        .field("requestId", m_request_id)
+        .object_end();
     write_json_str(b.build().c_str());
 }
 

@@ -1,0 +1,95 @@
+# Non-finite handling — failure-model.md §2.1/§2.4/§3.1 + the configurable
+# failure mode (§3.2). `(* (* t 1e308) 1e308)` overflows to +inf for t > 0
+# and is exactly 0.0 (finite) at t == 0 — a time-phase-dependent runtime
+# error that constant folding cannot remove.
+
+- name: lkg-fallback-on-non-finite-root
+  spec: failure-model.md §2.1
+  tags: [smoke, failure-model, non-finite]
+  steps:
+    - eval: "(a1 0.75)"
+    - tick: 0.0                          # commit → LKG = 0.75
+    - eval: "(a1 (* (* t 1e308) 1e308))"
+    - sample: {output: a1, times: [1.0, 2.0]}
+      expect_values: [0.75, 0.75]        # inf at root → LKG, not 0.0
+    - health: {output: a1, expect: fallback}
+
+- name: lkg-fallback-transient-recovers
+  spec: failure-model.md §1.7
+  tags: [smoke, failure-model, non-finite]
+  steps:
+    - eval: "(a1 0.75)"
+    - tick: 0.0
+    - eval: "(a1 (* (* t 1e308) 1e308))"
+    - sample: {output: a1, times: [1.0]}
+      expect_values: [0.75]
+    # A finite sample (t == 0 → 0.0) clears the fallback state.
+    - sample: {output: a1, times: [0.0]}
+      expect_values: [0.0]
+    - health: {output: a1, expect: running}
+
+- name: lkg-bootstrap-neutral-default
+  spec: failure-model.md §2.4
+  tags: [smoke, failure-model, non-finite]
+  steps:
+    # No healthy commit has ever happened: no LKG → neutral default 0.
+    - eval: "(a1 (* (* t 1e308) 1e308))"
+    - sample: {output: a1, times: [1.0]}
+      expect_values: [0.0]
+
+- name: lkg-fallback-isolated-per-output
+  spec: failure-model.md §10.1
+  tags: [smoke, failure-model, non-finite]
+  steps:
+    - eval: "(a1 0.5)"
+    - eval: "(a2 0.25)"
+    - tick: 0.0
+    - eval: "(a1 (* (* t 1e308) 1e308))"
+    - sample: {output: a1, times: [1.0]}
+      expect_values: [0.5]
+    - sample: {output: a2, times: [1.0]}
+      expect_values: [0.25]
+    - health: {output: a2, expect: running}
+
+- name: healthy-reassignment-clears-fallback
+  spec: failure-model.md §5.2
+  tags: [smoke, failure-model, non-finite]
+  steps:
+    - eval: "(a1 0.75)"
+    - tick: 0.0
+    - eval: "(a1 (* (* t 1e308) 1e308))"
+    - sample: {output: a1, times: [1.0]}
+      expect_values: [0.75]
+    - health: {output: a1, expect: fallback}
+    - eval: "(a1 0.125)"
+    - sample: {output: a1, times: [1.0]}
+      expect_values: [0.125]
+    - health: {output: a1, expect: running}
+
+- name: zero-squash-legacy-mode
+  spec: failure-model.md §3.2
+  tags: [smoke, failure-model, non-finite]
+  steps:
+    - config: {failure_mode: zero}
+    - eval: "(a1 0.75)"
+    - tick: 0.0
+    - eval: "(a1 (* (* t 1e308) 1e308))"
+    - sample: {output: a1, times: [1.0, 2.0]}
+      expect_values: [0.0, 0.0]          # legacy per-node squash to zero
+    - health: {output: a1, expect: running}
+
+- name: failure-mode-round-trip
+  spec: failure-model.md §3.2
+  tags: [failure-model, non-finite]
+  steps:
+    - config: {failure_mode: zero}
+    - eval: "(a1 0.75)"
+    - tick: 0.0
+    - eval: "(a1 (* (* t 1e308) 1e308))"
+    - sample: {output: a1, times: [1.0]}
+      expect_values: [0.0]
+    # Switching back to lkg mid-session restores spec behaviour.
+    - config: {failure_mode: lkg}
+    - sample: {output: a1, times: [1.0]}
+      expect_values: [0.75]
+    - health: {output: a1, expect: fallback}

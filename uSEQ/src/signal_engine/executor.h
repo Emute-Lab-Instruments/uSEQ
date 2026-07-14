@@ -6,6 +6,28 @@
 
 namespace sig {
 
+// ── Failure Mode (failure-model.md §2.1/§3.1) ───────────────────────────────
+// Global runtime policy for non-finite values (NaN/Inf) during execution.
+//
+//   LkgFallback (default, spec-mandated): values propagate freely through
+//     the node graph; a non-finite value reaching an OUTPUT ROOT makes that
+//     output substitute its last-known-good value (or 0 if none) and marks
+//     it as being in fallback (see NodePool::runtime_fallback_mask).
+//   ZeroSquash (legacy): every node's result is clamped to 0.0 when
+//     non-finite. No fallback, no diagnostic — pre-v1.2 behaviour.
+//
+// The mode is engine-global (not per-output); configurable over the serial
+// wire protocol ("set-failure-mode") and the WASM export
+// useq_set_failure_mode(). See docs/specs/failure-model.md §3.
+
+enum class FailureMode : uint8_t {
+    LkgFallback = 0,
+    ZeroSquash  = 1,
+};
+
+void set_failure_mode(FailureMode mode);
+FailureMode get_failure_mode();
+
 // ── Execution Context ──────────────────────────────────────────────────────
 // Bundles every per-tick datum the executor needs, replacing the previous
 // 10-parameter execute_all_outputs signature.

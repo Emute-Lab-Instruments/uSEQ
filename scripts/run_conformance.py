@@ -46,7 +46,7 @@ DEFAULT_PROBE_CANDIDATES = [
     PROJECT_ROOT / "build" / "test" / "signal_engine_probe",
 ]
 
-VALID_STEP_OPS = {"eval", "tick", "sample", "clear", "health"}
+VALID_STEP_OPS = {"eval", "tick", "sample", "clear", "health", "config"}
 VALID_STEP_KEYS = VALID_STEP_OPS | {
     "expect_value", "expect_values", "tol", "expect_diagnostic", "expect_error",
     "comment",
@@ -161,6 +161,14 @@ def validate_case(case: dict, source: str) -> list[str]:
             elif "expect_values" in step and \
                     len(step["expect_values"]) != len(spec["times"]):
                 errs.append(f"{sloc}: expect_values length != times length")
+        if op == "config":
+            spec = step["config"]
+            if (not isinstance(spec, dict)
+                    or ("failure_mode" not in spec and "opt_level" not in spec)):
+                errs.append(f"{sloc}: 'config' needs {{failure_mode}} or "
+                            f"{{opt_level}}")
+            elif spec.get("failure_mode") not in (None, "lkg", "zero"):
+                errs.append(f"{sloc}: failure_mode must be 'lkg' or 'zero'")
         if op == "health":
             spec = step["health"]
             if (not isinstance(spec, dict) or "output" not in spec
@@ -276,6 +284,12 @@ def run_step(session: ProbeSession, step: dict, idx: int) -> None:
         resp = session.request({"op": "clear"})
         if not resp.get("ok"):
             raise CaseFailure(f"{what}: clear failed: {json.dumps(resp)}")
+    elif "config" in step:
+        req = {"op": "config"}
+        req.update(step["config"])
+        resp = session.request(req)
+        if not resp.get("ok"):
+            raise CaseFailure(f"{what}: config failed: {json.dumps(resp)}")
     elif "health" in step:
         spec = step["health"]
         resp = session.request({"op": "health", "output": spec["output"]})
