@@ -101,3 +101,28 @@ TEST_CASE("A1: defining more names than MAX_CELLS errors instead of OOB write",
     h.eval_ok("(a1 0.25)");
     REQUIRE(h.sample(0) == Approx(0.25));
 }
+
+// ── A2: compile failure must not demote the active program (§2.6) ──────────
+// failure-model.md §2.6: "Compile-time errors do not consume LKG. A program
+// that fails to compile is not promoted, demoted, or substituted; the active
+// program is unchanged." The old demotion of outputs[i].valid on compile
+// failure also flapped against commit_outputs (which resurrects valid=true),
+// corrupting the WASM batch-vis row packing.
+
+TEST_CASE("A2: failed output compile leaves the active program valid",
+          "[audit][a2]") {
+    Harness h;
+
+    h.eval_ok("(a1 0.75)");
+    REQUIRE(h.engine.pool.outputs[0].valid);
+    REQUIRE(h.sample(0) == Approx(0.75));
+
+    // A compile failure on the same output...
+    EvalResult r = h.eval("(a1 (no-such-fn 1 2))");
+    REQUIRE(r.kind == EvalResult::Error);
+
+    // ...leaves the previous program installed, valid, and running.
+    REQUIRE(h.engine.pool.outputs[0].valid);
+    REQUIRE(h.engine.pool.outputs[0].root_node != NODE_NONE);
+    REQUIRE(h.sample(0) == Approx(0.75));
+}

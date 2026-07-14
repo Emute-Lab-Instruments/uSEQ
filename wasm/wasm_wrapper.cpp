@@ -203,11 +203,28 @@ static void project_from_fork(
     sig::StateResourceRegistry saved_registry = g_engine->registry;
     double saved_prev_outputs[sig::MAX_OUTPUTS];
     double saved_lkg[sig::MAX_OUTPUTS];
+    bool saved_valid[sig::MAX_OUTPUTS];
     double saved_prev_t = g_prev_tick_time;
     memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
     memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
-    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
+        saved_valid[i] = g_engine->pool.outputs[i].valid;
+    }
+
+    // Snapshot the active-row map ONCE before the sample loop (A2). The loop
+    // below runs commit_outputs, which sets valid=true for any output with a
+    // root node — re-scanning live `valid` per sample would grow the packed
+    // row count mid-batch and write past the end of batch_buf (the caller
+    // sized it from ITS pre-loop scan). Same pattern as
+    // useq_eval_outputs_time_window_into.
+    uint16_t row_of[sig::MAX_OUTPUTS];
+    {
+        uint16_t r = 0;
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+            row_of[i] = (g_engine->pool.outputs[i].valid && r < num_active)
+                            ? r++ : sig::NODE_NONE;
+    }
 
     // Install fork state
     memcpy(g_engine->pool.state_values,
@@ -244,12 +261,9 @@ static void project_from_fork(
         sig::commit_outputs(g_engine->pool, output_values);
         g_prev_tick_time = t;
 
-        uint16_t row = 0;
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-            if (g_engine->pool.outputs[i].valid) {
-                batch_buf[row * num_samples + s] = output_values[i];
-                row++;
-            }
+            if (row_of[i] != sig::NODE_NONE)
+                batch_buf[row_of[i] * num_samples + s] = output_values[i];
         }
     }
 
@@ -271,8 +285,10 @@ static void project_from_fork(
     g_engine->pool.state_slot_count = saved_slot_count;
     g_engine->registry = saved_registry;
     memcpy(g_engine->pool.prev_output_values, saved_prev_outputs, sizeof(saved_prev_outputs));
-    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
+        g_engine->pool.outputs[i].valid = saved_valid[i];
+    }
     g_prev_tick_time = saved_prev_t;
 }
 
@@ -288,12 +304,26 @@ static void execute_batch_sequential(
     double saved_state[sig::MAX_STATE_SLOTS];
     double saved_prev_outputs[sig::MAX_OUTPUTS];
     double saved_lkg[sig::MAX_OUTPUTS];
+    bool saved_valid[sig::MAX_OUTPUTS];
     uint16_t saved_slot_count = g_engine->pool.state_slot_count;
     double saved_prev_t = g_prev_tick_time;
     memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
     memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
-    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
+        saved_valid[i] = g_engine->pool.outputs[i].valid;
+    }
+
+    // Snapshot the active-row map ONCE before the sample loop (A2) — see
+    // project_from_fork for the rationale (commit_outputs mutates `valid`
+    // mid-batch, so a live per-sample scan can overflow batch_buf).
+    uint16_t row_of[sig::MAX_OUTPUTS];
+    {
+        uint16_t r = 0;
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+            row_of[i] = (g_engine->pool.outputs[i].valid && r < num_active)
+                            ? r++ : sig::NODE_NONE;
+    }
 
     double output_values[sig::MAX_OUTPUTS] = {};
     double node_values[sig::MAX_TOTAL_NODES];
@@ -319,20 +349,19 @@ static void execute_batch_sequential(
         sig::commit_outputs(g_engine->pool, output_values);
         g_prev_tick_time = t;
 
-        uint16_t row = 0;
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-            if (g_engine->pool.outputs[i].valid) {
-                batch_buf[row * num_samples + s] = output_values[i];
-                row++;
-            }
+            if (row_of[i] != sig::NODE_NONE)
+                batch_buf[row_of[i] * num_samples + s] = output_values[i];
         }
     }
 
     // Restore all state — visualization is read-only
     memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
     memcpy(g_engine->pool.prev_output_values, saved_prev_outputs, sizeof(saved_prev_outputs));
-    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
+        g_engine->pool.outputs[i].valid = saved_valid[i];
+    }
     g_engine->pool.state_slot_count = saved_slot_count;
     g_prev_tick_time = saved_prev_t;
 }

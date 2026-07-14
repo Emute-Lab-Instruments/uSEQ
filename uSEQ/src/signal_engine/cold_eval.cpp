@@ -554,7 +554,11 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
 
     if (result.has_error) {
         engine.cells.data_table_count = saved_tables;
-        engine.pool.outputs[output_index].valid = false;
+        // Per failure-model.md §2.6, a compile-time error leaves the active
+        // program unchanged: do NOT demote `valid`. Demoting here was also the
+        // root cause of A2 — sig::commit_outputs resurrects valid=true for any
+        // output with a root node, so the flag flapped and the WASM batch-vis
+        // row packing drifted mid-batch.
         EvalResult r;
         r.kind = EvalResult::Error;
         memcpy(r.diagnostics, result.diagnostics,
