@@ -151,22 +151,24 @@ static bool has_active_state() {
     return g_engine && g_engine->pool.state_slot_count > 0;
 }
 
-// True if any active output's graph reads a previous-output value via prev().
-// Such feedback outputs (e.g. (a2 (+ (prev a2) 0.01))) have no defstate slot,
-// so has_active_state() misses them, yet the fast batch path computes them
-// incorrectly: prev() would read the stale carried-forward scalar for every
-// sample instead of the immediately-preceding sample within the batch
-// (prev.md §1.4/§1.6). Detecting them here routes the program to the correct
-// sample-sequential batch path.
-static bool has_active_prev_feedback() {
+// True if any active output's graph needs the sample-sequential batch path:
+//  - prev() feedback (e.g. (a2 (+ (prev a2) 0.01))) has no defstate slot, so
+//    has_active_state() misses it, yet the fast batch path would read the
+//    stale carried-forward scalar for every sample instead of the
+//    immediately-preceding sample within the batch (prev.md §1.4/§1.6);
+//  - bare dt reads (e.g. (a1 (* dt 1000))): the fast batch path evaluates
+//    samples independently without advancing per-sample dt, so LoadDt renders
+//    zero (A11). Sequential batching computes dt between consecutive samples.
+static bool needs_sequential_batch() {
     if (!g_engine) return false;
     const sig::NodePool& pool = g_engine->pool;
-    // Scan all exec-ordered nodes once: PrevOutputLoad anywhere in the live
-    // graph means at least one output feeds back through prev().
+    // Scan all exec-ordered nodes once.
     for (uint16_t i = 0; i < pool.exec_count; i++) {
         uint16_t idx = pool.exec_order[i];
         if (idx >= pool.node_count) continue;
-        if (pool.nodes[idx].op == sig::NodeOp::PrevOutputLoad) return true;
+        sig::NodeOp op = pool.nodes[idx].op;
+        if (op == sig::NodeOp::PrevOutputLoad || op == sig::NodeOp::LoadDt)
+            return true;
     }
     return false;
 }
@@ -1027,7 +1029,7 @@ extern "C"
                 t_array[i] = start_time + dt * i;
             }
 
-            if (has_active_state() || has_active_prev_feedback()) {
+            if (has_active_state() || needs_sequential_batch()) {
                 execute_batch_sequential(t_array.data(), num_samples,
                                           cell_values, num_active_outputs, batch_buf.data());
             } else if (g_engine->pool.batch_workspace) {
@@ -1184,7 +1186,7 @@ extern "C"
             // Batch buffer: active_outputs x num_samples
             std::vector<double> batch_buf(num_active * num_samples, 0.0);
 
-            if (has_active_state() || has_active_prev_feedback()) {
+            if (has_active_state() || needs_sequential_batch()) {
                 execute_batch_sequential(t_array.data(), num_samples,
                                           cell_values, num_active, batch_buf.data());
             } else if (g_engine->pool.batch_workspace && num_active > 0) {
