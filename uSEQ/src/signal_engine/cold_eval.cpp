@@ -373,14 +373,22 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
         }
     }
 
+    // Snapshot everything we mutate before the update expression compiles so
+    // a compile failure can roll back cleanly (A6) — otherwise a failed
+    // defstate leaves the name rebound to a half-initialised state cell,
+    // corrupting whatever the previous binding was.
+    Cell saved_cell = engine.cells.cells[sym];
+    uint16_t saved_slot_count = engine.pool.state_slot_count;
+
     // Allocate a state slot (if this name already has a state slot, reuse it)
     uint16_t state_slot = NODE_NONE;
-    if (sym < MAX_CELLS && engine.cells.cells[sym].kind == CellKind::Number
+    if (engine.cells.cells[sym].kind == CellKind::Number
         && engine.cells.cells[sym].flags == 0x02) {
         // Existing state cell — reuse its slot, do NOT reset the value
         state_slot = (uint16_t)engine.cells.cells[sym].data_table_id;
     }
 
+    bool allocated_new_slot = false;
     if (state_slot == NODE_NONE) {
         // New state cell — allocate slot and set initial value
         if (engine.pool.state_slot_count >= MAX_STATE_SLOTS) {
@@ -389,7 +397,10 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
         }
         state_slot = engine.pool.state_slot_count++;
         engine.pool.state_values[state_slot] = init_value;
+        allocated_new_slot = true;
     }
+    StateUpdateSource saved_source = engine.state_sources[state_slot];
+    uint16_t saved_update_root = engine.pool.state_update_roots[state_slot];
 
     // Mark this cell as a state cell: kind=Number (readable), flags=0x02 (state marker),
     // data_table_id stores the state slot index
@@ -413,8 +424,20 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
                                                  (uint16_t)(MAX_OUTPUTS + state_slot));
 
     if (result.has_error) {
+        // Roll back everything mutated before the compile (A6): the cell
+        // (kind/flags/value/slot ref), the update root/source, and — if we
+        // allocated a fresh slot — the allocation itself.
         engine.cells.data_table_count = saved_tables;
-        engine.pool.state_update_roots[state_slot] = sig::NODE_NONE;
+        engine.cells.cells[sym] = saved_cell;
+        engine.cells.cells[sym].revision++;
+        engine.pool.state_update_roots[state_slot] = saved_update_root;
+        engine.state_sources[state_slot] = saved_source;
+        if (allocated_new_slot) {
+            engine.pool.state_values[state_slot] = 0.0;
+            engine.pool.state_update_roots[state_slot] = sig::NODE_NONE;
+            engine.state_sources[state_slot] = StateUpdateSource{};
+            engine.pool.state_slot_count = saved_slot_count;
+        }
         return make_error("defstate update expression failed to compile",
                           "Check the update expression");
     }

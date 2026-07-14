@@ -151,6 +151,45 @@ TEST_CASE("A5: scratch-evaluated stateful expression keeps its init value",
     REQUIRE(h.engine.pool.state_values[0] == Approx(99.0));
 }
 
+// ── A6: failed defstate must not corrupt the previous binding ───────────────
+
+TEST_CASE("A6: defstate compile failure rolls back cell and state slot",
+          "[audit][a6]") {
+    Harness h;
+    auto& si = SymbolIntern::getInstance();
+
+    // Existing plain-number binding survives a failed defstate of same name.
+    h.eval_ok("(define a6-x 5)");
+    SymbolID x = si.intern(String("a6-x"));
+    uint16_t slots_before = h.engine.pool.state_slot_count;
+
+    EvalResult r = h.eval("(defstate a6-x 0 (no-such-fn 1))");
+    REQUIRE(r.kind == EvalResult::Error);
+
+    REQUIRE(h.engine.cells.cells[x].kind == CellKind::Number);
+    REQUIRE(h.engine.cells.cells[x].flags == 0);           // not a state cell
+    REQUIRE(h.engine.cells.cells[x].value == Approx(5.0)); // old value intact
+    REQUIRE(h.engine.pool.state_slot_count == slots_before); // slot rolled back
+
+    // The binding still evaluates as before.
+    EvalResult r2 = h.eval("(+ a6-x 1)");
+    REQUIRE(r2.kind == EvalResult::Number);
+    REQUIRE(r2.number == Approx(6.0));
+
+    // A successful re-defstate of an EXISTING state cell that then fails
+    // keeps the old update program and value.
+    h.eval_ok("(defstate a6-c 3 (+ a6-c 1))");
+    SymbolID c = si.intern(String("a6-c"));
+    uint16_t slot = h.engine.cells.cells[c].data_table_id;
+    uint16_t old_root = h.engine.pool.state_update_roots[slot];
+    EvalResult r3 = h.eval("(defstate a6-c 7 (no-such-fn 1))");
+    REQUIRE(r3.kind == EvalResult::Error);
+    REQUIRE(h.engine.cells.cells[c].flags == 0x02);
+    REQUIRE(h.engine.cells.cells[c].data_table_id == slot);
+    REQUIRE(h.engine.pool.state_update_roots[slot] == old_root);
+    REQUIRE(h.engine.pool.state_values[slot] == Approx(3.0));
+}
+
 // NOTE: the A1 case floods the shared symbol interner past MAX_CELLS, which
 // makes any fresh name interned after it out-of-range. Keep it LAST.
 
