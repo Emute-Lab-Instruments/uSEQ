@@ -456,11 +456,10 @@ TEST_CASE("NodePool constant folding", "[signal_engine][node_pool]") {
         REQUIRE(pool.nodes[result].imm == 0.0);
     }
 
-    SECTION("Algebraic simplification: x / x = 1") {
+    SECTION("No x / x = 1 fold — runtime defines x/0 = 0 (A10)") {
         uint16_t x = pool.make_raw_time_load();
         uint16_t result = pool.make_binop(NodeOp::Div, x, x);
-        REQUIRE(pool.nodes[result].op == NodeOp::Const);
-        REQUIRE(pool.nodes[result].imm == 1.0);
+        REQUIRE(pool.nodes[result].op == NodeOp::Div);
     }
 
     SECTION("Algebraic simplification: x / 1 = x") {

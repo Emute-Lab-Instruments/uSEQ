@@ -273,6 +273,23 @@ TEST_CASE("A9: unknown keywords, :fresh, and non-constant :phase are errors",
     h.eval_ok("(a2 (lfo 2 :wave :saw :pw 0.3))");
 }
 
+// ── A10: no unsound Div a a -> 1 fold ───────────────────────────────────────
+// Runtime division defines a/0 = 0 (eval_ops.h), so x/x is 0 at x = 0. The
+// old fold rewrote (/ x x) to the constant 1 regardless.
+
+TEST_CASE("A10: (/ x x) evaluates per runtime semantics, not folded to 1",
+          "[audit][a10]") {
+    Harness h;
+
+    // saw(1) is 0 at t=0 → 0/0 must be 0, not 1.
+    h.eval_ok("(a1 (/ (saw 1) (saw 1)))");
+    REQUIRE(h.sample(0, 0.0) == Approx(0.0));
+
+    // Non-zero point still gives 1.
+    h.eval_ok("(a2 (/ t t))");
+    REQUIRE(h.sample(1, 0.5) == Approx(1.0));
+}
+
 // NOTE: the A1 case floods the shared symbol interner past MAX_CELLS, which
 // makes any fresh name interned after it out-of-range. Keep it LAST.
 

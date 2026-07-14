@@ -292,7 +292,9 @@ uint16_t NodePool::make_binop(NodeOp op, uint16_t a, uint16_t b) {
     if (op == NodeOp::Mul && nb.op == NodeOp::Const && nb.imm == 0.0) return make_const(0.0);
     if (op == NodeOp::Mul && na.op == NodeOp::Const && na.imm == 0.0) return make_const(0.0);
     if (op == NodeOp::Sub && a == b) return make_const(0.0);
-    if (op == NodeOp::Div && a == b) return make_const(1.0);
+    // NOTE: no `Div a a -> 1` fold (A10) — runtime division defines a/0 = 0
+    // (eval_ops.h), so x/x is 0 whenever x is 0 (and NaN for NaN x). The
+    // constant/constant case is already folded through eval_binop above.
     if (op == NodeOp::Div && nb.op == NodeOp::Const && nb.imm == 1.0) return a;
 
     uint8_t flags = 0;
