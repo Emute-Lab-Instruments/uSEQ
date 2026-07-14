@@ -1145,6 +1145,10 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
     // Cross-output live-edit ID tracking — cleared per eval batch
     SharedLiveEditIDs shared_ids;
 
+    // Any cold eval may mutate cell values — bump the store revision so
+    // per-tick snapshot consumers know to refresh (A12). Coarse but sound.
+    engine.cells.store_revision++;
+
     // Handle multiple forms (implicit do)
     EvalResult last = make_ok();
     while (!ts.at_end() && ts.peek().kind != TokenKind::Eof) {

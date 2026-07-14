@@ -290,6 +290,22 @@ TEST_CASE("A10: (/ x x) evaluates per runtime semantics, not folded to 1",
     REQUIRE(h.sample(1, 0.5) == Approx(1.0));
 }
 
+// ── A12: cell-store revision counter for snapshot skipping ──────────────────
+
+TEST_CASE("A12: store_revision bumps on mutating evals", "[audit][a12]") {
+    Harness h;
+
+    uint32_t r0 = h.engine.cells.store_revision;
+    REQUIRE(r0 >= 1); // init_timing_defaults counts as a mutation
+
+    h.eval_ok("(define a12-x 1)");
+    uint32_t r1 = h.engine.cells.store_revision;
+    REQUIRE(r1 > r0);
+
+    h.eval_ok("(set a12-x 2)");
+    REQUIRE(h.engine.cells.store_revision > r1);
+}
+
 // NOTE: the A1 case floods the shared symbol interner past MAX_CELLS, which
 // makes any fresh name interned after it out-of-range. Keep it LAST.
 

@@ -50,6 +50,9 @@ struct Firmware {
 
 #ifdef ENABLE_SIGNAL_ENGINE
     double cell_snapshot[sig::MAX_CELLS]           = {};
+    // CellStore revision the snapshot was taken at (A12). 0 = never taken;
+    // store_revision starts at 1 so the first tick always snapshots.
+    uint32_t cell_snapshot_revision                = 0;
     double workspace[sig::MAX_TOTAL_NODES]         = {};
 #endif
 

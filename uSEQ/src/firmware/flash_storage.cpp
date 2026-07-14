@@ -334,6 +334,8 @@ static size_t serialize(const sig::SignalEngine& engine, uint8_t* buf, size_t bu
 static bool deserialize(const uint8_t* buf, size_t buf_size, sig::SignalEngine& engine) {
     if (buf_size < FLASH_HEADER_SIZE) return false;
 
+    engine.cells.store_revision++; // A12: cell values restored below
+
     // Read header
     size_t hpos = 0;
     if (buf[0] != 'u' || buf[1] != 'S' || buf[2] != 'E' || buf[3] != 'Q' || buf[4] != '\0') {

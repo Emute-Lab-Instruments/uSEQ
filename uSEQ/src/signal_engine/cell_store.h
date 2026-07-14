@@ -58,6 +58,14 @@ struct CellStore {
     Cell cells[MAX_CELLS]               = {};
     CallableInfo callables[MAX_CELLS]   = {}; // parallel array; valid when kind==Callable
 
+    // Store-wide revision (A12). Bumped whenever cell values may have changed
+    // (every cold eval, timing init, flash load). Lets per-tick consumers skip
+    // re-snapshotting all MAX_CELLS values when nothing changed — measured at
+    // ~40% of the firmware engine tick. Overcounting (bumping without an
+    // actual change) is safe; missing a bump is not, so bumps happen at the
+    // coarse mutation entry points rather than per cell write.
+    uint32_t store_revision = 1;
+
     // Shared data pool
     double data_pool[MAX_DATA_ENTRIES]    = {};
     uint16_t data_offsets[MAX_DATA_TABLES] = {};

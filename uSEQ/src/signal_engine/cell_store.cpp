@@ -78,6 +78,7 @@ void CellStore::snapshot_values(double* out, size_t max_count) const {
 
 void CellStore::init_timing_defaults(double bpm, int beats_per_bar,
                                      int bars_per_phrase, int phrases_per_section) {
+    store_revision++; // A12: cell values change below
     auto& si = SymbolIntern::getInstance();
 
     SymbolID bpm_sym = si.intern("bpm");

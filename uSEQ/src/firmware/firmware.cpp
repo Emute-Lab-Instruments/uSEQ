@@ -131,8 +131,13 @@ void Firmware::tick()
     dt::mark("execute");
 #ifdef ENABLE_SIGNAL_ENGINE
     if (engine.state.is_playing) {
-        // Snapshot cell values for this tick (immutable view for executor)
-        engine.cells.snapshot_values(cell_snapshot, sig::MAX_CELLS);
+        // Snapshot cell values for this tick (immutable view for executor).
+        // Skip the full-array copy when no cell has changed since the last
+        // snapshot (A12) — this copy measured ~40% of the engine tick.
+        if (cell_snapshot_revision != engine.cells.store_revision) {
+            engine.cells.snapshot_values(cell_snapshot, sig::MAX_CELLS);
+            cell_snapshot_revision = engine.cells.store_revision;
+        }
 
         // Fill execution context — no heap, all members / struct fields
         sig::ExecutionContext ctx;
