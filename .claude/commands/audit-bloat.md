@@ -136,7 +136,7 @@ Create `reports/audit-bloat/` if it doesn't exist. Write a timestamped report to
 After writing the report, ask the user: **"Want to triage these findings now?"**
 
 If yes, present each finding (high-severity first) and ask:
-- **File as beads issue** — create a `bd` issue with appropriate priority and type
+- **File as ergo task** — create an `ergo` task with appropriate priority and type
 - **Dismiss** — this complexity is actually justified, skip it
 - **Defer** — might be real but not worth addressing now
 

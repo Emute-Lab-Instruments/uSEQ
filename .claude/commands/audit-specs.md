@@ -51,7 +51,7 @@ Spawn one subagent per spec in scope, all in parallel. Each subagent:
 
 1. **Read the spec** — extract all numbered normative requirements (not notes or rationale)
 2. **Enumerate requirements** — assign IDs using prefix convention (first letters uppercased + sequence: `WP-1`, `STATE-12`, `DIAG-5`)
-3. **Gather evidence** — `grep`/`find` for implementation, scan `test/`, `git log --oneline -10 -- <paths>`, `bd search <keywords>`
+3. **Gather evidence** — `grep`/`find` for implementation, scan `test/`, `git log --oneline -10 -- <paths>`, `ergo list --json` (and search ergo task bodies via `ergo show <id>`)
 4. **Assign status and confidence** — apply evidence hierarchy, write `status_reasoning`
 5. **Compute rollups** — `overall_score`, `confidence_weighted_score`, `untested_requirements`, `critical_gaps`
 6. **Emit JSON** — return per-spec object matching the schema

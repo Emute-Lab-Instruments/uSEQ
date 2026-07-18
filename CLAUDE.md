@@ -10,22 +10,29 @@ uSEQ is a **livecodeable eurorack module** - a hardware music sequencer that can
 
 ### Issue Tracking
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+This project uses **`ergo`** for task tracking. `ergo` is the coding-work CLI
+over the Holon EAV substrate and replaced Beads (`bd`) on 2026-06-15.
 
-Use `bd` for all task tracking. Do not create markdown TODO lists or track work outside beads.
+The `ergo` CLI is installed at `/home/w1n5t0n/.local/bin/ergo`. The required
+environment (`HOLON_TOKEN`, `HOLON_CORE_URL`, optional `HOLON_PRINCIPAL`) is
+loaded for every shell by `~/.zshenv` sourcing `~/.secrets/env`. The
+authoritative workflow is `/home/w1n5t0n/agents/skills/ergo/SKILL.md`.
+
+Use `ergo` for all task tracking. Do not create markdown TODO lists or track
+work outside `ergo`. Beads (`bd`) and Dolt are frozen read-only historical
+infrastructure.
 
 ```bash
-bd ready --json
-bd show <id> --json
-bd update <id> --claim --json
-bd close <id> --reason "Done" --json
-bd dolt push
+ergo ready [--mine] [--json]
+ergo show <id>
+ergo claim <id>
+ergo done <id> --reason "Done"
 ```
 
-When new follow-up work is discovered, create a linked issue:
+When new follow-up work is discovered, create a linked task:
 
 ```bash
-bd create "Issue title" --description="Context" -t bug|feature|task -p 0-4 --deps discovered-from:<parent-id> --json
+ergo create "Issue title" --type bug|feature|task --priority 0-4 --body "Context" --discovered-from <parent-id>
 ```
 
 ### Non-Interactive Shell Commands
@@ -51,21 +58,23 @@ This repository has active long-running epics. Agents must not be trigger-happy 
 - Treat closed subtasks as completed slices, not proof that the parent epic is done.
 - If implementation is partial, first-pass, or knowingly missing semantic coverage, say so explicitly in code review notes, handoffs, and issue wording.
 - Do not use language like "replaces the interpreter", "general VM complete", or "closure support done" unless the remaining semantic gaps and regression coverage actually support that claim.
-- When you find a known gap that is not being fixed in the current change, file or update a `bd` issue instead of hand-waving it away.
+- When you find a known gap that is not being fixed in the current change, file or update an `ergo` task instead of hand-waving it away.
 
 ### Session Completion
 
 When ending a work session, finish the operational steps instead of leaving work stranded locally:
 
-1. File issues for remaining work.
+1. File `ergo` tasks for remaining work.
 2. Run quality gates if code changed.
-3. Update issue state.
+3. Update task state in `ergo` (`ergo done <id> --reason "..."`).
 4. Push all changes:
    `git pull --rebase`
-   `bd dolt push`
    `git push`
    `git status`
 5. Verify the branch is up to date with origin before handing off.
+
+(Beads/`bd` push steps that previously appeared here are retired; the
+`.beads/dolt` server is frozen read-only historical infrastructure.)
 
 ## Build Commands
 
