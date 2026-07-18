@@ -200,6 +200,8 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.18 [devtools.md](devtools.md) — compile-time-gated firmware instrumentation and runtime-controllable telemetry. `dt::` namespace API for tick profiling, events, counters, gauges. Wire protocol `debug` message type for agent-driven debugging.
 
+6.19 [synth-nodes.md](synth-nodes.md) — (accepted v1) the `(synth ...)` top-level form: declarative instantiation of audio-rate NodeDefs with signal-controlled params, inline audio routing, auto identity with optional names, vector-valued params as the polyphony surface, declarative lifecycle with fades. Host/engine counterpart: `../../../docs/specs/synthesis.md` (in `useq-perform`).
+
 ---
 
 ## 7. Cross-References
