@@ -205,3 +205,12 @@ SYM(kw_freq,             ":freq",                none)
 SYM(kw_amp,              ":amp",                 none)
 SYM(kw_name,             ":name",                none)
 SYM(kw_version,          ":version",             none)
+
+// ── State-identity wrapper (state-identity.md §6.3) ────────────────────────
+// `(with-state-id "<id>" <form>)` is the hidden identity wrapper the editor
+// payload builder injects around anonymous stateful forms. The runtime
+// treats it as a transparent passthrough: the wrapper evaluates its second
+// argument (the wrapped form) and ignores the identity string, which has
+// already been used by the editor to assign stable identity. Without this
+// passthrough every anonymous synth form would compile as "Unknown name".
+SYM(with_state_id,       "with-state-id",        control)
