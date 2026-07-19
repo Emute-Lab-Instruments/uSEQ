@@ -659,7 +659,7 @@ extern "C"
 
     /**
      * Snapshot of the published synth artefacts (synth-nodes.md §7.2 /
-     * VAL-COMP-009/012).
+     * VAL-COMP-009/012/015).
      *
      * Returns a versioned JSON object describing the current patch graph
      * (declarations keyed by stable identity) and the control channel
@@ -672,26 +672,39 @@ extern "C"
      * indices are never serialised (VAL-COMP-012).
      *
      * The schema declares an `abi` version field so future consumers can
-     * reject incompatible bundles explicitly (VAL-COMP-015 is exercised
-     * fully by the wasm-abi-worker-response feature; this export provides
-     * the surface).
+     * reject incompatible bundles explicitly (VAL-COMP-015). The native
+     * engine's canonical version is sig::SYNTH_ARTIFACT_ABI_VERSION; the
+     * WASM wrapper uses the same constant via
+     * sig::synth_artifacts_render_abi_wrapper() so native and WASM
+     * consumers observe byte-equal payloads (VAL-COMP-016).
      */
     const char* useq_synth_artifacts()
     {
-        if (!g_engine) {
-            return alloc_cstr("{\"abi\":1,\"revision\":0,\"declarations\":[],\"controls\":[]}");
-        }
-        const char* body = sig::synth_artifacts_json(*g_engine);
-        // Wrap with an `abi` marker so consumers can reject incompatible
-        // bundles up front.
-        String wrapped = "{\"abi\":1,";
-        // Skip the leading '{' from body and append the rest.
-        if (body && body[0] == '{') {
-            wrapped += (body + 1);
+        // The wrapper renders the versioned body through the shared
+        // synth_graph helper. Native tests exercise the same path.
+        char buf[sig::SYNTH_ARTIFACT_JSON_CAP + 64];
+        bool ok;
+        if (g_engine) {
+            ok = sig::synth_artifacts_render_abi_wrapper(
+                *g_engine, sig::SYNTH_ARTIFACT_ABI_VERSION,
+                buf, sizeof(buf));
         } else {
-            wrapped += "\"revision\":0,\"declarations\":[],\"controls\":[]}";
+            // Engine not initialised — emit the canonical empty payload.
+            std::snprintf(buf, sizeof(buf),
+                "{\"abi\":%u,\"revision\":0,\"declarations\":[],\"controls\":[]}",
+                (unsigned)sig::SYNTH_ARTIFACT_ABI_VERSION);
+            ok = true;
         }
-        return alloc_string(wrapped);
+        if (!ok) {
+            // Rendering can only fail on a too-small buffer (cannot happen
+            // here) or — for the abi-wrapper path — on an unsupported
+            // consumer version. We pass the engine's own version, so the
+            // failure path here is purely defensive.
+            std::snprintf(buf, sizeof(buf),
+                "{\"abi\":%u,\"revision\":0,\"declarations\":[],\"controls\":[]}",
+                (unsigned)sig::SYNTH_ARTIFACT_ABI_VERSION);
+        }
+        return alloc_cstr(buf);
     }
 
     /**

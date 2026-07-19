@@ -293,3 +293,19 @@ synth_compiler_test_exe = executable(
 )
 
 test('synth_compiler_test', synth_compiler_test_exe, timeout: 60)
+
+# ===== Synth WASM ABI + Worker Response Tests (VAL-COMP-013..017) =====
+# Versioned synth artefact ABI surface exposed from the generated
+# interpreter WASM bundle, plus the native/WASM corpus equivalence
+# asserted against the same serialisation path the WASM wrapper uses.
+
+synth_wasm_abi_test_exe = executable(
+  'test_synth_wasm_abi',
+  sources : ['signal_engine/test_synth_wasm_abi.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('synth_wasm_abi_test', synth_wasm_abi_test_exe, timeout: 60)

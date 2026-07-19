@@ -149,6 +149,50 @@ bool synth_graph_render_json(const SynthGraph& graph, char* out, uint32_t cap);
 // until the engine is destroyed.
 const char* synth_graph_render_json_scratch(const SynthGraph& graph);
 
+// ── Versioned synth artefact ABI (VAL-COMP-015) ────────────────────────────
+//
+// The synth artefact payload carries an `abi` version marker so future
+// consumers can reject incompatible bundles explicitly. The native engine
+// advertises a single canonical ABI version; any consumer built against a
+// different version must refuse to read the payload.
+//
+// Version history:
+//   1 — initial M1 synth artefact schema (revision, declarations[], controls[]).
+constexpr uint16_t SYNTH_ARTIFACT_ABI_VERSION = 1;
+
+/**
+ * Return true iff the engine's synth-artefact ABI can serve a consumer
+ * built against the supplied `consumer_abi_version`. The current engine
+ * accepts only its own declared ABI; future versions may accept a range.
+ *
+ * Callers MUST consult this helper before interpreting the body bytes of
+ * `synth_artifacts_json` / `useq_synth_artifacts`. Incompatible consumers
+ * receive a minimal error object instead of the artefact body (see
+ * `synth_artifacts_render_abi_wrapper`).
+ */
+bool synth_artifacts_supports_abi(uint16_t consumer_abi_version);
+
+/**
+ * Render the versioned synth artefact payload into `out` for a consumer
+ * built against `consumer_abi_version`.
+ *
+ * On success the buffer contains a JSON object shaped:
+ *   {"abi":<version>,"revision":N,"declarations":[...],"controls":[...]}
+ * and the function returns true.
+ *
+ * If the consumer ABI version is unsupported, the buffer is filled with a
+ * minimal JSON error object (still valid JSON) and the function returns
+ * false. The caller MUST NOT interpret the body bytes when this function
+ * returns false — the only safe interpretation is the `abi_error` field.
+ *
+ * This helper is the native counterpart of the WASM `useq_synth_artifacts`
+ * wrapper. Mirrors its byte shape exactly so native and WASM consumers
+ * observe identical payloads.
+ */
+bool synth_artifacts_render_abi_wrapper(const struct SignalEngine& engine,
+                                        uint16_t consumer_abi_version,
+                                        char* out, uint32_t cap);
+
 // ── Engine-level accessor ──────────────────────────────────────────────────
 // Returns the engine's published synth artefact snapshot as JSON. Mirrors
 // the useq_last_diagnostics() pattern: the pointer is stable until the

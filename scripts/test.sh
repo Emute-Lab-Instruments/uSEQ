@@ -46,7 +46,7 @@ print_warning() {
 }
 
 # Available test suites (must match meson test names without the 'uSEQ:' prefix)
-AVAILABLE_TESTS="signal_engine firmware_e2e firmware_e2e_part2 firmware_fuzz signal_engine_golden signal_engine_phase4 signal_engine_robustness signal_engine_probe_smoke flash_storage wire_protocol_contract devtools_contract live_edit output_classification ugen state_identity resource_reclaim synth_compiler failure_mode"
+AVAILABLE_TESTS="signal_engine firmware_e2e firmware_e2e_part2 firmware_fuzz signal_engine_golden signal_engine_phase4 signal_engine_robustness signal_engine_probe_smoke flash_storage wire_protocol_contract devtools_contract live_edit output_classification ugen state_identity resource_reclaim synth_compiler synth_wasm_abi failure_mode"
 
 # Function to show help
 show_help() {
@@ -76,6 +76,7 @@ OPTIONS:
                         state_identity         - State identity tests
                         resource_reclaim       - Resource reclamation (pools/arena) tests
                         synth_compiler         - Synth compiler domain tests
+                        synth_wasm_abi         - Synth WASM ABI + Worker response tests
     -h, --help        Show this help message
 
 EXAMPLES:
@@ -191,6 +192,7 @@ if [ -n "$SINGLE_TEST" ]; then
         state_identity)       meson_test_name="state_identity_test" ;;
         resource_reclaim)     meson_test_name="resource_reclaim_test" ;;
         synth_compiler)       meson_test_name="synth_compiler_test" ;;
+        synth_wasm_abi)       meson_test_name="synth_wasm_abi_test" ;;
         failure_mode)         meson_test_name="failure_mode_test" ;;
     esac
 
@@ -223,6 +225,7 @@ else
         echo "  - UGen                 - Unit generator tests"
         echo "  - State Identity       - State identity tests"
         echo "  - Synth Compiler       - Synth declaration domain tests"
+    echo "  - Synth WASM ABI       - Synth artefact ABI + Worker response tests"
         echo "  - Failure Mode         - Failure model tests"
     else
         echo

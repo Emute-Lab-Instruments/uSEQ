@@ -35,7 +35,7 @@ bool synth_graph_render_json(const SynthGraph& graph, char* out, uint32_t cap) {
                 *p++ = '\\';
                 *p++ = ch;
             } else if ((unsigned char)ch < 0x20) {
-                if (p + 7 >= end) return false;
+                if (p + 2 >= end) return false;
                 *p++ = ' ';
             } else {
                 if (p + 2 >= end) return false;
@@ -46,28 +46,10 @@ bool synth_graph_render_json(const SynthGraph& graph, char* out, uint32_t cap) {
         return true;
     };
 
-    if (!emit("{\"revision\":")) return false;
-    {
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "%lu", (unsigned long)graph.revision);
-        if (!emit(buf)) return false;
-    }
-    if (!emit(",\"graph\":[") || !emit("]}")) return false;
-
-    // NOTE: the public schema is intentionally narrow (VAL-COMP-012). We
-    // expose: revision, and (if non-empty) declarations and controls
-    // arrays keyed by stable identity / param name. Internal GC-remapped
-    // node indices are never serialised.
-    if (graph.declaration_count() == 0) {
-        // Minimal empty-graph payload.
-        if (!emit(" ")) return false;
-        // Replace the closing brace with an explicit empty arrays form.
-        // Easier: rewrite the tail.
-    }
-
-    // Re-render with declarations/controls when present. We rebuild from
-    // scratch to keep the code path simple.
-    p = out;
+    // Single canonical render pass. The public schema is intentionally
+    // narrow (VAL-COMP-012): revision, declarations[], controls[] keyed by
+    // stable identity / param name. Internal GC-remapped node indices are
+    // never serialised.
     if (!emit("{\"revision\":")) return false;
     {
         char buf[16];
@@ -140,6 +122,61 @@ const char* synth_graph_render_json_scratch(const SynthGraph& graph) {
                       (unsigned long)graph.revision);
     }
     return g_artifact_scratch;
+}
+
+// ── Versioned ABI surface (VAL-COMP-015) ───────────────────────────────────
+
+bool synth_artifacts_supports_abi(uint16_t consumer_abi_version) {
+    // The current engine advertises exactly one ABI version. Consumers
+    // built against any other version must be rejected explicitly so we
+    // never let a newer or older consumer misread the payload layout.
+    return consumer_abi_version == SYNTH_ARTIFACT_ABI_VERSION;
+}
+
+bool synth_artifacts_render_abi_wrapper(const SignalEngine& engine,
+                                        uint16_t consumer_abi_version,
+                                        char* out, uint32_t cap) {
+    if (!out || cap == 0) return false;
+
+    // Reject incompatible consumers up front with a minimal valid-JSON
+    // error envelope. The caller MUST NOT interpret the body bytes when
+    // this function returns false.
+    if (!synth_artifacts_supports_abi(consumer_abi_version)) {
+        // The error envelope includes the engine's advertised ABI version
+        // and the rejected consumer version so the diagnostics surfaced
+        // to the user are actionable.
+        char err[96];
+        std::snprintf(err, sizeof(err),
+                      "{\"abi\":%u,\"abi_error\":true,"
+                      "\"engine_abi\":%u,\"consumer_abi\":%u}",
+                      (unsigned)SYNTH_ARTIFACT_ABI_VERSION,
+                      (unsigned)SYNTH_ARTIFACT_ABI_VERSION,
+                      (unsigned)consumer_abi_version);
+        if (std::strlen(err) + 1 > cap) return false;
+        std::memcpy(out, err, std::strlen(err) + 1);
+        return false;
+    }
+
+    // Render the body into a scratch buffer first so we can prepend the
+    // `abi` marker without a double-copy of the engine state.
+    static char body_scratch[SYNTH_ARTIFACT_JSON_CAP];
+    const char* body = synth_graph_render_json_scratch(engine.synth_graph);
+    if (!body) return false;
+    // synth_graph_render_json_scratch returns a pointer into a separate
+    // scratch buffer; copy into body_scratch so the wrap below is stable
+    // even if we ever recurse into the scratch again.
+    std::strncpy(body_scratch, body, SYNTH_ARTIFACT_JSON_CAP - 1);
+    body_scratch[SYNTH_ARTIFACT_JSON_CAP - 1] = '\0';
+
+    // Wrap with the `abi` marker. We need to drop the leading '{' of the
+    // body so we don't produce `{{...}}`.
+    const char* body_open = body_scratch[0] == '{' ? body_scratch + 1
+                                                    : body_scratch;
+    int written = std::snprintf(out, cap, "{\"abi\":%u,%s",
+                                (unsigned)SYNTH_ARTIFACT_ABI_VERSION,
+                                body_open);
+    if (written < 0 || (uint32_t)written >= cap) return false;
+    return true;
 }
 
 const char* synth_artifacts_json(const SignalEngine& engine) {
