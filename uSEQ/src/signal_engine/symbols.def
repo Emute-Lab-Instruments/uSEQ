@@ -193,3 +193,15 @@ SYM(live_edit,           "live-edit",            signal)
 // ── Misc ───────────────────────────────────────────────────────────────────
 SYM(input,               "input",                none)
 SYM(quote,               "quote",                none)
+
+// ── Synth form (top-level only, synth-nodes.md) ────────────────────────────
+// `synth` is a top-level declaration form, not a signal-context operator.
+// Inside a signal expression it is a Boundary-category error
+// (VAL-COMP-007). Keywords :freq / :amp / :name / :version / :id parameterise
+// the declaration; :id is the hidden-identity injection point supplied by
+// the editor payload builder.
+SYM(synth,               "synth",                side_effect)
+SYM(kw_freq,             ":freq",                none)
+SYM(kw_amp,              ":amp",                 none)
+SYM(kw_name,             ":name",                none)
+SYM(kw_version,          ":version",             none)

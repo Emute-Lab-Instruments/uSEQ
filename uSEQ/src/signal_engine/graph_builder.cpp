@@ -258,7 +258,8 @@ bool GraphBuilder::is_side_effect_form(SymbolID op) const {
            op == sym.useq_clear || op == sym.set_time_offset ||
            op == sym.nudge_time || op == sym.useq_play ||
            op == sym.useq_pause || op == sym.useq_stop ||
-           op == sym.useq_rewind;
+           op == sym.useq_rewind ||
+           op == sym.synth;
 }
 
 // ── Operator classification ─────────────────────────────────────────────────

@@ -187,6 +187,25 @@ struct NodePool {
     std::unique_ptr<double[]> batch_workspace;
     uint16_t batch_chunk_size = BATCH_CHUNK_SIZE;
 
+    // ── External root registration (synth control roots, etc.) ──────────
+    // Some compiled roots live outside the per-output table — notably
+    // synth control channel expressions (synth-nodes.md §7.2). These roots
+    // must participate in GC reachability and remap exactly like output
+    // roots, otherwise forced GC after a synth eval drops the control
+    // expressions (VAL-COMP-011). External clients register root indices
+    // here; the GC walks and remaps them. The pool itself does not attach
+    // semantics to these slots.
+    static constexpr uint16_t MAX_EXTERNAL_ROOTS = 32;
+    uint16_t external_roots[MAX_EXTERNAL_ROOTS] = {};
+    uint16_t external_root_count = 0;
+
+    void clear_external_roots() { external_root_count = 0; }
+    bool register_external_root(uint16_t node_idx) {
+        if (external_root_count >= MAX_EXTERNAL_ROOTS) return false;
+        external_roots[external_root_count++] = node_idx;
+        return true;
+    }
+
     // ── Node construction (with CSE + constant folding) ─────────────────
 
     uint16_t make_const(double value);

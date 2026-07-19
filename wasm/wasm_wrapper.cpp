@@ -658,7 +658,44 @@ extern "C"
     }
 
     /**
-     * Set the runtime failure mode (failure-model.md §3):
+     * Snapshot of the published synth artefacts (synth-nodes.md §7.2 /
+     * VAL-COMP-009/012).
+     *
+     * Returns a versioned JSON object describing the current patch graph
+     * (declarations keyed by stable identity) and the control channel
+     * table. Both share one compiler revision so consumers can detect
+     * coherent updates. Failed evals retain the previous snapshot and do
+     * not advance the revision (VAL-COMP-010).
+     *
+     * Public identifiers are stable identity strings supplied by the
+     * editor (hidden :id or explicit :name). Internal GC-remapped node
+     * indices are never serialised (VAL-COMP-012).
+     *
+     * The schema declares an `abi` version field so future consumers can
+     * reject incompatible bundles explicitly (VAL-COMP-015 is exercised
+     * fully by the wasm-abi-worker-response feature; this export provides
+     * the surface).
+     */
+    const char* useq_synth_artifacts()
+    {
+        if (!g_engine) {
+            return alloc_cstr("{\"abi\":1,\"revision\":0,\"declarations\":[],\"controls\":[]}");
+        }
+        const char* body = sig::synth_artifacts_json(*g_engine);
+        // Wrap with an `abi` marker so consumers can reject incompatible
+        // bundles up front.
+        String wrapped = "{\"abi\":1,";
+        // Skip the leading '{' from body and append the rest.
+        if (body && body[0] == '{') {
+            wrapped += (body + 1);
+        } else {
+            wrapped += "\"revision\":0,\"declarations\":[],\"controls\":[]}";
+        }
+        return alloc_string(wrapped);
+    }
+
+    /**
+     * Set the runtime failure mode (failure-mode.md §3):
      *   0 = LKG fallback (default): non-finite at an output root falls back
      *       to the last-known-good value and raises a runtime diagnostic.
      *   1 = legacy zero-squash: every non-finite node result clamps to 0.0.

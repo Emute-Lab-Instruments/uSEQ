@@ -46,7 +46,7 @@ print_warning() {
 }
 
 # Available test suites (must match meson test names without the 'uSEQ:' prefix)
-AVAILABLE_TESTS="signal_engine firmware_e2e firmware_e2e_part2 firmware_fuzz signal_engine_golden signal_engine_phase4 signal_engine_robustness signal_engine_probe_smoke flash_storage wire_protocol_contract devtools_contract live_edit output_classification ugen state_identity resource_reclaim"
+AVAILABLE_TESTS="signal_engine firmware_e2e firmware_e2e_part2 firmware_fuzz signal_engine_golden signal_engine_phase4 signal_engine_robustness signal_engine_probe_smoke flash_storage wire_protocol_contract devtools_contract live_edit output_classification ugen state_identity resource_reclaim synth_compiler failure_mode"
 
 # Function to show help
 show_help() {
@@ -75,6 +75,7 @@ OPTIONS:
                         ugen                   - Unit generator tests
                         state_identity         - State identity tests
                         resource_reclaim       - Resource reclamation (pools/arena) tests
+                        synth_compiler         - Synth compiler domain tests
     -h, --help        Show this help message
 
 EXAMPLES:
@@ -189,6 +190,8 @@ if [ -n "$SINGLE_TEST" ]; then
         ugen)                 meson_test_name="ugen_test" ;;
         state_identity)       meson_test_name="state_identity_test" ;;
         resource_reclaim)     meson_test_name="resource_reclaim_test" ;;
+        synth_compiler)       meson_test_name="synth_compiler_test" ;;
+        failure_mode)         meson_test_name="failure_mode_test" ;;
     esac
 
     print_status "Running test: $meson_test_name"
@@ -219,6 +222,8 @@ else
         echo "  - Output Classification - Output type classification"
         echo "  - UGen                 - Unit generator tests"
         echo "  - State Identity       - State identity tests"
+        echo "  - Synth Compiler       - Synth declaration domain tests"
+        echo "  - Failure Mode         - Failure model tests"
     else
         echo
         print_error "Some tests failed"

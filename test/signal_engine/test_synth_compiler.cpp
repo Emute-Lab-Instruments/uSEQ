@@ -1,0 +1,494 @@
+// Synth compiler domain tests (synth-nodes.md / VAL-COMP-001..012,018,019).
+//
+// These tests verify the transactional top-level synth declaration domain:
+//   - Minimum and amplitude synth forms compile with registry defaults and stable identity
+//   - Unknown defs, invalid parameters, malformed forms, nesting, and over-capacity
+//     declarations fail with precise diagnostics
+//   - Entire eval units are transactional and one shared revision covers graph
+//     and control table
+//   - Control expression roots remain executable after GC
+//   - Public artefacts avoid internal remapped node indices
+//   - Native and generated execution support literal, time-dependent, and
+//     input-dependent controls
+//
+// The harness mirrors test_state_identity.cpp's GoldenHarness shape so the
+// synth compilation path is exercised through the real eval_cold entry point.
+
+#define CATCH_CONFIG_MAIN
+#include "../catch.hpp"
+
+#include "src/signal_engine/signal_engine.h"
+
+#include <cmath>
+#include <cstring>
+#include <string>
+#include <vector>
+
+using namespace sig;
+
+namespace {
+
+struct SynthHarness {
+    SignalEngine engine;
+    double cell_values[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS] = {};
+    double workspace[MAX_TOTAL_NODES] = {};
+
+    SynthHarness()
+    {
+        engine.init_defaults();
+    }
+
+    EvalResult eval(const std::string& code)
+    {
+        return eval_cold(code.c_str(), static_cast<uint32_t>(code.size()), engine);
+    }
+
+    // Run a GC pass that preserves synth control roots. Direct
+    // pool.gc_unreachable_nodes() would orphan synth control expressions
+    // (VAL-COMP-011); this helper mirrors the engine's own GC integration.
+    void gc()
+    {
+        register_synth_external_roots(engine);
+        engine.pool.gc_unreachable_nodes();
+        commit_synth_external_roots(engine);
+        engine.pool.rebuild_execution_order();
+    }
+
+    bool eval_ok(const std::string& code)
+    {
+        EvalResult r = eval(code);
+        INFO("code: " << code);
+        if (r.kind == EvalResult::Error && r.diagnostic_count > 0) {
+            for (uint8_t i = 0; i < r.diagnostic_count; i++) {
+                INFO("diagnostic[" << i << "]: "
+                     << (r.diagnostics[i].message ? r.diagnostics[i].message : ""));
+                INFO("suggestion[" << i << "]: "
+                     << (r.diagnostics[i].suggestion ? r.diagnostics[i].suggestion : ""));
+            }
+        }
+        return r.kind != EvalResult::Error;
+    }
+
+    bool eval_fails(const std::string& code)
+    {
+        EvalResult r = eval(code);
+        return r.kind == EvalResult::Error;
+    }
+
+    // Returns the first diagnostic message produced by an eval (or "" if none).
+    std::string first_message(const std::string& code)
+    {
+        EvalResult r = eval(code);
+        if (r.diagnostic_count == 0) return "";
+        return r.diagnostics[0].message ? r.diagnostics[0].message : "";
+    }
+
+    // Returns the first diagnostic suggestion produced by an eval.
+    std::string first_suggestion(const std::string& code)
+    {
+        EvalResult r = eval(code);
+        if (r.diagnostic_count == 0) return "";
+        return r.diagnostics[0].suggestion ? r.diagnostics[0].suggestion : "";
+    }
+};
+
+// Read the engine's published synth artefact JSON snapshot. The returned
+// pointer is stable until the next eval. Returns "" if no synth artefact
+// has been published.
+std::string snapshot_synth_artifacts(const SynthHarness& h)
+{
+    const char* json = synth_artifacts_json(h.engine);
+    return json ? std::string(json) : std::string();
+}
+
+} // namespace
+
+// ============================================================================
+// VAL-COMP-001: Minimum sine form compiles
+// ============================================================================
+
+TEST_CASE("synth: minimum sine form compiles as identity-keyed declaration",
+          "[synth][val-comp-001]") {
+    SynthHarness h;
+
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq 440)"));
+
+    // The patch graph must contain exactly one synth declaration.
+    const auto& graph = h.engine.synth_graph;
+    REQUIRE(graph.declaration_count() == 1);
+
+    // The single declaration must be osc/sine.
+    const auto& decl = graph.declarations[0];
+    REQUIRE(decl.def_name == std::string("osc/sine"));
+    REQUIRE(decl.def_version == 1);
+
+    // The identity must be non-empty (hidden or explicit). Hidden identity
+    // is supplied by the payload builder, so an anonymous form must still
+    // receive one.
+    REQUIRE(decl.identity != nullptr);
+    REQUIRE(decl.identity[0] != '\0');
+    REQUIRE(std::string(decl.identity).size() > 0);
+}
+
+// ============================================================================
+// VAL-COMP-002: Amplitude form compiles with bound frequency and amplitude
+// ============================================================================
+
+TEST_CASE("synth: amplitude form compiles with both controls",
+          "[synth][val-comp-002]") {
+    SynthHarness h;
+
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq 440 :amp 0.1)"));
+
+    const auto& graph = h.engine.synth_graph;
+    REQUIRE(graph.declaration_count() == 1);
+    REQUIRE(graph.control_count() == 2);
+
+    // Both :freq and :amp must be bound control channels.
+    bool has_freq = false, has_amp = false;
+    for (uint16_t i = 0; i < graph.control_count(); i++) {
+        const auto& ch = graph.controls[i];
+        if (ch.param_name == std::string("freq")) has_freq = true;
+        if (ch.param_name == std::string("amp"))  has_amp = true;
+    }
+    REQUIRE(has_freq);
+    REQUIRE(has_amp);
+}
+
+// ============================================================================
+// VAL-COMP-003: Omitted amplitude uses registry default; freq default is 440
+// ============================================================================
+
+TEST_CASE("synth: omitted amplitude uses registry default 0.2",
+          "[synth][val-comp-003]") {
+    SynthHarness h;
+
+    // Omit :amp entirely — no control channel should be allocated for amp.
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq 440)"));
+
+    const auto& graph = h.engine.synth_graph;
+    REQUIRE(graph.declaration_count() == 1);
+    REQUIRE(graph.control_count() == 1);
+
+    // The single channel must be freq.
+    REQUIRE(graph.controls[0].param_name == std::string("freq"));
+
+    // The NodeDef registry must declare freq default 440 and amp default 0.2.
+    const NodeDefDescriptor* sine = synth_registry_find("osc/sine", 1);
+    REQUIRE(sine != nullptr);
+    REQUIRE(sine->freq_default == Approx(440.0));
+    REQUIRE(sine->amp_default == Approx(0.2));
+}
+
+// ============================================================================
+// VAL-COMP-004: Supplied stable identity is authoritative
+// ============================================================================
+
+TEST_CASE("synth: explicit identity is preserved across edits",
+          "[synth][val-comp-004]") {
+    SynthHarness h;
+
+    // First eval: explicit identity via :name
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :name \"lead\" :freq 440)"));
+    std::string id_first = h.engine.synth_graph.declarations[0].identity;
+
+    REQUIRE(id_first == std::string("lead"));
+
+    // Second eval: change frequency. Identity must remain "lead" — not
+    // replaced by source text, range, ordinal, or hash identity.
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :name \"lead\" :freq 660)"));
+    std::string id_second = h.engine.synth_graph.declarations[0].identity;
+
+    REQUIRE(id_second == id_first);
+    REQUIRE(id_second == std::string("lead"));
+}
+
+// ============================================================================
+// VAL-COMP-005: Invalid def names fail clearly
+// ============================================================================
+
+TEST_CASE("synth: invalid def names fail with no commit",
+          "[synth][val-comp-005]") {
+    SynthHarness h;
+
+    // Non-string def name: must fail without committing.
+    SECTION("non-string def name") {
+        REQUIRE(h.eval_fails("(synth 440 :freq 440)"));
+    }
+
+    SECTION("unknown def name") {
+        REQUIRE(h.eval_fails("(synth \"osc/unknown\" :freq 440)"));
+        // Diagnostic should mention the unknown def.
+        std::string msg = h.first_message("(synth \"osc/unknown\" :freq 440)");
+        REQUIRE(msg.find("osc/unknown") != std::string::npos);
+    }
+
+    SECTION("unavailable def version") {
+        // Asking for an explicit version that does not exist must fail.
+        REQUIRE(h.eval_fails("(synth \"osc/sine\" :version 99 :freq 440)"));
+    }
+
+    // After every failure path the synth graph must be empty (no commit).
+    REQUIRE(h.engine.synth_graph.declaration_count() == 0);
+}
+
+// ============================================================================
+// VAL-COMP-006: Invalid parameters fail clearly
+// ============================================================================
+
+TEST_CASE("synth: invalid parameters produce precise diagnostics",
+          "[synth][val-comp-006]") {
+    SynthHarness h;
+
+    SECTION("unknown parameter with fuzzy suggestion") {
+        REQUIRE(h.eval_fails("(synth \"osc/sine\" :freq 440 :amplitude 0.1)"));
+        std::string sug = h.first_suggestion(
+            "(synth \"osc/sine\" :freq 440 :amplitude 0.1)");
+        // The suggestion must point toward the correct parameter name.
+        REQUIRE(sug.find("amp") != std::string::npos);
+    }
+
+    SECTION("duplicate parameter") {
+        REQUIRE(h.eval_fails("(synth \"osc/sine\" :freq 440 :freq 880)"));
+        std::string msg = h.first_message(
+            "(synth \"osc/sine\" :freq 440 :freq 880)");
+        REQUIRE(msg.find("freq") != std::string::npos);
+    }
+
+    SECTION("missing value") {
+        REQUIRE(h.eval_fails("(synth \"osc/sine\" :freq)"));
+    }
+
+    SECTION("malformed pair (keyword then keyword)") {
+        REQUIRE(h.eval_fails("(synth \"osc/sine\" :freq :amp 0.1)"));
+    }
+
+    SECTION("missing required :freq") {
+        REQUIRE(h.eval_fails("(synth \"osc/sine\" :amp 0.1)"));
+        std::string msg = h.first_message("(synth \"osc/sine\" :amp 0.1)");
+        REQUIRE(msg.find("freq") != std::string::npos);
+    }
+}
+
+// ============================================================================
+// VAL-COMP-007: Synth is top-level-only
+// ============================================================================
+
+TEST_CASE("synth: nested synth form is rejected",
+          "[synth][val-comp-007]") {
+    SynthHarness h;
+
+    // A synth form appears inside an output assignment — must be rejected
+    // as boundary violation. The synth graph must remain empty.
+    REQUIRE(h.eval_fails("(a1 (synth \"osc/sine\" :freq 440))"));
+    REQUIRE(h.engine.synth_graph.declaration_count() == 0);
+}
+
+// ============================================================================
+// VAL-COMP-008: Multi-form eval is transactional
+// ============================================================================
+
+TEST_CASE("synth: multi-form eval is transactional",
+          "[synth][val-comp-008]") {
+    SynthHarness h;
+
+    // First: a successful eval establishes baseline artefacts at revision 1.
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :name \"lead\" :freq 440)"));
+    uint32_t rev_after_first = h.engine.synth_graph.revision;
+    uint16_t decl_count = h.engine.synth_graph.declaration_count();
+
+    // Second: a multi-form eval where a LATER form fails. Earlier forms
+    // must NOT commit — graph, controls, roots, and revision must remain
+    // at the previous successful state.
+    //
+    // We use `do` with a valid first synth form and an explicitly unknown
+    // def name as the second form. The eval must be rejected as a unit,
+    // and the previously committed declaration must remain unchanged.
+    REQUIRE(h.eval_fails(
+        "(do (synth \"osc/sine\" :name \"lead\" :freq 880) "
+        "    (synth \"osc/unknown\" :freq 110))"));
+
+    REQUIRE(h.engine.synth_graph.revision == rev_after_first);
+    REQUIRE(h.engine.synth_graph.declaration_count() == decl_count);
+}
+
+// ============================================================================
+// VAL-COMP-009: Successful artefacts share one revision
+// ============================================================================
+
+TEST_CASE("synth: graph and control table share one revision",
+          "[synth][val-comp-009]") {
+    SynthHarness h;
+
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq 440 :amp 0.1)"));
+
+    uint32_t graph_rev = h.engine.synth_graph.revision;
+    // The control table is published in the same graph structure; the
+    // public JSON snapshot reports the revision for both.
+    std::string snap = snapshot_synth_artifacts(h);
+    REQUIRE(snap.find("\"revision\"") != std::string::npos);
+    REQUIRE(snap.find(std::to_string(graph_rev)) != std::string::npos);
+}
+
+// ============================================================================
+// VAL-COMP-010: Failed eval preserves last successful artefacts
+// ============================================================================
+
+TEST_CASE("synth: failed eval preserves previous artefacts",
+          "[synth][val-comp-010]") {
+    SynthHarness h;
+
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :name \"lead\" :freq 440)"));
+    uint32_t rev_ok = h.engine.synth_graph.revision;
+    std::string snap_ok = snapshot_synth_artifacts(h);
+
+    // A subsequent failed eval must not advance revision or change the
+    // published artefact snapshot.
+    REQUIRE(h.eval_fails("(synth \"osc/unknown\" :freq 440)"));
+
+    REQUIRE(h.engine.synth_graph.revision == rev_ok);
+    REQUIRE(snapshot_synth_artifacts(h) == snap_ok);
+}
+
+// ============================================================================
+// VAL-COMP-011: Synth control roots survive GC
+// ============================================================================
+
+TEST_CASE("synth: control roots remain executable after GC",
+          "[synth][val-comp-011]") {
+    SynthHarness h;
+
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :name \"lead\" :freq 440)"));
+
+    // Force a garbage collection pass on the engine pool. The synth-aware GC
+    // path preserves control roots registered via external_roots[].
+    h.gc();
+
+    // The synth control roots must still be present in the control table
+    // and still compile to a valid node index.
+    const auto& graph = h.engine.synth_graph;
+    REQUIRE(graph.control_count() == 1);
+    for (uint16_t i = 0; i < graph.control_count(); i++) {
+        REQUIRE(graph.controls[i].root_node != NODE_NONE);
+        REQUIRE(graph.controls[i].root_node < h.engine.pool.node_count);
+    }
+}
+
+// ============================================================================
+// VAL-COMP-012: Public artefacts use stable identifiers (no internal indices)
+// ============================================================================
+
+TEST_CASE("synth: public artefacts use stable identifiers",
+          "[synth][val-comp-012]") {
+    SynthHarness h;
+
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :name \"lead\" :freq 440 :amp 0.1)"));
+
+    std::string snap = snapshot_synth_artifacts(h);
+
+    // The serialised artefact must expose the user-visible identity ("lead")
+    // and must NOT expose internal GC-remapped node indices. We assert that
+    // every declaration entry has an "identity" field and no entry exposes
+    // internal "node_index" / "remapped_index" keys.
+    REQUIRE(snap.find("\"identity\"") != std::string::npos);
+    REQUIRE(snap.find("\"lead\"") != std::string::npos);
+    REQUIRE(snap.find("node_index") == std::string::npos);
+    REQUIRE(snap.find("remapped") == std::string::npos);
+}
+
+// ============================================================================
+// VAL-COMP-018: Dynamic control expressions remain executable after commit/GC
+// ============================================================================
+
+TEST_CASE("synth: time-dependent and input-dependent controls compile",
+          "[synth][val-comp-018]") {
+    SynthHarness h;
+
+    SECTION("time-dependent freq expr") {
+        REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq (* 220 (sin bar)))"));
+        const auto& graph = h.engine.synth_graph;
+        REQUIRE(graph.control_count() == 1);
+
+        // Force GC; the control root must remain executable.
+        h.gc();
+
+        REQUIRE(graph.controls[0].root_node != NODE_NONE);
+        REQUIRE(graph.controls[0].root_node < h.engine.pool.node_count);
+    }
+
+    SECTION("input-dependent freq expr") {
+        REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq (* 220 (+ 1 ain1)))"));
+        const auto& graph = h.engine.synth_graph;
+        REQUIRE(graph.control_count() == 1);
+
+        h.gc();
+
+        REQUIRE(graph.controls[0].root_node != NODE_NONE);
+    }
+
+    SECTION("amp dependent on cell") {
+        REQUIRE(h.eval_ok("(define env 0.5)"));
+        REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq 440 :amp env)"));
+
+        const auto& graph = h.engine.synth_graph;
+        REQUIRE(graph.control_count() == 2);
+
+        // Changing the cell must keep the synth control table intact.
+        REQUIRE(h.eval_ok("(define env 0.9)"));
+        REQUIRE(h.engine.synth_graph.control_count() == 2);
+    }
+}
+
+// ============================================================================
+// VAL-COMP-019: M1 single-node capacity fails transactionally
+// ============================================================================
+
+TEST_CASE("synth: M1 one-node capacity fails transactionally",
+          "[synth][val-comp-019]") {
+    SynthHarness h;
+
+    // First: one synth declaration succeeds (baseline revision).
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :name \"lead\" :freq 440)"));
+    uint32_t rev_baseline = h.engine.synth_graph.revision;
+    uint16_t baseline_decls = h.engine.synth_graph.declaration_count();
+    uint16_t baseline_ctls = h.engine.synth_graph.control_count();
+
+    // Second: an eval that would commit a SECOND distinct-identity synth.
+    // M1 hosts one instance, so this must fail with an actionable capacity
+    // diagnostic and leave the previous graph/controls/roots/revision
+    // unchanged.
+    REQUIRE(h.eval_fails("(synth \"osc/sine\" :name \"bass\" :freq 110)"));
+
+    REQUIRE(h.engine.synth_graph.revision == rev_baseline);
+    REQUIRE(h.engine.synth_graph.declaration_count() == baseline_decls);
+    REQUIRE(h.engine.synth_graph.control_count() == baseline_ctls);
+
+    // Same-identity re-declaration is an update, not capacity overflow, so
+    // it must succeed and advance the revision.
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :name \"lead\" :freq 660)"));
+    REQUIRE(h.engine.synth_graph.revision > rev_baseline);
+}
+
+// ============================================================================
+// Hidden identity: anonymous synth gets a stable hidden id from the payload
+// builder. The compiler just needs to accept it and retain it.
+// ============================================================================
+
+TEST_CASE("synth: anonymous form retains supplied hidden identity",
+          "[synth][synth-anon-identity]") {
+    SynthHarness h;
+
+    // A hidden :id keyword mirrors what the payload builder injects for an
+    // anonymous synth. The compiler must accept it and treat it as the
+    // authoritative identity.
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :id \"::anon-1\" :freq 440)"));
+    REQUIRE(std::string(h.engine.synth_graph.declarations[0].identity)
+            == std::string("::anon-1"));
+
+    // Re-evaluating with the same hidden id must be treated as an
+    // update-in-place rather than capacity overflow.
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :id \"::anon-1\" :freq 880)"));
+    REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+}

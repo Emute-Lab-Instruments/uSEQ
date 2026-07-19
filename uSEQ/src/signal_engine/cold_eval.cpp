@@ -2,6 +2,7 @@
 #include "token.h"
 #include "graph_builder.h"
 #include "executor.h"
+#include "synth_registry.h"
 #include "../modulisp/lisp/symbol_intern.h"
 #include <cstdio>
 #include <cstring>
@@ -485,7 +486,9 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     // Reclaim nodes orphaned by the recompile (e.g. the previous update
     // graph of this state slot), then rebuild execution order to include
     // state update subgraphs (F4).
+    register_synth_external_roots(engine);
     engine.pool.gc_unreachable_nodes();
+    commit_synth_external_roots(engine);
     engine.pool.rebuild_execution_order();
     classify_outputs(engine.pool);
 
@@ -563,6 +566,10 @@ static EvalResult do_useq_clear(SignalEngine& engine) {
         }
     }
     engine.registry.clear();
+    // Clear synth patch graph and control table (synth-nodes.md §5.6c).
+    // Clearing advances the shared revision so consumers see the new
+    // empty state.
+    engine.synth_graph.clear_and_advance();
     return make_ok();
 }
 
@@ -583,6 +590,504 @@ static EvalResult do_nudge_time(TokenStream& ts, EngineState& state) {
                           "Try: (useq-nudge-time 0.1)");
     }
     state.time_offset += val.number;
+    return make_ok();
+}
+
+// ── Synth declaration (synth-nodes.md §3) ──────────────────────────────────
+//
+// Top-level form that instantiates one NodeDef instance with bound ModuLisp
+// control expressions. The declaration is staged into the live synth_graph
+// immediately; eval_cold snapshots synth_graph at the start of every eval
+// and restores the snapshot on any downstream error, so a later failing
+// form in the same eval unit rolls back the staged declaration
+// (VAL-COMP-008, VAL-COMP-010).
+//
+// Grammar (synth-nodes.md §3.1):
+//   (synth <def-name-string>
+//          [:version <int>]            ; optional, default 0 (= latest)
+//          [:name <string>]            ; optional explicit identity
+//          [:id <string>]              ; hidden identity (payload builder)
+//          :<param> <expr> ...)        ; one or more param bindings
+//
+// M1 enforces SYNTH_M1_MAX_NODES (1) active declaration at a time; over-
+// capacity evals fail transactionally with a precise diagnostic
+// (VAL-COMP-019). Same-identity re-declaration is an update-in-place.
+
+// Tiny static-string wrapper for messages built from a small buffer. The
+// diagnostic message pointer is required to remain valid for the lifetime
+// of the Diagnostic struct; since the engine consumes diagnostics
+// synchronously inside eval_cold and never persists the pointer past the
+// next eval, a small static rotating buffer pool is sufficient and avoids
+// heap allocation on the firmware hot path.
+//
+// We keep 8 slots (matching MAX_DIAGNOSTICS) so a single eval can build up
+// to 8 distinct messages without clobbering each other.
+static const char* strdup_safe(const char* s) {
+    static char pool[8][160];
+    static uint8_t rotating = 0;
+    char* slot = pool[rotating];
+    rotating = (uint8_t)((rotating + 1) & 7);
+    std::strncpy(slot, s, sizeof(pool[0]) - 1);
+    slot[sizeof(pool[0]) - 1] = '\0';
+    return slot;
+}
+
+static EvalResult make_synth_error_at(uint16_t span_start, uint16_t span_len,
+                                      DiagnosticCategory cat,
+                                      const char* message,
+                                      const char* suggestion = nullptr) {
+    EvalResult r;
+    r.kind = EvalResult::Error;
+    if (r.diagnostic_count < 8) {
+        r.diagnostics[r.diagnostic_count++] = {
+            DiagnosticSeverity::Error, cat,
+            span_start, span_len, message, suggestion
+        };
+    }
+    return r;
+}
+
+static EvalResult make_synth_error_at(const Token& tok,
+                                      DiagnosticCategory cat,
+                                      const char* message,
+                                      const char* suggestion = nullptr) {
+    return make_synth_error_at(tok.span_start, tok.span_len, cat,
+                               message, suggestion);
+}
+
+// Resolve a NodeDef by name+version, with precise diagnostics for each
+// failure mode (VAL-COMP-005).
+static const NodeDefDescriptor* resolve_nodedef(
+    const Token& name_tok, const Token* version_tok,
+    const char* source_base,
+    EvalResult& out_error)
+{
+    out_error = EvalResult{};
+
+    if (name_tok.kind != TokenKind::String) {
+        out_error = make_synth_error_at(
+            name_tok, DiagnosticCategory::Type,
+            "synth needs a NodeDef name in quotes",
+            "Try: (synth \"osc/sine\" :freq 440)");
+        return nullptr;
+    }
+
+    char name_buf[MAX_NODEDEF_NAME];
+    uint16_t name_len = name_tok.string.length;
+    if (name_len >= MAX_NODEDEF_NAME) name_len = MAX_NODEDEF_NAME - 1;
+    std::memcpy(name_buf, source_base + name_tok.string.offset, name_len);
+    name_buf[name_len] = '\0';
+
+    uint16_t version = 0;
+    if (version_tok && version_tok->kind == TokenKind::Number) {
+        version = (uint16_t)version_tok->number;
+    }
+
+    const NodeDefDescriptor* def = synth_registry_find(name_buf, version);
+    if (!def) {
+        if (version != 0) {
+            char msg_buf[128];
+            std::snprintf(msg_buf, sizeof(msg_buf),
+                          "NodeDef \"%s\" version %u is not available",
+                          name_buf, (unsigned)version);
+            out_error = make_synth_error_at(
+                name_tok, DiagnosticCategory::UndefinedName,
+                strdup_safe(msg_buf),
+                "Try: (synth \"osc/sine\" :freq 440)");
+        } else {
+            char msg_buf[128];
+            std::snprintf(msg_buf, sizeof(msg_buf),
+                          "Unknown NodeDef \"%s\"", name_buf);
+            out_error = make_synth_error_at(
+                name_tok, DiagnosticCategory::UndefinedName,
+                strdup_safe(msg_buf),
+                "Try: (synth \"osc/sine\" :freq 440)");
+        }
+        return nullptr;
+    }
+    return def;
+}
+
+static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
+                           const char* source, uint32_t source_length) {
+    GraphBuilder::init_symbols();
+    auto& sym = GraphBuilder::sym;
+
+    // ── Parse def name (required string) ────────────────────────────────
+    Token def_name_tok = ts.consume();
+    if (def_name_tok.kind != TokenKind::String) {
+        return make_synth_error_at(
+            def_name_tok, DiagnosticCategory::Type,
+            "synth needs a NodeDef name in quotes",
+            "Try: (synth \"osc/sine\" :freq 440)");
+    }
+
+    // ── Optional keywords before param pairs: :version / :name / :id ───
+    uint16_t requested_version = 0;
+    Token version_tok;
+    version_tok.kind = TokenKind::Eof;
+    bool have_explicit_version = false;
+
+    Token identity_tok;
+    identity_tok.kind = TokenKind::Eof;
+    bool have_explicit_identity = false;
+
+    // Track param bindings declared in this form. Required: :freq.
+    struct ParamBinding {
+        const NodeDefParam* desc;
+        Token kw_tok;
+        uint16_t expr_start_pos;
+        uint16_t expr_end_pos;
+        uint32_t expr_byte_start;
+        uint32_t expr_byte_end;
+        bool present;
+    };
+    ParamBinding bindings[MAX_NODEDEF_PARAMS] = {};
+    uint16_t binding_count = 0;
+
+    // Track keywords seen (for duplicate detection).
+    SymbolID seen_kws[MAX_NODEDEF_PARAMS] = {};
+    uint16_t seen_kw_count = 0;
+
+    bool kw_phase = true;
+    while (kw_phase && ts.peek().kind == TokenKind::Symbol) {
+        Token kw_tok = ts.peek();
+        if (kw_tok.symbol == sym.kw_version) {
+            ts.consume();
+            Token v = ts.consume();
+            if (v.kind != TokenKind::Number) {
+                return make_synth_error_at(
+                    v, DiagnosticCategory::Type,
+                    ":version needs a whole number",
+                    "Try: (synth \"osc/sine\" :version 1 :freq 440)");
+            }
+            requested_version = (uint16_t)v.number;
+            version_tok = v;
+            have_explicit_version = true;
+            continue;
+        }
+        if (kw_tok.symbol == sym.kw_name || kw_tok.symbol == sym.kw_id) {
+            ts.consume();
+            Token s = ts.consume();
+            if (s.kind != TokenKind::String) {
+                const char* kw_label =
+                    (kw_tok.symbol == sym.kw_name) ? ":name" : ":id";
+                char msg[96];
+                std::snprintf(msg, sizeof(msg),
+                              "%s needs a string in quotes", kw_label);
+                return make_synth_error_at(
+                    s, DiagnosticCategory::Type,
+                    strdup_safe(msg),
+                    "Try: (synth \"osc/sine\" :name \"lead\" :freq 440)");
+            }
+            // Last identity keyword wins; :id is treated as the hidden
+            // payload-builder injection and is preserved verbatim.
+            identity_tok = s;
+            have_explicit_identity = true;
+            continue;
+        }
+        // Any other symbol is either a param keyword or malformed.
+        kw_phase = false;
+    }
+
+    // ── Resolve NodeDef (VAL-COMP-005) ─────────────────────────────────
+    version_tok.kind = have_explicit_version ? TokenKind::Number : TokenKind::Eof;
+    EvalResult resolve_err;
+    const NodeDefDescriptor* def = resolve_nodedef(
+        def_name_tok,
+        have_explicit_version ? &version_tok : nullptr,
+        source, resolve_err);
+    if (!def) {
+        return resolve_err;
+    }
+
+    // ── Parse param pairs (VAL-COMP-006) ───────────────────────────────
+    // Each pair is `:<param> <expr>`. We collect all pairs first, then
+    // compile each expression into the live pool.
+    while (ts.peek().kind == TokenKind::Symbol && ts.peek().symbol != sym.kw_name
+           && ts.peek().symbol != sym.kw_id && ts.peek().symbol != sym.kw_version) {
+        Token kw_tok = ts.consume();
+
+        // The keyword's string spelling lives in the symbol interner.
+        auto& si = SymbolIntern::getInstance();
+        const String& kw_str = si.getString(kw_tok.symbol);
+        if (kw_str.length() == 0 || kw_str[0] != ':') {
+            // Not a keyword — malformed.
+            return make_synth_error_at(
+                kw_tok, DiagnosticCategory::Syntax,
+                "Expected a parameter keyword like :freq or :amp",
+                "Try: (synth \"osc/sine\" :freq 440 :amp 0.2)");
+        }
+
+        // Convert interned symbol back to a C-string for registry lookup.
+        char param_buf[MAX_NODEDEF_NAME];
+        uint16_t plen = (uint16_t)kw_str.length();
+        if (plen >= MAX_NODEDEF_NAME) plen = MAX_NODEDEF_NAME - 1;
+        std::memcpy(param_buf, kw_str.c_str(), plen);
+        param_buf[plen] = '\0';
+        const char* param_name = param_buf + 1; // strip leading ':'
+
+        // Duplicate detection.
+        for (uint16_t i = 0; i < seen_kw_count; i++) {
+            if (seen_kws[i] == kw_tok.symbol) {
+                char msg[96];
+                std::snprintf(msg, sizeof(msg),
+                              "Parameter %s was already set in this synth form",
+                              param_buf);
+                return make_synth_error_at(
+                    kw_tok, DiagnosticCategory::Arity,
+                    strdup_safe(msg),
+                    "Remove the duplicate binding");
+            }
+        }
+        if (seen_kw_count < MAX_NODEDEF_PARAMS) {
+            seen_kws[seen_kw_count++] = kw_tok.symbol;
+        }
+
+        // Validate the parameter is declared by this NodeDef.
+        const NodeDefParam* pdesc = nodedef_find_param(def, param_name);
+        if (!pdesc) {
+            const char* suggestion = nodedef_suggest_param(def, param_name);
+            char msg[128];
+            std::snprintf(msg, sizeof(msg),
+                          "NodeDef \"%s\" has no parameter \"%s\"",
+                          def->name, param_name);
+            char sug_buf[128];
+            if (suggestion) {
+                std::snprintf(sug_buf, sizeof(sug_buf),
+                              "Did you mean :%s? Try: (synth \"%s\" :%s ...)",
+                              suggestion, def->name, suggestion);
+            } else {
+                std::snprintf(sug_buf, sizeof(sug_buf),
+                              "Check the NodeDef documentation for \"%s\"",
+                              def->name);
+            }
+            return make_synth_error_at(
+                kw_tok, DiagnosticCategory::UndefinedName,
+                strdup_safe(msg), strdup_safe(sug_buf));
+        }
+
+        // Read the value expression. It must be present and non-keyword.
+        if (ts.at_end() || ts.peek().kind == TokenKind::RParen) {
+            char msg[96];
+            std::snprintf(msg, sizeof(msg),
+                          "Parameter %s needs a value expression", param_buf);
+            return make_synth_error_at(
+                kw_tok, DiagnosticCategory::Arity,
+                strdup_safe(msg),
+                "Try: (synth \"osc/sine\" :freq 440)");
+        }
+        // Reject a bare keyword following a keyword (malformed pair).
+        if (ts.peek().kind == TokenKind::Symbol) {
+            const String& next_str = si.getString(ts.peek().symbol);
+            if (next_str.length() > 0 && next_str[0] == ':') {
+                return make_synth_error_at(
+                    ts.peek(), DiagnosticCategory::Syntax,
+                    "Expected a value between parameters",
+                    "Try: (synth \"osc/sine\" :freq 440 :amp 0.2)");
+            }
+        }
+
+        uint16_t expr_start_pos = ts.pos;
+        uint32_t byte_start = span_begin(ts, expr_start_pos);
+        GraphBuilder::skip_form(ts);
+        uint32_t byte_end = span_end_of(ts, ts.pos);
+
+        if (binding_count >= MAX_NODEDEF_PARAMS) {
+            return make_synth_error_at(
+                kw_tok, DiagnosticCategory::Overflow,
+                "Too many parameters on this synth form",
+                "Check the NodeDef documentation");
+        }
+        bindings[binding_count].desc = pdesc;
+        bindings[binding_count].kw_tok = kw_tok;
+        bindings[binding_count].expr_start_pos = expr_start_pos;
+        bindings[binding_count].expr_end_pos = ts.pos;
+        bindings[binding_count].expr_byte_start = byte_start;
+        bindings[binding_count].expr_byte_end = byte_end;
+        bindings[binding_count].present = true;
+        binding_count++;
+    }
+
+    // ── Required :freq (VAL-COMP-006) ──────────────────────────────────
+    bool have_freq = false;
+    for (uint16_t i = 0; i < binding_count; i++) {
+        if (std::strcmp(bindings[i].desc->name, "freq") == 0) {
+            have_freq = true;
+            break;
+        }
+    }
+    if (!have_freq) {
+        return make_synth_error_at(
+            def_name_tok, DiagnosticCategory::Arity,
+            "synth \"osc/sine\" needs a :freq parameter",
+            "Try: (synth \"osc/sine\" :freq 440)");
+    }
+
+    // ── Identity resolution ────────────────────────────────────────────
+    // Order of authority: explicit :name > hidden :id > anonymous fallback.
+    // The anonymous fallback exists for direct eval_cold testing without
+    // the editor payload builder; in production, the payload builder
+    // always injects a hidden :id (state-identity.md / VAL-COMP-004).
+    char identity_buf[MAX_SYNTH_IDENTITY];
+    if (have_explicit_identity) {
+        uint16_t n = identity_tok.string.length;
+        if (n >= MAX_SYNTH_IDENTITY) n = MAX_SYNTH_IDENTITY - 1;
+        std::memcpy(identity_buf, source + identity_tok.string.offset, n);
+        identity_buf[n] = '\0';
+    } else {
+        // Anonymous fallback. The synthetic identity is "::anon-<rev>"
+        // so it is unambiguous and distinct from explicit user names.
+        std::snprintf(identity_buf, sizeof(identity_buf),
+                      "::anon-%lu", (unsigned long)engine.synth_graph.revision);
+    }
+
+    // ── Capacity check (VAL-COMP-019) ──────────────────────────────────
+    // M1 hosts one synth instance. An eval that would introduce a NEW
+    // distinct identity while another declaration is already active must
+    // fail transactionally.
+    SynthDeclaration* existing = engine.synth_graph.find(identity_buf);
+    if (existing == nullptr &&
+        engine.synth_graph.declaration_count() >= SYNTH_M1_MAX_NODES) {
+        char msg[160];
+        std::snprintf(msg, sizeof(msg),
+                      "Only one synth can play at a time in M1; "
+                      "another identity (\"%s\") is already active",
+                      engine.synth_graph.declarations[0].identity);
+        return make_synth_error_at(
+            def_name_tok, DiagnosticCategory::Overflow,
+            strdup_safe(msg),
+            "Use (useq-clear) to free the active synth, or re-declare "
+            "the same identity to update in place");
+    }
+
+    // ── Commit declaration + controls to synth_graph ───────────────────
+    // Same-identity re-declaration is update-in-place: drop the existing
+    // declaration's control rows first, then re-append fresh ones.
+    if (existing) {
+        // Remove the existing declaration and its control rows. The control
+        // table is dense (rows are appended in declaration order); we
+        // rebuild it in-place by shifting.
+        uint16_t kill_first = existing->first_control_index;
+        uint16_t kill_count = existing->control_count;
+
+        // Compact the control table.
+        for (uint16_t i = kill_first; i + kill_count < engine.synth_graph.control_count_value; i++) {
+            engine.synth_graph.controls[i] =
+                engine.synth_graph.controls[i + kill_count];
+        }
+        engine.synth_graph.control_count_value -= kill_count;
+
+        // Compact the declaration table.
+        uint16_t decl_idx = (uint16_t)(existing - engine.synth_graph.declarations);
+        for (uint16_t i = decl_idx; i + 1 < engine.synth_graph.declaration_count_value; i++) {
+            engine.synth_graph.declarations[i] =
+                engine.synth_graph.declarations[i + 1];
+        }
+        engine.synth_graph.declaration_count_value--;
+    }
+
+    SynthDeclaration* decl = engine.synth_graph.append_declaration();
+    if (!decl) {
+        return make_synth_error_at(
+            def_name_tok, DiagnosticCategory::Overflow,
+            "Synth declaration table is full",
+            "Use (useq-clear) to free earlier synths");
+    }
+    std::strncpy(decl->identity, identity_buf, MAX_SYNTH_IDENTITY - 1);
+    decl->identity[MAX_SYNTH_IDENTITY - 1] = '\0';
+    std::strncpy(decl->def_name, def->name, MAX_NODEDEF_NAME - 1);
+    decl->def_name[MAX_NODEDEF_NAME - 1] = '\0';
+    decl->def_version   = def->version;
+    decl->audio_inputs  = def->audio_inputs;
+    decl->audio_outputs = def->audio_outputs;
+    decl->voice_fanout  = def->voice_fanout;
+    decl->first_control_index = engine.synth_graph.control_count_value;
+    decl->control_count = 0;
+
+    // ── Compile each bound param expression into the live NodePool ─────
+    // The compiled root nodes are real graph nodes that participate in GC
+    // and execution (VAL-COMP-011, VAL-COMP-018). We compile into the
+    // engine's live pool, not the scratch pool, because synth control
+    // roots persist across evals.
+    for (uint16_t i = 0; i < binding_count; i++) {
+        ParamBinding& b = bindings[i];
+        if (!b.present) continue;
+
+        uint32_t expr_len = b.expr_byte_end - b.expr_byte_start;
+        if (expr_len == 0 || expr_len > source_length) continue;
+
+        // Tokenise the expression slice.
+        Token expr_tokens[MAX_TOKENS];
+        Diagnostic expr_parse_errors[8];
+        uint8_t expr_parse_err_count = 0;
+        uint16_t expr_count = TokenStream::tokenize(
+            source + b.expr_byte_start, expr_len,
+            expr_tokens, MAX_TOKENS,
+            expr_parse_errors, &expr_parse_err_count);
+        if (expr_parse_err_count > 0) {
+            EvalResult r;
+            r.kind = EvalResult::Error;
+            for (uint8_t e = 0; e < expr_parse_err_count && r.diagnostic_count < 8; e++) {
+                // Remap expression-relative spans back to eval-relative.
+                Diagnostic d = expr_parse_errors[e];
+                d.span_start = (uint16_t)(d.span_start + b.expr_byte_start);
+                r.diagnostics[r.diagnostic_count++] = d;
+            }
+            return r;
+        }
+
+        TokenStream ets;
+        std::memcpy(ets.tokens, expr_tokens, expr_count * sizeof(Token));
+        ets.count = expr_count;
+        ets.pos = 0;
+
+        // Save data-table state so a compile failure does not pollute the
+        // cell store (mirrors eval_expression's pattern).
+        uint8_t saved_tables = engine.cells.data_table_count;
+
+        GraphBuildResult gbr = build_output_graph(
+            engine.pool, ets, engine.cells, engine.arena,
+            source, &engine.registry, nullptr,
+            (uint16_t)(MAX_OUTPUTS + MAX_STATE_SLOTS + i));
+
+        if (gbr.has_error) {
+            engine.cells.data_table_count = saved_tables;
+            EvalResult r;
+            r.kind = EvalResult::Error;
+            for (uint8_t e = 0; e < gbr.diagnostic_count && r.diagnostic_count < 8; e++) {
+                Diagnostic d = gbr.diagnostics[e];
+                // Remap expression-relative spans back to eval-relative.
+                d.span_start = (uint16_t)(d.span_start + b.expr_byte_start);
+                r.diagnostics[r.diagnostic_count++] = d;
+            }
+            return r;
+        }
+
+        // Append a control channel row.
+        SynthControlChannel* ctl = engine.synth_graph.append_control();
+        if (!ctl) {
+            engine.cells.data_table_count = saved_tables;
+            return make_synth_error_at(
+                b.kw_tok, DiagnosticCategory::Overflow,
+                "Synth control table is full",
+                "Use (useq-clear) to free earlier synths");
+        }
+        std::strncpy(ctl->identity, identity_buf, MAX_SYNTH_IDENTITY - 1);
+        ctl->identity[MAX_SYNTH_IDENTITY - 1] = '\0';
+        std::strncpy(ctl->param_name, b.desc->name, MAX_NODEDEF_NAME - 1);
+        ctl->param_name[MAX_NODEDEF_NAME - 1] = '\0';
+        ctl->rate_class     = b.desc->rate_class;
+        ctl->smoothing_class = b.desc->smoothing_class;
+        ctl->root_node      = gbr.root_node;
+
+        decl->control_count++;
+    }
+
+    // Graph + control table share one revision (VAL-COMP-009). The revision
+    // is advanced by eval_cold at successful commit, not here, so that a
+    // later-failing form in the same eval unit rolls back to the previous
+    // revision (VAL-COMP-008/010).
     return make_ok();
 }
 
@@ -661,7 +1166,9 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
     }
 
     // Reclaim nodes no longer reachable from any output root
+    register_synth_external_roots(engine);
     engine.pool.gc_unreachable_nodes();
+    commit_synth_external_roots(engine);
 
     // Re-sort execution order
     engine.pool.rebuild_execution_order();
@@ -1046,6 +1553,13 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             return make_ok();
         }
 
+        // synth — top-level NodeDef instantiation (synth-nodes.md §3)
+        if (op == sym.synth) {
+            EvalResult r = do_synth(ts, engine, source, source_length);
+            ts.expect(TokenKind::RParen);
+            return r;
+        }
+
         // zeros — create a vector of N zeros
         if (op == sym.zeros_) {
             Token n_tok = ts.consume();
@@ -1143,6 +1657,39 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
     return make_error("Unexpected input", "Try: (define name value) or (a1 expression)");
 }
 
+// ── Synth GC integration ────────────────────────────────────────────────────
+//
+// Synth control channel expressions compile to real nodes in the live
+// NodePool (synth-nodes.md §7.2). The pool's GC pass must keep those roots
+// reachable and remap their indices, otherwise forced GC after a synth
+// eval drops the control expressions and the host reads freed memory
+// (VAL-COMP-011). We register the synth control roots with the pool's
+// external-roots array; the GC walks and remaps them exactly like output
+// roots. The synth_graph owns the authoritative indices — after GC, the
+// pool updates them in place via external_roots[].
+
+void register_synth_external_roots(SignalEngine& engine) {
+    engine.pool.clear_external_roots();
+    for (uint16_t i = 0; i < engine.synth_graph.control_count(); i++) {
+        uint16_t root = engine.synth_graph.controls[i].root_node;
+        if (root != NODE_NONE) {
+            engine.pool.register_external_root(root);
+        }
+    }
+}
+
+void commit_synth_external_roots(SignalEngine& engine) {
+    uint16_t e = 0;
+    for (uint16_t i = 0; i < engine.synth_graph.control_count(); i++) {
+        uint16_t root = engine.synth_graph.controls[i].root_node;
+        if (root == NODE_NONE) continue;
+        if (e < engine.pool.external_root_count) {
+            engine.synth_graph.controls[i].root_node =
+                engine.pool.external_roots[e++];
+        }
+    }
+}
+
 // ── eval_cold entry point (SignalEngine version) ───────────────────────────
 
 EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) {
@@ -1170,6 +1717,14 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
     // Cross-output live-edit ID tracking — cleared per eval batch
     SharedLiveEditIDs shared_ids;
 
+    // ── Transactional synth artefact snapshot ───────────────────────────
+    // Synth declarations are staged into engine.synth_graph during
+    // eval_form. If any form in this eval unit fails, we restore the
+    // pre-eval snapshot so the published graph/control table/revision
+    // reflect only the last fully-successful eval (VAL-COMP-008/010).
+    // The snapshot is cheap (one struct copy of POD arrays).
+    SynthGraph synth_snapshot = engine.synth_graph;
+
     // Any cold eval may mutate cell values — bump the store revision so
     // per-tick snapshot consumers know to refresh (A12). Coarse but sound.
     engine.cells.store_revision++;
@@ -1178,7 +1733,33 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
     EvalResult last = make_ok();
     while (!ts.at_end() && ts.peek().kind != TokenKind::Eof) {
         last = eval_form(ts, engine, source, length, &shared_ids);
-        if (last.kind == EvalResult::Error) return last;
+        if (last.kind == EvalResult::Error) {
+            // Roll back synth artefacts to the pre-eval snapshot. The
+            // revision counter is restored, so consumers can detect that
+            // the graph did not advance (VAL-COMP-008/010).
+            engine.synth_graph = synth_snapshot;
+            return last;
+        }
+    }
+
+    // Successful eval: advance the shared graph/control revision exactly
+    // once so consumers see a single coherent update (VAL-COMP-009). We
+    // compare the post-eval graph to the snapshot to avoid spurious
+    // revision bumps on no-op evals (e.g. a bare `bar` query).
+    if (engine.synth_graph.declaration_count() != synth_snapshot.declaration_count()
+        || engine.synth_graph.control_count() != synth_snapshot.control_count()) {
+        engine.synth_graph.advance_revision();
+    } else {
+        // Same shape — compare contents to detect param-only updates.
+        bool changed = false;
+        for (uint16_t i = 0; !changed && i < engine.synth_graph.control_count(); i++) {
+            const SynthControlChannel& a = engine.synth_graph.controls[i];
+            const SynthControlChannel& b = synth_snapshot.controls[i];
+            if (a.root_node != b.root_node) changed = true;
+            if (std::strcmp(a.identity, b.identity) != 0) changed = true;
+            if (std::strcmp(a.param_name, b.param_name) != 0) changed = true;
+        }
+        if (changed) engine.synth_graph.advance_revision();
     }
 
     return last;
@@ -1232,7 +1813,9 @@ void recompile_all_outputs(SignalEngine& engine) {
     }
 
     // Reclaim stale nodes from any previous compilation (idempotent due to CSE)
+    register_synth_external_roots(engine);
     engine.pool.gc_unreachable_nodes();
+    commit_synth_external_roots(engine);
     engine.pool.rebuild_execution_order();
     classify_outputs(engine.pool);
 }
@@ -1338,7 +1921,9 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
     // gc's before rebuilding; without this, live cell edits leak the old
     // graphs until the fixed node pool (360 nodes on firmware) fills up and
     // compilation silently fails.
+    register_synth_external_roots(engine);
     engine.pool.gc_unreachable_nodes();
+    commit_synth_external_roots(engine);
     engine.pool.rebuild_execution_order();
 
     // Recompilation may have changed which load ops each output references

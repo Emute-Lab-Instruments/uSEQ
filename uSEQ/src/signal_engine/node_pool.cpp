@@ -424,6 +424,14 @@ void NodePool::gc_unreachable_nodes() {
         if (state_update_roots[s] != NODE_NONE)
             push(state_update_roots[s]);
     }
+    // Include external roots (synth control channel expressions, etc.).
+    // These must survive GC and have their indices remapped exactly like
+    // output roots; otherwise the host would read stale/freed nodes when
+    // sampling the synth control table after a GC pass (VAL-COMP-011).
+    for (uint16_t e = 0; e < external_root_count; e++) {
+        if (external_roots[e] != NODE_NONE)
+            push(external_roots[e]);
+    }
     while (stack_top > 0) {
         uint16_t idx = stack[--stack_top];
         if (idx >= node_count || live[idx]) continue;
@@ -463,6 +471,12 @@ void NodePool::gc_unreachable_nodes() {
     for (uint16_t s = 0; s < state_slot_count; s++) {
         if (state_update_roots[s] != NODE_NONE)
             state_update_roots[s] = remap[state_update_roots[s]];
+    }
+
+    // 4c. Update external roots (synth control roots, etc.)
+    for (uint16_t e = 0; e < external_root_count; e++) {
+        if (external_roots[e] != NODE_NONE)
+            external_roots[e] = remap[external_roots[e]];
     }
 
     node_count = new_count;

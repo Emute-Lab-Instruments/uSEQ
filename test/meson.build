@@ -280,3 +280,16 @@ failure_mode_test_exe = executable(
 )
 
 test('failure_mode_test', failure_mode_test_exe, timeout: 60)
+
+# ===== Synth Compiler Domain Tests (synth-nodes.md / VAL-COMP-001..012,018,019) =====
+
+synth_compiler_test_exe = executable(
+  'test_synth_compiler',
+  sources : ['signal_engine/test_synth_compiler.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('synth_compiler_test', synth_compiler_test_exe, timeout: 60)

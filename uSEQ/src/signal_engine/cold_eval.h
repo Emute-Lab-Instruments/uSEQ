@@ -5,6 +5,7 @@
 #include "cell_store.h"
 #include "node_pool.h"
 #include "state_registry.h"
+#include "synth_graph.h"
 #include "diagnostics.h"
 
 namespace sig {
@@ -67,6 +68,12 @@ struct SignalEngine {
     NodePool scratch_pool;
     char eval_text_buf[512] = {};
 
+    // ── Synth compiler domain (synth-nodes.md) ──────────────────────────
+    // Published synth artefacts: identity-keyed declarations + control
+    // channel table, sharing one compiler revision. The graph advances
+    // atomically at the end of a successful eval (VAL-COMP-008/009/010).
+    SynthGraph synth_graph;
+
     void init_defaults(double bpm = 120.0, int beats_per_bar = 4,
                        int bars_per_phrase = 4, int phrases_per_section = 4);
 };
@@ -98,6 +105,20 @@ void recompile_all_outputs(SignalEngine& engine);
 // When a cell changes, recompile outputs that depend on it.
 
 void on_cell_changed(SymbolID cell_id, SignalEngine& engine);
+
+// ── Synth GC integration ────────────────────────────────────────────────────
+// Register every committed synth control root with the NodePool's external
+// roots array so the next GC pass keeps them reachable and remaps their
+// indices. Callers that invoke pool.gc_unreachable_nodes() directly must
+// call this first. Safe to call repeatedly; clears and re-registers each
+// time so stale indices do not linger after a synth-graph edit.
+
+void register_synth_external_roots(SignalEngine& engine);
+
+// After a GC pass, copy the remapped external root indices back into the
+// synth_graph.controls[] table. Pairs with register_synth_external_roots().
+
+void commit_synth_external_roots(SignalEngine& engine);
 
 } // namespace sig
 
