@@ -309,3 +309,58 @@ synth_wasm_abi_test_exe = executable(
 )
 
 test('synth_wasm_abi_test', synth_wasm_abi_test_exe, timeout: 60)
+
+# ===== osc/sine NodeDef Conformance Tests (VAL-DSP-001..014,016) ============
+# Hand-written osc/sine NodeDef. This test target compiles ONLY
+# nodedef/osc_sine.cpp — it does NOT link against signal_engine_dep,
+# firmware_dep, or the interpreter. The separation is the build-graph
+# evidence for VAL-DSP-016: the NodeDef target remains outside the
+# interpreter and firmware link graphs.
+#
+# The WASM binary inspection that proves VAL-DSP-005 (imported shared memory,
+# no exported memory, no blocking imports) is exercised by the separate
+# NodeDef WASM build + inspector in nodedef/build_osc_sine_wasm.sh.
+
+nodedef_inc = include_directories('../nodedef')
+# Add the project root so the test can `#include "nodedef/osc_sine.h"`.
+project_root_inc = include_directories('..')
+
+osc_sine_nodedef_test_exe = executable(
+  'test_osc_sine_nodedef',
+  sources : ['signal_engine/test_osc_sine_nodedef.cpp',
+             '../nodedef/osc_sine.cpp'],
+  include_directories : [test_inc, nodedef_inc, project_root_inc],
+  cpp_args : test_args,
+  dependencies : [math_dep]
+)
+
+test('osc_sine_nodedef_test', osc_sine_nodedef_test_exe, timeout: 60)
+
+# ===== osc/sine NodeDef WASM Binary Inspection (VAL-DSP-005/013/015/016) ====
+# A shell-based contract test that greps the generated osc_sine.wasm text
+# disassembly for the required memory-import / no-private-memory / no-blocking
+# / separate-artefact guarantees. The test does NOT rebuild the WASM; it
+# inspects whatever was produced by nodedef/build_osc_sine_wasm.sh.
+#
+# The wasm artefact lives at src-useq/wasm/osc_sine.wasm (gitignored); if it
+# is missing the test fails with a clear "run the build script" message.
+
+osc_sine_wasm_inspector = find_program('../scripts/inspect_osc_sine_wasm.sh')
+# meson.project_source_root() (1.0+ equivalent of the deprecated
+# meson.source_root()) returns the top of the src-useq tree, where the
+# wasm/ directory lives.
+wasm_artefact_path = meson.project_source_root() / 'wasm' / 'osc_sine.wasm'
+test('osc_sine_wasm_inspection', osc_sine_wasm_inspector,
+     args : [wasm_artefact_path],
+     timeout: 30)
+
+# Runtime smoke test: instantiate the NodeDef WASM against host-owned
+# imported memory in Node.js and verify it renders finite, on-amplitude,
+# on-frequency audio across multiple blocks. This complements the static
+# binary inspection with end-to-end runtime evidence (VAL-DSP-005, 007,
+# 008, 009).
+node_bin = find_program('node')
+osc_sine_wasm_smoke = find_program('../scripts/osc_sine_wasm_smoke.mjs')
+test('osc_sine_wasm_smoke', node_bin,
+     args : [osc_sine_wasm_smoke.full_path(), wasm_artefact_path],
+     timeout: 30)

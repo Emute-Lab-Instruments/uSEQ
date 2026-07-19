@@ -46,7 +46,7 @@ print_warning() {
 }
 
 # Available test suites (must match meson test names without the 'uSEQ:' prefix)
-AVAILABLE_TESTS="signal_engine firmware_e2e firmware_e2e_part2 firmware_fuzz signal_engine_golden signal_engine_phase4 signal_engine_robustness signal_engine_probe_smoke flash_storage wire_protocol_contract devtools_contract live_edit output_classification ugen state_identity resource_reclaim synth_compiler synth_wasm_abi failure_mode"
+AVAILABLE_TESTS="signal_engine firmware_e2e firmware_e2e_part2 firmware_fuzz signal_engine_golden signal_engine_phase4 signal_engine_robustness signal_engine_probe_smoke flash_storage wire_protocol_contract devtools_contract live_edit output_classification ugen state_identity resource_reclaim synth_compiler synth_wasm_abi osc_sine_nodedef osc_sine_wasm_inspection osc_sine_wasm_smoke failure_mode"
 
 # Function to show help
 show_help() {
@@ -193,6 +193,9 @@ if [ -n "$SINGLE_TEST" ]; then
         resource_reclaim)     meson_test_name="resource_reclaim_test" ;;
         synth_compiler)       meson_test_name="synth_compiler_test" ;;
         synth_wasm_abi)       meson_test_name="synth_wasm_abi_test" ;;
+        osc_sine_nodedef)     meson_test_name="osc_sine_nodedef_test" ;;
+        osc_sine_wasm_inspection) meson_test_name="osc_sine_wasm_inspection" ;;
+        osc_sine_wasm_smoke)  meson_test_name="osc_sine_wasm_smoke" ;;
         failure_mode)         meson_test_name="failure_mode_test" ;;
     esac
 
@@ -226,6 +229,9 @@ else
         echo "  - State Identity       - State identity tests"
         echo "  - Synth Compiler       - Synth declaration domain tests"
     echo "  - Synth WASM ABI       - Synth artefact ABI + Worker response tests"
+        echo "  - osc/sine NodeDef     - Hand-written NodeDef conformance tests"
+        echo "  - osc/sine WASM inspect- Binary memory / blocking / separation contract"
+        echo "  - osc/sine WASM smoke  - Runtime imported-memory render smoke"
         echo "  - Failure Mode         - Failure model tests"
     else
         echo
