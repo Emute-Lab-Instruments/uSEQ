@@ -723,7 +723,6 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     }
 
     // ── Optional keywords before param pairs: :version / :name / :id ───
-    uint16_t requested_version = 0;
     Token version_tok;
     version_tok.kind = TokenKind::Eof;
     bool have_explicit_version = false;
@@ -761,7 +760,6 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
                     ":version needs a whole number",
                     "Try: (synth \"osc/sine\" :version 1 :freq 440)");
             }
-            requested_version = (uint16_t)v.number;
             version_tok = v;
             have_explicit_version = true;
             continue;
@@ -1776,20 +1774,37 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
     // once so consumers see a single coherent update (VAL-COMP-009). We
     // compare the post-eval graph to the snapshot to avoid spurious
     // revision bumps on no-op evals (e.g. a bare `bar` query).
-    if (engine.synth_graph.declaration_count() != synth_snapshot.declaration_count()
-        || engine.synth_graph.control_count() != synth_snapshot.control_count()) {
-        engine.synth_graph.advance_revision();
-    } else {
+    bool synth_graph_changed =
+        engine.synth_graph.declaration_count() != synth_snapshot.declaration_count()
+        || engine.synth_graph.control_count() != synth_snapshot.control_count();
+    if (!synth_graph_changed) {
         // Same shape — compare contents to detect param-only updates.
-        bool changed = false;
-        for (uint16_t i = 0; !changed && i < engine.synth_graph.control_count(); i++) {
+        for (uint16_t i = 0;
+             !synth_graph_changed && i < engine.synth_graph.control_count(); i++) {
             const SynthControlChannel& a = engine.synth_graph.controls[i];
             const SynthControlChannel& b = synth_snapshot.controls[i];
-            if (a.root_node != b.root_node) changed = true;
-            if (std::strcmp(a.identity, b.identity) != 0) changed = true;
-            if (std::strcmp(a.param_name, b.param_name) != 0) changed = true;
+            if (a.root_node != b.root_node) synth_graph_changed = true;
+            if (std::strcmp(a.identity, b.identity) != 0) synth_graph_changed = true;
+            if (std::strcmp(a.param_name, b.param_name) != 0) synth_graph_changed = true;
         }
-        if (changed) engine.synth_graph.advance_revision();
+    }
+    if (synth_graph_changed) {
+        engine.synth_graph.advance_revision();
+
+        // Reclaim nodes orphaned by replaced synth declarations: a
+        // same-identity re-eval compiles fresh param graphs and drops the
+        // old control rows, leaving the previous compile unreachable.
+        // Every sibling recompile path (do_output_assign, on_cell_changed,
+        // recompile_all_outputs) pairs this triplet; without it a
+        // param-tweaking synth session leaks until the fixed node pool
+        // (MAX_TOTAL_NODES) fills and unrelated compiles start failing.
+        // This runs only at successful commit — never mid-unit — so the
+        // pre-eval snapshot's root_node indices stay valid for rollback.
+        register_synth_external_roots(engine);
+        engine.pool.gc_unreachable_nodes();
+        commit_synth_external_roots(engine);
+        engine.pool.rebuild_execution_order();
+        classify_outputs(engine.pool);
     }
 
     return last;

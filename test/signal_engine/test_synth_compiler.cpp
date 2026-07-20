@@ -492,3 +492,38 @@ TEST_CASE("synth: anonymous form retains supplied hidden identity",
     REQUIRE(h.eval_ok("(synth \"osc/sine\" :id \"::anon-1\" :freq 880)"));
     REQUIRE(h.engine.synth_graph.declaration_count() == 1);
 }
+
+// ============================================================================
+// GC pairing: param-only re-evals must not leak pool nodes. Before the
+// commit-time GC in eval_cold, 40 re-evals grew node_count 12 -> 88 with
+// zero reclamation (ergo 72ff4fa5); the pool (MAX_TOTAL_NODES) would fill
+// after ~100 edits and unrelated compiles would start failing.
+// ============================================================================
+
+TEST_CASE("synth: param re-evals reclaim replaced control graphs",
+          "[synth][synth-gc-pairing]") {
+    SynthHarness h;
+
+    // Establish the steady-state shape first, then capture the baseline.
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :name \"lead\" "
+                      ":freq (+ 0 (* 2 bar)))"));
+    uint16_t baseline = h.engine.pool.node_count;
+
+    for (int i = 1; i <= 40; i++) {
+        std::string code = "(synth \"osc/sine\" :name \"lead\" :freq (+ " +
+                           std::to_string(i) + " (* 2 bar)))";
+        REQUIRE(h.eval_ok(code));
+    }
+
+    // Each re-eval compiles a fresh param graph; commit-time GC must
+    // reclaim the replaced one so the pool stays bounded near baseline
+    // instead of growing linearly.
+    REQUIRE(h.engine.pool.node_count <= baseline + 8);
+
+    // The surviving declaration and its control roots must stay valid.
+    REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+    for (uint16_t i = 0; i < h.engine.synth_graph.control_count(); i++) {
+        REQUIRE(h.engine.synth_graph.controls[i].root_node
+                < h.engine.pool.node_count);
+    }
+}
