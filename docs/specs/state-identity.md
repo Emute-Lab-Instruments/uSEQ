@@ -294,6 +294,10 @@ payload diagnostics to visible source.
 ## 9. Open Questions
 
 9.1 Which explicit syntax is canonical: `:id`, `with-state-id`, or both?
+(Partially resolved for the `synth-node` resource kind: both are
+supported and normalise to the same identity annotation, with
+`:name`/`:id` taking precedence over a surrounding `with-state-id`
+wrapper — synth-nodes.md §5.1.1. Still open for other stateful forms.)
 
 9.2 What exact retention policy should inactive anonymous resources use on
 firmware, where memory is tighter than WASM?

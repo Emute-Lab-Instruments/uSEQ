@@ -202,7 +202,27 @@ resource of resource kind `synth-node` under the machinery of
 [state-identity.md](state-identity.md). `:name <string>` is sugar that
 normalises to the explicit-ID surface (`:id`); a `synth` form with neither
 receives an editor-generated hidden ID exactly as anonymous stateful
-expressions do. Two *active* instances with the same identity is a
+expressions do.
+
+5.1.1 **Hidden-ID delivery channel.** The editor delivers the hidden ID
+by wrapping the form as `(with-state-id "<id>" <form>)` in the eval
+payload. Per state-identity.md §2.2 the wrapper normalises to the same
+internal identity annotation as `:id`: the runtime stashes the wrapper
+id as a pending state identity, and the **first** synth declaration
+evaluated under the wrapper consumes it — using it as the node identity
+only when the form carries no explicit `:name`/`:id` (explicit identity
+always supersedes and also consumes the pending id). The pending id is
+scoped to the wrapped form: nested wrappers shadow it, and it can never
+leak past the wrapper's closing paren. Resolution order:
+`:name`/`:id` > wrapper id > anonymous fallback.
+
+5.1.2 **Anonymous fallback.** A synth form with no explicit identity
+and no wrapper (raw REPL eval without editor sidecar) receives an
+identity keyed by its ordinal position within the eval unit
+(state-identity.md §2.5), so re-evaluating the same program updates in
+place rather than minting a fresh identity per eval. This fallback is
+best-effort — reordering anonymous synth forms shifts their ordinals;
+editors must inject wrapper ids for stable live-coding behaviour. Two *active* instances with the same identity is a
 duplicate-active error for the `synth-node` kind (one DSP instance per
 identity — resource usage is never coherent across two instances).
 Inactive **document variants** sharing an identity are allowed and

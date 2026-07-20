@@ -494,6 +494,100 @@ TEST_CASE("synth: anonymous form retains supplied hidden identity",
 }
 
 // ============================================================================
+// with-state-id wrapper identity (ergo e58f128f). The editor payload builder
+// wraps anonymous top-level synth forms in `(with-state-id "<id>" ...)`.
+// Per state-identity.md §2.2 the wrapper and `:id` normalise to the same
+// internal identity annotation, so the wrapper id must become the synth's
+// identity when the form carries no explicit :name/:id. Resolution order:
+// explicit :name/:id > wrapper id > anonymous per-eval ordinal fallback.
+// ============================================================================
+
+TEST_CASE("synth: with-state-id wrapper id becomes anonymous synth identity",
+          "[synth][with-state-id][synth-anon-identity]") {
+    SynthHarness h;
+
+    // First eval instantiates under the wrapper-supplied identity.
+    REQUIRE(h.eval_ok(
+        "(with-state-id \"sid-A\" (synth \"osc/sine\" :freq 440))"));
+    REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+    REQUIRE(std::string(h.engine.synth_graph.declarations[0].identity)
+            == std::string("sid-A"));
+
+    // Re-eval with a changed param must be update-in-place — same identity,
+    // no "another identity already active" capacity error — across at
+    // least 3 re-evals (M1 acceptance, synth-nodes.md §5.1/§5.5).
+    REQUIRE(h.eval_ok(
+        "(with-state-id \"sid-A\" (synth \"osc/sine\" :freq 660))"));
+    REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+    REQUIRE(std::string(h.engine.synth_graph.declarations[0].identity)
+            == std::string("sid-A"));
+
+    REQUIRE(h.eval_ok(
+        "(with-state-id \"sid-A\" (synth \"osc/sine\" :freq 660))"));
+    REQUIRE(h.eval_ok(
+        "(with-state-id \"sid-A\" (synth \"osc/sine\" :freq 550))"));
+    REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+    REQUIRE(std::string(h.engine.synth_graph.declarations[0].identity)
+            == std::string("sid-A"));
+}
+
+TEST_CASE("synth: explicit :name takes precedence over with-state-id wrapper",
+          "[synth][with-state-id][val-comp-004]") {
+    SynthHarness h;
+
+    // The user-visible :name is authoritative; the wrapper id is sidecar
+    // metadata (synth-nodes.md §5.1: :name is sugar for the state identity).
+    REQUIRE(h.eval_ok(
+        "(with-state-id \"sid-B\" "
+        "(synth \"osc/sine\" :name \"lead\" :freq 440))"));
+    REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+    REQUIRE(std::string(h.engine.synth_graph.declarations[0].identity)
+            == std::string("lead"));
+
+    // Re-eval under the same wrapper + name stays one declaration.
+    REQUIRE(h.eval_ok(
+        "(with-state-id \"sid-B\" "
+        "(synth \"osc/sine\" :name \"lead\" :freq 660))"));
+    REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+    REQUIRE(std::string(h.engine.synth_graph.declarations[0].identity)
+            == std::string("lead"));
+}
+
+TEST_CASE("synth: wrapper id does not leak past its wrapped form",
+          "[synth][with-state-id]") {
+    SynthHarness h;
+
+    // A named synth under the wrapper consumes the pending wrapper id
+    // (first-synth-wins); the id must be cleared when the wrapper form
+    // ends either way. A later anonymous synth (after clearing the graph)
+    // must fall back to the anonymous scheme, not inherit "sid-C".
+    REQUIRE(h.eval_ok(
+        "(with-state-id \"sid-C\" "
+        "(synth \"osc/sine\" :name \"lead\" :freq 440))"));
+    REQUIRE(h.eval_ok("(useq-clear)"));
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq 220)"));
+    REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+    REQUIRE(std::string(h.engine.synth_graph.declarations[0].identity)
+            != std::string("sid-C"));
+}
+
+TEST_CASE("synth: unwrapped anonymous synth re-eval updates in place",
+          "[synth][synth-anon-identity]") {
+    SynthHarness h;
+
+    // state-identity.md §2.5: the anonymous fallback derives from the
+    // ordinal position within the compile, so re-evaluating the same
+    // program reuses the identity instead of leaking one per eval (and,
+    // in M1, instead of failing the single-node capacity check).
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq 440)"));
+    std::string first_id = h.engine.synth_graph.declarations[0].identity;
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq 660)"));
+    REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+    REQUIRE(std::string(h.engine.synth_graph.declarations[0].identity)
+            == first_id);
+}
+
+// ============================================================================
 // GC pairing: param-only re-evals must not leak pool nodes. Before the
 // commit-time GC in eval_cold, 40 re-evals grew node_count 12 -> 88 with
 // zero reclamation (ergo 72ff4fa5); the pool (MAX_TOTAL_NODES) would fill

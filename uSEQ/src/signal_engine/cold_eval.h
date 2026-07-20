@@ -74,6 +74,21 @@ struct SignalEngine {
     // atomically at the end of a successful eval (VAL-COMP-008/009/010).
     SynthGraph synth_graph;
 
+    // Pending wrapper-injected state identity (state-identity.md §2.2:
+    // `with-state-id` and `:id` normalise to the same internal identity
+    // annotation). Set by the cold-path `with-state-id` handler before it
+    // evaluates its wrapped form, consumed first-synth-wins by do_synth
+    // when the form carries no explicit :name/:id, and always restored
+    // when the wrapper handler returns. Never inspected on the hot path.
+    char pending_state_identity[MAX_SYNTH_IDENTITY] = {};
+    bool has_pending_state_identity = false;
+
+    // Ordinal of anonymous synth declarations within the current cold
+    // eval, reset at eval_cold entry. The anonymous fallback identity is
+    // "::anon-<ordinal>" so recompiling the same program reuses its
+    // identity instead of leaking one per eval (state-identity.md §2.5).
+    uint16_t eval_anon_synth_ordinal = 0;
+
     void init_defaults(double bpm = 120.0, int beats_per_bar = 4,
                        int bars_per_phrase = 4, int phrases_per_section = 4);
 };

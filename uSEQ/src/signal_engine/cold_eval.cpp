@@ -923,21 +923,35 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     }
 
     // ── Identity resolution ────────────────────────────────────────────
-    // Order of authority: explicit :name > hidden :id > anonymous fallback.
-    // The anonymous fallback exists for direct eval_cold testing without
-    // the editor payload builder; in production, the payload builder
-    // always injects a hidden :id (state-identity.md / VAL-COMP-004).
+    // Order of authority: explicit :name/:id > pending with-state-id
+    // wrapper id > anonymous fallback (state-identity.md §2.2, ergo
+    // e58f128f). The editor payload builder wraps anonymous synth forms in
+    // `(with-state-id "<id>" ...)`; the wrapper handler stashes that id as
+    // the engine's pending state identity and the first synth declaration
+    // under the wrapper consumes it, so the same document form keeps the
+    // same identity across re-evals (update-in-place, synth-nodes.md §5.5).
     char identity_buf[MAX_SYNTH_IDENTITY];
     if (have_explicit_identity) {
         uint16_t n = identity_tok.string.length;
         if (n >= MAX_SYNTH_IDENTITY) n = MAX_SYNTH_IDENTITY - 1;
         std::memcpy(identity_buf, source + identity_tok.string.offset, n);
         identity_buf[n] = '\0';
+        // The explicit identity supersedes and consumes any pending
+        // wrapper id so it cannot fall through to a later anonymous
+        // sibling inside the same wrapped form.
+        engine.has_pending_state_identity = false;
+    } else if (engine.has_pending_state_identity) {
+        std::strncpy(identity_buf, engine.pending_state_identity,
+                     MAX_SYNTH_IDENTITY - 1);
+        identity_buf[MAX_SYNTH_IDENTITY - 1] = '\0';
+        engine.has_pending_state_identity = false; // first synth wins
     } else {
-        // Anonymous fallback. The synthetic identity is "::anon-<rev>"
-        // so it is unambiguous and distinct from explicit user names.
-        std::snprintf(identity_buf, sizeof(identity_buf),
-                      "::anon-%lu", (unsigned long)engine.synth_graph.revision);
+        // Anonymous fallback for direct eval without editor sidecar (raw
+        // REPL). Keyed by ordinal position within the current eval, so
+        // re-evaluating the same program reuses its identity instead of
+        // minting a fresh one per eval (state-identity.md §2.5).
+        std::snprintf(identity_buf, sizeof(identity_buf), "::anon-%u",
+                      (unsigned)engine.eval_anon_synth_ordinal++);
     }
 
     // ── Capacity check (VAL-COMP-019) ──────────────────────────────────
@@ -1558,16 +1572,16 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             return r;
         }
 
-        // with-state-id — transparent identity wrapper (state-identity.md §6.3).
+        // with-state-id — identity wrapper (state-identity.md §2.2).
         // The editor payload builder wraps anonymous stateful forms in
-        // `(with-state-id "<id>" <form>)`. The runtime treats the wrapper as
-        // a passthrough: it skips the string identity argument and evaluates
-        // the wrapped form. The identity has already been used by the editor
-        // to assign stable identity; the runtime never needs to read it
-        // because synth declarations carry their own :id field when present.
+        // `(with-state-id "<id>" <form>)`. The wrapper and `:id` normalise
+        // to the same internal identity annotation: the id is stashed as
+        // the pending state identity, and the first synth declaration
+        // evaluated under the wrapper consumes it (using it only when the
+        // form has no explicit :name/:id — ergo e58f128f). Nested wrappers
+        // scope via save/restore; the slot is always restored on return so
+        // an id can never leak past its wrapped form.
         if (op == sym.with_state_id) {
-            // Skip the identity string argument. The next token must be a
-            // string literal; we consume it without inspecting the value.
             Token id_tok = ts.consume();
             if (id_tok.kind != TokenKind::String) {
                 // Malformed wrapper — drain to RParen and report.
@@ -1579,11 +1593,24 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                     "this error, the editor payload builder may be out of "
                     "sync with the runtime.");
             }
-            // Evaluate the wrapped form (the synth declaration or other
-            // stateful form). This recurses into the normal eval path so
-            // `(with-state-id "..." (synth ...))` is equivalent to
-            // `(synth ...)` for runtime purposes.
+
+            char saved_id[MAX_SYNTH_IDENTITY];
+            std::memcpy(saved_id, engine.pending_state_identity,
+                        MAX_SYNTH_IDENTITY);
+            bool saved_flag = engine.has_pending_state_identity;
+
+            uint16_t n = id_tok.string.length;
+            if (n >= MAX_SYNTH_IDENTITY) n = MAX_SYNTH_IDENTITY - 1;
+            std::memcpy(engine.pending_state_identity,
+                        source + id_tok.string.offset, n);
+            engine.pending_state_identity[n] = '\0';
+            engine.has_pending_state_identity = true;
+
             EvalResult r = eval_form(ts, engine, source, source_length, shared_ids);
+
+            std::memcpy(engine.pending_state_identity, saved_id,
+                        MAX_SYNTH_IDENTITY);
+            engine.has_pending_state_identity = saved_flag;
             ts.expect(TokenKind::RParen);
             return r;
         }
@@ -1752,6 +1779,13 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
     // reflect only the last fully-successful eval (VAL-COMP-008/010).
     // The snapshot is cheap (one struct copy of POD arrays).
     SynthGraph synth_snapshot = engine.synth_graph;
+
+    // Reset the per-eval anonymous synth ordinal and defensively clear any
+    // stale pending wrapper identity (state-identity.md §2.2/§2.5). Both
+    // are eval-scoped: the ordinal keys the anonymous fallback identity,
+    // and the pending id only lives inside a with-state-id wrapper.
+    engine.eval_anon_synth_ordinal = 0;
+    engine.has_pending_state_identity = false;
 
     // Any cold eval may mutate cell values — bump the store revision so
     // per-tick snapshot consumers know to refresh (A12). Coarse but sound.
