@@ -21,12 +21,12 @@
 
 ### Status
 
-Accepted (v1), hardened by adversarial review 2026-07. No implementation
-exists yet. Pending corpus edits this spec requires (tracked, not yet
-applied):
-`top-level.md` §1.4 gains the `synth` form; `state-identity.md` gains the
-`synth-node` resource kind (§5 here); GLOSSARY entries for NodeDef, synth
-node, voice, patch graph, control channel.
+Implemented and adversarially hardened (2026-08). The executable proof set is
+`osc/sine` version 2, synth artefact ABI 2, up to 64 declarations, named or
+nested acyclic routing through the node's `fm` input, and persistent
+block-rate `freq`/`amp` control programs. Vector voice fan-out, explicit free,
+document-sync freeing, latch/fast channels, and runtime-registered NodeDefs
+remain specified future surfaces and must not be inferred from the proof set.
 
 ---
 
@@ -67,7 +67,30 @@ otherwise — an app-side concern, `synthesis.md` §2).
 - **params** — for each parameter: name, static default value, nominal
   range, **rate class**, and **smoothing class**;
 - **voice fan-out** — whether the def responds to vector-valued params
-  (§5.6), and any voice-mix normalisation it applies.
+  (§5.6), and any voice-mix normalisation it applies;
+- **runtime layout and render limits** — state/control/output byte layout,
+  supported quantum range, nominal sample rate, and lifecycle fades.
+
+2.2.1 The executable module is authoritative for this metadata: it exports a
+complete registry descriptor which the host validates against the selected
+name/version before installation. Missing, malformed, or mismatched module
+metadata is an incompatibility, not permission to substitute the editor's
+registry entry.
+
+2.2.2 A module whose DSP depends on sample rate either renders only at its
+exported nominal rate or advertises the paired, versioned sample-rate
+capability `sample_rate_abi_version = 1` plus `compute_at_sample_rate`. Under
+that capability the host passes the actual render rate on every compute call;
+phase increments, Nyquist limits, and other rate-derived behavior use that
+value. Missing halves or unknown versions fail closed. The legacy `compute`
+entry remains defined at the nominal rate.
+
+2.2.3 A NodeDef with audio inputs exports an input-capable render entry. The
+shipped `osc/sine` version 2 names input zero `fm` and exposes
+`compute_fm_at_sample_rate`; each FM sample is a signed frequency offset in
+hertz. Non-finite FM means zero offset and the post-addition frequency is
+clamped to `[0, Nyquist]`. Registry port names and order are executable ABI,
+not documentation: compiler, artefact consumer, and module must agree.
 
 2.3 **Rate class** declares how densely the host samples the controlling
 signal: `block` (once per audio block) or `fast` (a declared higher
@@ -283,7 +306,9 @@ document has, by itself, no audible effect.
 a distinct whole-document evaluation action whose semantics are
 whole-truth: identities absent from the document are freed; (b) an
 explicit free (`(free <name-or-ref>)` top-level form, or the app's
-per-node free affordance); (c) `(useq-clear)`, which frees all nodes.
+per-node free affordance); (c) `(useq-clear)`, which frees all declarations,
+control roots, and their graph references as part of the full in-memory
+session reset.
 Freeing exits with a release fade (host constant `SYNTH_FADE_OUT`,
 default 30 ms; per-NodeDef overridable).
 
@@ -375,10 +400,37 @@ fades) and the **control channel table** — one entry per bound
 the NodeDef contract; `latch` channels are flagged as event channels
 (edge records with sub-block offsets, `synthesis.md` §4.6).
 
+7.2.1 The current public payload is synth artefact ABI 2. It always carries
+`connections`, including `[]` for an unrouted graph. Connections identify
+source/destination by stable identity and destination port by both name and
+index. ABI 1 consumers must reject ABI 2 rather than silently omit routing.
+Internal node indices and state-owner contexts are never serialised.
+
+7.2.2 Every control row owns persisted source/dependency metadata and a stable
+compiler context keyed by `(node identity, parameter)`. Reordering parameter
+bindings does not change state ownership. Cell changes recompile dependent
+control roots failure-atomically. External roots participate in both GC and
+execution order.
+
+7.2.3 `useq_tick_synth_controls` is the authoritative WASM sampling boundary.
+One call executes the live graph once, advances state once, and returns values
+in the exact order of the published control table. A non-finite control root
+holds its last finite value (or zero before the first finite sample) and state
+owned by that failed control does not advance invisibly.
+
 7.3 `prev`: param roots do not join the `prev` namespace ([prev.md](prev.md))
 — there is no `(prev <node> <param>)`. `(prev a1)` etc. *inside* a param
 expression is allowed and reads the previous value of that output as
 observed at the param channel's sampling cadence.
+
+7.4 One top-level `synth` form publishes its declaration, nested declarations,
+incoming connections, control rows/sources, compiled roots, state resources,
+and shared revision atomically. Nested forms do not advance the revision
+independently. Failure in any later parameter or whole-graph endpoint/port/
+cycle validation restores the preceding graph and every bounded resource.
+In a multi-form submission, an earlier successful synth form remains
+committed if a later sibling fails, following [compilation.md](compilation.md)
+§1.13.
 
 ---
 

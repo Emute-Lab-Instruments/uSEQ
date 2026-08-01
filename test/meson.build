@@ -281,6 +281,21 @@ failure_mode_test_exe = executable(
 
 test('failure_mode_test', failure_mode_test_exe, timeout: 60)
 
+# ===== WASM Wrapper Projection/Purity Contract Tests =====
+
+wasm_wrapper_projection_test_exe = executable(
+  'test_wasm_wrapper_projection',
+  sources : ['signal_engine/test_wasm_wrapper_projection.cpp',
+             '../wasm/wasm_wrapper.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('wasm_wrapper_projection_test', wasm_wrapper_projection_test_exe,
+     timeout: 60)
+
 # ===== Synth Compiler Domain Tests (synth-nodes.md / VAL-COMP-001..012,018,019) =====
 
 synth_compiler_test_exe = executable(

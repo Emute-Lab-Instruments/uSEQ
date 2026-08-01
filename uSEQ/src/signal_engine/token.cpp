@@ -72,7 +72,8 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
     uint16_t count = 0;
     uint32_t i = 0;
     bool overflowed = false;
-    uint32_t delimiter_depth = 0;
+    TokenKind delimiter_stack[MAX_TOKENS] = {};
+    uint16_t delimiter_depth = 0;
 
     auto emit = [&](Token t) {
         if (count < max_tokens) {
@@ -111,7 +112,11 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
         if (c == '(') {
             Token t; t.kind = TokenKind::LParen; t.span_start = (uint16_t)i; t.span_len = 1;
             emit(t);
-            delimiter_depth++;
+            if (delimiter_depth < MAX_TOKENS) {
+                delimiter_stack[delimiter_depth++] = TokenKind::RParen;
+            } else {
+                emit_error(i, 1, "Delimiter nesting is too deep");
+            }
             i++;
             continue;
         }
@@ -120,6 +125,11 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
             emit(t);
             if (delimiter_depth == 0) {
                 emit_error(i, 1, "Unexpected closing delimiter");
+            } else if (delimiter_stack[delimiter_depth - 1] !=
+                       TokenKind::RParen) {
+                emit_error(i, 1, "Mismatched closing delimiter",
+                           "Close '[' with ']'");
+                delimiter_depth--;
             } else {
                 delimiter_depth--;
             }
@@ -129,7 +139,11 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
         if (c == '[') {
             Token t; t.kind = TokenKind::LBracket; t.span_start = (uint16_t)i; t.span_len = 1;
             emit(t);
-            delimiter_depth++;
+            if (delimiter_depth < MAX_TOKENS) {
+                delimiter_stack[delimiter_depth++] = TokenKind::RBracket;
+            } else {
+                emit_error(i, 1, "Delimiter nesting is too deep");
+            }
             i++;
             continue;
         }
@@ -138,6 +152,11 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
             emit(t);
             if (delimiter_depth == 0) {
                 emit_error(i, 1, "Unexpected closing delimiter");
+            } else if (delimiter_stack[delimiter_depth - 1] !=
+                       TokenKind::RBracket) {
+                emit_error(i, 1, "Mismatched closing delimiter",
+                           "Close '(' with ')'");
+                delimiter_depth--;
             } else {
                 delimiter_depth--;
             }
@@ -207,7 +226,18 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
             // We need a temporary null-terminated string
             char buf[256];
             uint32_t sym_len = i - start;
-            if (sym_len >= sizeof(buf)) sym_len = sizeof(buf) - 1;
+            if (sym_len >= sizeof(buf)) {
+                uint16_t diag_len = sym_len > UINT16_MAX
+                    ? UINT16_MAX : (uint16_t)sym_len;
+                emit_error(start, diag_len, "Symbol is too long",
+                           "Use a name shorter than 256 bytes");
+                Token t;
+                t.kind = TokenKind::Error;
+                t.span_start = (uint16_t)start;
+                t.span_len = diag_len;
+                emit(t);
+                continue;
+            }
             memcpy(buf, source + start, sym_len);
             buf[sym_len] = '\0';
 

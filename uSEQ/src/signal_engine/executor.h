@@ -64,7 +64,9 @@ void commit_outputs(NodePool& pool, const double* output_values);
 // update graphs.  State update roots must already have been executed as
 // part of the node graph (they share the workspace).
 
-void commit_state(NodePool& pool, const double* workspace);
+void commit_state(NodePool& pool, const double* workspace,
+                  const uint16_t* failed_owner_contexts = nullptr,
+                  uint16_t failed_owner_count = 0);
 
 // ── Batched Execution (WASM Visualization) ──────────────────────────────────
 // SOA execution across a time window for efficient visualization.

@@ -15,9 +15,65 @@ namespace sig {
 
 struct EngineState {
     double time_offset   = 0.0;
+    // Internal transport-origin correction. Kept separate from the
+    // user-visible time_offset reported over the wire.
+    double transport_offset = 0.0;
     bool is_playing      = true;
     double current_time  = 0.0;
     double current_dt    = 0.0;
+    double current_wall_time = 0.0;
+    double paused_time   = 0.0;
+    bool has_pause_anchor = false;
+    bool reset_dt_on_next_tick = true;
+
+    // Translate a host/hardware monotonic clock into session-logical time.
+    // Paused time is an anchor, not a wall clock that continues invisibly.
+    double logical_time(double wall_time) const {
+        return (!is_playing && has_pause_anchor)
+            ? paused_time : wall_time + time_offset + transport_offset;
+    }
+
+    void pause() {
+        if (is_playing) {
+            paused_time = current_time;
+            has_pause_anchor = true;
+        }
+        is_playing = false;
+        current_dt = 0.0;
+    }
+
+    void play() {
+        if (!is_playing) {
+            if (has_pause_anchor) {
+                transport_offset =
+                    paused_time - current_wall_time - time_offset;
+                current_time = paused_time;
+            }
+            is_playing = true;
+            reset_dt_on_next_tick = true;
+            current_dt = 0.0;
+        }
+    }
+
+    void rewind() {
+        // At the current wall instant, wall + user offset + transport-origin
+        // correction must equal logical zero.
+        transport_offset = -current_wall_time - time_offset;
+        current_time = 0.0;
+        current_dt = 0.0;
+        reset_dt_on_next_tick = true;
+        if (!is_playing) {
+            paused_time = 0.0;
+            has_pause_anchor = true;
+        }
+    }
+
+    void stop() {
+        rewind();
+        paused_time = 0.0;
+        has_pause_anchor = true;
+        is_playing = false;
+    }
 };
 
 // ── Output Source Storage ───────────────────────────────────────────────────
@@ -70,8 +126,8 @@ struct SignalEngine {
 
     // ── Synth compiler domain (synth-nodes.md) ──────────────────────────
     // Published synth artefacts: identity-keyed declarations + control
-    // channel table, sharing one compiler revision. The graph advances
-    // atomically at the end of a successful eval (VAL-COMP-008/009/010).
+    // channel table, sharing one compiler revision. Each top-level synth form
+    // advances atomically; earlier forms survive a later sibling's failure.
     SynthGraph synth_graph;
 
     // Pending wrapper-injected state identity (state-identity.md §2.2:
@@ -89,8 +145,19 @@ struct SignalEngine {
     // identity instead of leaking one per eval (state-identity.md §2.5).
     uint16_t eval_anon_synth_ordinal = 0;
 
+    // Increments on each user-visible full-session clear. Wrappers with
+    // compiler caches use this to discard references outside SignalEngine.
+    uint32_t session_generation = 0;
+
     void init_defaults(double bpm = 120.0, int beats_per_bar = 4,
                        int bars_per_phrase = 4, int phrases_per_section = 4);
+
+    // Reset all compiler/runtime storage owned by a livecoding session while
+    // leaving transport state and any persistent flash image untouched.
+    void reset_session_storage(double bpm = 120.0, int beats_per_bar = 4,
+                               int bars_per_phrase = 4,
+                               int phrases_per_section = 4,
+                               bool publish_synth_clear = true);
 };
 
 // ── Cold-Path Evaluation ────────────────────────────────────────────────────

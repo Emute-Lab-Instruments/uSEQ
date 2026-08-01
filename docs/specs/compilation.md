@@ -20,19 +20,39 @@
 - `test/signal_engine/test_signal_engine.cpp` — compilation and execution tests
 - `test/signal_engine/test_signal_engine_golden.cpp` — golden semantic tests
 
-1.1 Every signal expression is compiled to a **node graph** — a finite, acyclic, topologically-sortable structure of pure-arithmetic nodes. The exact graph format is engine-specific (register bytecode in the current VM; flat node array in the redesign); the abstract model is the same. (See `uSEQ/src/signal_engine/node_pool.h` — Node struct, NodeOp enum, the flat node array; `uSEQ/src/signal_engine/graph_builder.{h,cpp}` — compilation to node graph.)
+1.1 Every signal expression is compiled to a **node graph** — a finite,
+acyclic, topologically-sortable structure stored as a flat node array. The hot
+runtime is a graph executor, not a bytecode virtual machine. (See
+`uSEQ/src/signal_engine/node_pool.h` — `Node`, `NodeOp`, and the flat node
+array; `uSEQ/src/signal_engine/graph_builder.{h,cpp}` — compilation to the node
+graph.)
 
 1.2 Compilation is **always at least these passes**: parse → name resolution (cells, locals, hardware inputs, builtins) → constant folding → time-context propagation → builtin lowering → dead-code elimination → CSE / hash-consing → register/node allocation. (See `uSEQ/src/signal_engine/token.cpp` — parse/tokenize; `uSEQ/src/signal_engine/graph_builder.cpp` — name resolution in compile_symbol, constant folding in make_binop/make_unary, time-context via TimeContext, builtin lowering in form_table dispatch, CSE in NodePool::intern_node; `uSEQ/src/signal_engine/node_pool.cpp` — hash-consing, rebuild_execution_order, gc_unreachable_nodes.)
 
-1.3 **Pervasive constant folding.** Any pure operation on constant inputs is evaluated at compile time. This composes transitively: deeply nested pure subexpressions collapse to a single `Const` node.
+1.3 **Pervasive, IEEE-sound constant folding.** Any pure operation whose
+required inputs are compile-time constants is evaluated at compile time. This
+composes transitively. Rewrites that discard a dynamic operand are permitted
+only when they preserve observable non-finite behavior: in particular,
+dynamic `x * 0`, `0 * x`, and `x - x` remain runtime nodes because NaN/Inf at
+the output root participates in the failure model.
 
 1.4 **Time-substitution flattening.** `fast`/`slow`/`offset`/`shift` compile as pure time substitution. Constant affine chains compose into a single `(scale, offset)` pair that is baked into the temporal-leaf load. Dynamic arguments remain ordinary graph nodes unless the compiler can prove a safe simplification. General `time-as`/`premap` forms compile as explicit local time substitution and do not imply rate integration. See [time-warps.md](time-warps.md).
 
 1.5 **A node graph is not always a signal.** Most node graphs are persistent and re-run per sample (the signal case). Some are one-off — the engine compiles a top-level form to a graph, executes it once, discards it. The compile-time rejection rules in §3 apply to any code being compiled to a node graph, regardless of whether the graph will be re-run or executed once.
 
-1.6 **Dependency set.** Every compiled graph carries the set of cell symbols it inlined or loaded — including stateful (`defstate`) cells whose update bodies are recompiled when their dependencies change. The runtime indexes outputs by their dependency sets so cell mutations can target precisely the affected graphs. (See `uSEQ/src/signal_engine/graph_builder.h` — GraphBuildResult.dep_cells, GraphBuilder.dep_cells, add_dependency; `uSEQ/src/signal_engine/node_pool.h` — OutputDeps; `uSEQ/src/signal_engine/cold_eval.cpp` — on_cell_changed walks output_deps to find affected graphs.)
+1.6 **Dependency set.** Every compiled graph carries the complete set of cell
+symbols it inlined or loaded — including stateful (`defstate`) cells whose
+update bodies are recompiled when their dependencies change. The runtime
+indexes outputs by these sets so cell mutations can target precisely the
+affected graphs. A set that exceeds `MAX_OUTPUT_DEPS` is an `Overflow` compile
+error; truncation is forbidden because it would make later mutations
+silently fail to recompile the graph.
 
-1.7 **Invalidation is proactive, recompilation is lazy.** Cell mutation marks affected graphs dirty immediately. Dirty graphs are recompiled at the next sampling boundary, never on the per-sample hot path. (See `uSEQ/src/signal_engine/cold_eval.cpp` — on_cell_changed triggers recompilation for dependent outputs.)
+1.7 **Reactive recompilation is cold-path and immediate.** Cell mutation
+recompiles affected stored output and state-update sources during the same
+cold eval, never on the per-sample hot path. Each candidate uses the
+publication rule in §1.12: a rejected dependent retains its old root, source,
+dependencies, state ownership, validity, and capacity.
 
 1.8 **Loops.** `for` is unrolled at compile time when the collection is compile-time-resolvable (literal vector of constants, cell-bound numeric vector, `(range a b)` with constant args, etc.). Maximum unroll: 64 iterations. Larger or dynamic collections are an error in signal context. `while` with non-trivial dynamic exit conditions is currently deferred; treat it as effectively top-level only for now.
 
@@ -42,15 +62,55 @@
 
 1.11 **Sub-tick guarantees.** The hot path (sampling) never allocates, never does string-keyed lookup, never compiles. All compilation work happens between ticks.
 
+1.12 **Per-form publication transaction.** A top-level form validates its
+complete syntax/arity and builds a candidate before publishing any cell,
+callable source, output source/root/dependencies, vector table, live-edit
+slot, state registry/update root, synth declaration/control root, execution
+order, or classification. A rejected form is observationally equivalent to
+not submitting it.
+
+1.13 **Sequential submissions.** A submission containing multiple forms, and
+the children of `do`, is an ordered sequence of §1.12 transactions. Evaluation
+stops at the first rejected form. Earlier committed siblings remain; the
+rejected form and all later siblings publish nothing.
+
+1.14 **Bounded rollback.** Candidate graph construction may intern directly
+into the fixed live pool, but it snapshots every structure the builder can
+mutate. Failure restores the snapshot and reachability-GCs candidate nodes.
+Repeating a rejected form therefore cannot consume bounded capacity.
+
+1.15 **Exact syntax identity.** Delimiters are typed: `)` cannot close `[` and
+vice versa. Identifiers longer than the tokenizer's representable limit are
+syntax errors; they are never truncated and interned under an aliased name.
+
+1.16 **Published references are validated at both ends.** Capacity must be
+proved before a definition is installed, and consumers independently reject
+out-of-range table/slot references. Fixed-store overflow never yields a
+sentinel that can later be interpreted as a valid index.
+
 ## 2. State-Bearing Constructs
 
 The semantics of `defstate`/`integrate`/UGens/`time-as`/`rate-as` and their interaction with local time contexts live in [state.md](state.md). This section captures only what the compilation pipeline needs to know.
 
-2.1 **State-slot allocation is a compile pass.** After name resolution and CSE, the compiler walks the graph and assigns a stable slot index to every state-bearing node (`defstate` cell, `integrate` call, UGen instance, `rate-as` local clock, and any per-call-site scratch required by a primitive). The slot index is part of the compiled graph; the slot vector is part of the runtime state. (See `uSEQ/src/signal_engine/graph_builder.cpp` — compile_integrate allocates state_slot_count++; `uSEQ/src/signal_engine/node_pool.h` — NodePool::state_values[], state_update_roots[], state_slot_count, NodeOp::LoadState.)
+2.1 **State-slot resolution is a compile pass.** After name resolution, each
+state-bearing node (`defstate`, `integrate`, UGens, and stateful local clocks)
+resolves a stable resource key to a dense slot. The graph contains slot
+indices; values, update roots, and owning compiler contexts live in the
+runtime snapshot.
 
-2.2 **CSE applies to state-bearing nodes.** Two referentially-equal state-bearing nodes (same operator, same input subgraph, same local-clock context, same identity keywords) hash-cons to a single node and share one state slot. Different inputs, different `rate-as` contexts, or different `:id` / `:fresh` options produce distinct slots. This is FRP-correct: structurally identical state-bearing constructs *are* the same accumulator unless the user supplies distinct identity.
+2.2 **Identity, not algebraic CSE, owns state.** A resource key is explicit
+state ID (or deterministic program-context/ordinal fallback) plus resource
+kind and role. Recompiling the same owning context reuses its value. Two
+update writers for the same key in one or different published programs are a
+compile-time boundary error; sharing is expressed as one state source plus
+pure readers.
 
-2.3 **State migration across recompilation.** When a cell mutation triggers recompilation, the compiler builds a fresh slot table and migrates state values from the old table to the new one. Identity rules: named `defstate` cells migrate by symbol name; anonymous state slots (`rate-as`, UGens, `integrate`) migrate by explicit state ID plus resource schema when one is available, and by best-effort anonymous structural identity otherwise. Slots without a match in the old table initialise to `init` (for `defstate`) or to the appropriate neutral value. See [state.md section 4](state.md), [state.md section 6.9](state.md), and [state-identity.md](state-identity.md).
+2.3 **State preservation and reclamation.** A successful recompilation keeps
+values for keys still owned by that compiler context. Keys omitted by the new
+program are retired, their update roots are cleared, and their slots enter a
+bounded free list for later UGen or `defstate` allocation. A rejected
+recompilation restores the prior registry, roots, values, owners, and free
+list. See [state-identity.md](state-identity.md).
 
 2.4 **`dt` is a per-tick input.** Alongside `t`, the executor receives `dt-wall` per tick (the wall-clock duration since the previous tick). The unqualified `dt` leaf inside a state-bearing body resolves to the current local-clock delta: outside `rate-as`, `dt == dt-wall`; inside `rate-as r`, `dt == r * dt-wall`. `time-as` changes the local time position but does not itself scale `dt`.
 

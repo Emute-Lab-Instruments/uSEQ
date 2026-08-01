@@ -13,6 +13,7 @@ Maps `docs/specs/` sections to C++ test coverage. Updated alongside code changes
 - **node** = `test/signal_engine/test_signal_engine.cpp` — node-shape / internal tests
 - **e2e** = `test/firmware/test_firmware_e2e.cpp` / `test_firmware_e2e_part2.cpp` — firmware E2E
 - **fuzz** = `test/firmware/test_firmware_fuzz.cpp` — fuzz tests
+- **audit** = `test/signal_engine/test_audit_fixes.cpp` — adversarial regression tests
 
 ---
 
@@ -80,6 +81,7 @@ Maps `docs/specs/` sections to C++ test coverage. Updated alongside code changes
 | 1.1 | t is seconds, monotonic | Strict | golden | "raw t is seconds" |
 | 1.1.1 | t0 unaffected by time mods | N/A | -- | t0 not implemented in signal engine |
 | 1.1.2 | ground-time never resets | N/A | -- | ground-time not implemented in signal engine |
+| 1.1.3 | Pause excludes wall time; resume/rewind use zero dt; stop is pause+rewind | Strict | e2e | "Playback: pause excludes wall time from logical time", "Playback: rewind and stop preserve programs and state" |
 | 1.2 | Phasor: beat wraps 0->1 | Strict | golden | "beat phasor at 120 bpm", "beat phasor at 60 bpm" |
 | 1.2 | Phasor: bar wraps 0->1 | Strict | golden | "bar phasor at 120 bpm 4/4" |
 | 1.2 | Phasor: phrase | Strict | golden | "phrase phasor uses bars-per-phrase default" |
@@ -149,12 +151,13 @@ Maps `docs/specs/` sections to C++ test coverage. Updated alongside code changes
 |---------|---------|--------|-----------|-----------|
 | 1.1 | Standard outputs a1-a8, d1-d8, s1-s8 | Strict | node | "Multiple outputs: a1 and d1 simultaneously" |
 | 1.2 | Output assignment is top-level form | Strict | golden | all assign_ok calls |
-| 1.3 | Numeric literal is constant signal | Strict | golden | "unassigned outputs use neutral zero" (0 case); node: constant output tests |
-| 1.4 | Active / LKG / last sample slots | Strict | node | "commit_outputs updates prev_output_values and lkg" |
+| 1.3 | Numeric literal, including zero, is a running constant signal | Strict | golden | "unassigned outputs use neutral zero" (0 case); node: constant output tests |
+| 1.4 | Active program/source and last healthy scalar sample | Strict | node | "commit_outputs updates prev_output_values and lkg" |
 | 1.5 | Reassignment replaces active program | Strict | node | "Output reassignment silently replaces" |
 | 1.6 | q0 scheduling callback | Strict | e2e | "G1: Queued command executes at bar boundary" |
 | 1.7 | Unassigned outputs produce 0 | Strict | golden | "unassigned outputs use neutral zero" |
 | 1.8 | Runtime errors fall back to LKG | Strict | node | "LKG fallback" tests |
+| 1.9 | Clear removes outputs/LKG and next running tick emits neutral zero | Strict | audit+e2e | "Inactive outputs overwrite reused caller buffers with neutral zero", "Playback: clear resets everything" |
 
 ## prev.md
 
@@ -198,6 +201,8 @@ Maps `docs/specs/` sections to C++ test coverage. Updated alongside code changes
 | 1.4 | if | Strict | golden | "if without else defaults to zero"; node: "Graph builder: if" |
 | 1.4 | Output assignment a1-s8 | Strict | golden | all assign_ok tests |
 | 1.4 | Transport: useq-play etc | Strict | node | "Cold eval: play/pause/stop/rewind" |
+| 1.4.1 | useq-clear is fresh-session equivalent for in-memory storage | Strict | audit | "Clear is fresh-session equivalent for compiler-owned storage" |
+| 1.4.2 | Transport preserves programs/state and obeys logical-time boundaries | Strict | e2e | "Playback: pause excludes wall time from logical time", "Playback: rewind and stop preserve programs and state" |
 | 1.4 | setbpm | Strict | node | "Cold eval: set-bpm changes bpm cell" |
 | 1.4 | settimesig | Strict | node | "Cold eval: set-time-sig changes beats-per-bar" |
 | 1.4 | schedule/unschedule | N/A | -- | Not implemented in signal engine |

@@ -150,6 +150,10 @@ struct NodePool {
     // ── Cross-sample state ──────────────────────────────────────────────
     double state_values[MAX_STATE_SLOTS]  = {};       // current state (read during execution)
     uint16_t state_update_roots[MAX_STATE_SLOTS] = {}; // root node for each state's update expr (init to 0, set to NODE_NONE by init)
+    // Compiler context owning the sole update writer. Output contexts are
+    // 0..MAX_OUTPUTS-1; other live state sources use disjoint contexts.
+    // Runtime fallback freezes only state owned by its failed output.
+    uint16_t state_owner_context[MAX_STATE_SLOTS] = {};
     uint16_t state_slot_count = 0;
 
     // ── Live-edit slots (externally written by editor UI) ─────────────
@@ -195,7 +199,7 @@ struct NodePool {
     // expressions (VAL-COMP-011). External clients register root indices
     // here; the GC walks and remaps them. The pool itself does not attach
     // semantics to these slots.
-    static constexpr uint16_t MAX_EXTERNAL_ROOTS = 32;
+    static constexpr uint16_t MAX_EXTERNAL_ROOTS = 512;
     uint16_t external_roots[MAX_EXTERNAL_ROOTS] = {};
     uint16_t external_root_count = 0;
 

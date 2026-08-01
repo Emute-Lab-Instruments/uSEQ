@@ -41,6 +41,7 @@ const char* SourceArena::read(uint32_t offset) const {
 }
 
 void SourceArena::reset() {
+    memset(data, 0, sizeof(data));
     write_head = 0;
 }
 
@@ -95,6 +96,27 @@ void CellStore::snapshot_values(double* out, size_t max_count) const {
     for (size_t i = 0; i < n; i++) {
         out[i] = cells[i].value;
     }
+}
+
+void CellStore::reset(double bpm, int beats_per_bar,
+                      int bars_per_phrase, int phrases_per_section) {
+    // Keep the monotonic store revision across resets so cached snapshots can
+    // never mistake a freshly-cleared store for their previous generation.
+    uint32_t next_revision = store_revision + 1;
+    if (next_revision == 0) next_revision = 1;
+
+    for (size_t i = 0; i < MAX_CELLS; i++) {
+        cells[i] = Cell{};
+        callables[i] = CallableInfo{};
+    }
+    memset(data_pool, 0, sizeof(data_pool));
+    memset(data_offsets, 0, sizeof(data_offsets));
+    memset(data_lengths, 0, sizeof(data_lengths));
+    data_table_count = 0;
+    store_revision = next_revision;
+
+    init_timing_defaults(bpm, beats_per_bar, bars_per_phrase,
+                         phrases_per_section);
 }
 
 void CellStore::init_timing_defaults(double bpm, int beats_per_bar,

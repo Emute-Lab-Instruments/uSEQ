@@ -105,6 +105,24 @@ bool synth_graph_render_json(const SynthGraph& graph, char* out, uint32_t cap) {
         if (!emit_quoted(sm)) return false;
         if (!emit("}")) return false;
     }
+    if (!emit("],\"connections\":[")) return false;
+    for (uint16_t i = 0; i < graph.connection_count(); i++) {
+        const SynthConnection& c = graph.connections[i];
+        if (i > 0 && !emit(",")) return false;
+        if (!emit("{\"from\":")) return false;
+        if (!emit_quoted(c.from)) return false;
+        if (!emit(",\"to\":")) return false;
+        if (!emit_quoted(c.to)) return false;
+        if (!emit(",\"port\":")) return false;
+        if (!emit_quoted(c.port)) return false;
+        if (!emit(",\"port_index\":")) return false;
+        {
+            char buf[16];
+            std::snprintf(buf, sizeof(buf), "%u", (unsigned)c.port_index);
+            if (!emit(buf)) return false;
+        }
+        if (!emit("}")) return false;
+    }
     if (!emit("]}")) return false;
 
     if ((uint32_t)(p - out) >= cap) return false;

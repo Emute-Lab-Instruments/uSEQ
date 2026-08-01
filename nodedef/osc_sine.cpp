@@ -1,4 +1,4 @@
-// osc/sine version-1 NodeDef (synth-nodes.md §2 / VAL-DSP-001..016)
+// osc/sine version-2 NodeDef (synth-nodes.md §2 / VAL-DSP-001..016)
 //
 // Hand-written, source-agnostic audio-rate DSP module. Built twice from this
 // single source:
@@ -48,7 +48,8 @@ namespace {
 // VAL-DSP-014: these must match SYNTH_FADE_IN_MS / SYNTH_FADE_OUT_MS exactly.
 constexpr uint32_t FADE_IN_MS = 10;
 constexpr uint32_t FADE_OUT_MS = 30;
-constexpr uint32_t SAMPLE_RATE_HZ = 48000;
+constexpr uint32_t DEFAULT_SAMPLE_RATE_HZ = 48000;
+constexpr uint32_t SAMPLE_RATE_ABI_VERSION = 1;
 
 // Supported render-quantum range. The default WebAudio quantum is 128
 // samples; we admit any frame count in [1, 8192] so future agents with
@@ -94,8 +95,6 @@ constexpr uint32_t STATE_BYTES = round_up(STATE_BYTES_INNER, STATE_ALIGN_INNER);
 //   * > 1 amplitude        → clamp to 1
 // Returned samples are always finite and lie in [-1, 1].
 
-constexpr double NYQUIST_HZ = static_cast<double>(SAMPLE_RATE_HZ) / 2.0;
-
 inline bool is_finite_value(double v)
 {
     // std::isfinite is the right call; this wrapper exists only to keep the
@@ -103,14 +102,17 @@ inline bool is_finite_value(double v)
     return std::isfinite(v);
 }
 
-double sanitize_frequency(double v, double fallback)
+double sanitize_frequency(double v, double fallback, uint32_t sample_rate_hz)
 {
-    if (!is_finite_value(v)) {
-        return fallback;
-    }
-    double a = std::fabs(v);
-    if (a > NYQUIST_HZ) {
-        return NYQUIST_HZ;
+    // Re-clamp the selected fallback at every render rate. An instance can
+    // move from 96 kHz to 44.1 kHz between calls, so a formerly valid stored
+    // frequency may now exceed Nyquist.
+    double a = is_finite_value(v) ? std::fabs(v) : std::fabs(fallback);
+    if (!is_finite_value(a)) a = 440.0;
+    const double nyquist_hz =
+        static_cast<double>(sample_rate_hz) / 2.0;
+    if (a > nyquist_hz) {
+        return nyquist_hz;
     }
     return a;
 }
@@ -158,8 +160,9 @@ void flush_state_subnormals(OscSineState &s)
 //   state_bytes  = 24 (3 * sizeof(double) = phase + smoothed_amp + last_freq)
 //   state_align  = 8  (alignof(double))
 constexpr char REGISTRY_JSON[] =
-    "{\"name\":\"osc/sine\",\"version\":1,"
-    "\"audio_inputs\":0,\"audio_outputs\":1,\"voice_fanout\":false,"
+    "{\"name\":\"osc/sine\",\"version\":2,"
+    "\"audio_inputs\":1,\"audio_input_names\":[\"fm\"],"
+    "\"audio_outputs\":1,\"voice_fanout\":false,"
     "\"params\":["
     "{\"name\":\"freq\",\"default\":440.0,\"rate\":\"block\",\"smoothing\":\"step\"},"
     "{\"name\":\"amp\",\"default\":0.2,\"rate\":\"block\",\"smoothing\":\"linear\"}"
@@ -194,7 +197,12 @@ uint32_t osc_sine_control_stride_bytes(void) { return sizeof(double); }
 uint32_t osc_sine_output_stride_bytes(void) { return sizeof(double); }
 uint32_t osc_sine_min_quantum(void) { return MIN_QUANTUM; }
 uint32_t osc_sine_max_quantum(void) { return MAX_QUANTUM; }
-uint32_t osc_sine_sample_rate(void) { return SAMPLE_RATE_HZ; }
+uint32_t osc_sine_sample_rate_abi_version(void)
+{
+    return SAMPLE_RATE_ABI_VERSION;
+}
+
+uint32_t osc_sine_sample_rate(void) { return DEFAULT_SAMPLE_RATE_HZ; }
 uint32_t osc_sine_fade_in_ms(void) { return FADE_IN_MS; }
 uint32_t osc_sine_fade_out_ms(void) { return FADE_OUT_MS; }
 
@@ -231,6 +239,22 @@ uint32_t osc_sine_compute(uintptr_t state_ptr,
                           uintptr_t output_ptr,
                           uint32_t frame_count)
 {
+    return osc_sine_compute_at_sample_rate(state_ptr, freq_ptr, amp_ptr,
+                                           output_ptr, frame_count,
+                                           DEFAULT_SAMPLE_RATE_HZ);
+}
+
+namespace {
+
+uint32_t compute_impl(uintptr_t state_ptr,
+                      uintptr_t freq_ptr,
+                      uintptr_t amp_ptr,
+                      uintptr_t fm_ptr,
+                      bool has_fm,
+                      uintptr_t output_ptr,
+                      uint32_t frame_count,
+                      uint32_t sample_rate_hz)
+{
     // Reject out-of-range frame counts up front. No output bytes are written
     // on the failure path (VAL-DSP-007).
     //
@@ -242,7 +266,8 @@ uint32_t osc_sine_compute(uintptr_t state_ptr,
     // through osc_sine_validate_layout for state, and through buffer sizing
     // for control/output). The alignment checks below catch the remaining
     // contract violation class cheaply.
-    if (frame_count < MIN_QUANTUM || frame_count > MAX_QUANTUM) {
+    if (sample_rate_hz == 0 ||
+        frame_count < MIN_QUANTUM || frame_count > MAX_QUANTUM) {
         return 0;
     }
     // Alignment must hold; the host adapter guarantees this but we check
@@ -251,6 +276,7 @@ uint32_t osc_sine_compute(uintptr_t state_ptr,
     if ((output_ptr & 7u) != 0) return 0;
     if ((freq_ptr & 7u) != 0) return 0;
     if ((amp_ptr & 7u) != 0) return 0;
+    if (has_fm && (fm_ptr & 7u) != 0) return 0;
 
     OscSineState *s = reinterpret_cast<OscSineState *>(state_ptr);
     flush_state_subnormals(*s);
@@ -260,7 +286,7 @@ uint32_t osc_sine_compute(uintptr_t state_ptr,
     double raw_freq = *reinterpret_cast<double *>(freq_ptr);
     double raw_amp = *reinterpret_cast<double *>(amp_ptr);
 
-    double freq = sanitize_frequency(raw_freq, s->last_freq);
+    double freq = sanitize_frequency(raw_freq, s->last_freq, sample_rate_hz);
     double amp_target = sanitize_amplitude(raw_amp);
 
     // Remember the now-finite frequency for the next block's fallback.
@@ -275,8 +301,8 @@ uint32_t osc_sine_compute(uintptr_t state_ptr,
 
     double *out = reinterpret_cast<double *>(output_ptr);
 
-    const double phase_step_per_sample =
-        freq / static_cast<double>(SAMPLE_RATE_HZ);
+    const double* fm = has_fm ? reinterpret_cast<double*>(fm_ptr) : nullptr;
+    const double nyquist_hz = static_cast<double>(sample_rate_hz) / 2.0;
     const double two_pi = 6.28318530717958647692;
 
     double phase = s->phase;
@@ -291,7 +317,16 @@ uint32_t osc_sine_compute(uintptr_t state_ptr,
             sample = 0.0;
         }
         out[i] = sample;
-        phase += phase_step_per_sample;
+        double fm_hz = has_fm && is_finite_value(fm[i]) ? fm[i] : 0.0;
+        double instantaneous_hz = freq + fm_hz;
+        if (!is_finite_value(instantaneous_hz)) {
+            instantaneous_hz = instantaneous_hz < 0.0 ? 0.0 : nyquist_hz;
+        } else if (instantaneous_hz < 0.0) {
+            instantaneous_hz = 0.0;
+        } else if (instantaneous_hz > nyquist_hz) {
+            instantaneous_hz = nyquist_hz;
+        }
+        phase += instantaneous_hz / static_cast<double>(sample_rate_hz);
         if (phase >= 1.0) {
             // Wrap into [0, 1). std::floor keeps this branch-free and exact
             // for sane inputs; the `if` guards against an expensive modf on
@@ -309,6 +344,43 @@ uint32_t osc_sine_compute(uintptr_t state_ptr,
     flush_state_subnormals(*s);
 
     return 1;
+}
+
+} // namespace
+
+uint32_t osc_sine_compute_at_sample_rate(uintptr_t state_ptr,
+                                         uintptr_t freq_ptr,
+                                         uintptr_t amp_ptr,
+                                         uintptr_t output_ptr,
+                                         uint32_t frame_count,
+                                         uint32_t sample_rate_hz)
+{
+    return compute_impl(state_ptr, freq_ptr, amp_ptr, 0, false, output_ptr,
+                        frame_count, sample_rate_hz);
+}
+
+uint32_t osc_sine_compute_fm(uintptr_t state_ptr,
+                             uintptr_t freq_ptr,
+                             uintptr_t amp_ptr,
+                             uintptr_t fm_ptr,
+                             uintptr_t output_ptr,
+                             uint32_t frame_count)
+{
+    return osc_sine_compute_fm_at_sample_rate(
+        state_ptr, freq_ptr, amp_ptr, fm_ptr, output_ptr, frame_count,
+        DEFAULT_SAMPLE_RATE_HZ);
+}
+
+uint32_t osc_sine_compute_fm_at_sample_rate(uintptr_t state_ptr,
+                                            uintptr_t freq_ptr,
+                                            uintptr_t amp_ptr,
+                                            uintptr_t fm_ptr,
+                                            uintptr_t output_ptr,
+                                            uint32_t frame_count,
+                                            uint32_t sample_rate_hz)
+{
+    return compute_impl(state_ptr, freq_ptr, amp_ptr, fm_ptr, true, output_ptr,
+                        frame_count, sample_rate_hz);
 }
 
 double osc_sine_get_phase(uintptr_t state_ptr)

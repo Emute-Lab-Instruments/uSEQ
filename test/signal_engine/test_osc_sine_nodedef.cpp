@@ -1,4 +1,4 @@
-// osc/sine version-1 NodeDef conformance tests (VAL-DSP-001..016).
+// osc/sine version-2 NodeDef conformance tests (VAL-DSP-001..016).
 //
 // These tests exercise the hand-written osc/sine NodeDef through its public C
 // ABI. They compile against the SAME source the separate WASM target compiles
@@ -35,6 +35,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <vector>
 #include <cstdio>
 
@@ -144,8 +145,8 @@ static uint32_t count_zero_crossings(const double *samples, uint32_t n)
 // VAL-DSP-001: Registry metadata is normalized
 // ============================================================================
 
-TEST_CASE("osc_sine: registry metadata reports osc/sine version 1, "
-          "0 inputs, 1 mono output, no voice fan-out",
+TEST_CASE("osc_sine: registry metadata reports osc/sine version 2, "
+          "one named FM input, 1 mono output, no voice fan-out",
           "[osc_sine][val-dsp-001]")
 {
     const char *json = osc_sine_registry_json();
@@ -153,10 +154,11 @@ TEST_CASE("osc_sine: registry metadata reports osc/sine version 1, "
 
     SECTION("identity") {
         REQUIRE(json_contains(json, "\"name\":\"osc/sine\""));
-        REQUIRE(json_contains(json, "\"version\":1"));
+        REQUIRE(json_contains(json, "\"version\":2"));
     }
     SECTION("audio port topology") {
-        REQUIRE(json_contains(json, "\"audio_inputs\":0"));
+        REQUIRE(json_contains(json, "\"audio_inputs\":1"));
+        REQUIRE(json_contains(json, "\"audio_input_names\":[\"fm\"]"));
         REQUIRE(json_contains(json, "\"audio_outputs\":1"));
         REQUIRE(json_contains(json, "\"voice_fanout\":false"));
     }
@@ -440,6 +442,122 @@ TEST_CASE("osc_sine: out-of-range frame counts are rejected",
 // ============================================================================
 // VAL-DSP-008: Frequency and amplitude are measurable in the rendered output
 // ============================================================================
+
+TEST_CASE("osc_sine: sample-rate ABI preserves pitch at 44.1, 48, and 96 kHz",
+          "[osc_sine][sample-rate][val-dsp-008]")
+{
+    REQUIRE(osc_sine_sample_rate_abi_version() == 1);
+
+    const uint32_t frames = 1000;
+    const double freq = 440.0;
+    const double amp = 0.2;
+
+    for (const uint32_t rate : {44100u, 48000u, 96000u}) {
+        GuardedZone state(osc_sine_state_bytes(), osc_sine_state_align());
+        REQUIRE(osc_sine_init(state.base, osc_sine_state_bytes()) == 1);
+        std::vector<double> out(frames, 0.0);
+        REQUIRE(osc_sine_compute_at_sample_rate(
+                    state.base,
+                    reinterpret_cast<uintptr_t>(&freq),
+                    reinterpret_cast<uintptr_t>(&amp),
+                    reinterpret_cast<uintptr_t>(out.data()),
+                    frames,
+                    rate) == 1);
+
+        const double expected_phase = std::fmod(
+            freq * static_cast<double>(frames) / static_cast<double>(rate),
+            1.0);
+        REQUIRE(osc_sine_get_phase(state.base) == Approx(expected_phase).margin(1e-12));
+        state.check_guards();
+    }
+
+    std::vector<double> untouched(frames, 123.0);
+    REQUIRE(osc_sine_compute_at_sample_rate(
+                0, 0, 0, reinterpret_cast<uintptr_t>(untouched.data()),
+                frames, 0) == 0);
+    REQUIRE(untouched.front() == 123.0);
+}
+
+TEST_CASE("osc_sine: FM is a signed per-sample Hz offset with finite containment",
+          "[osc_sine][fm][val-dsp-008][val-dsp-009]")
+{
+    GuardedZone state(osc_sine_state_bytes(), osc_sine_state_align());
+    REQUIRE(osc_sine_init(state.base, osc_sine_state_bytes()) == 1);
+    const double base = 1000.0;
+    const double amp = 0.2;
+    const uint32_t rate = 48000;
+    const std::vector<double> fm = {
+        100.0, -200.0,
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::infinity(),
+        -2000.0, 30000.0, 0.0,
+    };
+    std::vector<double> out(fm.size(), 0.0);
+    REQUIRE(osc_sine_compute_fm_at_sample_rate(
+                state.base, reinterpret_cast<uintptr_t>(&base),
+                reinterpret_cast<uintptr_t>(&amp),
+                reinterpret_cast<uintptr_t>(fm.data()),
+                reinterpret_cast<uintptr_t>(out.data()),
+                static_cast<uint32_t>(fm.size()), rate) == 1);
+    const double expected_sum =
+        1100.0 + 800.0 + 1000.0 + 1000.0 + 0.0 + 24000.0 + 1000.0;
+    REQUIRE(osc_sine_get_phase(state.base) ==
+            Approx(expected_sum / rate).margin(1e-12));
+    for (double sample : out) REQUIRE(std::isfinite(sample));
+    state.check_guards();
+}
+
+TEST_CASE("osc_sine: zero FM exactly matches the legacy no-input entry",
+          "[osc_sine][fm][compatibility]")
+{
+    constexpr uint32_t frames = 128;
+    double base = 777.0;
+    double amp = 0.3;
+    std::vector<double> fm(frames, 0.0);
+    std::vector<double> plain(frames, 0.0);
+    std::vector<double> routed(frames, 0.0);
+    GuardedZone plain_state(osc_sine_state_bytes(), osc_sine_state_align());
+    GuardedZone routed_state(osc_sine_state_bytes(), osc_sine_state_align());
+    REQUIRE(osc_sine_init(plain_state.base, osc_sine_state_bytes()) == 1);
+    REQUIRE(osc_sine_init(routed_state.base, osc_sine_state_bytes()) == 1);
+    REQUIRE(osc_sine_compute(
+                plain_state.base, reinterpret_cast<uintptr_t>(&base),
+                reinterpret_cast<uintptr_t>(&amp),
+                reinterpret_cast<uintptr_t>(plain.data()), frames) == 1);
+    REQUIRE(osc_sine_compute_fm(
+                routed_state.base, reinterpret_cast<uintptr_t>(&base),
+                reinterpret_cast<uintptr_t>(&amp),
+                reinterpret_cast<uintptr_t>(fm.data()),
+                reinterpret_cast<uintptr_t>(routed.data()), frames) == 1);
+    REQUIRE(std::memcmp(plain.data(), routed.data(),
+                        frames * sizeof(double)) == 0);
+    REQUIRE(osc_sine_get_phase(plain_state.base) ==
+            Approx(osc_sine_get_phase(routed_state.base)));
+}
+
+TEST_CASE("osc_sine: invalid base fallback is reclamped at a lower rate",
+          "[osc_sine][fm][sample-rate][val-dsp-009]")
+{
+    GuardedZone state(osc_sine_state_bytes(), osc_sine_state_align());
+    REQUIRE(osc_sine_init(state.base, osc_sine_state_bytes()) == 1);
+    const double high_base = 40000.0;
+    const double invalid = std::numeric_limits<double>::quiet_NaN();
+    const double amp = 0.2;
+    const double fm = 0.0;
+    double out = 0.0;
+    REQUIRE(osc_sine_compute_fm_at_sample_rate(
+                state.base, reinterpret_cast<uintptr_t>(&high_base),
+                reinterpret_cast<uintptr_t>(&amp),
+                reinterpret_cast<uintptr_t>(&fm),
+                reinterpret_cast<uintptr_t>(&out), 1, 96000) == 1);
+    osc_sine_reset_phase(state.base);
+    REQUIRE(osc_sine_compute_fm_at_sample_rate(
+                state.base, reinterpret_cast<uintptr_t>(&invalid),
+                reinterpret_cast<uintptr_t>(&amp),
+                reinterpret_cast<uintptr_t>(&fm),
+                reinterpret_cast<uintptr_t>(&out), 1, 44100) == 1);
+    REQUIRE(osc_sine_get_phase(state.base) == Approx(0.5).margin(1e-12));
+}
 
 TEST_CASE("osc_sine: rendered frequency follows freq control at default amp",
           "[osc_sine][val-dsp-008]")

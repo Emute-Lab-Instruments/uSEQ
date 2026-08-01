@@ -173,8 +173,11 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
         } else if (pool.outputs[i].valid) {
             // No graph assigned but we have a last-known-good value — use it
             ctx.output_values[i] = pool.outputs[i].lkg_value;
+        } else {
+            // Inactive outputs are always the compiler/runtime neutral value,
+            // even when a caller reuses a dirty output buffer.
+            ctx.output_values[i] = 0.0;
         }
-        // else: output was never assigned, leave at caller's init (typically 0)
     }
     pool.runtime_fallback_mask = fallback_mask;
 }
@@ -193,9 +196,28 @@ void commit_outputs(NodePool& pool, const double* output_values) {
 
 // ── Post-Tick State Commit ────────────────────────────────────────────────
 
-void commit_state(NodePool& pool, const double* workspace) {
+void commit_state(NodePool& pool, const double* workspace,
+                  const uint16_t* failed_owner_contexts,
+                  uint16_t failed_owner_count) {
     for (uint16_t s = 0; s < pool.state_slot_count; ++s) {
         if (pool.state_update_roots[s] != NODE_NONE) {
+            uint16_t owner = pool.state_owner_context[s];
+            if (owner < MAX_OUTPUTS &&
+                ((pool.runtime_fallback_mask >> owner) & 1u) != 0) {
+                // Stateful nodes owned by an output advance only when that
+                // output publishes a healthy sample. Otherwise an oscillator
+                // or integrator could run invisibly behind scalar fallback,
+                // making recovery jump to state the listener never heard.
+                continue;
+            }
+            bool owner_failed = false;
+            for (uint16_t i = 0; i < failed_owner_count; i++) {
+                if (failed_owner_contexts[i] == owner) {
+                    owner_failed = true;
+                    break;
+                }
+            }
+            if (owner_failed) continue;
             double v = workspace[pool.state_update_roots[s]];
             // Never commit non-finite state: in LkgFallback mode NaN/Inf can
             // flow through the workspace, and a poisoned state slot would

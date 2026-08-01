@@ -597,8 +597,11 @@ TEST_CASE("F8 [state-sync §2] get-state returns success with state object",
     // Define a cell: (define bpm 140)
     sig::eval_cold("(define bpm 140)", 16, engine);
 
-    // Define an output: (a1 (sine 1))
-    sig::eval_cold("(a1 (sine 1))", 13, engine);
+    // Define an active output using the canonical constant-signal surface.
+    const char* source = "(a1 0.25)";
+    sig::EvalResult result =
+        sig::eval_cold(source, (uint32_t)strlen(source), engine);
+    REQUIRE(result.kind != sig::EvalResult::Error);
 
     firmware::SerialProtocol sp;
     sp.init();
@@ -662,7 +665,10 @@ TEST_CASE("F10 [state-sync §2] get-state includes active outputs",
     sig::SignalEngine engine;
     engine.init_defaults();
 
-    sig::eval_cold("(a1 (sine 1))", 13, engine);
+    const char* source = "(a1 0.25)";
+    sig::EvalResult result =
+        sig::eval_cold(source, (uint32_t)strlen(source), engine);
+    REQUIRE(result.kind != sig::EvalResult::Error);
 
     firmware::SerialProtocol sp;
     sp.init();

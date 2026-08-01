@@ -77,9 +77,14 @@ Language-wide degradation contracts. Cited from feature sub-specs.
 
 2.1 **A compile-time error must not stop the music.** The previously active program for that output (if any) keeps running. Other outputs are unaffected. See [failure-model.md](failure-model.md).
 
-2.2 **A runtime error falls back to last-known-good (LKG).** When an active output program errors at runtime — including non-finite values reaching the root — that output switches to its LKG program until the user replaces or clears it.
+2.2 **A runtime error holds the last good sample.** When a non-finite value
+reaches an active output root, that sample is replaced by the output's last
+finite scalar (or neutral `0`). The active graph is retried next sample, and
+state owned by the failed output does not advance behind the hold.
 
-2.3 **LKG is observed safety, not provable safety.** A graph that succeeded once may fail later under different time / inputs. Cascading failures don't promote unhealthy programs.
+2.3 **Fallback is scalar, transient, and per output.** There is no retained
+older program or parallel state vector. Healthy outputs continue, and a later
+healthy sample immediately returns its output to `running`.
 
 2.4 **Diagnostics are structured.** Every diagnostic carries severity (`info`/`warning`/`error`), a category, a source span (when applicable), a human-readable message in plain language, and an optional suggestion with a working example. No jargon ("arity mismatch") in user-facing strings. The data shapes and ABI are in [diagnostics.md](diagnostics.md); the failure semantics (LKG, health states, REPL-vs-output channels) are in [failure-model.md](failure-model.md).
 
@@ -89,6 +94,11 @@ Language-wide degradation contracts. Cited from feature sub-specs.
 
 2.7 **Numerical errors are not silently zeroed at the output level.** Per-node NaN/Inf clamping (if any engine performs it) is an internal hygiene mechanism; the user-observable contract is "if the output goes unhealthy, you fall back to LKG, and you see a diagnostic." The engine must not silently produce subtly-wrong output instead of declaring failure.
 
+2.8 **Compilation publishes per top-level form.** Each form validates and
+builds atomically. A rejected form leaves live behavior and bounded capacity
+unchanged. Multi-form submissions stop at the first failure while retaining
+earlier committed siblings. See [compilation.md](compilation.md) §1.12–1.16.
+
 ---
 
 ## 3. Performance Targets
@@ -97,7 +107,10 @@ Language-wide degradation contracts. Cited from feature sub-specs.
 
 3.2 **Recompilation is sub-tick.** A typical signal recompiles in well under one millisecond. The user perceives cell redefinition as instantaneous.
 
-3.3 **Invalidation is proactive, recompilation is lazy.** Cell mutation marks affected graphs dirty immediately. Dirty graphs are recompiled at the next sampling boundary, never on the per-sample hot path.
+3.3 **Reactive recompilation is immediate on the cold path.** Cell mutation
+rebuilds affected stored programs in the same eval transaction. A rejected
+candidate retains the previous published graph; compilation never enters the
+per-sample hot path.
 
 3.4 **Pervasive constant folding.** Any pure operation on constant inputs is evaluated at compile time. This composes transitively: deeply nested pure subexpressions collapse to a single `Const` node. (See `uSEQ/src/signal_engine/node_pool.cpp` — make_binop, make_unary fold to Const when both/single input is Const; `uSEQ/src/signal_engine/node_pool.h` — eval_unary, eval_binop, eval_ternary, constant evaluation helpers.)
 
@@ -118,7 +131,7 @@ Language-wide degradation contracts. Cited from feature sub-specs.
 - Cross-output `prev` reads, including the "bare output name = `prev`" sugar.
 - Hardware input leaves (`in1`/`in2`/`ain1`/`ain2`/`swm`/`swt`/`swr`/`rot`) on supported variants.
 - The compile-time rejection rules for signal context (no side effects, no recursion, no unbounded loops, no dynamic `eval`).
-- The LKG fallback contract for runtime errors.
+- The scalar last-good-sample hold contract for runtime errors.
 
 4.3 **Compatibility cuts** (kept only as bridges, may shrink without replacement): the historical `@`-prefix immediate-eval surface (no longer present; treat earlier sections of `useq.md` as historical).
 

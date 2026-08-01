@@ -146,18 +146,24 @@ the registry for dense slot indices while compiling a graph.
 4.2 The compiled graph stores dense slot indices. The registry is not consulted
 during per-sample execution.
 
-4.3 Recompilation builds a fresh dense slot table for the new graph, preserving
-values from matching resource keys. Removed resources become inactive instead
-of being erased immediately.
+4.3 Recompilation is scoped by an owning compiler context (an output, a
+`defstate` update source, or a synth-control source). Before building a
+candidate, the context's existing entries are marked unseen. Resolving a
+matching key reactivates its slot and preserves its value.
 
-4.4 Resource retention is bounded but not tied to node-graph GC. V1 may retain
-anonymous resources for the session, until `useq-clear`, or until explicit
-reset. A memory-bounded LRU policy is permitted if it produces diagnostics or
-debug visibility when state is evicted.
+4.4 On successful publication, unseen resources formerly owned by that
+context are retired: their update roots and owners are cleared and their slots
+enter a bounded free list. Later stateful programs and named `defstate`
+declarations reuse those holes before increasing the slot high-water mark. On
+rejection, registry entries, values, roots, owners, and the free list are
+restored exactly.
 
-4.5 `useq-clear` clears anonymous state resources unless a future persistence
-feature explicitly says otherwise. Named `defstate` reset remains governed by
-[state.md](state.md).
+4.5 `useq-clear` clears every session-owned state resource, anonymous or
+named, together with the registry, free list, slot values, update roots,
+stored update sources, owners, and state-cell markers. A later declaration
+starts from its declared init value and may reuse slot zero. Transport play,
+pause, rewind, and stop do not reset state; any future persistent-state feature
+must define a separate explicit operation.
 
 ---
 
@@ -166,8 +172,9 @@ feature explicitly says otherwise. Named `defstate` reset remains governed by
 5.1 The same state ID may appear multiple times in stored source text or in
 different top-level variants. That is not a runtime error by itself.
 
-5.2 The same state ID may appear multiple times in one active compiled graph
-only when resource usage is coherent.
+5.2 Each resource key has exactly one active update-writer context. The same
+state ID may appear multiple times only for disjoint resource kinds/roles or
+as pure reads of one separately declared state source.
 
 5.3 Ambiguous duplicate updates to the same resource are errors:
 
@@ -178,6 +185,11 @@ only when resource usage is coherent.
 
 Both forms would update the same oscillator phase with different rates. The
 runtime must reject this instead of choosing one silently.
+
+The same rule applies across outputs and other published programs. Compiling
+`a2` with an explicit key already written by `a1` is a boundary error; it
+cannot steal the update law from the running owner. Recompiling the owning
+context is permitted and preserves matching state.
 
 5.4 A coherent equivalent separates state source from pure views:
 
@@ -299,15 +311,11 @@ supported and normalise to the same identity annotation, with
 `:name`/`:id` taking precedence over a surrounding `with-state-id`
 wrapper — synth-nodes.md §5.1.1. Still open for other stateful forms.)
 
-9.2 What exact retention policy should inactive anonymous resources use on
-firmware, where memory is tighter than WASM?
+9.2 Should there be a separate `(reset-state-id ...)` command for resetting a
+still-live resource without replacing its owning program?
 
-9.3 Should `useq-clear` always clear anonymous resources, or should there be a
-separate `(reset-state-id ...)` command?
-
-9.4 Should the wire protocol expose a state-resource introspection command for
+9.3 Should the wire protocol expose a state-resource introspection command for
 debugging editor UI?
 
-9.5 Should state IDs be serialised into flash snapshots, or are they strictly
+9.4 Should state IDs be serialised into flash snapshots, or are they strictly
 session/editor metadata until the user evaluates source that contains them?
-

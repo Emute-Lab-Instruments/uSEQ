@@ -87,6 +87,12 @@ struct CellStore {
     // Snapshot cell numeric values for executor (copies cell[i].value for all).
     void snapshot_values(double* out, size_t max_count) const;
 
+    // Clear all session-owned definitions, callable metadata, and immutable
+    // data tables, then restore only the well-known timing cells. Used by a
+    // full session reset (`useq-clear`) and by engine initialisation.
+    void reset(double bpm = 120.0, int beats_per_bar = 4,
+               int bars_per_phrase = 4, int phrases_per_section = 4);
+
     // Convenience: initialise the four well-known timing cells.
     // bpm (default 120), beats-per-bar (default 4),
     // bars-per-phrase (default 4), phrases-per-section (default 4).

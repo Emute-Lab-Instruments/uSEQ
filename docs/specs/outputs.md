@@ -31,23 +31,35 @@
 
 1.2 Output assignment is a top-level form: `(a1 expr)`. The expression is compiled and stored as the output's signal program. The output is sampled every tick.
 
-1.3 Assigning a numeric literal to an output is the constant signal: `(a1 0.5)` holds 0.5 forever. `(a1 0)` clears the output.
+1.3 Assigning a numeric literal to an output is the constant signal: `(a1 0.5)` holds 0.5 forever. `(a1 0)` installs a running constant-zero program; it does not unassign the output.
 
 1.4 Each output slot owns:
 - An **active program** (current compiled signal).
-- A **last-known-good (LKG) program** (most recent program that has produced ≥1 healthy sample batch).
-- A **last sample value** (held during transitions).
+- Its stored source and dependency set for reactive recompilation.
+- A **last healthy sample value** used only for scalar runtime fallback.
 
-(See `node_pool.h` `OutputSlot` — `root_node` is the active program, `lkg_value` is the LKG sample; `cold_eval.h` `OutputSource` stores source text for recompilation.)
+(See `node_pool.h` `OutputSlot` — `root_node` is the active program and
+`lkg_value` is the scalar fallback sample; `cold_eval.h` `OutputSource` stores
+source text for recompilation.) There is no separately retained LKG program.
 
-1.5 Reassigning an output replaces the active program. The previous active program, if it had ever run a healthy batch, becomes LKG. See [failure-model.md](failure-model.md).
+1.5 A successfully compiled reassignment atomically replaces the active
+program. A failed compile leaves the previous active program and source
+unchanged. A runtime failure retains the active program, substitutes the last
+healthy scalar sample for that tick, and retries the program on the next tick.
+See [failure-model.md](failure-model.md).
 
 1.6 `q0` is a **scheduling callback**, not an output. `(q0 expr)` runs `expr` once per quantisation period (default: bar boundary). Use it for top-level effects synchronised to the bar.
 
-1.7 Outputs not assigned by the user produce a **neutral default**:
-`DEFAULT_OUTPUT_CV` for continuous outputs (currently `0.5` in firmware) and
-`0` for digital and serial outputs. (See `output.h` for `DEFAULT_OUTPUT_CV` / `DEFAULT_OUTPUT_GATE` constants.) Hosts that need the exact startup value
-must read the target's advertised/runtime-probed defaults once that surface
-exists; until then, these constants are the compatibility contract.
+1.7 Outputs not assigned by the user produce the compiler/runtime **neutral
+default**, numeric `0`, for every output class. This value is written
+explicitly on each running executor pass, so reusing a caller-owned output
+buffer cannot preserve a sample from a program removed by `useq-clear`.
+Electrical boot voltages and gate levels are a separate hardware-mapping
+policy; they do not change the language-level neutral value.
 
 1.8 Output programs that compile but error at runtime fall back to LKG (see [failure-model.md](failure-model.md)).
+
+1.9 `(useq-clear)` removes every active output graph, stored source,
+dependency set, classification, previous sample, and LKG sample. Clear itself
+is not an electrical write: while transport is paused the physical outputs
+remain held; the next running executor pass emits neutral zero.

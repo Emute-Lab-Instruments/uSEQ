@@ -153,7 +153,12 @@ void GraphBuilder::add_dependency(SymbolID s) {
     }
     if (dep_count < MAX_OUTPUT_DEPS) {
         dep_cells[dep_count++] = s;
+        return;
     }
+    report_error_at_cat(
+        DiagnosticCategory::Overflow, 0, 0,
+        "Too many distinct cell dependencies in one program",
+        "Split the program into smaller outputs or reduce referenced definitions");
 }
 
 bool GraphBuilder::is_in_inline_stack(SymbolID s) const {
@@ -742,6 +747,13 @@ uint16_t GraphBuilder::compile_symbol(SymbolID sym_id, Scope& scope,
 
             case CellKind::Data:
                 add_dependency(sym_id);
+                if (cell.data_table_id >= cells.data_table_count) {
+                    return report_error_at_cat(
+                        DiagnosticCategory::Overflow,
+                        span_start, span_len,
+                        "This vector binding has no valid data table",
+                        "Redefine the vector or clear exhausted data storage");
+                }
                 return pool.make_const(cell.value); // length
 
             case CellKind::Callable: {
@@ -1838,6 +1850,7 @@ uint16_t GraphBuilder::alloc_state_slot(double init_value) {
     }
     uint16_t slot = pool.state_slot_count++;
     pool.state_values[slot] = init_value;
+    pool.state_owner_context[slot] = anon_state_context;
     return slot;
 }
 
@@ -1857,8 +1870,15 @@ uint16_t GraphBuilder::resolve_or_alloc(StateID state_id, ResourceKind kind,
             StateResourceKey key{state_id, kind, role};
             uint16_t slot = registry->resolve(key, init_value,
                                               pool.state_values,
-                                              pool.state_slot_count);
+                                              pool.state_slot_count,
+                                              anon_state_context);
             if (slot == NODE_NONE) {
+                if (registry->last_owner_conflict) {
+                    return report_error_at_cat(
+                        DiagnosticCategory::Boundary, 0, 0,
+                        "This state :id already has an update writer in another program",
+                        "Declare one state source and share it through a pure named expression");
+                }
                 report_error_at(0, 0,
                     state_slots_exhausted_msg(),
                     "Remove unused stateful expressions");
@@ -1874,6 +1894,9 @@ uint16_t GraphBuilder::resolve_or_alloc(StateID state_id, ResourceKind kind,
                     "Fork the :id, or use one state source (e.g. a shared phasor) with pure views");
             }
             if (slot < MAX_STATE_SLOTS) slot_claimed_this_build[slot] = true;
+            if (slot < MAX_STATE_SLOTS) {
+                pool.state_owner_context[slot] = anon_state_context;
+            }
             return slot;
         }
     }
@@ -3001,6 +3024,14 @@ GraphBuilder::DataRef GraphBuilder::resolve_data_table(TokenStream& ts, Scope& s
             const Cell& cell = cells.cells[sym_id];
             if (cell.kind == CellKind::Data) {
                 add_dependency(sym_id);
+                if (cell.data_table_id >= cells.data_table_count) {
+                    report_error_at_cat(
+                        DiagnosticCategory::Overflow,
+                        tok.span_start, tok.span_len,
+                        "This vector binding has no valid data table",
+                        "Redefine the vector or clear exhausted data storage");
+                    return ref;
+                }
                 ref.table_id = cell.data_table_id;
                 ref.length = (uint16_t)cell.value;
                 ref.ok = true;

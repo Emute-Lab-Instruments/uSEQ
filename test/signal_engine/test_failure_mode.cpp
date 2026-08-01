@@ -117,6 +117,26 @@ TEST_CASE("Mode A bootstrap: non-finite with no LKG yields neutral default",
     REQUIRE(h.in_fallback(0));
 }
 
+TEST_CASE("Optimizer preserves non-finite failure observability",
+          "[failure-mode][optimizer][audit]") {
+    Harness h;
+
+    h.eval_ok("(a1 0.75)");
+    h.sample(0, 0.0, /*commit=*/true);
+
+    SECTION("dynamic x multiplied by zero") {
+        h.eval_ok("(a1 (* (expt (- 0 t) 0.5) 0))");
+        REQUIRE(h.sample(0, 1.0) == Approx(0.75));
+        REQUIRE(h.in_fallback(0));
+    }
+
+    SECTION("dynamic x subtracted from itself") {
+        h.eval_ok("(a1 (- (expt (- 0 t) 0.5) (expt (- 0 t) 0.5)))");
+        REQUIRE(h.sample(0, 1.0) == Approx(0.75));
+        REQUIRE(h.in_fallback(0));
+    }
+}
+
 TEST_CASE("Mode A: fallback does not poison LKG or other outputs",
           "[failure-mode][lkg]") {
     Harness h;
@@ -165,6 +185,30 @@ TEST_CASE("Mode A: non-finite state update keeps previous state value",
     h.sample(0, 1.0, /*commit=*/true);
     // The poisoned update must not have been committed.
     REQUIRE(std::isfinite(h.engine.pool.state_values[0]));
+}
+
+TEST_CASE("Mode A: fallback freezes state owned by the failed output",
+          "[failure-mode][lkg][state][ownership]") {
+    Harness h;
+
+    h.eval_ok(
+        "(a1 (+ (* (* t 1e308) 1e308) "
+        "       (phasor 1 :id \"frozen-phase\")))");
+    REQUIRE(h.engine.pool.state_slot_count == 1);
+    double initial = h.engine.pool.state_values[0];
+
+    h.sample(0, 1.0, /*commit=*/true);
+    REQUIRE(h.in_fallback(0));
+    REQUIRE(h.engine.pool.state_values[0] == Approx(initial));
+    h.sample(0, 2.0, /*commit=*/true);
+    REQUIRE(h.engine.pool.state_values[0] == Approx(initial));
+
+    // Once the same owner publishes healthy samples, its state resumes from
+    // the last value the listener actually heard rather than jumping ahead.
+    h.eval_ok("(a1 (phasor 1 :id \"frozen-phase\"))");
+    h.sample(0, 3.0, /*commit=*/true);
+    REQUIRE_FALSE(h.in_fallback(0));
+    REQUIRE(h.engine.pool.state_values[0] > initial);
 }
 
 TEST_CASE("Mode B legacy: non-finite squashes to zero per node",

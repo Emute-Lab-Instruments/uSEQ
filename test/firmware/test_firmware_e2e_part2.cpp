@@ -517,6 +517,69 @@ TEST_CASE("Playback: play resumes after pause", "[e2e][playback]") {
     REQUIRE(dsp::peak_to_peak(after_play) > 0.01);
 }
 
+TEST_CASE("Playback: pause excludes wall time from logical time",
+          "[e2e][playback][transport]") {
+    FirmwareTestHarness h;
+    h.init();
+    h.eval("(a1 t)");
+    h.run_ticks(20);
+
+    h.eval("(useq-pause)");
+    double paused_at = h.engine().state.current_time;
+    double held_output = h.get_output(0);
+    h.advance_time(10.0);
+    h.run_ticks(5);
+
+    REQUIRE(h.engine().state.current_time == Approx(paused_at));
+    REQUIRE(h.get_output(0) == Approx(held_output));
+
+    h.eval("(useq-play)");
+    h.tick();
+    REQUIRE(h.engine().state.current_time == Approx(paused_at));
+    REQUIRE(h.engine().state.current_dt == Approx(0.0));
+    REQUIRE(h.get_output(0) == Approx(paused_at));
+
+    h.tick();
+    REQUIRE(h.engine().state.current_time
+            == Approx(paused_at + 1.0 / h.tick_rate));
+}
+
+TEST_CASE("Playback: rewind and stop preserve programs and state",
+          "[e2e][playback][transport]") {
+    FirmwareTestHarness h;
+    h.init();
+    h.eval("(defstate keep-state 3 (+ keep-state 1))");
+    h.eval("(a1 (+ t keep-state))");
+    h.run_ticks(10);
+
+    uint16_t root = h.engine().pool.outputs[0].root_node;
+    uint16_t state_slot = h.engine().cells.cells[
+        internSymbol("keep-state")].data_table_id;
+    double state_before = h.engine().pool.state_values[state_slot];
+
+    h.eval("(useq-rewind)");
+    REQUIRE(h.engine().state.is_playing);
+    REQUIRE(h.engine().state.current_time == 0.0);
+    REQUIRE(h.engine().pool.outputs[0].root_node == root);
+    REQUIRE(h.engine().pool.state_values[state_slot] == Approx(state_before));
+    h.tick();
+    REQUIRE(h.engine().state.current_dt == Approx(0.0));
+
+    state_before = h.engine().pool.state_values[state_slot];
+    h.eval("(useq-stop)");
+    REQUIRE_FALSE(h.engine().state.is_playing);
+    REQUIRE(h.engine().state.current_time == 0.0);
+    REQUIRE(h.engine().pool.outputs[0].root_node == root);
+    REQUIRE(h.engine().pool.state_values[state_slot] == Approx(state_before));
+
+    h.advance_time(5.0);
+    h.eval("(useq-play)");
+    h.tick();
+    REQUIRE(h.engine().state.current_time == Approx(0.0));
+    REQUIRE(h.engine().state.current_dt == Approx(0.0));
+    REQUIRE(h.engine().pool.outputs[0].root_node == root);
+}
+
 TEST_CASE("Playback: clear resets everything", "[e2e][playback]") {
     FirmwareTestHarness h;
     h.init();
@@ -531,10 +594,11 @@ TEST_CASE("Playback: clear resets everything", "[e2e][playback]") {
     h.eval("(useq-clear)");
     h.run_ticks(1);
 
-    // After clear, a1 output should be at its LKG value (whatever it was
-    // at the last tick before clear) or 0.0 if clear resets LKG.
+    // Clear is not an immediate electrical command, but on the next running
+    // tick every now-inactive compiler output resolves to neutral zero.
     double val = h.get_output(0);
     REQUIRE(std::isfinite(val));
+    REQUIRE(val == Approx(0.0));
     // The output should at least be stable (not NaN or Inf)
     h.run_ticks(10);
     double val2 = h.get_output(0);

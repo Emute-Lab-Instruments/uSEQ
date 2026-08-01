@@ -36,19 +36,35 @@
 
 1.8 **Runtime errors are deduplicated and rate-limited.** A signal sampled hundreds of times per second per output must not produce hundreds of diagnostics. The runtime collapses runtime errors by `(output, category)` and reports at most **one diagnostic per output per frame**. The diagnostic's `last_occurrence` field is updated when the same `(output, category)` recurs without a healthy sample in between. A diagnostic that persists across multiple frames may be annotated with phrasing such as "occurring frequently" — the message text is implementation-defined, the rate-limit is normative.
 
-## 2. Last-Known-Good (LKG) Fallback
+## 2. Last-Good-Sample Hold
 
-2.1 **Whole-output LKG fallback.** When an active output program errors at runtime — including non-finite values reaching the root — that output **switches to its LKG program** for the rest of the current sampling pass and remains on LKG until either (a) the user replaces the broken program with a working one, or (b) the user explicitly clears the output. (See `uSEQ/src/signal_engine/executor.cpp` — execute_all_outputs, LKG fallback when output produces NaN/Inf; `uSEQ/src/signal_engine/node_pool.h` — OutputSlot.lkg_value, .valid.)
+2.1 **Per-sample output hold.** When an active output graph produces a
+non-finite root, the runtime substitutes that output's stored last finite
+sample for this sample. The active graph is retried on the next sample; a
+phase-dependent failure can therefore recover without reassignment. The
+runtime does not retain or execute an older compiled program.
 
-2.2 **What is "last-known-good"**: the most recent program for that output that has completed at least one full healthy sample batch. LKG is observed safety, not provable safety — a graph that succeeded once may fail later under different time / inputs.
+2.2 **What is stored.** Each output has one `lkg_value` scalar. A healthy
+committed sample replaces it. A substituted sample leaves the same scalar in
+place; NaN/Inf is never promoted.
 
-2.3 **LKG bindings are frozen.** When a graph becomes LKG, its inlined cell values are baked at the moment of LKG promotion. Subsequent cell mutations do **not** rebind LKG. This keeps fallback deterministic and avoids a recompile inside an error path.
+2.3 **State coherence.** A state resource owned by the failing output does not
+commit its candidate next value on a fallback sample. It resumes from its
+previous finite state when that owner next produces a healthy root. This
+prevents oscillators and integrators from advancing inaudibly behind a held
+sample. Named/shared state sources have their own writer context and continue
+according to their own finite-update rule.
 
-2.4 **Bootstrap.** If an output has never had a healthy program, runtime error falls back to the last valid sample if one exists; otherwise to the neutral default (`0`).
+2.4 **Bootstrap.** If no healthy sample has ever been committed, the stored
+value is the compiler-domain neutral output, numeric `0`.
 
-2.5 **Cascading failures don't promote unhealthy programs.** If A is healthy and becomes LKG, then B replaces A and immediately fails, the engine falls back to A — not to a "B → fall back" chain. Only programs that have completed a healthy batch are eligible to be LKG.
+2.5 **No fallback chains.** There is exactly one held scalar per output, not a
+chain of candidate programs or values. Every runtime sample either publishes
+its finite root or reuses that scalar.
 
-2.6 **Compile-time errors do not consume LKG.** A program that fails to compile is not promoted, demoted, or substituted; the active program is unchanged.
+2.6 **Compile-time errors do not consume fallback.** A program that fails to
+compile is not promoted, demoted, or substituted; the active graph, held
+sample, source, dependencies, state ownership, and health are unchanged.
 
 ## 3. Numerical Hygiene
 
@@ -63,7 +79,12 @@
 
 The mode is set over the serial wire protocol via `set-failure-mode` ([wire-protocol.md §5.18](wire-protocol.md)) and on the WASM runtime via `useq_set_failure_mode(0|1)` / `useq_get_failure_mode()`. It is global, not per-output (a per-output variant was considered and rejected as disproportionate wire/UI complexity). It defaults to `lkg` at boot/init and is not persisted by the engine; the editor re-sends its setting on connect.
 
-3.3 **Fallback tracking is per-pass.** The engine recomputes the per-output fallback set (`NodePool::runtime_fallback_mask`) on every execution pass: a sample whose root value is finite clears the output's fallback state. This realises §1.7's transient semantics — a phase-dependent failure shows fallback only while it is actually failing — and §5.2's `fallback → running` transition on healthy reassignment. State-slot commits never accept non-finite values (a poisoned state slot could otherwise never recover); the previous finite state value is retained instead.
+3.3 **Fallback tracking is per-pass.** The engine recomputes the per-output
+fallback set (`NodePool::runtime_fallback_mask`) on every live execution pass:
+a sample whose root is finite clears that output's fallback state. Read-only
+sampling and projection restore this diagnostic field with the rest of the
+runtime snapshot and cannot create or clear live health. State commits follow
+§2.3 and never accept non-finite update roots.
 
 > **Status note.** Prior to v1.2.0 the implementation only performed the `zero` squash (spec drift flagged by two independent audits). The `lkg` path above is now implemented and is the default; the squash survives solely as the opt-in legacy mode.
 
@@ -79,7 +100,7 @@ The mode is set over the serial wire protocol via `set-failure-mode` ([wire-prot
 |---|---|
 | `idle` | No program assigned. Output emits the neutral default (`0`). |
 | `running` | Active program is healthy and producing samples. |
-| `fallback` | Active program errored; output is running its LKG program. |
+| `fallback` | The latest live sample was unhealthy; output held its last finite sample. |
 | `error` | No LKG available; output is holding its last valid sample (or neutral default). |
 
 5.2 Transitions:
@@ -88,13 +109,14 @@ The mode is set over the serial wire protocol via `set-failure-mode` ([wire-prot
 idle ── (assign) ─────────► running
 running ── (compile fail on new assignment) ─► running   (active unchanged)
 running ── (runtime error) ──────────────────► fallback
-fallback ── (new healthy assignment) ────────► running
-fallback ── (LKG also fails) ────────────────► error
+fallback ── (next healthy sample or assignment) ─► running
 error ── (new healthy assignment) ───────────► running
 * ── (clear) ────────────────────────────────► idle
 ```
 
-5.3 The state is queryable by the editor (typically once per animation frame). It drives output-pane indicators (gutter icon, border colour) and the "using previous version — view error" badge that appears on `fallback`.
+5.3 The state is queryable by the editor (typically once per animation frame).
+It drives output-pane indicators and a "holding last good sample — view
+error" badge on `fallback`.
 
 ## 6. Success Feedback
 
@@ -125,7 +147,11 @@ error ── (new healthy assignment) ───────────► runni
 
 ## 8. Cascade Noise and Display Cap
 
-8.1 **Report-and-continue.** The compiler does not stop at the first error. Non-fatal errors (arity, type, undefined name) emit a typed placeholder and compilation continues so the user sees every problem in one pass. Fatal errors (malformed AST, recursion in signal context, side-effect in signal context) abort early.
+8.1 **Candidate-local report-and-continue.** Within one candidate graph the
+compiler may collect multiple independent diagnostics using typed
+placeholders. The candidate remains rejected and publishes nothing. At the
+top-level submission boundary, evaluation stops at the first rejected form;
+later forms are not executed.
 
 8.2 **Typed placeholders.** When a non-fatal error is reported in a numeric context, the compiler substitutes `0.0`, not a sentinel `nil`. This prevents a single error from triggering a cascade of spurious type errors in downstream arithmetic.
 
@@ -150,7 +176,8 @@ error ── (new healthy assignment) ───────────► runni
 10.2 When an output errors mid-batch the runtime:
 
 1. Records the runtime diagnostic against that output.
-2. Substitutes its LKG sample (or last valid / neutral default per [§2.4](#2-last-known-good-lkg-fallback)) for the remainder of the batch.
+2. Substitutes its held sample (or neutral default per §2.4) for each failing
+   sample; later samples are still evaluated and may recover.
 3. Continues evaluating the next output.
 
 10.3 The batch return value indicates overall success only as a coarse summary. Individual output errors are retrieved via `useq_active_diagnostics()` / `useq_output_diagnostics()`.

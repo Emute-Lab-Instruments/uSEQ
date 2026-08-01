@@ -87,7 +87,12 @@ void Firmware::tick()
 
     // ── 1. Time ────────────────────────────────────────────────────────────
 #ifdef ENABLE_SIGNAL_ENGINE
-    const double t = get_system_time_seconds() + engine.state.time_offset;
+    const double wall_t = get_system_time_seconds();
+    double t = engine.state.logical_time(wall_t);
+    engine.state.current_wall_time = wall_t;
+    engine.state.current_time = t;
+    engine.state.current_dt = engine.state.reset_dt_on_next_tick
+        ? 0.0 : t - prev_tick_time;
 #else
     const double t = get_system_time_seconds();
 #endif
@@ -106,10 +111,16 @@ void Firmware::tick()
                 len++;
             }
 
-            engine.state.current_time = t;
-            engine.state.current_dt = t - prev_tick_time;
             sig::EvalResult result = sig::eval_cold(code_buffer, len, engine);
             serial.send_eval_response(result);
+
+            // A transport command may have changed the wall-to-logical-time
+            // mapping (pause, resume, rewind, or stop). Apply it in this same
+            // tick so no stale pre-command time reaches the executor/stream.
+            t = engine.state.logical_time(wall_t);
+            engine.state.current_time = t;
+            engine.state.current_dt = engine.state.reset_dt_on_next_tick
+                ? 0.0 : t - prev_tick_time;
         }
     }
 #else
@@ -142,7 +153,8 @@ void Firmware::tick()
         // Fill execution context — no heap, all members / struct fields
         sig::ExecutionContext ctx;
         ctx.t              = t;
-        ctx.dt             = t - prev_tick_time;
+        ctx.dt             = engine.state.reset_dt_on_next_tick
+            ? 0.0 : t - prev_tick_time;
         ctx.cell_values    = cell_snapshot;
         ctx.hw_inputs      = io.inputs;
         ctx.data_pool      = engine.cells.data_pool;
@@ -154,6 +166,9 @@ void Firmware::tick()
 
         sig::execute_all_outputs(engine.pool, ctx);
         sig::commit_state(engine.pool, workspace);
+        engine.state.current_time = t;
+        engine.state.current_dt = ctx.dt;
+        engine.state.reset_dt_on_next_tick = false;
         prev_tick_time = t;
     }
 #endif

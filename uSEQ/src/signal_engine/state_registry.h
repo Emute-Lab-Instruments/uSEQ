@@ -52,6 +52,11 @@ struct StateResourceKey {
 struct StateResourceEntry {
     StateResourceKey key;
     uint16_t slot_index;
+    // Compiler context that owns the sole update writer for this resource.
+    // Output indices, defstate update contexts, and synth-control contexts
+    // inhabit one namespace; ANON_STATE_CONTEXT_NONE is reserved for legacy
+    // callers that do not publish a live graph.
+    uint16_t owner_context;
     double init_value;
     bool active;
 };
@@ -59,12 +64,30 @@ struct StateResourceEntry {
 struct StateResourceRegistry {
     StateResourceEntry entries[MAX_STATE_SLOTS];
     uint16_t entry_count = 0;
+    uint16_t free_slots[MAX_STATE_SLOTS];
+    uint16_t free_slot_count = 0;
+    bool last_owner_conflict = false;
 
     // Resolve a key to a dense state slot index. If the key already exists,
     // returns its slot and preserves accumulated state. If new, allocates a
     // fresh slot and writes init_value. Returns NODE_NONE on overflow.
     uint16_t resolve(const StateResourceKey& key, double init_value,
-                     double* state_values, uint16_t& state_slot_count);
+                     double* state_values, uint16_t& state_slot_count,
+                     uint16_t owner_context = ANON_STATE_CONTEXT_NONE);
+
+    // Begin/commit publication for one compiler context. Existing resources
+    // owned by the context are marked unseen; resolving them reactivates
+    // them. On commit, resources no longer present are retired and their
+    // slots become reusable. A rejected build restores the registry snapshot
+    // instead of calling commit_context().
+    void begin_context(uint16_t owner_context);
+    void commit_context(uint16_t owner_context,
+                        uint16_t* state_update_roots,
+                        uint16_t* state_owner_contexts);
+
+    // Reclaimed UGen slots can also host a later named defstate. Returns
+    // NODE_NONE when there is no reusable hole.
+    uint16_t take_free_slot();
 
     // Mark all entries inactive. Used before recompilation — entries that
     // remain inactive after compilation are candidates for GC.

@@ -480,11 +480,20 @@ with a diagnostic.
 
 ## 11. Failure Model and LKG
 
-11.1 The active output graph and its LKG fallback ([failure-model.md](failure-model.md)) each have their own state vectors. State is graph-scoped, not output-scoped.
+11.1 There is one live state-slot vector, with one update-writer compiler
+context per resource. Outputs do not retain parallel fallback programs or
+fallback state vectors; [failure-model.md](failure-model.md) defines a scalar
+last-good-sample hold.
 
-11.2 **On runtime error in the active graph,** the runtime swaps to LKG and uses LKG's state vector for the rest of the sampling pass. The active graph's state vector is preserved (in case the user fixes the code and the graph becomes healthy again), but the failing samples are computed from LKG.
+11.2 **On a runtime failure at an output root,** state resources owned by that
+output do not commit their candidate next values. They resume from the last
+finite, audible state on the next healthy sample. Resources owned by another
+output or by an explicit named/shared state source are unaffected.
 
-11.3 **On promotion to LKG,** the graph's current state vector becomes the LKG state. Frozen at the moment of promotion. Subsequent activity on the *new* active graph does not mutate LKG state.
+11.3 **On successful recompilation,** matching resource keys owned by the same
+compiler context preserve their state. Removed keys are retired and their
+slots become reusable. A rejected candidate restores values, update roots,
+owners, registry entries, and capacity exactly.
 
 11.4 **A NaN or non-finite value in a state cell is treated as a runtime error** at the moment it would propagate to an output root. The output falls back to LKG. The state cell may continue to hold the bad value internally; the next healthy compilation supersedes it.
 

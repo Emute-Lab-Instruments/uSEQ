@@ -128,7 +128,7 @@ ok "no blocking/wait symbol imports"
 # artefact must not overlap with that surface. We check:
 #   1. The artefact is reasonably small (< 64 KB).
 #   2. It does not export any useq_* or interpreter symbol.
-#   3. It exposes exactly the 16 declared osc_sine_* ABI symbols.
+#   3. It exposes the 20 declared osc_sine_* ABI symbols.
 
 size_bytes=$(stat -c %s "$WASM")
 if [ "$size_bytes" -ge 65536 ]; then
@@ -151,12 +151,16 @@ REQUIRED_EXPORTS=(
     osc_sine_output_stride_bytes
     osc_sine_min_quantum
     osc_sine_max_quantum
+    osc_sine_sample_rate_abi_version
     osc_sine_sample_rate
     osc_sine_fade_in_ms
     osc_sine_fade_out_ms
     osc_sine_validate_layout
     osc_sine_init
     osc_sine_compute
+    osc_sine_compute_at_sample_rate
+    osc_sine_compute_fm
+    osc_sine_compute_fm_at_sample_rate
     osc_sine_get_phase
     osc_sine_get_smoothed_amp
     osc_sine_reset_phase
@@ -166,7 +170,7 @@ for sym in "${REQUIRED_EXPORTS[@]}"; do
         fail "required export '${sym}' not found in module"
     fi
 done
-ok "all 16 osc_sine_* ABI exports present"
+ok "all 20 osc_sine_* ABI exports present"
 
 # Compute (`osc_sine_compute`) must be exported; this is what the host adapter
 # calls per render quantum.

@@ -79,6 +79,35 @@ struct ProjectionFork {
 
 static ProjectionFork g_projection_fork = {};
 
+static void reset_host_session_caches() {
+    for (ProbeSlot& slot : g_probe_slots) slot = ProbeSlot{};
+    if (g_probe_pool) g_probe_pool->reset();
+    g_probe_dirty = false;
+    g_projection_fork = ProjectionFork{};
+    g_cell_revision++;
+}
+
+// Executor passes publish their fallback status through NodePool even though
+// the pool is otherwise passed as const. Sampling/projection APIs are
+// observational: preserve the live diagnostic state across every such pass,
+// including exceptional exits.
+class PreserveRuntimeFallbackMask {
+public:
+    explicit PreserveRuntimeFallbackMask(sig::NodePool& pool)
+        : pool_(pool), saved_(pool.runtime_fallback_mask) {}
+
+    ~PreserveRuntimeFallbackMask() {
+        pool_.runtime_fallback_mask = saved_;
+    }
+
+    PreserveRuntimeFallbackMask(const PreserveRuntimeFallbackMask&) = delete;
+    PreserveRuntimeFallbackMask& operator=(const PreserveRuntimeFallbackMask&) = delete;
+
+private:
+    sig::NodePool& pool_;
+    uint64_t saved_;
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 static char* alloc_cstr(const char* s) {
@@ -135,14 +164,14 @@ static uint16_t resolve_output_name(const char* name) {
 // are compiled, executed once, and the numeric result is returned.
 static double eval_expression_at_time(const char* expr, double t) {
     if (!g_engine) return std::numeric_limits<double>::quiet_NaN();
-    double saved_time = g_engine->state.current_time;
-    double saved_dt = g_engine->state.current_dt;
-    g_engine->state.current_time = t;
-    g_engine->state.current_dt = t - g_prev_tick_time;
+    sig::EngineState saved_state = g_engine->state;
+    g_engine->state.current_wall_time = t;
+    g_engine->state.current_time = g_engine->state.logical_time(t);
+    g_engine->state.current_dt = g_engine->state.reset_dt_on_next_tick
+        ? 0.0 : g_engine->state.current_time - g_prev_tick_time;
     uint32_t len = (uint32_t)strlen(expr);
     sig::EvalResult result = sig::eval_expression(expr, len, *g_engine);
-    g_engine->state.current_time = saved_time;
-    g_engine->state.current_dt = saved_dt;
+    g_engine->state = saved_state;
     if (result.kind == sig::EvalResult::Number) return result.number;
     return std::numeric_limits<double>::quiet_NaN();
 }
@@ -199,6 +228,8 @@ static void project_from_fork(
     const double* t_array, int num_samples,
     uint16_t num_active, double* batch_buf)
 {
+    PreserveRuntimeFallbackMask preserve_fallback_mask(g_engine->pool);
+
     // Save live state
     double saved_state[sig::MAX_STATE_SLOTS];
     uint16_t saved_slot_count = g_engine->pool.state_slot_count;
@@ -302,6 +333,8 @@ static void execute_batch_sequential(
     const double* cell_values,
     uint16_t num_active, double* batch_buf)
 {
+    PreserveRuntimeFallbackMask preserve_fallback_mask(g_engine->pool);
+
     // Save all mutable state so visualization doesn't corrupt the live signal
     double saved_state[sig::MAX_STATE_SLOTS];
     double saved_prev_outputs[sig::MAX_OUTPUTS];
@@ -368,8 +401,35 @@ static void execute_batch_sequential(
     g_prev_tick_time = saved_prev_t;
 }
 
-// Execute all outputs at a given time, writing results into output_values.
-static void execute_at_time(double t, double* output_values) {
+// Execute the whole live graph once. Optional synth-control output is ordered
+// exactly like the published controls[] artefact, so the host can use array
+// position as its commit-plan channel index without evaluating a second VM.
+static void execute_at_time(double wall_time, double* output_values,
+                            double* synth_control_values = nullptr,
+                            uint16_t synth_control_capacity = 0) {
+    g_engine->state.current_wall_time = wall_time;
+    double t = g_engine->state.logical_time(wall_time);
+    g_engine->state.current_time = t;
+
+    if (!g_engine->state.is_playing) {
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+            output_values[i] = g_engine->pool.outputs[i].valid
+                ? g_engine->pool.outputs[i].lkg_value : 0.0;
+        }
+        if (synth_control_values) {
+            uint16_t count = g_engine->synth_graph.control_count();
+            if (count > synth_control_capacity) count = synth_control_capacity;
+            for (uint16_t i = 0; i < count; i++) {
+                const sig::SynthControlChannel& control =
+                    g_engine->synth_graph.controls[i];
+                synth_control_values[i] = control.has_lkg
+                    ? control.lkg_value : 0.0;
+            }
+        }
+        g_engine->state.current_dt = 0.0;
+        return;
+    }
+
     double cell_values[sig::MAX_CELLS];
     g_engine->cells.snapshot_values(cell_values, sig::MAX_CELLS);
 
@@ -377,7 +437,8 @@ static void execute_at_time(double t, double* output_values) {
 
     sig::ExecutionContext ctx;
     ctx.t             = t;
-    ctx.dt            = t - g_prev_tick_time;
+    ctx.dt            = g_engine->state.reset_dt_on_next_tick
+        ? 0.0 : t - g_prev_tick_time;
     ctx.cell_values   = cell_values;
     ctx.hw_inputs     = g_hw_inputs;
     ctx.data_pool     = g_engine->cells.data_pool;
@@ -388,7 +449,40 @@ static void execute_at_time(double t, double* output_values) {
     ctx.workspace     = node_values;
     sig::execute_all_outputs(g_engine->pool, ctx);
 
-    sig::commit_state(g_engine->pool, node_values);
+    uint16_t failed_contexts[sig::MAX_SYNTH_CONTROLS] = {};
+    uint16_t failed_count = 0;
+    if (synth_control_values) {
+        uint16_t count = g_engine->synth_graph.control_count();
+        if (count > synth_control_capacity) count = synth_control_capacity;
+        for (uint16_t i = 0; i < count; i++) {
+            sig::SynthControlChannel& control =
+                g_engine->synth_graph.controls[i];
+            double value = control.root_node < g_engine->pool.node_count
+                ? node_values[control.root_node]
+                : std::numeric_limits<double>::quiet_NaN();
+            if (std::isfinite(value)) {
+                control.lkg_value = value;
+                control.has_lkg = true;
+            } else {
+                value = control.has_lkg ? control.lkg_value : 0.0;
+                bool already_failed = false;
+                for (uint16_t f = 0; f < failed_count; f++) {
+                    if (failed_contexts[f] == control.owner_context) {
+                        already_failed = true;
+                        break;
+                    }
+                }
+                if (!already_failed && failed_count < sig::MAX_SYNTH_CONTROLS)
+                    failed_contexts[failed_count++] = control.owner_context;
+            }
+            synth_control_values[i] = value;
+        }
+    }
+
+    sig::commit_state(g_engine->pool, node_values,
+                      failed_contexts, failed_count);
+    g_engine->state.current_dt = ctx.dt;
+    g_engine->state.reset_dt_on_next_tick = false;
     g_prev_tick_time = t;
 
     // Update previous output values for next tick
@@ -475,15 +569,23 @@ extern "C"
             g_last_diagnostic_count = 0;
             g_projection_fork.valid = false;
 
-            g_engine->state.current_time = g_current_time;
-            g_engine->state.current_dt = g_current_time - g_prev_tick_time;
+            g_engine->state.current_wall_time = g_current_time;
+            g_engine->state.current_time =
+                g_engine->state.logical_time(g_current_time);
+            g_engine->state.current_dt = g_engine->state.reset_dt_on_next_tick
+                ? 0.0 : g_engine->state.current_time - g_prev_tick_time;
 
             uint32_t length = (uint32_t)strlen(input);
+            uint32_t generation_before = g_engine->session_generation;
             sig::EvalResult result = sig::eval_cold(input, length, *g_engine);
+
+            if (g_engine->session_generation != generation_before)
+                reset_host_session_caches();
 
             // User eval may have changed cell definitions — invalidate
             // probe compilation cache so probes pick up the new state.
-            g_cell_revision++;
+            if (g_engine->session_generation == generation_before)
+                g_cell_revision++;
 
             // Copy diagnostics
             g_last_diagnostic_count = result.diagnostic_count;
@@ -545,6 +647,37 @@ extern "C"
         }
     }
 
+    // Advance the live VM exactly once and return ordered synth-control
+    // samples for the published artefact revision. Returns the required
+    // control count, or -1 when the caller buffer is invalid/too small.
+    int useq_tick_synth_controls(double wall_time,
+                                 int buffer_ptr,
+                                 int buffer_length)
+    {
+        if (!g_engine) {
+            s_last_error = "uSEQ not initialized";
+            return -1;
+        }
+        if (!std::isfinite(wall_time)) {
+            s_last_error = "wall_time must be finite";
+            return -1;
+        }
+        uint16_t count = g_engine->synth_graph.control_count();
+        if (buffer_length < 0 || (uint32_t)buffer_length < count) {
+            s_last_error = "Synth control buffer too small";
+            return -1;
+        }
+        if (count > 0 && buffer_ptr == 0) {
+            s_last_error = "Synth control buffer must not be null";
+            return -1;
+        }
+        double ignored_outputs[sig::MAX_OUTPUTS] = {};
+        double* controls = reinterpret_cast<double*>(buffer_ptr);
+        execute_at_time(wall_time, ignored_outputs, controls, count);
+        s_last_error = "";
+        return (int)count;
+    }
+
     double useq_eval_output(const char* name, double time_seconds)
     {
         if (!g_engine) {
@@ -559,12 +692,15 @@ extern "C"
             return std::numeric_limits<double>::quiet_NaN();
         }
 
+        PreserveRuntimeFallbackMask preserve_fallback_mask(g_engine->pool);
+
         // Save all mutable state — useq_eval_output is read-only and must
         // not corrupt live engine state (execute_at_time advances everything).
         double saved_state[sig::MAX_STATE_SLOTS];
         double saved_prev_outputs[sig::MAX_OUTPUTS];
         double saved_lkg[sig::MAX_OUTPUTS];
         uint16_t saved_slot_count = g_engine->pool.state_slot_count;
+        sig::EngineState saved_engine_state = g_engine->state;
         memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
         memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
@@ -580,6 +716,7 @@ extern "C"
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
             g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
         g_engine->pool.state_slot_count = saved_slot_count;
+        g_engine->state = saved_engine_state;
         g_prev_tick_time = saved_prev_t;
 
         return output_values[output_index];
@@ -682,7 +819,9 @@ extern "C"
     {
         // The wrapper renders the versioned body through the shared
         // synth_graph helper. Native tests exercise the same path.
-        char buf[sig::SYNTH_ARTIFACT_JSON_CAP + 64];
+        // Static storage avoids placing the maximum 64-node artefact buffer
+        // on the WASM stack.
+        static char buf[sig::SYNTH_ARTIFACT_JSON_CAP + 64];
         bool ok;
         if (g_engine) {
             ok = sig::synth_artifacts_render_abi_wrapper(
@@ -691,7 +830,7 @@ extern "C"
         } else {
             // Engine not initialised — emit the canonical empty payload.
             std::snprintf(buf, sizeof(buf),
-                "{\"abi\":%u,\"revision\":0,\"declarations\":[],\"controls\":[]}",
+                "{\"abi\":%u,\"revision\":0,\"declarations\":[],\"controls\":[],\"connections\":[]}",
                 (unsigned)sig::SYNTH_ARTIFACT_ABI_VERSION);
             ok = true;
         }
@@ -701,7 +840,7 @@ extern "C"
             // consumer version. We pass the engine's own version, so the
             // failure path here is purely defensive.
             std::snprintf(buf, sizeof(buf),
-                "{\"abi\":%u,\"revision\":0,\"declarations\":[],\"controls\":[]}",
+                "{\"abi\":%u,\"revision\":0,\"declarations\":[],\"controls\":[],\"connections\":[]}",
                 (unsigned)sig::SYNTH_ARTIFACT_ABI_VERSION);
         }
         return alloc_cstr(buf);
@@ -1099,6 +1238,8 @@ extern "C"
                 return alloc_cstr("{\"error\": \"Failed to parse outputs JSON\"}");
             }
 
+            PreserveRuntimeFallbackMask preserve_fallback_mask(g_engine->pool);
+
             // Resolve output indices
             std::vector<uint16_t> output_indices;
             for (const auto& name : outputs) {
@@ -1238,6 +1379,8 @@ extern "C"
                 s_last_error = "Failed to parse outputs JSON array";
                 return -1;
             }
+
+            PreserveRuntimeFallbackMask preserve_fallback_mask(g_engine->pool);
 
             int num_channels = (int)outputs.size();
             int required_slots = num_channels * num_samples;
@@ -1491,12 +1634,24 @@ extern "C"
             s_last_error = "uSEQ not initialized";
             return -1;
         }
+        if (!outputs_json) {
+            s_last_error = "outputs_json must not be null";
+            return -1;
+        }
+        if (!std::isfinite(tick_time)) {
+            s_last_error = "tick_time must be finite";
+            return -1;
+        }
         if (num_future_samples < 0) {
             s_last_error = "num_future_samples must be >= 0";
             return -1;
         }
         if (projection_mode < 0 || projection_mode > 2) {
             s_last_error = "projection_mode must be 0, 1, or 2";
+            return -1;
+        }
+        if (buffer_length < 0) {
+            s_last_error = "buffer_length must be >= 0";
             return -1;
         }
 
@@ -1507,18 +1662,74 @@ extern "C"
                 return -1;
             }
 
+            if (outputs.size() > (size_t)std::numeric_limits<int>::max()) {
+                s_last_error = "Too many output channels";
+                return -1;
+            }
+
             int num_channels = (int)outputs.size();
             int proj_count = (projection_mode == 0) ? 0 : num_future_samples;
-            int required_slots = num_channels + (num_channels * proj_count);
-            if (required_slots > buffer_length) {
+            size_t required_slots = (size_t)num_channels * ((size_t)proj_count + 1);
+            if (required_slots > (size_t)buffer_length) {
                 s_last_error = "Buffer too small";
                 return -1;
+            }
+            if (required_slots > 0 && buffer_ptr == 0) {
+                s_last_error = "buffer_ptr must not be null";
+                return -1;
+            }
+
+            // Projection validation is part of the call's precondition, not
+            // phase 2: an invalid projection request must not commit phase 1.
+            double logical_tick_time =
+                g_engine->state.logical_time(tick_time);
+            double logical_projection_end =
+                g_engine->state.logical_time(projection_end);
+            double origin = logical_tick_time;
+            double step = 0.0;
+            if (proj_count > 0) {
+                if (projection_mode == 2) {
+                    if (!g_projection_fork.valid) {
+                        s_last_error =
+                            "extend-frontier requested but no valid projection fork";
+                        return -1;
+                    }
+                    origin = g_projection_fork.frontier_time;
+                }
+                if (!std::isfinite(logical_projection_end) ||
+                    logical_projection_end <= origin) {
+                    s_last_error = "projection_end must be > fork frontier";
+                    return -1;
+                }
+                step = (logical_projection_end - origin) /
+                    (double)proj_count;
+                if (!std::isfinite(step) || step <= 0.0) {
+                    s_last_error = "projection interval must be finite";
+                    return -1;
+                }
             }
 
             std::vector<uint16_t> output_indices;
             output_indices.reserve(num_channels);
             for (const auto& name : outputs)
                 output_indices.push_back(resolve_output_name(name.c_str()));
+
+            // Allocate every projection buffer before the live tick. A bad
+            // request or allocation failure therefore cannot half-commit the
+            // combined operation.
+            std::vector<double> t_array(proj_count);
+            for (int i = 0; i < proj_count; i++)
+                t_array[i] = origin + step * (i + 1);
+
+            uint16_t index_to_row[sig::MAX_OUTPUTS];
+            uint16_t num_active = 0;
+            for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+                if (g_engine->pool.outputs[i].valid)
+                    index_to_row[i] = num_active++;
+                else
+                    index_to_row[i] = sig::NODE_NONE;
+            }
+            std::vector<double> batch_buf((size_t)num_active * proj_count, 0.0);
 
             double* buf = reinterpret_cast<double*>(buffer_ptr);
 
@@ -1543,39 +1754,10 @@ extern "C"
                 return num_channels;
             }
 
-            if (projection_mode == 2 && !g_projection_fork.valid) {
-                s_last_error = "extend-frontier requested but no valid projection fork";
-                return -1;
-            }
-
             // Reset-fill: clone post-tick live state into the fork
             if (projection_mode == 1)
-                reset_projection_fork(tick_time);
+                reset_projection_fork(g_engine->state.current_time);
 
-            // Build time array — samples strictly after the fork origin.
-            // step = (end - origin) / N, first sample at origin + step.
-            double origin = g_projection_fork.frontier_time;
-            if (!std::isfinite(projection_end) || projection_end <= origin) {
-                s_last_error = "projection_end must be > fork frontier";
-                return -1;
-            }
-
-            double step = (projection_end - origin) / (double)proj_count;
-            std::vector<double> t_array(proj_count);
-            for (int i = 0; i < proj_count; i++)
-                t_array[i] = origin + step * (i + 1);
-
-            // Active-output row mapping
-            uint16_t index_to_row[sig::MAX_OUTPUTS];
-            uint16_t num_active = 0;
-            for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-                if (g_engine->pool.outputs[i].valid)
-                    index_to_row[i] = num_active++;
-                else
-                    index_to_row[i] = sig::NODE_NONE;
-            }
-
-            std::vector<double> batch_buf(num_active * proj_count, 0.0);
             project_from_fork(t_array.data(), proj_count, num_active, batch_buf.data());
 
             // Copy requested channels into caller's buffer

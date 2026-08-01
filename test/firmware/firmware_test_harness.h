@@ -79,6 +79,14 @@ public:
 
     sig::EvalResult eval(const char* code)
     {
+        // Mirror the production serial-eval boundary: cold transport commands
+        // observe both the monotonic wall clock and current logical time.
+        fw.engine.state.current_wall_time = sim_time_;
+        fw.engine.state.current_time =
+            fw.engine.state.logical_time(sim_time_);
+        fw.engine.state.current_dt = fw.engine.state.reset_dt_on_next_tick
+            ? 0.0
+            : fw.engine.state.current_time - fw.prev_tick_time;
         return sig::eval_cold(code, static_cast<uint32_t>(std::strlen(code)),
                               fw.engine);
     }

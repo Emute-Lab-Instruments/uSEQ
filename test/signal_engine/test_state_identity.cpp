@@ -466,6 +466,56 @@ TEST_CASE("State identity: re-resolve does not grow entry count",
     REQUIRE(h.engine.registry.entry_count == count_after_first);
 }
 
+TEST_CASE("State identity: one update writer owns an explicit id",
+          "[golden][state_identity][ownership]") {
+    GoldenHarness h;
+
+    h.eval_ok("(a1 (phasor 1 :id \"owned-phase\"))");
+    uint16_t entries_before = h.engine.registry.entry_count;
+    uint16_t slots_before = h.engine.pool.state_slot_count;
+
+    EvalResult conflict =
+        h.eval_result("(a2 (phasor 2 :id \"owned-phase\"))");
+    REQUIRE(conflict.kind == EvalResult::Error);
+    REQUIRE(conflict.diagnostic_count >= 1);
+    REQUIRE(conflict.diagnostics[0].category ==
+            DiagnosticCategory::Boundary);
+    REQUIRE(h.engine.pool.outputs[h.output_index("a2")].root_node ==
+            NODE_NONE);
+    REQUIRE(h.engine.registry.entry_count == entries_before);
+    REQUIRE(h.engine.pool.state_slot_count == slots_before);
+
+    // Recompiling the owning program is still legal and preserves state.
+    h.eval_ok("(a1 (phasor 3 :id \"owned-phase\"))");
+    REQUIRE(h.engine.registry.entry_count == entries_before);
+    REQUIRE(h.engine.pool.state_slot_count == slots_before);
+}
+
+TEST_CASE("State identity: retired program state slots are reused",
+          "[golden][state_identity][reclaim]") {
+    GoldenHarness h;
+
+    h.eval_ok("(a1 (phasor 1 :id \"retired-phase\"))");
+    REQUIRE(h.engine.registry.entry_count == 1);
+    REQUIRE(h.engine.pool.state_slot_count == 1);
+    uint16_t retired_slot = h.engine.registry.entries[0].slot_index;
+
+    // Publishing a pure replacement retires the old program's only writer.
+    h.eval_ok("(a1 0.5)");
+    REQUIRE(h.engine.registry.entry_count == 0);
+    REQUIRE(h.engine.registry.free_slot_count == 1);
+    REQUIRE(h.engine.pool.state_update_roots[retired_slot] == NODE_NONE);
+
+    // A different program can reuse the hole without increasing the
+    // high-water mark, so repeated edit/replacement cycles do not exhaust
+    // fixed firmware state storage.
+    h.eval_ok("(a2 (integrate 1 :id \"new-integrator\"))");
+    REQUIRE(h.engine.registry.entry_count == 1);
+    REQUIRE(h.engine.registry.entries[0].slot_index == retired_slot);
+    REQUIRE(h.engine.registry.free_slot_count == 0);
+    REQUIRE(h.engine.pool.state_slot_count == 1);
+}
+
 // ============================================================================
 // Projection fork: simulate save/restore cycle and verify invariants
 // ============================================================================

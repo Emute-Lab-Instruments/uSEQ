@@ -14,9 +14,37 @@ namespace sig {
 void SignalEngine::init_defaults(double bpm, int beats_per_bar,
                                  int bars_per_phrase, int phrases_per_section) {
     GraphBuilder::init_symbols();
-    cells.init_timing_defaults(bpm, beats_per_bar, bars_per_phrase,
-                               phrases_per_section);
     state = EngineState{};
+    session_generation = 0;
+    reset_session_storage(bpm, beats_per_bar, bars_per_phrase,
+                          phrases_per_section, false);
+}
+
+void SignalEngine::reset_session_storage(double bpm, int beats_per_bar,
+                                         int bars_per_phrase,
+                                         int phrases_per_section,
+                                         bool publish_synth_clear) {
+    cells.reset(bpm, beats_per_bar, bars_per_phrase, phrases_per_section);
+    arena.reset();
+    pool.reset();
+    scratch_pool.reset();
+    for (uint16_t i = 0; i < MAX_OUTPUTS; i++)
+        output_sources[i] = OutputSource{};
+    for (uint16_t i = 0; i < MAX_STATE_SLOTS; i++)
+        state_sources[i] = StateUpdateSource{};
+    registry.clear();
+    if (publish_synth_clear) {
+        SynthRevision next_revision = synth_graph.revision + 1;
+        synth_graph = SynthGraph{};
+        synth_graph.revision = next_revision;
+        session_generation++;
+    } else {
+        synth_graph = SynthGraph{};
+    }
+    memset(eval_text_buf, 0, sizeof(eval_text_buf));
+    memset(pending_state_identity, 0, sizeof(pending_state_identity));
+    has_pending_state_identity = false;
+    eval_anon_synth_ordinal = 0;
 }
 
 // ── Helper constructors ─────────────────────────────────────────────────────
@@ -65,6 +93,77 @@ static EvalResult make_too_many_definitions_error() {
     return r;
 }
 
+// Graph construction currently interns directly into the live NodePool. Keep
+// a bounded rollback image in the engine's already-allocated scratch pool so a
+// rejected build cannot change state resources, live-edit metadata, or future
+// capacity. Newly interned graph nodes are discarded by reachability GC after
+// restoring the old roots. This avoids another full NodePool copy on firmware.
+struct GraphMutationSnapshot {
+    StateResourceRegistry registry;
+    uint8_t data_table_count = 0;
+    uint16_t state_slot_count = 0;
+    uint16_t live_slot_count = 0;
+    uint32_t arena_write_head = 0;
+};
+
+static GraphMutationSnapshot capture_graph_mutations(SignalEngine& engine) {
+    GraphMutationSnapshot saved;
+    saved.registry = engine.registry;
+    saved.data_table_count = engine.cells.data_table_count;
+    saved.state_slot_count = engine.pool.state_slot_count;
+    saved.live_slot_count = engine.pool.live_slot_count;
+    saved.arena_write_head = engine.arena.write_head;
+
+    memcpy(engine.scratch_pool.state_values, engine.pool.state_values,
+           sizeof(engine.pool.state_values));
+    memcpy(engine.scratch_pool.state_update_roots,
+           engine.pool.state_update_roots,
+           sizeof(engine.pool.state_update_roots));
+    memcpy(engine.scratch_pool.state_owner_context,
+           engine.pool.state_owner_context,
+           sizeof(engine.pool.state_owner_context));
+    memcpy(engine.scratch_pool.live_slots, engine.pool.live_slots,
+           sizeof(engine.pool.live_slots));
+    return saved;
+}
+
+static void restore_graph_mutations(SignalEngine& engine,
+                                    const GraphMutationSnapshot& saved) {
+    engine.registry = saved.registry;
+    engine.cells.data_table_count = saved.data_table_count;
+    engine.pool.state_slot_count = saved.state_slot_count;
+    engine.pool.live_slot_count = saved.live_slot_count;
+    engine.arena.write_head = saved.arena_write_head;
+    memcpy(engine.pool.state_values, engine.scratch_pool.state_values,
+           sizeof(engine.pool.state_values));
+    memcpy(engine.pool.state_update_roots,
+           engine.scratch_pool.state_update_roots,
+           sizeof(engine.pool.state_update_roots));
+    memcpy(engine.pool.state_owner_context,
+           engine.scratch_pool.state_owner_context,
+           sizeof(engine.pool.state_owner_context));
+    memcpy(engine.pool.live_slots, engine.scratch_pool.live_slots,
+           sizeof(engine.pool.live_slots));
+
+    register_synth_external_roots(engine);
+    engine.pool.gc_unreachable_nodes();
+    commit_synth_external_roots(engine);
+    engine.pool.rebuild_execution_order();
+    classify_outputs(engine.pool);
+}
+
+static bool source_slot_can_store(const SourceArena& arena,
+                                  uint32_t existing_offset,
+                                  uint32_t existing_length,
+                                  uint32_t new_length) {
+    bool existing_region_fits =
+        existing_offset <= SOURCE_ARENA_SIZE &&
+        existing_length <= SOURCE_ARENA_SIZE - existing_offset;
+    if (existing_region_fits && new_length <= existing_length) return true;
+    return arena.write_head <= SOURCE_ARENA_SIZE &&
+           new_length <= SOURCE_ARENA_SIZE - arena.write_head;
+}
+
 // ── Cold-path form evaluation ───────────────────────────────────────────────
 
 static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
@@ -110,6 +209,10 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
     if (val_tok.kind == TokenKind::Number) {
         // Simple numeric constant
         ts.consume();
+        if (ts.peek().kind != TokenKind::RParen) {
+            return make_error("define accepts exactly one value",
+                              "Try: (define name value)");
+        }
         engine.cells.cells[sym].kind = CellKind::Number;
         engine.cells.cells[sym].revision++;
         engine.cells.cells[sym].value = val_tok.number;
@@ -129,9 +232,17 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
                 values[count++] = elem.number;
             }
         }
-        ts.expect(TokenKind::RBracket);
+        if (!ts.expect(TokenKind::RBracket) ||
+            ts.peek().kind != TokenKind::RParen) {
+            return make_error("define has an invalid vector value",
+                              "Try: (define name [1 2 3])");
+        }
 
         uint16_t table_id = engine.cells.store_data_table(values, count);
+        if (table_id == UINT8_MAX) {
+            return make_error("Out of data table storage",
+                              "Use (useq-clear) or reuse an existing vector");
+        }
         engine.cells.cells[sym].kind = CellKind::Data;
         engine.cells.cells[sym].data_table_id = table_id;
         engine.cells.cells[sym].revision++;
@@ -146,6 +257,11 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
         // Skip past the expression to find its extent
         GraphBuilder::skip_form(ts);
         uint32_t byte_end = span_end_of(ts, ts.pos);
+
+        if (ts.peek().kind != TokenKind::RParen) {
+            return make_error("define accepts exactly one value",
+                              "Try: (define name value)");
+        }
 
         // Copy the expression source text into the arena FIRST. If the arena
         // is full, fail the define without touching the cell — otherwise the
@@ -205,11 +321,20 @@ static EvalResult do_defn(TokenStream& ts, SignalEngine& engine,
     info.param_count = 0;
     while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
         Token param = ts.consume();
-        if (param.kind == TokenKind::Symbol && info.param_count < MAX_CALLABLE_PARAMS) {
-            info.params[info.param_count++] = param.symbol;
+        if (param.kind != TokenKind::Symbol) {
+            return make_error("defn parameter names must be symbols",
+                              "Try: (defn name [arg] body)");
         }
+        if (info.param_count >= MAX_CALLABLE_PARAMS) {
+            return make_error("defn has too many parameters",
+                              "Split the function or use fewer parameters");
+        }
+        info.params[info.param_count++] = param.symbol;
     }
-    ts.expect(TokenKind::RBracket);
+    if (!ts.expect(TokenKind::RBracket)) {
+        return make_error("defn has an invalid parameter list",
+                          "Try: (defn name [arg] body)");
+    }
 
     // Store body source — skip body and record extent
     uint16_t body_start = ts.pos;
@@ -217,6 +342,11 @@ static EvalResult do_defn(TokenStream& ts, SignalEngine& engine,
 
     GraphBuilder::skip_form(ts);
     uint32_t byte_end = span_end_of(ts, ts.pos);
+
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("defn accepts exactly one body expression",
+                          "Try: (defn name [arg] body)");
+    }
 
     // Copy the body source text into the arena FIRST. If the arena is full,
     // fail the defn without touching the cell so dependents never recompile
@@ -281,6 +411,10 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
     Token val_tok = ts.peek();
     if (val_tok.kind == TokenKind::Number) {
         ts.consume();
+        if (ts.peek().kind != TokenKind::RParen) {
+            return make_error("set accepts exactly one value",
+                              "Try: (set name value)");
+        }
         store_number(val_tok.number);
     } else {
         // Non-numeric: compile in scratch pool, evaluate once, store result.
@@ -302,6 +436,12 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
             engine.cells.data_table_count = saved_tables;
             return make_error("set: expression could not be evaluated",
                               "Try: (set x 42)");
+        }
+
+        if (ts.peek().kind != TokenKind::RParen) {
+            engine.cells.data_table_count = saved_tables;
+            return make_error("set accepts exactly one value",
+                              "Try: (set name value)");
         }
 
         if (engine.scratch_pool.nodes[gr.root_node].op == NodeOp::Const) {
@@ -380,14 +520,16 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
         state_slot = (uint16_t)engine.cells.cells[sym].data_table_id;
     }
 
-    // Record the update expression source text FIRST. If the arena is full,
-    // fail the defstate before mutating anything — otherwise the state cell
-    // would keep its OLD update source and dependency changes would silently
-    // recompile a stale update program (F5).
+    // Locate and preflight the update source, but do not write it yet.
+    // store_reuse() may overwrite the old region in place; performing it
+    // before compilation made a rejected redefinition poison the source used
+    // by later dependency recompilation.
     uint16_t expr_start = ts.pos;
     uint32_t byte_start = span_begin(ts, expr_start);
-    uint32_t src_offset = UINT32_MAX;
     uint32_t src_len = 0;
+    uint32_t previous_offset = UINT32_MAX;
+    uint32_t previous_length = 0;
+    bool has_update_source = false;
     {
         uint16_t saved = ts.pos;
         GraphBuilder::skip_form(ts);
@@ -396,17 +538,14 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
 
         if (source && byte_end > byte_start && byte_end <= source_length) {
             src_len = byte_end - byte_start;
-            uint32_t previous_offset = UINT32_MAX;
-            uint32_t previous_length = 0;
+            has_update_source = true;
             if (state_slot != NODE_NONE &&
                 engine.state_sources[state_slot].has_source) {
                 previous_offset = engine.state_sources[state_slot].arena_offset;
                 previous_length = engine.state_sources[state_slot].arena_length;
             }
-            src_offset = engine.arena.store_reuse(
-                previous_offset, previous_length,
-                source + byte_start, src_len);
-            if (src_offset == UINT32_MAX) {
+            if (!source_slot_can_store(engine.arena, previous_offset,
+                                       previous_length, src_len)) {
                 return make_error(
                     "Program storage is full — defstate not applied",
                     "Free space with (useq-clear) or shorten your program");
@@ -414,27 +553,29 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
         }
     }
 
-    // Snapshot everything we mutate before the update expression compiles so
-    // a compile failure can roll back cleanly (A6) — otherwise a failed
-    // defstate leaves the name rebound to a half-initialised state cell,
-    // corrupting whatever the previous binding was.
+    // Snapshot everything graph construction can mutate. The source bytes are
+    // still untouched and are published only after a successful compile.
     Cell saved_cell = engine.cells.cells[sym];
-    uint16_t saved_slot_count = engine.pool.state_slot_count;
+    GraphMutationSnapshot graph_snapshot = capture_graph_mutations(engine);
 
     // Allocate a state slot (if this name already has a state slot, reuse it)
-    bool allocated_new_slot = false;
     if (state_slot == NODE_NONE) {
         // New state cell — allocate slot and set initial value
-        if (engine.pool.state_slot_count >= MAX_STATE_SLOTS) {
-            return make_error(state_slots_exhausted_msg(),
-                              "Remove unused defstate declarations");
+        state_slot = engine.registry.take_free_slot();
+        if (state_slot == NODE_NONE) {
+            if (engine.pool.state_slot_count >= MAX_STATE_SLOTS) {
+                return make_error(state_slots_exhausted_msg(),
+                                  "Remove unused defstate declarations");
+            }
+            state_slot = engine.pool.state_slot_count++;
         }
-        state_slot = engine.pool.state_slot_count++;
         engine.pool.state_values[state_slot] = init_value;
-        allocated_new_slot = true;
+        engine.pool.state_update_roots[state_slot] = NODE_NONE;
+        engine.pool.state_owner_context[state_slot] =
+            (uint16_t)(MAX_OUTPUTS + state_slot);
+        engine.state_sources[state_slot] = StateUpdateSource{};
     }
     StateUpdateSource saved_source = engine.state_sources[state_slot];
-    uint16_t saved_update_root = engine.pool.state_update_roots[state_slot];
 
     // Mark this cell as a state cell: kind=Number (readable), flags=0x02 (state marker),
     // data_table_id stores the state slot index
@@ -444,36 +585,49 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     engine.cells.cells[sym].revision++;
     engine.cells.cells[sym].value = init_value;
 
-    if (src_offset != UINT32_MAX) {
-        engine.state_sources[state_slot].arena_offset = src_offset;
-        engine.state_sources[state_slot].arena_length = src_len;
-        engine.state_sources[state_slot].has_source = true;
-    }
-
     // Compile the update expression as a signal graph
-    uint8_t saved_tables = engine.cells.data_table_count;
+    uint16_t owner_context = (uint16_t)(MAX_OUTPUTS + state_slot);
+    engine.pool.state_owner_context[state_slot] = owner_context;
+    engine.registry.begin_context(owner_context);
     GraphBuildResult result = build_output_graph(engine.pool, ts,
                                                  engine.cells, engine.arena, source,
                                                  &engine.registry, nullptr,
-                                                 (uint16_t)(MAX_OUTPUTS + state_slot));
+                                                 owner_context);
 
-    if (result.has_error) {
-        // Roll back everything mutated before the compile (A6): the cell
-        // (kind/flags/value/slot ref), the update root/source, and — if we
-        // allocated a fresh slot — the allocation itself.
-        engine.cells.data_table_count = saved_tables;
+    if (result.has_error || ts.peek().kind != TokenKind::RParen) {
+        // Restore the old cell plus every live graph-side mutation. GC drops
+        // nodes interned by the rejected build after old roots are restored.
         engine.cells.cells[sym] = saved_cell;
         engine.cells.cells[sym].revision++;
-        engine.pool.state_update_roots[state_slot] = saved_update_root;
         engine.state_sources[state_slot] = saved_source;
-        if (allocated_new_slot) {
-            engine.pool.state_values[state_slot] = 0.0;
-            engine.pool.state_update_roots[state_slot] = sig::NODE_NONE;
-            engine.state_sources[state_slot] = StateUpdateSource{};
-            engine.pool.state_slot_count = saved_slot_count;
+        restore_graph_mutations(engine, graph_snapshot);
+        return make_error(
+            result.has_error
+                ? "defstate update expression failed to compile"
+                : "defstate accepts exactly one update expression",
+            result.has_error
+                ? "Check the update expression"
+                : "Try: (defstate name init update)");
+    }
+
+    // Compilation succeeded, so publishing the source cannot corrupt a
+    // last-known-good definition. The preflight above guarantees capacity.
+    if (has_update_source) {
+        uint32_t src_offset = engine.arena.store_reuse(
+            previous_offset, previous_length,
+            source + byte_start, src_len);
+        if (src_offset == UINT32_MAX) {
+            engine.cells.cells[sym] = saved_cell;
+            engine.cells.cells[sym].revision++;
+            engine.state_sources[state_slot] = saved_source;
+            restore_graph_mutations(engine, graph_snapshot);
+            return make_error(
+                "Program storage is full — defstate not applied",
+                "Free space with (useq-clear) or shorten your program");
         }
-        return make_error("defstate update expression failed to compile",
-                          "Check the update expression");
+        engine.state_sources[state_slot].arena_offset = src_offset;
+        engine.state_sources[state_slot].arena_length = src_len;
+        engine.state_sources[state_slot].has_source = true;
     }
 
     // Store the update root and dependencies
@@ -482,6 +636,9 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     for (uint8_t d = 0; d < result.dep_count; d++) {
         engine.state_sources[state_slot].dep_cells[d] = result.dep_cells[d];
     }
+    engine.registry.commit_context(owner_context,
+                                   engine.pool.state_update_roots,
+                                   engine.pool.state_owner_context);
 
     // Reclaim nodes orphaned by the recompile (e.g. the previous update
     // graph of this state slot), then rebuild execution order to include
@@ -505,6 +662,14 @@ static EvalResult do_set_bpm(TokenStream& ts, SignalEngine& engine) {
     if (val.kind != TokenKind::Number) {
         return make_error("set-bpm needs a number", "Try: (set-bpm 120)");
     }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("set-bpm accepts exactly one number",
+                          "Try: (set-bpm 120)");
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("set-bpm accepts exactly one number",
+                          "Try: (set-bpm 120)");
+    }
     auto& si = SymbolIntern::getInstance();
     SymbolID bpm_sym = si.intern("bpm");
     engine.cells.cells[bpm_sym].kind = CellKind::Number;
@@ -525,6 +690,14 @@ static EvalResult do_set_time_sig(TokenStream& ts, SignalEngine& engine) {
         return make_error("set-time-sig needs two numbers",
                           "Try: (set-time-sig 4 4)");
     }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("set-time-sig accepts exactly two numbers",
+                          "Try: (set-time-sig 4 4)");
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("set-time-sig accepts exactly two numbers",
+                          "Try: (set-time-sig 4 4)");
+    }
 
     auto& si = SymbolIntern::getInstance();
     SymbolID bpb_sym = si.intern("beats-per-bar");
@@ -539,37 +712,7 @@ static EvalResult do_set_time_sig(TokenStream& ts, SignalEngine& engine) {
 }
 
 static EvalResult do_useq_clear(SignalEngine& engine) {
-    for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
-        engine.pool.outputs[i].root_node = NODE_NONE;
-        engine.pool.outputs[i].valid = false;
-        engine.pool.outputs[i].lkg_value = (i < 8) ? 0.5 : 0.0;
-        engine.output_sources[i].has_source = false;
-    }
-    engine.pool.exec_count = 0;
-
-    // Clear state resources fully (A4, state-identity.md §4.5). Resetting
-    // only state_slot_count left defstate cell markers (flags 0x02 +
-    // data_table_id), state values/sources/update roots behind — so a
-    // re-defstate of the same name "reused" a slot that no longer existed
-    // and read frozen values.
-    for (uint16_t s = 0; s < MAX_STATE_SLOTS; s++) {
-        engine.pool.state_values[s] = 0.0;
-        engine.pool.state_update_roots[s] = NODE_NONE;
-        engine.state_sources[s] = StateUpdateSource{};
-    }
-    engine.pool.state_slot_count = 0;
-    for (uint32_t c = 0; c < MAX_CELLS; c++) {
-        if (engine.cells.cells[c].flags == 0x02) {
-            engine.cells.cells[c].flags = 0;
-            engine.cells.cells[c].data_table_id = 0;
-            engine.cells.cells[c].revision++;
-        }
-    }
-    engine.registry.clear();
-    // Clear synth patch graph and control table (synth-nodes.md §5.6c).
-    // Clearing advances the shared revision so consumers see the new
-    // empty state.
-    engine.synth_graph.clear_and_advance();
+    engine.reset_session_storage();
     return make_ok();
 }
 
@@ -577,6 +720,14 @@ static EvalResult do_set_time_offset(TokenStream& ts, EngineState& state) {
     Token val = ts.consume();
     if (val.kind != TokenKind::Number) {
         return make_error("useq-set-time-offset needs a number in seconds",
+                          "Try: (useq-set-time-offset 1.0)");
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("useq-set-time-offset accepts exactly one number",
+                          "Try: (useq-set-time-offset 1.0)");
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("useq-set-time-offset accepts exactly one number",
                           "Try: (useq-set-time-offset 1.0)");
     }
     state.time_offset = val.number;
@@ -587,6 +738,14 @@ static EvalResult do_nudge_time(TokenStream& ts, EngineState& state) {
     Token val = ts.consume();
     if (val.kind != TokenKind::Number) {
         return make_error("useq-nudge-time needs a number in seconds",
+                          "Try: (useq-nudge-time 0.1)");
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("useq-nudge-time accepts exactly one number",
+                          "Try: (useq-nudge-time 0.1)");
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("useq-nudge-time accepts exactly one number",
                           "Try: (useq-nudge-time 0.1)");
     }
     state.time_offset += val.number;
@@ -680,7 +839,16 @@ static const NodeDefDescriptor* resolve_nodedef(
 
     uint16_t version = 0;
     if (version_tok && version_tok->kind == TokenKind::Number) {
-        version = (uint16_t)version_tok->number;
+        double requested = version_tok->number;
+        if (!std::isfinite(requested) || requested < 1.0 ||
+            requested > 65535.0 || std::floor(requested) != requested) {
+            out_error = make_synth_error_at(
+                *version_tok, DiagnosticCategory::Type,
+                ":version needs a whole number from 1 to 65535",
+                "Try: (synth \"osc/sine\" :version 2 :freq 440)");
+            return nullptr;
+        }
+        version = (uint16_t)requested;
     }
 
     const NodeDefDescriptor* def = synth_registry_find(name_buf, version);
@@ -708,8 +876,140 @@ static const NodeDefDescriptor* resolve_nodedef(
     return def;
 }
 
+static int16_t synth_declaration_index(const SynthGraph& graph,
+                                       const char* identity) {
+    if (!identity) return -1;
+    for (uint16_t i = 0; i < graph.declaration_count(); i++) {
+        if (std::strcmp(graph.declarations[i].identity, identity) == 0)
+            return (int16_t)i;
+    }
+    return -1;
+}
+
+static EvalResult validate_synth_patch_graph(const SynthGraph& graph,
+                                              const Token& anchor) {
+    uint16_t indegree[MAX_SYNTH_DECLARATIONS] = {};
+
+    for (uint16_t i = 0; i < graph.connection_count(); i++) {
+        const SynthConnection& edge = graph.connections[i];
+        int16_t from = synth_declaration_index(graph, edge.from);
+        int16_t to = synth_declaration_index(graph, edge.to);
+        if (from < 0 || to < 0) {
+            return make_synth_error_at(
+                anchor, DiagnosticCategory::UndefinedName,
+                "Synth connection references an unknown node identity",
+                "Declare the source node before connecting it");
+        }
+        if (from == to) {
+            return make_synth_error_at(
+                anchor, DiagnosticCategory::Boundary,
+                "A synth node cannot connect an audio input to itself",
+                "Route the input from a different synth node");
+        }
+
+        const SynthDeclaration& source_decl = graph.declarations[from];
+        const SynthDeclaration& dest_decl = graph.declarations[to];
+        if (source_decl.audio_outputs == 0) {
+            return make_synth_error_at(
+                anchor, DiagnosticCategory::Boundary,
+                "Synth connection source has no audio output",
+                "Choose a NodeDef that produces audio");
+        }
+        const NodeDefDescriptor* dest_def =
+            synth_registry_find(dest_decl.def_name, dest_decl.def_version);
+        if (!dest_def || edge.port_index >= dest_def->audio_inputs ||
+            edge.port_index >= MAX_NODEDEF_AUDIO_INPUTS ||
+            !dest_def->audio_input_names[edge.port_index] ||
+            std::strcmp(dest_def->audio_input_names[edge.port_index],
+                        edge.port) != 0) {
+            return make_synth_error_at(
+                anchor, DiagnosticCategory::Boundary,
+                "Synth connection does not match the destination audio port",
+                "Recompile against the installed NodeDef descriptor");
+        }
+        for (uint16_t j = 0; j < i; j++) {
+            const SynthConnection& prior = graph.connections[j];
+            if (prior.port_index == edge.port_index &&
+                std::strcmp(prior.to, edge.to) == 0) {
+                return make_synth_error_at(
+                    anchor, DiagnosticCategory::Boundary,
+                    "A synth audio input can have only one source",
+                    "Remove the duplicate input connection");
+            }
+        }
+        indegree[to]++;
+    }
+
+    uint16_t queue[MAX_SYNTH_DECLARATIONS] = {};
+    uint16_t read = 0;
+    uint16_t write = 0;
+    for (uint16_t i = 0; i < graph.declaration_count(); i++) {
+        if (indegree[i] == 0) queue[write++] = i;
+    }
+    uint16_t visited = 0;
+    while (read < write) {
+        uint16_t from = queue[read++];
+        visited++;
+        for (uint16_t i = 0; i < graph.connection_count(); i++) {
+            const SynthConnection& edge = graph.connections[i];
+            if (std::strcmp(graph.declarations[from].identity, edge.from) != 0)
+                continue;
+            int16_t to = synth_declaration_index(graph, edge.to);
+            if (to >= 0 && indegree[to] > 0 && --indegree[to] == 0)
+                queue[write++] = (uint16_t)to;
+        }
+    }
+    if (visited != graph.declaration_count()) {
+        return make_synth_error_at(
+            anchor, DiagnosticCategory::Boundary,
+            "Synth audio connections must not contain a cycle",
+            "Remove one connection from the feedback loop");
+    }
+    return make_ok();
+}
+
+static const SynthControlChannel* find_synth_control(
+    const SynthGraph& graph, const char* identity, const char* param_name) {
+    for (uint16_t i = 0; i < graph.control_count(); i++) {
+        const SynthControlChannel& control = graph.controls[i];
+        if (std::strcmp(control.identity, identity) == 0 &&
+            std::strcmp(control.param_name, param_name) == 0)
+            return &control;
+    }
+    return nullptr;
+}
+
+static uint16_t allocate_synth_owner_context(
+    const SynthGraph& old_graph, const SynthGraph& candidate,
+    const char* identity, const char* param_name) {
+    constexpr uint16_t base = (uint16_t)(MAX_OUTPUTS + MAX_STATE_SLOTS);
+    const SynthControlChannel* old =
+        find_synth_control(old_graph, identity, param_name);
+    if (old) return old->owner_context;
+
+    for (uint16_t offset = 0; offset < MAX_SYNTH_CONTROLS; offset++) {
+        uint16_t context = (uint16_t)(base + offset);
+        bool used = false;
+        for (uint16_t i = 0; i < old_graph.control_count(); i++) {
+            const SynthControlChannel& c = old_graph.controls[i];
+            if (std::strcmp(c.identity, identity) != 0 &&
+                c.owner_context == context) {
+                used = true;
+                break;
+            }
+        }
+        for (uint16_t i = 0; !used && i < candidate.control_count(); i++) {
+            if (candidate.controls[i].owner_context == context) used = true;
+        }
+        if (!used) return context;
+    }
+    return ANON_STATE_CONTEXT_NONE;
+}
+
 static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
-                           const char* source, uint32_t source_length) {
+                           const char* source, uint32_t source_length,
+                           char* out_identity = nullptr,
+                           bool nested = false) {
     GraphBuilder::init_symbols();
     auto& sym = GraphBuilder::sym;
 
@@ -734,6 +1034,7 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     // Track param bindings declared in this form. Required: :freq.
     struct ParamBinding {
         const NodeDefParam* desc;
+        int16_t audio_input_port;
         Token kw_tok;
         uint16_t expr_start_pos;
         uint16_t expr_end_pos;
@@ -741,11 +1042,13 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
         uint32_t expr_byte_end;
         bool present;
     };
-    ParamBinding bindings[MAX_NODEDEF_PARAMS] = {};
+    constexpr uint16_t max_synth_bindings =
+        MAX_NODEDEF_PARAMS + MAX_NODEDEF_AUDIO_INPUTS;
+    ParamBinding bindings[max_synth_bindings] = {};
     uint16_t binding_count = 0;
 
     // Track keywords seen (for duplicate detection).
-    SymbolID seen_kws[MAX_NODEDEF_PARAMS] = {};
+    SymbolID seen_kws[max_synth_bindings] = {};
     uint16_t seen_kw_count = 0;
 
     bool kw_phase = true;
@@ -838,13 +1141,15 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
                     "Remove the duplicate binding");
             }
         }
-        if (seen_kw_count < MAX_NODEDEF_PARAMS) {
+        if (seen_kw_count < max_synth_bindings) {
             seen_kws[seen_kw_count++] = kw_tok.symbol;
         }
 
         // Validate the parameter is declared by this NodeDef.
         const NodeDefParam* pdesc = nodedef_find_param(def, param_name);
-        if (!pdesc) {
+        int16_t audio_input_port =
+            nodedef_find_audio_input(def, param_name);
+        if (!pdesc && audio_input_port < 0) {
             const char* suggestion = nodedef_suggest_param(def, param_name);
             char msg[128];
             std::snprintf(msg, sizeof(msg),
@@ -891,13 +1196,14 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
         GraphBuilder::skip_form(ts);
         uint32_t byte_end = span_end_of(ts, ts.pos);
 
-        if (binding_count >= MAX_NODEDEF_PARAMS) {
+        if (binding_count >= max_synth_bindings) {
             return make_synth_error_at(
                 kw_tok, DiagnosticCategory::Overflow,
                 "Too many parameters on this synth form",
                 "Check the NodeDef documentation");
         }
         bindings[binding_count].desc = pdesc;
+        bindings[binding_count].audio_input_port = audio_input_port;
         bindings[binding_count].kw_tok = kw_tok;
         bindings[binding_count].expr_start_pos = expr_start_pos;
         bindings[binding_count].expr_end_pos = ts.pos;
@@ -907,10 +1213,21 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
         binding_count++;
     }
 
+    // Reject trailing atoms or malformed material before identity resolution
+    // or any graph publication. `ts.expect()` in the caller is too late:
+    // do_synth has already committed by then.
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_synth_error_at(
+            ts.peek(), DiagnosticCategory::Syntax,
+            "Unexpected value after synth parameter bindings",
+            "Use :parameter value pairs only");
+    }
+
     // ── Required :freq (VAL-COMP-006) ──────────────────────────────────
     bool have_freq = false;
     for (uint16_t i = 0; i < binding_count; i++) {
-        if (std::strcmp(bindings[i].desc->name, "freq") == 0) {
+        if (bindings[i].desc &&
+            std::strcmp(bindings[i].desc->name, "freq") == 0) {
             have_freq = true;
             break;
         }
@@ -933,7 +1250,12 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     char identity_buf[MAX_SYNTH_IDENTITY];
     if (have_explicit_identity) {
         uint16_t n = identity_tok.string.length;
-        if (n >= MAX_SYNTH_IDENTITY) n = MAX_SYNTH_IDENTITY - 1;
+        if (n >= MAX_SYNTH_IDENTITY) {
+            return make_synth_error_at(
+                identity_tok, DiagnosticCategory::Overflow,
+                "Synth identity is too long",
+                "Use at most 31 bytes for :name or :id");
+        }
         std::memcpy(identity_buf, source + identity_tok.string.offset, n);
         identity_buf[n] = '\0';
         // The explicit identity supersedes and consumes any pending
@@ -955,22 +1277,39 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     }
 
     // ── Capacity check (VAL-COMP-019) ──────────────────────────────────
-    // M1 hosts one synth instance. An eval that would introduce a NEW
-    // distinct identity while another declaration is already active must
-    // fail transactionally.
     SynthDeclaration* existing = engine.synth_graph.find(identity_buf);
     if (existing == nullptr &&
-        engine.synth_graph.declaration_count() >= SYNTH_M1_MAX_NODES) {
+        engine.synth_graph.declaration_count() >= SYNTH_MAX_NODES) {
         char msg[160];
         std::snprintf(msg, sizeof(msg),
-                      "Only one synth can play at a time in M1; "
-                      "another identity (\"%s\") is already active",
-                      engine.synth_graph.declarations[0].identity);
+                      "Synth graph exceeds the %u-node capacity",
+                      (unsigned)SYNTH_MAX_NODES);
         return make_synth_error_at(
             def_name_tok, DiagnosticCategory::Overflow,
             strdup_safe(msg),
-            "Use (useq-clear) to free the active synth, or re-declare "
-            "the same identity to update in place");
+            "Use (useq-clear) to free synths, or update an existing identity");
+    }
+
+    // A synth form is one publication transaction. Snapshot both the
+    // descriptor/control table and every live graph-side structure before
+    // removing the old declaration or compiling replacement controls.
+    // Restoring the SynthGraph first ensures graph rollback preserves its
+    // old external roots during reachability GC.
+    SynthGraph synth_snapshot = engine.synth_graph;
+    GraphMutationSnapshot graph_snapshot = capture_graph_mutations(engine);
+    auto rollback_synth = [&](EvalResult error) {
+        engine.synth_graph = synth_snapshot;
+        restore_graph_mutations(engine, graph_snapshot);
+        return error;
+    };
+
+    // Existing control contexts are stable per (identity,param). Mark only
+    // this declaration's old contexts unseen; successful replacement retires
+    // removed parameters, while rollback restores the registry snapshot.
+    for (uint16_t i = 0; i < synth_snapshot.control_count(); i++) {
+        const SynthControlChannel& old = synth_snapshot.controls[i];
+        if (std::strcmp(old.identity, identity_buf) == 0)
+            engine.registry.begin_context(old.owner_context);
     }
 
     // ── Commit declaration + controls to synth_graph ───────────────────
@@ -990,6 +1329,27 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
         }
         engine.synth_graph.control_count_value -= kill_count;
 
+        for (uint16_t i = 0; i < engine.synth_graph.declaration_count(); i++) {
+            SynthDeclaration& other = engine.synth_graph.declarations[i];
+            if (&other != existing && other.first_control_index > kill_first)
+                other.first_control_index -= kill_count;
+        }
+
+        // Updating a destination replaces its incoming routing, while its
+        // outgoing edges remain attached to its stable identity.
+        uint16_t edge_write = 0;
+        for (uint16_t edge_read = 0;
+             edge_read < engine.synth_graph.connection_count_value;
+             edge_read++) {
+            const SynthConnection& edge =
+                engine.synth_graph.connections[edge_read];
+            if (std::strcmp(edge.to, identity_buf) == 0) continue;
+            if (edge_write != edge_read)
+                engine.synth_graph.connections[edge_write] = edge;
+            edge_write++;
+        }
+        engine.synth_graph.connection_count_value = edge_write;
+
         // Compact the declaration table.
         uint16_t decl_idx = (uint16_t)(existing - engine.synth_graph.declarations);
         for (uint16_t i = decl_idx; i + 1 < engine.synth_graph.declaration_count_value; i++) {
@@ -1001,10 +1361,10 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
 
     SynthDeclaration* decl = engine.synth_graph.append_declaration();
     if (!decl) {
-        return make_synth_error_at(
+        return rollback_synth(make_synth_error_at(
             def_name_tok, DiagnosticCategory::Overflow,
             "Synth declaration table is full",
-            "Use (useq-clear) to free earlier synths");
+            "Use (useq-clear) to free earlier synths"));
     }
     std::strncpy(decl->identity, identity_buf, MAX_SYNTH_IDENTITY - 1);
     decl->identity[MAX_SYNTH_IDENTITY - 1] = '\0';
@@ -1017,36 +1377,170 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     decl->first_control_index = engine.synth_graph.control_count_value;
     decl->control_count = 0;
 
-    // ── Compile each bound param expression into the live NodePool ─────
-    // The compiled root nodes are real graph nodes that participate in GC
-    // and execution (VAL-COMP-011, VAL-COMP-018). We compile into the
-    // engine's live pool, not the scratch pool, because synth control
-    // roots persist across evals.
+    // Preflight persistent source storage for every control. Nested synths
+    // append rather than overwrite old source so an outer rollback can restore
+    // only the arena write head without having to copy the whole arena.
+    uint32_t required_source_bytes = 0;
+    for (uint16_t i = 0; i < binding_count; i++) {
+        ParamBinding& b = bindings[i];
+        if (!b.present || !b.desc) continue;
+        uint32_t expr_len = b.expr_byte_end - b.expr_byte_start;
+        const SynthControlChannel* old = find_synth_control(
+            synth_snapshot, identity_buf, b.desc->name);
+        bool can_reuse = !nested && old &&
+            source_slot_can_store(engine.arena, old->source_offset,
+                                  old->source_length, expr_len) &&
+            expr_len <= old->source_length;
+        if (!can_reuse) {
+            if (UINT32_MAX - required_source_bytes < expr_len) {
+                return rollback_synth(make_synth_error_at(
+                    b.kw_tok, DiagnosticCategory::Overflow,
+                    "Synth control source is too large", nullptr));
+            }
+            required_source_bytes += expr_len;
+        }
+    }
+    if (engine.arena.write_head > SOURCE_ARENA_SIZE ||
+        required_source_bytes > SOURCE_ARENA_SIZE - engine.arena.write_head) {
+        return rollback_synth(make_synth_error_at(
+            def_name_tok, DiagnosticCategory::Overflow,
+            "Source storage full — synth control was not published",
+            "Use (useq-clear) to reclaim session source storage"));
+    }
+
+    uint32_t staged_source_offsets[max_synth_bindings];
+    for (uint16_t i = 0; i < max_synth_bindings; i++)
+        staged_source_offsets[i] = UINT32_MAX;
+
+    // Compile controls and resolve audio routing. All mutations remain behind
+    // the synth + graph snapshots until the complete post-diff graph validates.
     for (uint16_t i = 0; i < binding_count; i++) {
         ParamBinding& b = bindings[i];
         if (!b.present) continue;
-
         uint32_t expr_len = b.expr_byte_end - b.expr_byte_start;
-        if (expr_len == 0 || expr_len > source_length) continue;
+        if (expr_len == 0 || b.expr_byte_start > source_length ||
+            expr_len > source_length - b.expr_byte_start) {
+            return rollback_synth(make_synth_error_at(
+                b.kw_tok, DiagnosticCategory::Syntax,
+                "Synth parameter expression has an invalid source span",
+                nullptr));
+        }
 
-        // Tokenise the expression slice.
+        if (!b.desc) {
+            // Audio inputs accept only `(node "identity")` or a nested
+            // `(synth ...)`. Arbitrary signal expressions are controls, not
+            // audio-routing endpoints.
+            uint16_t token_count = b.expr_end_pos - b.expr_start_pos;
+            if (token_count < 4 ||
+                ts.tokens[b.expr_start_pos].kind != TokenKind::LParen ||
+                ts.tokens[b.expr_end_pos - 1].kind != TokenKind::RParen ||
+                ts.tokens[b.expr_start_pos + 1].kind != TokenKind::Symbol) {
+                return rollback_synth(make_synth_error_at(
+                    b.kw_tok, DiagnosticCategory::Boundary,
+                    "Audio inputs need (node \"identity\") or a nested synth",
+                    "Try: :fm (node \"lfo\")"));
+            }
+            const String& head = SymbolIntern::getInstance().getString(
+                ts.tokens[b.expr_start_pos + 1].symbol);
+            char from_identity[MAX_SYNTH_IDENTITY] = {};
+            if (head == "node") {
+                if (token_count != 4 ||
+                    ts.tokens[b.expr_start_pos + 2].kind != TokenKind::String) {
+                    return rollback_synth(make_synth_error_at(
+                        b.kw_tok, DiagnosticCategory::Syntax,
+                        "node reference needs exactly one quoted identity",
+                        "Try: (node \"lfo\")"));
+                }
+                const Token& id_tok = ts.tokens[b.expr_start_pos + 2];
+                if (id_tok.string.length == 0 ||
+                    id_tok.string.length >= MAX_SYNTH_IDENTITY) {
+                    return rollback_synth(make_synth_error_at(
+                        id_tok, DiagnosticCategory::Overflow,
+                        "Referenced synth identity is empty or too long",
+                        "Use an identity from 1 to 31 bytes"));
+                }
+                std::memcpy(from_identity, source + id_tok.string.offset,
+                            id_tok.string.length);
+                from_identity[id_tok.string.length] = '\0';
+            } else if (head == "synth") {
+                TokenStream nested_ts;
+                std::memcpy(nested_ts.tokens,
+                            ts.tokens + b.expr_start_pos,
+                            token_count * sizeof(Token));
+                nested_ts.count = token_count;
+                nested_ts.pos = 2; // after `(` and `synth`
+                EvalResult child = do_synth(
+                    nested_ts, engine, source, source_length,
+                    from_identity, true);
+                if (child.kind == EvalResult::Error)
+                    return rollback_synth(child);
+                // Updating an existing child compacts the declaration table;
+                // reacquire the parent by stable identity before touching it
+                // again instead of retaining an invalidated array pointer.
+                decl = engine.synth_graph.find(identity_buf);
+                if (!decl) {
+                    return rollback_synth(make_synth_error_at(
+                        b.kw_tok, DiagnosticCategory::Runtime,
+                        "Nested synth invalidated its parent declaration",
+                        nullptr));
+                }
+                if (!nested_ts.expect(TokenKind::RParen) ||
+                    !nested_ts.at_end()) {
+                    return rollback_synth(make_synth_error_at(
+                        b.kw_tok, DiagnosticCategory::Syntax,
+                        "Nested synth has trailing input", nullptr));
+                }
+            } else {
+                return rollback_synth(make_synth_error_at(
+                    b.kw_tok, DiagnosticCategory::Boundary,
+                    "Audio inputs need (node \"identity\") or a nested synth",
+                    "Try: :fm (node \"lfo\")"));
+            }
+
+            SynthConnection* edge = engine.synth_graph.append_connection();
+            if (!edge) {
+                return rollback_synth(make_synth_error_at(
+                    b.kw_tok, DiagnosticCategory::Overflow,
+                    "Synth connection table is full",
+                    "Remove a routed synth node"));
+            }
+            std::strncpy(edge->from, from_identity, MAX_SYNTH_IDENTITY - 1);
+            std::strncpy(edge->to, identity_buf, MAX_SYNTH_IDENTITY - 1);
+            std::strncpy(edge->port,
+                         def->audio_input_names[b.audio_input_port],
+                         MAX_NODEDEF_NAME - 1);
+            edge->port_index = (uint16_t)b.audio_input_port;
+            continue;
+        }
+
+        uint16_t owner_context = allocate_synth_owner_context(
+            synth_snapshot, engine.synth_graph,
+            identity_buf, b.desc->name);
+        if (owner_context == ANON_STATE_CONTEXT_NONE) {
+            return rollback_synth(make_synth_error_at(
+                b.kw_tok, DiagnosticCategory::Overflow,
+                "Synth control ownership table is full",
+                "Use (useq-clear) to free earlier synths"));
+        }
+        engine.registry.begin_context(owner_context);
+
         Token expr_tokens[MAX_TOKENS];
         Diagnostic expr_parse_errors[8];
         uint8_t expr_parse_err_count = 0;
+        const char* expr_source = source + b.expr_byte_start;
         uint16_t expr_count = TokenStream::tokenize(
-            source + b.expr_byte_start, expr_len,
-            expr_tokens, MAX_TOKENS,
+            expr_source, expr_len, expr_tokens, MAX_TOKENS,
             expr_parse_errors, &expr_parse_err_count);
         if (expr_parse_err_count > 0) {
             EvalResult r;
             r.kind = EvalResult::Error;
-            for (uint8_t e = 0; e < expr_parse_err_count && r.diagnostic_count < 8; e++) {
-                // Remap expression-relative spans back to eval-relative.
+            for (uint8_t e = 0;
+                 e < expr_parse_err_count && r.diagnostic_count < 8; e++) {
                 Diagnostic d = expr_parse_errors[e];
                 d.span_start = (uint16_t)(d.span_start + b.expr_byte_start);
                 r.diagnostics[r.diagnostic_count++] = d;
             }
-            return r;
+            return rollback_synth(r);
         }
 
         TokenStream ets;
@@ -1054,52 +1548,123 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
         ets.count = expr_count;
         ets.pos = 0;
 
-        // Save data-table state so a compile failure does not pollute the
-        // cell store (mirrors eval_expression's pattern).
-        uint8_t saved_tables = engine.cells.data_table_count;
-
         GraphBuildResult gbr = build_output_graph(
             engine.pool, ets, engine.cells, engine.arena,
-            source, &engine.registry, nullptr,
-            (uint16_t)(MAX_OUTPUTS + MAX_STATE_SLOTS + i));
-
+            expr_source, &engine.registry, nullptr, owner_context);
         if (gbr.has_error) {
-            engine.cells.data_table_count = saved_tables;
             EvalResult r;
             r.kind = EvalResult::Error;
-            for (uint8_t e = 0; e < gbr.diagnostic_count && r.diagnostic_count < 8; e++) {
+            for (uint8_t e = 0;
+                 e < gbr.diagnostic_count && r.diagnostic_count < 8; e++) {
                 Diagnostic d = gbr.diagnostics[e];
-                // Remap expression-relative spans back to eval-relative.
                 d.span_start = (uint16_t)(d.span_start + b.expr_byte_start);
                 r.diagnostics[r.diagnostic_count++] = d;
             }
-            return r;
+            return rollback_synth(r);
         }
 
-        // Append a control channel row.
         SynthControlChannel* ctl = engine.synth_graph.append_control();
         if (!ctl) {
-            engine.cells.data_table_count = saved_tables;
-            return make_synth_error_at(
+            return rollback_synth(make_synth_error_at(
                 b.kw_tok, DiagnosticCategory::Overflow,
                 "Synth control table is full",
-                "Use (useq-clear) to free earlier synths");
+                "Use (useq-clear) to free earlier synths"));
         }
         std::strncpy(ctl->identity, identity_buf, MAX_SYNTH_IDENTITY - 1);
-        ctl->identity[MAX_SYNTH_IDENTITY - 1] = '\0';
         std::strncpy(ctl->param_name, b.desc->name, MAX_NODEDEF_NAME - 1);
-        ctl->param_name[MAX_NODEDEF_NAME - 1] = '\0';
-        ctl->rate_class     = b.desc->rate_class;
+        ctl->rate_class = b.desc->rate_class;
         ctl->smoothing_class = b.desc->smoothing_class;
-        ctl->root_node      = gbr.root_node;
-
+        ctl->root_node = gbr.root_node;
+        ctl->owner_context = owner_context;
+        ctl->source_length = expr_len;
+        ctl->dep_count = gbr.dep_count;
+        for (uint8_t d = 0; d < gbr.dep_count; d++)
+            ctl->dep_cells[d] = gbr.dep_cells[d];
+        const SynthControlChannel* old = find_synth_control(
+            synth_snapshot, identity_buf, b.desc->name);
+        if (old) {
+            ctl->lkg_value = old->lkg_value;
+            ctl->has_lkg = old->has_lkg;
+        }
         decl->control_count++;
     }
 
-    // Graph + control table share one revision (VAL-COMP-009). The revision
-    // is advanced by eval_cold at successful commit, not here, so that a
-    // later-failing form in the same eval unit rolls back to the previous
-    // revision (VAL-COMP-008/010).
+    if (!nested) {
+        EvalResult graph_validation =
+            validate_synth_patch_graph(engine.synth_graph, def_name_tok);
+        if (graph_validation.kind == EvalResult::Error)
+            return rollback_synth(graph_validation);
+    }
+
+    // Stage append-only writes first. They are reversible by restoring the
+    // arena head. Reused regions are overwritten only after no fallible step
+    // remains, so a rejected candidate can never poison prior source text.
+    for (uint16_t i = 0; i < binding_count; i++) {
+        ParamBinding& b = bindings[i];
+        if (!b.present || !b.desc) continue;
+        uint32_t expr_len = b.expr_byte_end - b.expr_byte_start;
+        const SynthControlChannel* old = find_synth_control(
+            synth_snapshot, identity_buf, b.desc->name);
+        bool can_reuse = !nested && old && expr_len <= old->source_length;
+        if (!can_reuse) {
+            staged_source_offsets[i] = engine.arena.store(
+                source + b.expr_byte_start, expr_len);
+            if (staged_source_offsets[i] == UINT32_MAX) {
+                return rollback_synth(make_synth_error_at(
+                    b.kw_tok, DiagnosticCategory::Overflow,
+                    "Source storage full — synth control was not published",
+                    "Use (useq-clear) to reclaim session source storage"));
+            }
+        }
+    }
+    uint16_t control_index = decl->first_control_index;
+    for (uint16_t i = 0; i < binding_count; i++) {
+        ParamBinding& b = bindings[i];
+        if (!b.present || !b.desc) continue;
+        SynthControlChannel& ctl = engine.synth_graph.controls[control_index++];
+        uint32_t expr_len = b.expr_byte_end - b.expr_byte_start;
+        const SynthControlChannel* old = find_synth_control(
+            synth_snapshot, identity_buf, b.desc->name);
+        if (staged_source_offsets[i] != UINT32_MAX) {
+            ctl.source_offset = staged_source_offsets[i];
+        } else {
+            ctl.source_offset = engine.arena.store_reuse(
+                old->source_offset, old->source_length,
+                source + b.expr_byte_start, expr_len);
+        }
+    }
+
+    // Retire state resources for removed controls, and publish the state
+    // writers for controls that survived or were added.
+    for (uint16_t i = 0; i < synth_snapshot.control_count(); i++) {
+        const SynthControlChannel& old = synth_snapshot.controls[i];
+        if (std::strcmp(old.identity, identity_buf) == 0) {
+            engine.registry.commit_context(
+                old.owner_context, engine.pool.state_update_roots,
+                engine.pool.state_owner_context);
+        }
+    }
+    for (uint16_t i = decl->first_control_index;
+         i < decl->first_control_index + decl->control_count; i++) {
+        engine.registry.commit_context(
+            engine.synth_graph.controls[i].owner_context,
+            engine.pool.state_update_roots,
+            engine.pool.state_owner_context);
+    }
+
+    if (out_identity) {
+        std::strncpy(out_identity, identity_buf, MAX_SYNTH_IDENTITY - 1);
+        out_identity[MAX_SYNTH_IDENTITY - 1] = '\0';
+    }
+    if (nested) return make_ok();
+
+    // Graph + controls + routing share one revision and one publication.
+    engine.synth_graph.advance_revision();
+    register_synth_external_roots(engine);
+    engine.pool.gc_unreachable_nodes();
+    commit_synth_external_roots(engine);
+    engine.pool.rebuild_execution_order();
+    classify_outputs(engine.pool);
     return make_ok();
 }
 
@@ -1114,13 +1679,15 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
         return make_error("Unknown output", "Try: (a1 expression)");
     }
 
-    // Record the expression source text for recompilation. If the arena is
-    // full, FAIL the assignment outright: installing the new graph while
-    // output_sources[i] still points at the OLD text would make the next
-    // dependency change silently recompile — and revert to — the stale
-    // program (F5). The previous program keeps playing.
+    // Locate and preflight expression storage, but publish the bytes only
+    // after graph construction succeeds. store_reuse() may overwrite an old
+    // region in place, so writing here would poison reactive recompilation
+    // when the replacement later fails.
     uint16_t expr_start_pos = ts.pos;
     uint32_t byte_start = span_begin(ts, expr_start_pos);
+    uint32_t expr_len = 0;
+    bool has_expr_source = false;
+    const OutputSource previous_source = engine.output_sources[output_index];
     {
         uint16_t saved = ts.pos;
         GraphBuilder::skip_form(ts);
@@ -1128,32 +1695,31 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
         ts.rewind(saved);
 
         if (source && byte_end > byte_start && byte_end <= source_length) {
-            uint32_t len = byte_end - byte_start;
-            const OutputSource& previous = engine.output_sources[output_index];
-            uint32_t offset = engine.arena.store_reuse(
-                previous.has_source ? previous.arena_offset : UINT32_MAX,
-                previous.has_source ? previous.arena_length : 0,
-                source + byte_start, len);
-            if (offset == UINT32_MAX) {
+            expr_len = byte_end - byte_start;
+            has_expr_source = true;
+            if (!source_slot_can_store(
+                    engine.arena,
+                    previous_source.has_source
+                        ? previous_source.arena_offset : UINT32_MAX,
+                    previous_source.has_source
+                        ? previous_source.arena_length : 0,
+                    expr_len)) {
                 return make_error(
                     "Program storage is full — output not changed",
                     "Free space with (useq-clear) or shorten your program");
             }
-            engine.output_sources[output_index].arena_offset = offset;
-            engine.output_sources[output_index].arena_length = len;
-            engine.output_sources[output_index].has_source = true;
         }
     }
 
-    // Build the signal graph
-    uint8_t saved_tables = engine.cells.data_table_count;
+    GraphMutationSnapshot graph_snapshot = capture_graph_mutations(engine);
+    engine.registry.begin_context(output_index);
     GraphBuildResult result = build_output_graph(engine.pool, ts,
                                                  engine.cells, engine.arena, source,
                                                  &engine.registry, shared_ids,
                                                  output_index);
 
-    if (result.has_error) {
-        engine.cells.data_table_count = saved_tables;
+    if (result.has_error || ts.peek().kind != TokenKind::RParen) {
+        restore_graph_mutations(engine, graph_snapshot);
         // Per failure-model.md §2.6, a compile-time error leaves the active
         // program unchanged: do NOT demote `valid`. Demoting here was also the
         // root cause of A2 — sig::commit_outputs resurrects valid=true for any
@@ -1161,10 +1727,33 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
         // row packing drifted mid-batch.
         EvalResult r;
         r.kind = EvalResult::Error;
-        memcpy(r.diagnostics, result.diagnostics,
-               result.diagnostic_count * sizeof(Diagnostic));
-        r.diagnostic_count = result.diagnostic_count;
+        if (result.has_error) {
+            memcpy(r.diagnostics, result.diagnostics,
+                   result.diagnostic_count * sizeof(Diagnostic));
+            r.diagnostic_count = result.diagnostic_count;
+        } else {
+            r = make_error("Output assignment accepts exactly one expression",
+                           "Try: (a1 expression)");
+        }
         return r;
+    }
+
+    if (has_expr_source) {
+        uint32_t offset = engine.arena.store_reuse(
+            previous_source.has_source
+                ? previous_source.arena_offset : UINT32_MAX,
+            previous_source.has_source
+                ? previous_source.arena_length : 0,
+            source + byte_start, expr_len);
+        if (offset == UINT32_MAX) {
+            restore_graph_mutations(engine, graph_snapshot);
+            return make_error(
+                "Program storage is full — output not changed",
+                "Free space with (useq-clear) or shorten your program");
+        }
+        engine.output_sources[output_index].arena_offset = offset;
+        engine.output_sources[output_index].arena_length = expr_len;
+        engine.output_sources[output_index].has_source = true;
     }
 
     // Install the new graph root
@@ -1176,6 +1765,9 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
     for (uint8_t d = 0; d < result.dep_count; d++) {
         engine.pool.output_deps[output_index].add(result.dep_cells[d]);
     }
+    engine.registry.commit_context(output_index,
+                                   engine.pool.state_update_roots,
+                                   engine.pool.state_owner_context);
 
     // Reclaim nodes no longer reachable from any output root
     register_synth_external_roots(engine);
@@ -1274,6 +1866,177 @@ EvalResult eval_expression(const char* source, uint32_t length,
     return make_number(outputs[0]);
 }
 
+// ── Atomic bulk definitions ───────────────────────────────────────────────
+
+static EvalResult do_defs(TokenStream& ts, SignalEngine& engine,
+                          const char* source, uint32_t source_length) {
+    if (!ts.expect(TokenKind::LBracket)) {
+        return make_error("defs needs a bracket list of name-value pairs",
+                          "Try: (defs [x 1 y 2 z 3])");
+    }
+
+    constexpr uint16_t MAX_DEFS_BINDINGS = 64;
+    SymbolID symbols[MAX_DEFS_BINDINGS] = {};
+    uint16_t binding_count = 0;
+    uint16_t list_start = ts.pos;
+    uint16_t new_table_count = 0;
+    uint32_t new_data_entries = 0;
+    uint32_t new_source_bytes = 0;
+
+    // Validation/preflight pass. No live store is touched until the complete
+    // list, outer arity, and cumulative fixed-store capacity are proven.
+    while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
+        if (binding_count >= MAX_DEFS_BINDINGS) {
+            return make_error("defs has too many bindings",
+                              "Split the definitions into smaller forms");
+        }
+        Token name_tok = ts.consume();
+        if (name_tok.kind != TokenKind::Symbol) {
+            return make_error("defs: expected a name",
+                              "Try: (defs [x 1 y 2])");
+        }
+        if (cell_id_out_of_range(name_tok.symbol))
+            return make_too_many_definitions_error();
+        for (uint16_t i = 0; i < binding_count; i++) {
+            if (symbols[i] == name_tok.symbol) {
+                return make_error("defs contains the same name twice",
+                                  "Keep one value for each name");
+            }
+        }
+        symbols[binding_count++] = name_tok.symbol;
+
+        if (ts.at_end() || ts.peek().kind == TokenKind::RBracket) {
+            return make_error("defs: each name needs a value",
+                              "Try: (defs [x 1 y 2])");
+        }
+
+        Token val_tok = ts.peek();
+        if (val_tok.kind == TokenKind::Number) {
+            ts.consume();
+        } else if (val_tok.kind == TokenKind::LBracket) {
+            ts.consume();
+            uint16_t count = 0;
+            while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
+                Token elem = ts.consume();
+                if (elem.kind != TokenKind::Number) {
+                    return make_error("defs vectors contain only numbers",
+                                      "Try: (defs [steps [1 0 1 0]])");
+                }
+                if (++count > 64) {
+                    return make_error("defs vector is too long",
+                                      "Use at most 64 values");
+                }
+            }
+            if (!ts.expect(TokenKind::RBracket)) {
+                return make_error("defs has an unterminated vector",
+                                  "Close the vector with ]");
+            }
+            new_table_count++;
+            new_data_entries += count;
+        } else {
+            uint32_t byte_start = span_begin(ts, ts.pos);
+            GraphBuilder::skip_form(ts);
+            uint32_t byte_end = span_end_of(ts, ts.pos);
+            if (!source || byte_end <= byte_start ||
+                byte_end > source_length) {
+                return make_error("defs has an invalid value expression",
+                                  "Try: (defs [x (+ 1 2)])");
+            }
+            uint32_t len = byte_end - byte_start;
+            const CallableInfo& previous =
+                engine.cells.callables[name_tok.symbol];
+            bool can_reuse =
+                previous.source_offset <= SOURCE_ARENA_SIZE &&
+                previous.source_length <=
+                    SOURCE_ARENA_SIZE - previous.source_offset &&
+                len <= previous.source_length;
+            if (!can_reuse) {
+                new_source_bytes += len;
+            }
+        }
+    }
+
+    if (!ts.expect(TokenKind::RBracket)) {
+        return make_error("defs needs a closing bracket",
+                          "Try: (defs [x 1 y 2])");
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("defs accepts exactly one binding vector",
+                          "Try: (defs [x 1 y 2])");
+    }
+
+    uint32_t data_used = 0;
+    if (engine.cells.data_table_count > 0) {
+        uint16_t last = engine.cells.data_table_count - 1;
+        data_used = engine.cells.data_offsets[last] +
+                    engine.cells.data_lengths[last];
+    }
+    if ((uint32_t)engine.cells.data_table_count + new_table_count >
+            MAX_DATA_TABLES ||
+        data_used + new_data_entries > MAX_DATA_ENTRIES) {
+        return make_error("Data table storage is full — defs not applied",
+                          "Free space with (useq-clear) or use fewer vectors");
+    }
+    if (engine.arena.write_head > SOURCE_ARENA_SIZE ||
+        new_source_bytes > SOURCE_ARENA_SIZE - engine.arena.write_head) {
+        return make_error("Program storage is full — defs not applied",
+                          "Free space with (useq-clear) or shorten your program");
+    }
+
+    // Commit pass. Every operation below has been capacity-checked above.
+    ts.rewind(list_start);
+    for (uint16_t binding = 0; binding < binding_count; binding++) {
+        Token name_tok = ts.consume();
+        SymbolID cell_sym = name_tok.symbol;
+        Token val_tok = ts.peek();
+
+        if (val_tok.kind == TokenKind::Number) {
+            ts.consume();
+            engine.cells.cells[cell_sym].kind = CellKind::Number;
+            engine.cells.cells[cell_sym].flags = 0;
+            engine.cells.cells[cell_sym].revision++;
+            engine.cells.cells[cell_sym].value = val_tok.number;
+        } else if (val_tok.kind == TokenKind::LBracket) {
+            ts.consume();
+            double values[64];
+            uint16_t count = 0;
+            while (ts.peek().kind != TokenKind::RBracket) {
+                values[count++] = ts.consume().number;
+            }
+            ts.expect(TokenKind::RBracket);
+            uint16_t table_id =
+                engine.cells.store_data_table(values, count);
+            engine.cells.cells[cell_sym].kind = CellKind::Data;
+            engine.cells.cells[cell_sym].flags = 0;
+            engine.cells.cells[cell_sym].data_table_id = table_id;
+            engine.cells.cells[cell_sym].revision++;
+            engine.cells.cells[cell_sym].value = (double)count;
+        } else {
+            uint32_t byte_start = span_begin(ts, ts.pos);
+            GraphBuilder::skip_form(ts);
+            uint32_t byte_end = span_end_of(ts, ts.pos);
+            uint32_t len = byte_end - byte_start;
+            const CallableInfo previous =
+                engine.cells.callables[cell_sym];
+            uint32_t offset = engine.arena.store_reuse(
+                previous.source_offset, previous.source_length,
+                source + byte_start, len);
+            engine.cells.cells[cell_sym].kind = CellKind::Callable;
+            engine.cells.cells[cell_sym].flags = 0;
+            engine.cells.cells[cell_sym].revision++;
+            engine.cells.callables[cell_sym] = CallableInfo{};
+            engine.cells.callables[cell_sym].source_offset = offset;
+            engine.cells.callables[cell_sym].source_length = len;
+        }
+    }
+    ts.expect(TokenKind::RBracket);
+
+    for (uint16_t i = 0; i < binding_count; i++) {
+        on_cell_changed(symbols[i], engine);
+    }
+    return make_ok();
+}
+
 // ── Top-level eval ──────────────────────────────────────────────────────────
 
 static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
@@ -1290,7 +2053,12 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         ts.consume();
         SymbolID sym = tok.symbol;
         if (sym < MAX_CELLS && engine.cells.cells[sym].kind == CellKind::Number) {
-            return make_number(engine.cells.cells[sym].value);
+            const Cell& cell = engine.cells.cells[sym];
+            if (cell.flags == 0x02 &&
+                cell.data_table_id < engine.pool.state_slot_count) {
+                return make_number(engine.pool.state_values[cell.data_table_id]);
+            }
+            return make_number(cell.value);
         }
         if (source && tok.span_start + tok.span_len <= source_length) {
             return eval_expression(
@@ -1395,87 +2163,9 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             return r;
         }
         if (op == sym.defs) {
-            // (defs [name1 val1 name2 val2 ...])
-            if (!ts.expect(TokenKind::LBracket)) {
-                return make_error("defs needs a bracket list of name-value pairs",
-                                  "Try: (defs [x 1 y 2 z 3])");
-            }
-            while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
-                Token name_tok = ts.consume();
-                if (name_tok.kind != TokenKind::Symbol) {
-                    return make_error("defs: expected a name",
-                                      "Try: (defs [x 1 y 2])");
-                }
-                SymbolID cell_sym = name_tok.symbol;
-                if (cell_id_out_of_range(cell_sym))
-                    return make_too_many_definitions_error();
-
-                if (ts.at_end() || ts.peek().kind == TokenKind::RBracket) {
-                    return make_error("defs: each name needs a value",
-                                      "Try: (defs [x 1 y 2])");
-                }
-                Token val_tok = ts.peek();
-                if (val_tok.kind == TokenKind::Number) {
-                    ts.consume();
-                    engine.cells.cells[cell_sym].kind = CellKind::Number;
-                    engine.cells.cells[cell_sym].revision++;
-                    engine.cells.cells[cell_sym].value = val_tok.number;
-                } else if (val_tok.kind == TokenKind::LBracket) {
-                    // Vector: [1 2 3]
-                    ts.consume();
-                    double values[64];
-                    uint16_t count = 0;
-                    while (ts.peek().kind != TokenKind::RBracket &&
-                           !ts.at_end() && count < 64) {
-                        Token elem = ts.consume();
-                        if (elem.kind == TokenKind::Number)
-                            values[count++] = elem.number;
-                    }
-                    ts.expect(TokenKind::RBracket);
-                    uint16_t tid = engine.cells.store_data_table(values, count);
-                    engine.cells.cells[cell_sym].kind = CellKind::Data;
-                    engine.cells.cells[cell_sym].data_table_id = tid;
-                    engine.cells.cells[cell_sym].revision++;
-                    engine.cells.cells[cell_sym].value = (double)count;
-                } else {
-                    // Expression — store as callable with 0 params.
-                    // Arena store happens FIRST: a full arena fails this
-                    // binding without touching the cell (F5).
-                    uint16_t expr_start = ts.pos;
-                    uint32_t byte_start = span_begin(ts, expr_start);
-                    GraphBuilder::skip_form(ts);
-                    uint32_t byte_end = span_end_of(ts, ts.pos);
-
-                    uint32_t off = UINT32_MAX;
-                    uint32_t len = 0;
-                    if (source && byte_end > byte_start &&
-                        byte_end <= source_length) {
-                        len = byte_end - byte_start;
-                        const CallableInfo& previous =
-                            engine.cells.callables[cell_sym];
-                        off = engine.arena.store_reuse(
-                            previous.source_offset, previous.source_length,
-                            source + byte_start, len);
-                        if (off == UINT32_MAX) {
-                            return make_error(
-                                "Program storage is full — definition not applied",
-                                "Free space with (useq-clear) or shorten your program");
-                        }
-                    }
-
-                    engine.cells.cells[cell_sym].kind = CellKind::Callable;
-                    engine.cells.cells[cell_sym].revision++;
-                    engine.cells.callables[cell_sym].param_count = 0;
-                    if (off != UINT32_MAX) {
-                        engine.cells.callables[cell_sym].source_offset = off;
-                        engine.cells.callables[cell_sym].source_length = len;
-                    }
-                }
-                on_cell_changed(cell_sym, engine);
-            }
-            ts.expect(TokenKind::RBracket);
+            EvalResult r = do_defs(ts, engine, source, source_length);
             ts.expect(TokenKind::RParen);
-            return make_ok();
+            return r;
         }
         if (op == sym.defstate) {
             EvalResult r = do_defstate(ts, engine, source, source_length);
@@ -1515,6 +2205,10 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             return r;
         }
         if (op == sym.useq_clear) {
+            if (ts.peek().kind != TokenKind::RParen) {
+                return make_error("useq-clear accepts no arguments",
+                                  "Try: (useq-clear)");
+            }
             EvalResult r = do_useq_clear(engine);
             ts.expect(TokenKind::RParen);
             return r;
@@ -1544,23 +2238,38 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             return r;
         }
         if (op == sym.useq_play) {
-            engine.state.is_playing = true;
+            if (ts.peek().kind != TokenKind::RParen) {
+                return make_error("useq-play accepts no arguments",
+                                  "Try: (useq-play)");
+            }
+            engine.state.play();
             ts.expect(TokenKind::RParen);
             return make_ok();
         }
         if (op == sym.useq_pause) {
-            engine.state.is_playing = false;
+            if (ts.peek().kind != TokenKind::RParen) {
+                return make_error("useq-pause accepts no arguments",
+                                  "Try: (useq-pause)");
+            }
+            engine.state.pause();
             ts.expect(TokenKind::RParen);
             return make_ok();
         }
         if (op == sym.useq_stop) {
-            engine.state.is_playing = false;
-            engine.state.time_offset = 0.0;
+            if (ts.peek().kind != TokenKind::RParen) {
+                return make_error("useq-stop accepts no arguments",
+                                  "Try: (useq-stop)");
+            }
+            engine.state.stop();
             ts.expect(TokenKind::RParen);
             return make_ok();
         }
         if (op == sym.useq_rewind) {
-            engine.state.time_offset = 0.0;
+            if (ts.peek().kind != TokenKind::RParen) {
+                return make_error("useq-rewind accepts no arguments",
+                                  "Try: (useq-rewind)");
+            }
+            engine.state.rewind();
             ts.expect(TokenKind::RParen);
             return make_ok();
         }
@@ -1594,6 +2303,17 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                     "sync with the runtime.");
             }
 
+            // Prove the wrapper contains exactly one complete child before
+            // evaluating that potentially effectful child.
+            uint16_t child_start = ts.pos;
+            GraphBuilder::skip_form(ts);
+            if (ts.peek().kind != TokenKind::RParen) {
+                return make_error(
+                    "with-state-id accepts exactly one wrapped form",
+                    "Try: (with-state-id \"id\" (a1 expression))");
+            }
+            ts.rewind(child_start);
+
             char saved_id[MAX_SYNTH_IDENTITY];
             std::memcpy(saved_id, engine.pending_state_identity,
                         MAX_SYNTH_IDENTITY);
@@ -1623,6 +2343,10 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                 return make_error("zeros needs a number",
                                   "Try: (zeros 8)");
             }
+            if (ts.peek().kind != TokenKind::RParen) {
+                return make_error("zeros accepts exactly one number",
+                                  "Try: (zeros 8)");
+            }
             int n = (int)n_tok.number;
             if (n < 1) n = 1;
             if (n > 64) n = 64;
@@ -1638,6 +2362,10 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         // get-expr — return stored source expression for a symbol
         if (op == sym.get_expr) {
             Token name_tok = ts.consume();
+            if (ts.peek().kind != TokenKind::RParen) {
+                return make_error("get-expr accepts exactly one name",
+                                  "Try: (get-expr my-fn)");
+            }
             ts.expect(TokenKind::RParen);
             if (name_tok.kind != TokenKind::Symbol) {
                 return make_error("get-expr needs a name",
@@ -1674,6 +2402,18 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             EvalResult last = make_ok();
             while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
                 last = eval_form(ts, engine, source, source_length, shared_ids);
+                if (last.kind == EvalResult::Error) {
+                    // A submission is a sequence of per-form transactions.
+                    // Earlier successful children remain committed, but the
+                    // first failure stops the sequence and later children are
+                    // not evaluated.
+                    while (ts.peek().kind != TokenKind::RParen &&
+                           !ts.at_end()) {
+                        GraphBuilder::skip_form(ts);
+                    }
+                    ts.expect(TokenKind::RParen);
+                    return last;
+                }
             }
             ts.expect(TokenKind::RParen);
             return last;
@@ -1772,14 +2512,6 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
     // Cross-output live-edit ID tracking — cleared per eval batch
     SharedLiveEditIDs shared_ids;
 
-    // ── Transactional synth artefact snapshot ───────────────────────────
-    // Synth declarations are staged into engine.synth_graph during
-    // eval_form. If any form in this eval unit fails, we restore the
-    // pre-eval snapshot so the published graph/control table/revision
-    // reflect only the last fully-successful eval (VAL-COMP-008/010).
-    // The snapshot is cheap (one struct copy of POD arrays).
-    SynthGraph synth_snapshot = engine.synth_graph;
-
     // Reset the per-eval anonymous synth ordinal and defensively clear any
     // stale pending wrapper identity (state-identity.md §2.2/§2.5). Both
     // are eval-scoped: the ordinal keys the anonymous fallback identity,
@@ -1796,49 +2528,10 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
     while (!ts.at_end() && ts.peek().kind != TokenKind::Eof) {
         last = eval_form(ts, engine, source, length, &shared_ids);
         if (last.kind == EvalResult::Error) {
-            // Roll back synth artefacts to the pre-eval snapshot. The
-            // revision counter is restored, so consumers can detect that
-            // the graph did not advance (VAL-COMP-008/010).
-            engine.synth_graph = synth_snapshot;
+            // A submission is a sequence of per-form transactions: retain
+            // earlier committed forms, stop at the first rejected one.
             return last;
         }
-    }
-
-    // Successful eval: advance the shared graph/control revision exactly
-    // once so consumers see a single coherent update (VAL-COMP-009). We
-    // compare the post-eval graph to the snapshot to avoid spurious
-    // revision bumps on no-op evals (e.g. a bare `bar` query).
-    bool synth_graph_changed =
-        engine.synth_graph.declaration_count() != synth_snapshot.declaration_count()
-        || engine.synth_graph.control_count() != synth_snapshot.control_count();
-    if (!synth_graph_changed) {
-        // Same shape — compare contents to detect param-only updates.
-        for (uint16_t i = 0;
-             !synth_graph_changed && i < engine.synth_graph.control_count(); i++) {
-            const SynthControlChannel& a = engine.synth_graph.controls[i];
-            const SynthControlChannel& b = synth_snapshot.controls[i];
-            if (a.root_node != b.root_node) synth_graph_changed = true;
-            if (std::strcmp(a.identity, b.identity) != 0) synth_graph_changed = true;
-            if (std::strcmp(a.param_name, b.param_name) != 0) synth_graph_changed = true;
-        }
-    }
-    if (synth_graph_changed) {
-        engine.synth_graph.advance_revision();
-
-        // Reclaim nodes orphaned by replaced synth declarations: a
-        // same-identity re-eval compiles fresh param graphs and drops the
-        // old control rows, leaving the previous compile unreachable.
-        // Every sibling recompile path (do_output_assign, on_cell_changed,
-        // recompile_all_outputs) pairs this triplet; without it a
-        // param-tweaking synth session leaks until the fixed node pool
-        // (MAX_TOTAL_NODES) fills and unrelated compiles start failing.
-        // This runs only at successful commit — never mid-unit — so the
-        // pre-eval snapshot's root_node indices stay valid for rollback.
-        register_synth_external_roots(engine);
-        engine.pool.gc_unreachable_nodes();
-        commit_synth_external_roots(engine);
-        engine.pool.rebuild_execution_order();
-        classify_outputs(engine.pool);
     }
 
     return last;
@@ -1864,7 +2557,9 @@ void recompile_all_outputs(SignalEngine& engine) {
             tokens, MAX_TOKENS, nullptr, &parse_errors);
 
         if (parse_errors != 0) {
-            engine.pool.outputs[i].valid = false;
+            // Stored source can be corrupt (for example after loading an old
+            // flash image), but recompilation is still a publication
+            // transaction.  Keep any already-live graph intact.
             continue;
         }
 
@@ -1873,6 +2568,9 @@ void recompile_all_outputs(SignalEngine& engine) {
         ts.count = count;
         ts.pos = 0;
 
+        GraphMutationSnapshot graph_snapshot =
+            capture_graph_mutations(engine);
+        engine.registry.begin_context(i);
         GraphBuildResult result = build_output_graph(
             engine.pool, ts, engine.cells, engine.arena, src,
             &engine.registry, nullptr, i);
@@ -1886,8 +2584,11 @@ void recompile_all_outputs(SignalEngine& engine) {
             for (uint8_t d = 0; d < result.dep_count; d++) {
                 engine.pool.output_deps[i].add(result.dep_cells[d]);
             }
+            engine.registry.commit_context(i,
+                                           engine.pool.state_update_roots,
+                                           engine.pool.state_owner_context);
         } else {
-            engine.pool.outputs[i].valid = false;
+            restore_graph_mutations(engine, graph_snapshot);
         }
     }
 
@@ -1923,7 +2624,9 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                     ts.count = count;
                     ts.pos = 0;
 
-                    uint8_t saved_tables = engine.cells.data_table_count;
+                    GraphMutationSnapshot graph_snapshot =
+                        capture_graph_mutations(engine);
+                    engine.registry.begin_context(i);
                     GraphBuildResult result = build_output_graph(
                         engine.pool, ts, engine.cells, engine.arena, src,
                         &engine.registry, nullptr, i);
@@ -1941,9 +2644,15 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                         for (uint8_t d = 0; d < result.dep_count; d++) {
                             engine.pool.output_deps[i].add(result.dep_cells[d]);
                         }
+                        engine.registry.commit_context(
+                            i, engine.pool.state_update_roots,
+                            engine.pool.state_owner_context);
                     } else {
-                        engine.cells.data_table_count = saved_tables;
-                        engine.pool.outputs[i].valid = false;
+                        // A reactive compile is a candidate publication just
+                        // like a direct output assignment.  Retain the old
+                        // root, validity, dependencies, state values, and
+                        // capacity when the candidate is rejected.
+                        restore_graph_mutations(engine, graph_snapshot);
                     }
                 }
             }
@@ -1978,10 +2687,14 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
             ts.count = count;
             ts.pos = 0;
 
-            uint8_t saved_tables = engine.cells.data_table_count;
+            GraphMutationSnapshot graph_snapshot =
+                capture_graph_mutations(engine);
+            uint16_t owner_context =
+                (uint16_t)(MAX_OUTPUTS + s);
+            engine.registry.begin_context(owner_context);
             GraphBuildResult result = build_output_graph(
                 engine.pool, ts, engine.cells, engine.arena, src,
-                &engine.registry, nullptr, (uint16_t)(MAX_OUTPUTS + s));
+                &engine.registry, nullptr, owner_context);
             if (!result.has_error) {
                 engine.pool.state_update_roots[s] = result.root_node;
                 // Update dependencies
@@ -1989,10 +2702,60 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                 for (uint8_t d = 0; d < result.dep_count; d++) {
                     engine.state_sources[s].dep_cells[d] = result.dep_cells[d];
                 }
+                engine.registry.commit_context(
+                    owner_context, engine.pool.state_update_roots,
+                    engine.pool.state_owner_context);
             } else {
-                engine.cells.data_table_count = saved_tables;
+                restore_graph_mutations(engine, graph_snapshot);
             }
         }
+    }
+
+    // Synth controls are persistent programs too. Recompile only channels
+    // whose recorded cell dependency changed, preserving the prior root and
+    // its state/resources when the candidate cannot be built.
+    for (uint16_t i = 0; i < engine.synth_graph.control_count(); i++) {
+        SynthControlChannel& control = engine.synth_graph.controls[i];
+        bool depends = false;
+        for (uint8_t d = 0; d < control.dep_count; d++) {
+            if (control.dep_cells[d] == cell_id) {
+                depends = true;
+                break;
+            }
+        }
+        if (!depends || control.source_length == 0) continue;
+
+        const char* src = engine.arena.read(control.source_offset);
+        if (!src) continue;
+        Token tokens[MAX_TOKENS];
+        Diagnostic parse_diagnostics[8];
+        uint8_t parse_error_count = 0;
+        uint16_t count = TokenStream::tokenize(
+            src, control.source_length, tokens, MAX_TOKENS,
+            parse_diagnostics, &parse_error_count);
+        if (parse_error_count != 0) continue;
+
+        TokenStream ts;
+        memcpy(ts.tokens, tokens, count * sizeof(Token));
+        ts.count = count;
+        ts.pos = 0;
+        GraphMutationSnapshot graph_snapshot =
+            capture_graph_mutations(engine);
+        engine.registry.begin_context(control.owner_context);
+        GraphBuildResult result = build_output_graph(
+            engine.pool, ts, engine.cells, engine.arena, src,
+            &engine.registry, nullptr, control.owner_context);
+        if (result.has_error) {
+            restore_graph_mutations(engine, graph_snapshot);
+            continue;
+        }
+        control.root_node = result.root_node;
+        control.dep_count = result.dep_count;
+        for (uint8_t d = 0; d < result.dep_count; d++)
+            control.dep_cells[d] = result.dep_cells[d];
+        engine.registry.commit_context(
+            control.owner_context, engine.pool.state_update_roots,
+            engine.pool.state_owner_context);
     }
 
     // Reclaim nodes orphaned by the recompiles above (F4). Every sibling

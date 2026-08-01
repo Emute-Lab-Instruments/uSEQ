@@ -289,9 +289,11 @@ uint16_t NodePool::make_binop(NodeOp op, uint16_t a, uint16_t b) {
     if (op == NodeOp::Add && na.op == NodeOp::Const && na.imm == 0.0) return b;
     if (op == NodeOp::Mul && nb.op == NodeOp::Const && nb.imm == 1.0) return a;
     if (op == NodeOp::Mul && na.op == NodeOp::Const && na.imm == 1.0) return b;
-    if (op == NodeOp::Mul && nb.op == NodeOp::Const && nb.imm == 0.0) return make_const(0.0);
-    if (op == NodeOp::Mul && na.op == NodeOp::Const && na.imm == 0.0) return make_const(0.0);
-    if (op == NodeOp::Sub && a == b) return make_const(0.0);
+    // Do not fold x*0 or x-x without a proof that x is finite. IEEE-754
+    // gives NaN for Inf*0, NaN*0, Inf-Inf, and NaN-NaN; replacing those
+    // results with zero would suppress the output-root failure signal and
+    // change LKG/health semantics. The all-constant case above remains safe
+    // because it is evaluated through the same primitive as the hot path.
     // NOTE: no `Div a a -> 1` fold (A10) — runtime division defines a/0 = 0
     // (eval_ops.h), so x/x is 0 whenever x is 0 (and NaN for NaN x). The
     // constant/constant case is already folded through eval_binop above.
@@ -377,6 +379,11 @@ void NodePool::rebuild_execution_order() {
         if (state_update_roots[s] != NODE_NONE) {
             push(state_update_roots[s]);
         }
+    }
+
+    // External roots are executable synth-control roots, not merely GC pins.
+    for (uint16_t e = 0; e < external_root_count; e++) {
+        push(external_roots[e]);
     }
 
     while (stack_top > 0) {
@@ -499,21 +506,31 @@ void NodePool::gc_unreachable_nodes() {
 }
 
 void NodePool::reset() {
+    for (uint16_t i = 0; i < MAX_TOTAL_NODES; i++) nodes[i] = Node{};
     node_count = 0;
+    memset(exec_order, 0, sizeof(exec_order));
     exec_count = 0;
     memset(cse_hashes, 0, sizeof(cse_hashes));
     memset(cse_indices, 0, sizeof(cse_indices));
     for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
         outputs[i] = OutputSlot{};
-        output_deps[i].clear();
+        output_deps[i] = OutputDeps{};
     }
+    memset(output_class, 0, sizeof(output_class));
+    memset(output_input_mask, 0, sizeof(output_input_mask));
     memset(prev_output_values, 0, sizeof(prev_output_values));
     runtime_fallback_mask = 0;
     memset(state_values, 0, sizeof(state_values));
     for (uint16_t s = 0; s < MAX_STATE_SLOTS; s++) {
         state_update_roots[s] = NODE_NONE;
+        state_owner_context[s] = NODE_NONE;
     }
     state_slot_count = 0;
+    for (uint16_t i = 0; i < MAX_LIVE_SLOTS; i++)
+        live_slots[i] = LiveSlot{};
+    live_slot_count = 0;
+    memset(external_roots, 0, sizeof(external_roots));
+    external_root_count = 0;
 }
 
 void NodePool::allocate_batch_workspace() {

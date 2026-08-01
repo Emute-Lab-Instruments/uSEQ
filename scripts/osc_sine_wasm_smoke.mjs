@@ -42,6 +42,11 @@ console.log(`fade_in_ms=${e.osc_sine_fade_in_ms()} fade_out_ms=${e.osc_sine_fade
 console.log(`min_quantum=${e.osc_sine_min_quantum()} max_quantum=${e.osc_sine_max_quantum()}`);
 console.log(`sample_rate=${e.osc_sine_sample_rate()}`);
 
+if (e.osc_sine_sample_rate_abi_version() !== 1) {
+    console.error(`FAIL: unsupported sample-rate ABI ${e.osc_sine_sample_rate_abi_version()}`);
+    process.exit(1);
+}
+
 // ── Registry metadata check (VAL-DSP-001) ────────────────────────────────
 const regJsonPtr = e.osc_sine_registry_json();
 const memView = new DataView(memory.buffer);
@@ -54,8 +59,9 @@ for (let i = regJsonPtr; i < memory.buffer.byteLength; i++) {
 console.log(`registry_json=${regJson}`);
 
 const requiredJsonSubstrings = [
-    '"name":"osc/sine"', '"version":1',
-    '"audio_inputs":0', '"audio_outputs":1', '"voice_fanout":false',
+    '"name":"osc/sine"', '"version":2',
+    '"audio_inputs":1', '"audio_input_names":["fm"]',
+    '"audio_outputs":1', '"voice_fanout":false',
     '"name":"freq"', '"name":"amp"',
     '"fade_in_ms":10', '"fade_out_ms":30',
 ];
@@ -72,71 +78,77 @@ if (e.osc_sine_validate_layout(stateOffset, STATE_BYTES) !== 1) {
     console.error('FAIL: validate_layout rejected the state offset');
     process.exit(1);
 }
-if (e.osc_sine_init(stateOffset, STATE_BYTES) !== 1) {
-    console.error('FAIL: init failed');
-    process.exit(1);
-}
-
-// ── Render 1 second of 440 Hz / 0.2 amp across 25 blocks of 1920 frames ──
+// ── Render 1 second of 440 Hz + 110 Hz FM at common render rates ────────
 // VAL-DSP-007 (dynamic quantum), VAL-DSP-008 (measured amp),
 // VAL-DSP-009 (finite output).
 const FRAMES = 1920;
-const BLOCKS = 25;
 const heap = new Float64Array(memory.buffer);
 const freqOffsetDoubles = 0;  // first double in the heap
 const ampOffsetDoubles = 1;   // second double
 const outOffsetDoubles = 4096; // separate region, 32 KB into the heap
+const fmOffsetDoubles = 8192;
 
 heap[freqOffsetDoubles] = 440.0;
 heap[ampOffsetDoubles] = 0.2;
 
-let peak = 0.0;
-let crossings = 0;
-let prevSign = 0;
-for (let b = 0; b < BLOCKS; b++) {
-    const ok = e.osc_sine_compute(
-        stateOffset,
-        freqOffsetDoubles * 8,
-        ampOffsetDoubles * 8,
-        outOffsetDoubles * 8,
-        FRAMES
-    );
-    if (ok !== 1) {
-        console.error(`FAIL: compute returned ${ok} on block ${b}`);
+for (const renderRate of [44100, 48000, 96000]) {
+    if (e.osc_sine_init(stateOffset, STATE_BYTES) !== 1) {
+        console.error(`FAIL: init failed at ${renderRate} Hz`);
         process.exit(1);
     }
-    for (let i = 0; i < FRAMES; i++) {
-        const v = heap[outOffsetDoubles + i];
-        if (!Number.isFinite(v)) {
-            console.error(`FAIL: non-finite sample at block ${b} frame ${i}: ${v}`);
+
+    let peak = 0.0;
+    let crossings = 0;
+    let prevSign = 0;
+    let rendered = 0;
+    while (rendered < renderRate) {
+        const frameCount = Math.min(FRAMES, renderRate - rendered);
+        heap.fill(110.0, fmOffsetDoubles, fmOffsetDoubles + frameCount);
+        const ok = e.osc_sine_compute_fm_at_sample_rate(
+            stateOffset,
+            freqOffsetDoubles * 8,
+            ampOffsetDoubles * 8,
+            fmOffsetDoubles * 8,
+            outOffsetDoubles * 8,
+            frameCount,
+            renderRate
+        );
+        if (ok !== 1) {
+            console.error(`FAIL: compute returned ${ok} at ${renderRate} Hz frame ${rendered}`);
             process.exit(1);
         }
-        const a = Math.abs(v);
-        if (a > peak) peak = a;
-        const sign = v > 0 ? 1 : (v < 0 ? -1 : 0);
-        if (sign !== 0) {
-            if (prevSign !== 0 && sign !== prevSign) crossings++;
-            prevSign = sign;
+        for (let i = 0; i < frameCount; i++) {
+            const v = heap[outOffsetDoubles + i];
+            if (!Number.isFinite(v)) {
+                console.error(`FAIL: non-finite sample at ${renderRate} Hz frame ${rendered + i}: ${v}`);
+                process.exit(1);
+            }
+            const a = Math.abs(v);
+            if (a > peak) peak = a;
+            const sign = v > 0 ? 1 : (v < 0 ? -1 : 0);
+            if (sign !== 0) {
+                if (prevSign !== 0 && sign !== prevSign) crossings++;
+                prevSign = sign;
+            }
         }
+        rendered += frameCount;
+    }
+
+    console.log(`render_rate=${renderRate} peak=${peak.toFixed(4)} zero_crossings=${crossings}`);
+
+    // Peak should land near 0.2 (target amp); the first block ramps from
+    // silence, so peak across 1 second approaches but does not quite hit it.
+    if (peak < 0.18 || peak > 0.22) {
+        console.error(`FAIL: peak ${peak} outside [0.18, 0.22] at ${renderRate} Hz`);
+        process.exit(1);
+    }
+
+    // Base 440 + FM 110 is 550 Hz. Allow 5% for edge effects.
+    const measuredHz = crossings / 2;
+    if (Math.abs(measuredHz - 550) > 27.5) {
+        console.error(`FAIL: measured frequency ${measuredHz} Hz at ${renderRate} Hz render rate`);
+        process.exit(1);
     }
 }
 
-console.log(`peak=${peak.toFixed(4)} zero_crossings=${crossings}`);
-
-// Peak should land near 0.2 (target amp); the first block ramps from silence,
-// so peak across 1 second approaches but doesn't quite hit 0.2.
-if (peak < 0.18 || peak > 0.22) {
-    console.error(`FAIL: peak ${peak} outside [0.18, 0.22]`);
-    process.exit(1);
-}
-
-// 1 second of 440 Hz sine ≈ 880 zero crossings (2 per cycle). Allow 5% slack
-// for the ramp-in edge.
-const expected = 440 * 2;
-const measuredHz = (crossings / 2);
-if (Math.abs(measuredHz - 440) > 22) {
-    console.error(`FAIL: measured frequency ${measuredHz} Hz not within 22 Hz of 440`);
-    process.exit(1);
-}
-
-console.log('PASS: NodeDef WASM runs against host-owned imported memory');
+console.log('PASS: NodeDef WASM FM path preserves pitch at 44.1, 48, and 96 kHz');

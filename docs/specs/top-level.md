@@ -42,6 +42,20 @@ the language surface.
 - `(eval string)` — dynamic evaluation. Top-level only; rejected in signal context.
 - `(print value)`, `(perf)`, `(timeit expr)` — diagnostic side effects.
 
+1.4.1 `(useq-clear)` is a full in-memory session reset. It removes user
+definitions and callables, callable/output/state source text, data tables,
+active graphs and dependencies, state resources, live-edit slots, synth
+declarations/control roots, scratch compiler state, and diagnostics/cache
+generations. It then restores only the standard timing cells at their default
+values. Names and bounded resource IDs are immediately reusable as in a fresh
+session. It does not erase a persistent flash save and is not an immediate
+electrical output command; see [outputs.md §1.9](outputs.md).
+
+1.4.2 `(useq-pause)` freezes logical time and state. `(useq-play)` resumes
+without counting paused wall time. `(useq-rewind)` resets logical time to zero
+while preserving programs and state. `(useq-stop)` is exactly pause plus
+rewind and also preserves programs and state. See [time.md §1.1.3](time.md).
+
 1.5 Top-level forms are **eagerly evaluated for their side effects**. The result of a top-level form may also be returned to the editor for display.
 
 1.6 The compiler may **compile top-level forms to a node graph for performance** even when they only run once. This does not change their semantics; it just means "compiles to a node graph" is not synonymous with "is a signal" — see [compilation.md §1.5](compilation.md).

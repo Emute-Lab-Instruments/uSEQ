@@ -57,6 +57,24 @@ struct Harness {
         execute_all_outputs(engine.pool, ctx);
         return outputs[output_index];
     }
+
+    double tick(int output_index, double t, double dt) {
+        double cell_values[MAX_CELLS];
+        engine.cells.snapshot_values(cell_values, MAX_CELLS);
+        double hw_inputs[32] = {};
+        double outputs[MAX_OUTPUTS] = {};
+        double workspace[MAX_TOTAL_NODES] = {};
+        ExecutionContext ctx{t, dt, cell_values, hw_inputs,
+                             engine.cells.data_pool,
+                             engine.cells.data_offsets,
+                             engine.cells.data_lengths,
+                             engine.pool.prev_output_values,
+                             outputs, workspace};
+        execute_all_outputs(engine.pool, ctx);
+        commit_state(engine.pool, workspace);
+        commit_outputs(engine.pool, outputs);
+        return outputs[output_index];
+    }
 };
 
 } // namespace
@@ -86,6 +104,166 @@ TEST_CASE("A2: failed output compile leaves the active program valid",
     REQUIRE(h.sample(0) == Approx(0.75));
 }
 
+TEST_CASE("A2b: rejected graph build restores state, source, and capacity",
+          "[audit][transaction]") {
+    Harness h;
+
+    h.eval_ok("(define tx-dep 1)");
+    h.eval_ok("(a1 (+ tx-dep (phasor 1 :id \"tx-phase\")))");
+    h.tick(0, 0.0, 0.0);
+    h.tick(0, 0.25, 0.25);
+    REQUIRE(h.sample(0, 0.25) == Approx(1.25));
+
+    uint16_t slots_before = h.engine.pool.state_slot_count;
+    uint16_t registry_before = h.engine.registry.entry_count;
+    uint16_t update_before = h.engine.pool.state_update_roots[0];
+    uint16_t live_before = h.engine.pool.live_slot_count;
+    uint8_t tables_before = h.engine.cells.data_table_count;
+
+    EvalResult rejected = h.eval(
+        "(a1 (+ tx-dep (phasor 2 :id \"tx-phase\") "
+        "(live-edit 0.5 :id \"rejected-slot\" :min 0 :max 1) "
+        "[9 8 7] no-such-name))");
+    REQUIRE(rejected.kind == EvalResult::Error);
+    REQUIRE(h.engine.pool.state_slot_count == slots_before);
+    REQUIRE(h.engine.registry.entry_count == registry_before);
+    REQUIRE(h.engine.pool.state_update_roots[0] == update_before);
+    REQUIRE(h.engine.pool.live_slot_count == live_before);
+    REQUIRE(h.engine.cells.data_table_count == tables_before);
+
+    // The rejected 2-Hz update did not steal the live 1-Hz state resource.
+    h.tick(0, 0.5, 0.25);
+    REQUIRE(h.sample(0, 0.5) == Approx(1.5));
+
+    // The failed source was not published: dependency recompilation uses the
+    // old valid expression and remains healthy.
+    h.eval_ok("(define tx-dep 2)");
+    REQUIRE(h.engine.pool.outputs[0].valid);
+    REQUIRE(h.sample(0, 0.5) == Approx(2.5));
+}
+
+TEST_CASE("A2c: repeated rejected stateful builds do not exhaust state",
+          "[audit][transaction][capacity]") {
+    Harness h;
+    for (int i = 0; i < (int)MAX_STATE_SLOTS + 4; ++i) {
+        char code[160];
+        snprintf(code, sizeof(code),
+                 "(a1 (+ (integrate 1 :id \"rejected-%d\") missing-%d))",
+                 i, i);
+        EvalResult r = h.eval(code);
+        REQUIRE(r.kind == EvalResult::Error);
+        REQUIRE(h.engine.pool.state_slot_count == 0);
+        REQUIRE(h.engine.registry.entry_count == 0);
+    }
+    h.eval_ok("(a1 (integrate 1 :id \"healthy-after-rejects\"))");
+    REQUIRE(h.engine.pool.state_slot_count == 1);
+}
+
+TEST_CASE("A2d: side-effecting forms validate arity before publication",
+          "[audit][transaction][arity]") {
+    Harness h;
+    auto& si = SymbolIntern::getInstance();
+
+    EvalResult out = h.eval("(a1 0.25 9)");
+    REQUIRE(out.kind == EvalResult::Error);
+    REQUIRE(h.engine.pool.outputs[0].root_node == NODE_NONE);
+
+    EvalResult def = h.eval("(define arity-y 7 8)");
+    REQUIRE(def.kind == EvalResult::Error);
+    SymbolID y = si.intern(String("arity-y"));
+    REQUIRE(h.engine.cells.cells[y].kind == CellKind::Empty);
+
+    EvalResult nested = h.eval("(do (a1 no-such-hidden) (define hidden-y 5))");
+    REQUIRE(nested.kind == EvalResult::Error);
+    SymbolID hidden = si.intern(String("hidden-y"));
+    REQUIRE(h.engine.cells.cells[hidden].kind == CellKind::Empty);
+
+    EvalResult defs = h.eval("(defs [defs-first 1 defs-second])");
+    REQUIRE(defs.kind == EvalResult::Error);
+    REQUIRE(h.engine.cells.cells[si.intern(String("defs-first"))].kind ==
+            CellKind::Empty);
+    REQUIRE(h.engine.cells.cells[si.intern(String("defs-second"))].kind ==
+            CellKind::Empty);
+
+    EvalResult defs_extra = h.eval("(defs [defs-extra 1] 9)");
+    REQUIRE(defs_extra.kind == EvalResult::Error);
+    REQUIRE(h.engine.cells.cells[si.intern(String("defs-extra"))].kind ==
+            CellKind::Empty);
+
+    std::string too_many_params = "(defn wide-fn [";
+    for (uint16_t i = 0; i <= MAX_CALLABLE_PARAMS; i++) {
+        too_many_params += " p" + std::to_string(i);
+    }
+    too_many_params += "] 1)";
+    EvalResult wide = h.eval(too_many_params);
+    REQUIRE(wide.kind == EvalResult::Error);
+    REQUIRE(h.engine.cells.cells[si.intern(String("wide-fn"))].kind ==
+            CellKind::Empty);
+}
+
+TEST_CASE("A2e: bare and compound named-state observations agree",
+          "[audit][state][observation]") {
+    Harness h;
+    h.eval_ok("(defstate observed-c 0 (+ observed-c 1))");
+    h.eval_ok("(a1 observed-c)");
+    h.tick(0, 0.0, 1.0);
+    h.tick(0, 1.0, 1.0);
+    h.tick(0, 2.0, 1.0);
+
+    EvalResult bare = h.eval("observed-c");
+    EvalResult compound = h.eval("(+ observed-c 0)");
+    REQUIRE(bare.kind == EvalResult::Number);
+    REQUIRE(compound.kind == EvalResult::Number);
+    REQUIRE(bare.number == Approx(compound.number));
+    REQUIRE(bare.number == Approx(3.0));
+}
+
+TEST_CASE("A2f: tokenizer rejects typed delimiter mismatch and long symbols",
+          "[audit][parser]") {
+    Harness h;
+
+    EvalResult mismatch = h.eval("(define typed-x [1 2))");
+    REQUIRE(mismatch.kind == EvalResult::Error);
+
+    std::string long_name(256, 'x');
+    EvalResult overlong = h.eval("(define " + long_name + " 1)");
+    REQUIRE(overlong.kind == EvalResult::Error);
+    REQUIRE(overlong.diagnostic_count >= 1);
+    REQUIRE(overlong.diagnostics[0].category == DiagnosticCategory::Syntax);
+}
+
+TEST_CASE("A2g: rejected reactive recompile preserves the active graph",
+          "[audit][transaction][reactive]") {
+    Harness h;
+
+    h.eval_ok("(define reactive-dep 1)");
+    h.eval_ok("(a1 (+ (phasor 1 :id \"reactive-phase\") reactive-dep))");
+    h.tick(0, 0.0, 0.0);
+    h.tick(0, 0.25, 0.25);
+    REQUIRE(h.sample(0, 0.25) == Approx(1.25));
+
+    uint16_t old_root = h.engine.pool.outputs[0].root_node;
+    uint16_t old_update = h.engine.pool.state_update_roots[0];
+
+    // Publishing the function succeeds, but it makes the stored output
+    // source ill-typed: a function requiring an argument cannot be read as a
+    // signal.  The rejected candidate first encounters the same state id at
+    // 2 Hz, so this also proves its state-resource mutation is rolled back.
+    h.eval_ok("(defn reactive-dep [x] x)");
+    REQUIRE(h.engine.pool.outputs[0].valid);
+    REQUIRE(h.engine.pool.outputs[0].root_node == old_root);
+    REQUIRE(h.engine.pool.state_update_roots[0] == old_update);
+
+    h.tick(0, 0.5, 0.25);
+    REQUIRE(h.sample(0, 0.5) == Approx(1.5));
+
+    // Dependencies were retained with the old graph, so restoring a numeric
+    // cell causes a healthy recompile and publishes the new value.
+    h.eval_ok("(define reactive-dep 2)");
+    REQUIRE(h.engine.pool.outputs[0].valid);
+    REQUIRE(h.sample(0, 0.5) == Approx(2.5));
+}
+
 // ── A4: useq-clear must fully clear defstate resources (§4.5) ──────────────
 
 TEST_CASE("A4: re-defstate after useq-clear gets a fresh, working slot",
@@ -112,6 +290,82 @@ TEST_CASE("A4: re-defstate after useq-clear gets a fresh, working slot",
     uint16_t slot = h.engine.cells.cells[c].data_table_id;
     REQUIRE(h.engine.pool.state_values[slot] == Approx(10.0));
     REQUIRE(h.engine.cells.cells[c].value == Approx(10.0));
+}
+
+TEST_CASE("Clear is fresh-session equivalent for compiler-owned storage",
+          "[audit][clear][session-reset]") {
+    Harness h;
+    auto& si = SymbolIntern::getInstance();
+    SymbolID scalar = si.intern(String("clear-scalar"));
+    SymbolID callable = si.intern(String("clear-callable"));
+
+    h.eval_ok("(define clear-scalar [1 2 3])");
+    h.eval_ok("(defn clear-callable [x] (+ x 1))");
+    h.eval_ok("(defstate clear-state 5 (+ clear-state 1))");
+    h.eval_ok("(a1 (+ (clear-callable 2)"
+              " (live-edit 0.25 :id \"clear-knob\" :min 0 :max 1)))");
+
+    REQUIRE(h.engine.cells.data_table_count > 0);
+    REQUIRE(h.engine.arena.write_head > 0);
+    REQUIRE(h.engine.pool.live_slot_count > 0);
+    REQUIRE(h.engine.pool.node_count > 0);
+    REQUIRE(h.engine.pool.state_slot_count > 0);
+    REQUIRE(h.engine.output_sources[0].has_source);
+
+    uint32_t generation = h.engine.session_generation;
+    h.eval_ok("(useq-clear)");
+
+    REQUIRE(h.engine.session_generation == generation + 1);
+    REQUIRE(h.engine.cells.cells[scalar].kind == CellKind::Empty);
+    REQUIRE(h.engine.cells.cells[callable].kind == CellKind::Empty);
+    REQUIRE(h.engine.cells.callables[callable].source_length == 0);
+    REQUIRE(h.engine.cells.data_table_count == 0);
+    REQUIRE(h.engine.arena.write_head == 0);
+    REQUIRE(h.engine.pool.node_count == 0);
+    REQUIRE(h.engine.pool.exec_count == 0);
+    REQUIRE(h.engine.pool.state_slot_count == 0);
+    REQUIRE(h.engine.pool.live_slot_count == 0);
+    REQUIRE(h.engine.pool.external_root_count == 0);
+    REQUIRE(h.engine.registry.entry_count == 0);
+    REQUIRE_FALSE(h.engine.output_sources[0].has_source);
+    REQUIRE_FALSE(h.engine.state_sources[0].has_source);
+    REQUIRE(h.engine.synth_graph.declaration_count() == 0);
+    REQUIRE(h.engine.pool.output_class[0] == OutputClass::Inactive);
+    REQUIRE(h.engine.pool.output_input_mask[0] == 0);
+
+    // The same names and resource IDs can be used immediately as fresh
+    // definitions; no stale callable source or table reference survives.
+    h.eval_ok("(define clear-scalar [9 8])");
+    h.eval_ok("(defn clear-callable [x] (* x 2))");
+    h.eval_ok("(a1 (clear-callable 4))");
+    REQUIRE(h.engine.cells.cells[scalar].data_table_id == 0);
+    REQUIRE(h.sample(0) == Approx(8.0));
+}
+
+TEST_CASE("Inactive outputs overwrite reused caller buffers with neutral zero",
+          "[audit][clear][neutral]") {
+    Harness h;
+    h.eval_ok("(a1 0.75)");
+    REQUIRE(h.sample(0) == Approx(0.75));
+    h.eval_ok("(useq-clear)");
+
+    double cell_values[MAX_CELLS] = {};
+    double hw_inputs[32] = {};
+    double outputs[MAX_OUTPUTS];
+    double workspace[MAX_TOTAL_NODES] = {};
+    for (double& output : outputs) output = 0.75;
+    ExecutionContext ctx;
+    ctx.cell_values = cell_values;
+    ctx.hw_inputs = hw_inputs;
+    ctx.data_pool = h.engine.cells.data_pool;
+    ctx.data_offsets = h.engine.cells.data_offsets;
+    ctx.data_lengths = h.engine.cells.data_lengths;
+    ctx.prev_outputs = h.engine.pool.prev_output_values;
+    ctx.output_values = outputs;
+    ctx.workspace = workspace;
+    execute_all_outputs(h.engine.pool, ctx);
+
+    for (double output : outputs) REQUIRE(output == 0.0);
 }
 
 // ── A5: scratch eval must not clobber fresh scratch state with live state ──
@@ -412,4 +666,3 @@ TEST_CASE("A1: defining more names than MAX_CELLS errors instead of OOB write",
     h.eval_ok("(a1 0.25)");
     REQUIRE(h.sample(0) == Approx(0.25));
 }
-

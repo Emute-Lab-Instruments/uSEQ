@@ -449,19 +449,17 @@ TEST_CASE("NodePool constant folding", "[signal_engine][node_pool]") {
         REQUIRE(result == x);
     }
 
-    SECTION("Algebraic simplification: x * 0 = 0") {
+    SECTION("No x * 0 fold without a finiteness proof") {
         uint16_t x = pool.make_raw_time_load();
         uint16_t zero = pool.make_const(0.0);
         uint16_t result = pool.make_binop(NodeOp::Mul, x, zero);
-        REQUIRE(pool.nodes[result].op == NodeOp::Const);
-        REQUIRE(pool.nodes[result].imm == 0.0);
+        REQUIRE(pool.nodes[result].op == NodeOp::Mul);
     }
 
-    SECTION("Algebraic simplification: x - x = 0") {
+    SECTION("No x - x fold without a finiteness proof") {
         uint16_t x = pool.make_raw_time_load();
         uint16_t result = pool.make_binop(NodeOp::Sub, x, x);
-        REQUIRE(pool.nodes[result].op == NodeOp::Const);
-        REQUIRE(pool.nodes[result].imm == 0.0);
+        REQUIRE(pool.nodes[result].op == NodeOp::Sub);
     }
 
     SECTION("No x / x = 1 fold — runtime defines x/0 = 0 (A10)") {
@@ -2707,9 +2705,8 @@ TEST_CASE("Cold eval: useq-clear resets outputs", "[signal_engine][cold_eval][tr
     REQUIRE(engine.pool.outputs[0].valid == false);
     REQUIRE(engine.pool.outputs[0].root_node == NODE_NONE);
 
-    // Analog defaults to 0.5
-    REQUIRE(engine.pool.outputs[0].lkg_value == 0.5);
-    // Digital defaults to 0.0
+    // Compiler/runtime neutral is numeric zero for every inactive output.
+    REQUIRE(engine.pool.outputs[0].lkg_value == 0.0);
     REQUIRE(engine.pool.outputs[8].lkg_value == 0.0);
 }
 
@@ -2783,30 +2780,38 @@ TEST_CASE("Cold eval: play/pause/stop/rewind", "[signal_engine][cold_eval][trans
         REQUIRE(engine.state.is_playing == true);
     }
 
-    SECTION("useq-stop pauses and resets offset") {
+    SECTION("useq-stop pauses and resets logical time") {
         SignalEngine engine;
         engine.init_defaults();
 
         engine.state.is_playing = true;
+        engine.state.current_wall_time = 7.0;
+        engine.state.current_time = 12.0;
         engine.state.time_offset = 5.0;
         const char* src = "(useq-stop)";
         EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
         REQUIRE(engine.state.is_playing == false);
-        REQUIRE(engine.state.time_offset == 0.0);
+        REQUIRE(engine.state.current_time == 0.0);
+        REQUIRE(engine.state.logical_time(20.0) == 0.0);
+        REQUIRE(engine.state.time_offset == 5.0);
     }
 
-    SECTION("useq-rewind resets offset but preserves play state") {
+    SECTION("useq-rewind resets logical time but preserves play state") {
         SignalEngine engine;
         engine.init_defaults();
 
         engine.state.is_playing = true;
+        engine.state.current_wall_time = 2.0;
+        engine.state.current_time = 5.0;
         engine.state.time_offset = 3.0;
         const char* src = "(useq-rewind)";
         EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
         REQUIRE(r.kind == EvalResult::Ok);
         REQUIRE(engine.state.is_playing == true);
-        REQUIRE(engine.state.time_offset == 0.0);
+        REQUIRE(engine.state.current_time == 0.0);
+        REQUIRE(engine.state.logical_time(2.0) == 0.0);
+        REQUIRE(engine.state.time_offset == 3.0);
     }
 }
 

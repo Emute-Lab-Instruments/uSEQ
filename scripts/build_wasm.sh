@@ -49,7 +49,7 @@ FLAGS=(
 
 # Emscripten-specific flags
 EM_FLAGS=(
-    "-s EXPORTED_FUNCTIONS=[\"_useq_init\",\"_useq_eval\",\"_useq_update_time\",\"_useq_set_input_value\",\"_useq_eval_output\",\"_useq_eval_outputs_time_window\",\"_useq_eval_outputs_time_window_into\",\"_useq_tick_and_project\",\"_useq_last_error\",\"_useq_last_diagnostics\",\"_useq_active_diagnostics\",\"_useq_synth_artifacts\",\"_useq_set_live_inputs\",\"_useq_set_failure_mode\",\"_useq_get_failure_mode\",\"_useq_get_live_slots\",\"_useq_apply_state_snapshot\",\"_useq_output_classifications\",\"_useq_output_dependencies\",\"_useq_probe_set\",\"_useq_probe_sample\",\"_useq_probe_free\",\"_malloc\",\"_free\"]"
+    "-s EXPORTED_FUNCTIONS=[\"_useq_init\",\"_useq_eval\",\"_useq_update_time\",\"_useq_set_input_value\",\"_useq_eval_output\",\"_useq_eval_outputs_time_window\",\"_useq_eval_outputs_time_window_into\",\"_useq_tick_and_project\",\"_useq_tick_synth_controls\",\"_useq_last_error\",\"_useq_last_diagnostics\",\"_useq_active_diagnostics\",\"_useq_synth_artifacts\",\"_useq_set_live_inputs\",\"_useq_set_failure_mode\",\"_useq_get_failure_mode\",\"_useq_get_live_slots\",\"_useq_apply_state_snapshot\",\"_useq_output_classifications\",\"_useq_output_dependencies\",\"_useq_probe_set\",\"_useq_probe_sample\",\"_useq_probe_free\",\"_malloc\",\"_free\"]"
     "-s EXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\",\"UTF8ToString\"]"
     "-s ALLOW_MEMORY_GROWTH=1"
     "-s MODULARIZE=1"

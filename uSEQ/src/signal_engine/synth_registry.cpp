@@ -4,11 +4,10 @@
 
 namespace sig {
 
-// ── Static NodeDef table (M1 minimal proof set) ────────────────────────────
+// ── Static NodeDef table ───────────────────────────────────────────────────
 //
-// Per synth-nodes.md §2.7 and the synthesis epic's M1 scope, the only def
-// in M1 is osc/sine version 1, with:
-//   - 0 audio inputs, 1 mono audio output, no voice fan-out
+// The current proof set contains osc/sine version 2, with:
+//   - one audio input (`fm`, per-sample Hz offset), one mono output
 //   - :freq: block rate, step smoothing, default 440 Hz
 //   - :amp:  block rate, declared smoothing (linear, implemented by def),
 //            default 0.2
@@ -20,8 +19,8 @@ namespace sig {
 static const NodeDefDescriptor kRegistryTable[] = {
     {
         "osc/sine",
-        1,          // version
-        0,          // audio_inputs
+        2,          // version (v2 adds the fm audio-input contract)
+        1,          // audio_inputs
         1,          // audio_outputs (mono)
         false,      // voice_fanout
         {
@@ -41,7 +40,10 @@ static const NodeDefDescriptor kRegistryTable[] = {
             },
         },
         2,          // param_count
-        // Convenience defaults surfaced for the M1 form grammar:
+        {
+            "fm",
+        },
+        // Convenience defaults surfaced for the form grammar:
         440.0,      // freq_default
         0.2,        // amp_default
     },
@@ -85,6 +87,19 @@ const NodeDefParam* nodedef_find_param(const NodeDefDescriptor* def,
         }
     }
     return nullptr;
+}
+
+int16_t nodedef_find_audio_input(const NodeDefDescriptor* def,
+                                 const char* input_name) {
+    if (!def || !input_name) return -1;
+    for (uint16_t i = 0; i < def->audio_inputs &&
+                         i < MAX_NODEDEF_AUDIO_INPUTS; i++) {
+        if (def->audio_input_names[i] &&
+            std::strcmp(def->audio_input_names[i], input_name) == 0) {
+            return (int16_t)i;
+        }
+    }
+    return -1;
 }
 
 // ── Tiny Levenshtein for parameter suggestion ──────────────────────────────

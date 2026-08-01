@@ -1,7 +1,7 @@
 #ifndef NODEDEF_OSC_SINE_H
 #define NODEDEF_OSC_SINE_H
 
-// ── osc/sine version-1 NodeDef (synth-nodes.md §2 / VAL-DSP-001..016) ────────
+// ── osc/sine version-2 NodeDef (synth-nodes.md §2 / VAL-DSP-001..016) ────────
 //
 // Hand-written, source-agnostic NodeDef shipped as a SEPARATE build target
 // from the ModuLisp interpreter and firmware sources (architecture.md §5.3,
@@ -36,7 +36,7 @@ extern "C" {
 // mono audio output, no voice fan-out, freq/amp block-rate controls.
 
 #define OSC_SINE_NODEDEF_NAME    "osc/sine"
-#define OSC_SINE_NODEDEF_VERSION 1
+#define OSC_SINE_NODEDEF_VERSION 2
 
 // Returns a stable, null-terminated JSON registry descriptor that the
 // source-agnostic host adapter reads without linking against the DSP source.
@@ -79,7 +79,14 @@ uint32_t osc_sine_output_stride_bytes(void);
 uint32_t osc_sine_min_quantum(void);
 uint32_t osc_sine_max_quantum(void);
 
-// Sample rate the module was compiled against (Hz).
+// Optional runtime sample-rate capability, ABI version 1. The host probes the
+// version/compute_at_sample_rate exports as a pair. Passing the rate into each
+// render call keeps the capability instance-safe without a module-global in
+// shared linear memory. A zero rate is rejected without writing output.
+uint32_t osc_sine_sample_rate_abi_version(void);
+
+// Registry nominal/default sample rate (Hz). Legacy hosts that do not probe
+// the optional capability render through osc_sine_compute() at this rate.
 uint32_t osc_sine_sample_rate(void);
 
 // Fade metadata (VAL-DSP-014). Must match the central synthesis constants
@@ -127,6 +134,33 @@ uint32_t osc_sine_compute(uintptr_t state_ptr,
                           uintptr_t amp_ptr,
                           uintptr_t output_ptr,
                           uint32_t frame_count);
+
+// Version-1 sample-rate-aware compute. Semantics match osc_sine_compute(),
+// with phase increment and Nyquist clamping derived from sample_rate_hz.
+uint32_t osc_sine_compute_at_sample_rate(uintptr_t state_ptr,
+                                         uintptr_t freq_ptr,
+                                         uintptr_t amp_ptr,
+                                         uintptr_t output_ptr,
+                                         uint32_t frame_count,
+                                         uint32_t sample_rate_hz);
+
+// Version-2 input path. `fm_ptr` contains one signed frequency offset in Hz
+// per frame. Non-finite FM samples mean zero offset; the instantaneous
+// frequency is clamped to [0, Nyquist].
+uint32_t osc_sine_compute_fm(uintptr_t state_ptr,
+                             uintptr_t freq_ptr,
+                             uintptr_t amp_ptr,
+                             uintptr_t fm_ptr,
+                             uintptr_t output_ptr,
+                             uint32_t frame_count);
+
+uint32_t osc_sine_compute_fm_at_sample_rate(uintptr_t state_ptr,
+                                            uintptr_t freq_ptr,
+                                            uintptr_t amp_ptr,
+                                            uintptr_t fm_ptr,
+                                            uintptr_t output_ptr,
+                                            uint32_t frame_count,
+                                            uint32_t sample_rate_hz);
 
 // ── Inspection (for conformance tests) ──────────────────────────────────────
 //

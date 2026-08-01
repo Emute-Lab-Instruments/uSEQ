@@ -4,6 +4,7 @@
 #include "types.h"
 #include "synth_registry.h"
 #include <cstdint>
+#include <cstring>
 
 namespace sig {
 
@@ -53,16 +54,34 @@ struct SynthControlChannel {
     // Compiled control root node index. Internal: not serialised. The host
     // samples this root via the NodePool at each control block.
     uint16_t root_node                  = NODE_NONE;
+
+    // Stable compiler ownership and reactive-recompile metadata. Internal;
+    // never exposed through the host artefact.
+    uint16_t owner_context              = 0;
+    uint32_t source_offset              = 0;
+    uint32_t source_length              = 0;
+    SymbolID dep_cells[MAX_OUTPUT_DEPS] = {};
+    uint8_t dep_count                   = 0;
+
+    // Root-level non-finite containment for the audio control producer.
+    double lkg_value                    = 0.0;
+    bool has_lkg                        = false;
+};
+
+struct SynthConnection {
+    char from[MAX_SYNTH_IDENTITY] = {};
+    char to[MAX_SYNTH_IDENTITY]   = {};
+    char port[MAX_NODEDEF_NAME]   = {};
+    uint16_t port_index           = 0;
 };
 
 // ── Capacity ───────────────────────────────────────────────────────────────
-// M1 hosts one synth instance (SYNTH_M1_MAX_NODES). Declarations beyond that
-// fail transactionally. The control table is bounded by the per-declaration
-// param count times SYNTH_M1_MAX_NODES; we keep a small power-of-two for
-// safety.
-constexpr uint16_t MAX_SYNTH_DECLARATIONS = SYNTH_M1_MAX_NODES;
+// The compiler and app share a 64-node ceiling. Current osc/sine has one
+// audio input, so one edge per declaration covers the shipped registry.
+constexpr uint16_t MAX_SYNTH_DECLARATIONS = SYNTH_MAX_NODES;
 constexpr uint16_t MAX_SYNTH_CONTROLS =
     MAX_SYNTH_DECLARATIONS * MAX_NODEDEF_PARAMS;
+constexpr uint16_t MAX_SYNTH_CONNECTIONS = MAX_SYNTH_DECLARATIONS;
 
 // ── Compiler revision ──────────────────────────────────────────────────────
 // One shared counter covers graph and control table. It advances ONLY when
@@ -75,14 +94,17 @@ using SynthRevision = uint32_t;
 struct SynthGraph {
     SynthDeclaration declarations[MAX_SYNTH_DECLARATIONS];
     SynthControlChannel controls[MAX_SYNTH_CONTROLS];
+    SynthConnection connections[MAX_SYNTH_CONNECTIONS];
 
     uint16_t declaration_count_value = 0;
     uint16_t control_count_value     = 0;
+    uint16_t connection_count_value  = 0;
     SynthRevision revision           = 0;
 
     // ── Accessors ─────────────────────────────────────────────────────────
     uint16_t declaration_count() const { return declaration_count_value; }
     uint16_t control_count()     const { return control_count_value; }
+    uint16_t connection_count()  const { return connection_count_value; }
 
     // Reset to empty. Used by (useq-clear) and at startup. Does NOT advance
     // the revision: an empty graph is a valid committed state, so callers
@@ -90,6 +112,7 @@ struct SynthGraph {
     void clear_no_revision() {
         declaration_count_value = 0;
         control_count_value     = 0;
+        connection_count_value  = 0;
     }
 
     void clear_and_advance() {
@@ -128,6 +151,11 @@ struct SynthGraph {
         if (control_count_value >= MAX_SYNTH_CONTROLS) return nullptr;
         return &controls[control_count_value++];
     }
+
+    SynthConnection* append_connection() {
+        if (connection_count_value >= MAX_SYNTH_CONNECTIONS) return nullptr;
+        return &connections[connection_count_value++];
+    }
 };
 
 // ── Public artefact serialisation (VAL-COMP-012) ───────────────────────────
@@ -140,7 +168,7 @@ struct SynthGraph {
 // The output is written into the supplied buffer and is null-terminated.
 // Returns false if the buffer is too small (the caller should provide at
 // least SYNTH_ARTIFACT_JSON_CAP bytes).
-constexpr uint16_t SYNTH_ARTIFACT_JSON_CAP = 2048;
+constexpr uint32_t SYNTH_ARTIFACT_JSON_CAP = 32768;
 
 bool synth_graph_render_json(const SynthGraph& graph, char* out, uint32_t cap);
 
@@ -157,8 +185,9 @@ const char* synth_graph_render_json_scratch(const SynthGraph& graph);
 // different version must refuse to read the payload.
 //
 // Version history:
-//   1 — initial M1 synth artefact schema (revision, declarations[], controls[]).
-constexpr uint16_t SYNTH_ARTIFACT_ABI_VERSION = 1;
+//   1 — single-node declarations + controls; no routable audio graph.
+//   2 — required connections[] and multi-node patch-graph semantics.
+constexpr uint16_t SYNTH_ARTIFACT_ABI_VERSION = 2;
 
 /**
  * Return true iff the engine's synth-artefact ABI can serve a consumer

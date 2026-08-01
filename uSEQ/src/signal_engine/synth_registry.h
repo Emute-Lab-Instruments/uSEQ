@@ -9,14 +9,14 @@ namespace sig {
 // ── Synth NodeDef Registry (synth-nodes.md §2) ─────────────────────────────
 //
 // Source-agnostic metadata describing each audio-rate NodeDef the host knows
-// how to instantiate. In M1 the registry is a small static table (just
+// how to instantiate. The registry is a small static table (currently just
 // osc/sine); the language/compiler only ever consumes the contract metadata,
 // never the DSP implementation.
 //
 // The registry owns:
 //   - def name (namespaced string like "osc/sine")
 //   - def version (positive integer; 0 means "latest")
-//   - audio input/output port counts (M1 osc/sine: 0 inputs, 1 mono output)
+//   - named audio input ports and audio output count
 //   - parameter contract for :freq and :amp
 //
 // The v1 library is intentionally minimal: the compiler validates against
@@ -49,6 +49,10 @@ struct NodeDefParam {
 // more so the registry can describe slightly richer defs without a refactor.
 constexpr uint16_t MAX_NODEDEF_PARAMS = 8;
 
+// Maximum named audio inputs per NodeDef. Audio inputs accept node references
+// and compile into patch edges; they are never sampled control parameters.
+constexpr uint16_t MAX_NODEDEF_AUDIO_INPUTS = 8;
+
 // Maximum def entries in the static registry. M1 ships exactly one (osc/sine).
 constexpr uint16_t MAX_NODEDEF_ENTRIES = 8;
 
@@ -58,12 +62,14 @@ constexpr uint16_t MAX_NODEDEF_NAME = 32;
 struct NodeDefDescriptor {
     const char* name;             // e.g. "osc/sine"
     uint16_t version;             // e.g. 1
-    uint16_t audio_inputs;        // osc/sine has 0
+    uint16_t audio_inputs;        // osc/sine v2 has one named input: fm
     uint16_t audio_outputs;       // osc/sine has 1 (mono)
     bool voice_fanout;            // osc/sine does not vector-fan-out in M1
 
     NodeDefParam params[MAX_NODEDEF_PARAMS];
     uint16_t param_count;
+
+    const char* audio_input_names[MAX_NODEDEF_AUDIO_INPUTS];
 
     // Convenience accessors used by the compiler. freq_default and amp_default
     // are surfaced directly because the synth form grammar is hard-wired to
@@ -90,17 +96,20 @@ const NodeDefDescriptor* synth_registry_find(const char* name, uint16_t version)
 const NodeDefParam* nodedef_find_param(const NodeDefDescriptor* def,
                                        const char* param_name);
 
+// Return a zero-based audio-input port index, or -1 when the name is not an
+// input on this NodeDef.
+int16_t nodedef_find_audio_input(const NodeDefDescriptor* def,
+                                 const char* input_name);
+
 // Fuzzy-match a parameter name against the declared params. Returns the
 // best candidate name (or nullptr if none is close enough). Used for the
 // "did you mean" suggestion in unknown-parameter diagnostics.
 const char* nodedef_suggest_param(const NodeDefDescriptor* def,
                                   const char* candidate);
 
-// ── M1 single-node capacity ────────────────────────────────────────────────
-// M1 hosts one synth instance at a time. This constant is the compile-time
-// capacity enforced by the synth compiler domain; over-capacity evals fail
-// transactionally with an actionable diagnostic.
-constexpr uint16_t SYNTH_M1_MAX_NODES = 1;
+// ── Patch-graph capacity ───────────────────────────────────────────────────
+// Shared with the app-side MAX_SYNTH_NODES gate.
+constexpr uint16_t SYNTH_MAX_NODES = 64;
 
 } // namespace sig
 

@@ -24,6 +24,17 @@
 &nbsp;&nbsp;&nbsp;&nbsp;1.1.1 `t0` is the same as `t` but remains unaffected by any and all time modifications like `fast`, `slow`, `offset` etc; it simply monotonically increases or resets to zero on stop or rewind.
 &nbsp;&nbsp;&nbsp;&nbsp;1.1.2 `ground-time` is like `t0` but does not reset to zero; it simply keeps track of the number of seconds since the session was booted.
 
+1.1.3 Transport logical time is derived from, but distinct from, the host or
+hardware monotonic wall clock. Pause records a logical-time anchor. Resume
+adjusts the wall-to-logical offset so the paused wall interval is excluded;
+the first resumed tick has `dt = 0`. Rewind changes the logical origin to zero
+without clearing programs or state and likewise gives the first post-rewind
+tick `dt = 0`. Stop is pause plus rewind. Play, pause, rewind, and stop never
+clear definitions, graphs, state resources, or their current values. The
+transport-origin correction is separate from the user-visible
+`useq-set-time-offset` value, so transport operations do not silently rewrite
+that setting.
+
 1.2 **Phasors** are signals that ramp `0 → 1` and (typically) wrap. The standard phasors are derived from `t` and timing cells:
 - `beat = fmod(t · (bpm / 60), 1)`
 - `bar = fmod(t · (bpm / 60 / beats-per-bar), 1)`
