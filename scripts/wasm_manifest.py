@@ -315,12 +315,22 @@ def build_manifest(postprocess: str) -> dict[str, Any]:
             "hard_limits": limits,
             "cross_field_constraints": cross_field_constraints(limits),
             "counter_domains": {
+                "cell_store_revision": {
+                    "storage": "uint32",
+                    "maximum": (1 << 32) - 1,
+                    "exhaustion_policy": "session must end before aliasing",
+                },
                 "session_generation": {
                     "storage": "uint32",
                     "maximum": (1 << 32) - 1,
                     "exhaustion_policy": "session must end before aliasing",
                 },
                 "synth_revision": {
+                    "storage": "uint32",
+                    "maximum": (1 << 32) - 1,
+                    "exhaustion_policy": "session must end before aliasing",
+                },
+                "wasm_cache_revision": {
                     "storage": "uint32",
                     "maximum": (1 << 32) - 1,
                     "exhaustion_policy": "session must end before aliasing",
