@@ -6,6 +6,8 @@
 
 namespace sig {
 
+constexpr uint16_t LIVE_SLOT_OWNER_NONE = 0xFFFF;
+
 // ── Node Operations ─────────────────────────────────────────────────────────
 
 enum class NodeOp : uint8_t {
@@ -162,6 +164,7 @@ struct NodePool {
 
     struct LiveSlot {
         char id[MAX_LIVE_SLOT_ID] = {};
+        uint16_t owner_context = LIVE_SLOT_OWNER_NONE;
         double value    = 0.0;
         double min_val  = 0.0;
         double max_val  = 1.0;
@@ -178,7 +181,8 @@ struct NodePool {
     int16_t find_live_slot(const char* id) const;
     int16_t alloc_live_slot(const char* id, double seed, double min_val, double max_val,
                             SlotVariant variant = SlotVariant::Numeric,
-                            double step = 0.0, int precision = -1);
+                            double step = 0.0, int precision = -1,
+                            uint16_t owner_context = LIVE_SLOT_OWNER_NONE);
     void set_live_slot_value(const char* id, double value);
     // Fast-path write addressed by array index (wire-protocol §6.5 binary
     // INPUT_SET). `idx` is a direct index into live_slots[0..live_slot_count).

@@ -1,4 +1,6 @@
 #include "cold_eval.h"
+
+#include <cmath>
 #include "token.h"
 #include "graph_builder.h"
 #include "executor.h"
@@ -193,6 +195,212 @@ static uint32_t span_end_of(const TokenStream& ts, uint16_t token_pos) {
     return last.span_start + last.span_len;
 }
 
+// Reclaim fixed-pool resources from the graph that was actually published.
+// State update roots are retained only when a published root (or a live named
+// defstate cell) reaches their slot. This preserves a retained LKG graph after
+// failed reactive compilation while successful replacement releases ghosts.
+static void compact_reachable_state_slots(SignalEngine& engine) {
+    NodePool& pool = engine.pool;
+    if (pool.state_slot_count == 0) return;
+
+    bool queued[MAX_TOTAL_NODES] = {};
+    bool slot_live[MAX_STATE_SLOTS] = {};
+    uint16_t stack[MAX_TOTAL_NODES] = {};
+    uint16_t stack_top = 0;
+    auto push = [&](uint16_t node) {
+        if (node == NODE_NONE || node >= pool.node_count || queued[node]) return;
+        queued[node] = true;
+        if (stack_top < MAX_TOTAL_NODES) stack[stack_top++] = node;
+    };
+    for (uint16_t o = 0; o < MAX_OUTPUTS; o++)
+        push(pool.outputs[o].root_node);
+    for (uint16_t e = 0; e < pool.external_root_count; e++)
+        push(pool.external_roots[e]);
+    for (uint32_t c = 0; c < MAX_CELLS; c++) {
+        const Cell& cell = engine.cells.cells[c];
+        if (cell.kind != CellKind::Number || cell.flags != 0x02) continue;
+        uint16_t slot = cell.data_table_id;
+        if (slot >= pool.state_slot_count) continue;
+        slot_live[slot] = true;
+        push(pool.state_update_roots[slot]);
+    }
+    while (stack_top > 0) {
+        uint16_t idx = stack[--stack_top];
+        const Node& node = pool.nodes[idx];
+        if (node.op == NodeOp::LoadState) {
+            uint16_t slot = (uint16_t)node.imm;
+            if (slot < pool.state_slot_count && !slot_live[slot]) {
+                slot_live[slot] = true;
+                push(pool.state_update_roots[slot]);
+            }
+        }
+        push(node.input_a);
+        push(node.input_b);
+        push(node.input_c);
+    }
+
+    uint16_t remap[MAX_STATE_SLOTS];
+    for (uint16_t s = 0; s < MAX_STATE_SLOTS; s++) remap[s] = NODE_NONE;
+    uint16_t new_count = 0;
+    for (uint16_t old = 0; old < pool.state_slot_count; old++) {
+        if (!slot_live[old]) continue;
+        uint16_t fresh = new_count++;
+        remap[old] = fresh;
+        if (fresh != old) {
+            pool.state_values[fresh] = pool.state_values[old];
+            pool.state_update_roots[fresh] = pool.state_update_roots[old];
+            pool.state_owner_context[fresh] = pool.state_owner_context[old];
+            engine.state_sources[fresh] = engine.state_sources[old];
+        }
+    }
+    if (new_count == pool.state_slot_count) return;
+
+    for (uint16_t n = 0; n < pool.node_count; n++) {
+        if (pool.nodes[n].op != NodeOp::LoadState) continue;
+        uint16_t old = (uint16_t)pool.nodes[n].imm;
+        if (old < MAX_STATE_SLOTS && remap[old] != NODE_NONE)
+            pool.nodes[n].imm = (double)remap[old];
+    }
+    for (uint32_t c = 0; c < MAX_CELLS; c++) {
+        Cell& cell = engine.cells.cells[c];
+        if (cell.kind != CellKind::Number || cell.flags != 0x02) continue;
+        uint16_t old = cell.data_table_id;
+        if (old < MAX_STATE_SLOTS && remap[old] != NODE_NONE)
+            cell.data_table_id = remap[old];
+    }
+
+    uint16_t new_entry_count = 0;
+    for (uint16_t i = 0; i < engine.registry.entry_count; i++) {
+        StateResourceEntry entry = engine.registry.entries[i];
+        if (entry.slot_index >= MAX_STATE_SLOTS ||
+            remap[entry.slot_index] == NODE_NONE) continue;
+        entry.slot_index = remap[entry.slot_index];
+        if (entry.owner_context >= MAX_OUTPUTS &&
+            entry.owner_context < MAX_OUTPUTS + MAX_STATE_SLOTS) {
+            uint16_t owner_slot = entry.owner_context - MAX_OUTPUTS;
+            if (remap[owner_slot] != NODE_NONE)
+                entry.owner_context = (uint16_t)(MAX_OUTPUTS + remap[owner_slot]);
+        }
+        if ((entry.key.state_id & ANON_STATE_ID_BASE) != 0) {
+            uint16_t context = (uint16_t)
+                ((entry.key.state_id & ~ANON_STATE_ID_BASE) >> 12);
+            if (context >= MAX_OUTPUTS &&
+                context < MAX_OUTPUTS + MAX_STATE_SLOTS) {
+                uint16_t owner_slot = context - MAX_OUTPUTS;
+                if (remap[owner_slot] != NODE_NONE) {
+                    StateID ordinal = entry.key.state_id & 0xFFFu;
+                    entry.key.state_id = make_anon_state_id(
+                        (uint16_t)(MAX_OUTPUTS + remap[owner_slot]),
+                        (uint16_t)ordinal);
+                }
+            }
+        }
+        engine.registry.entries[new_entry_count++] = entry;
+    }
+    for (uint16_t i = new_entry_count; i < engine.registry.entry_count; i++)
+        engine.registry.entries[i] = StateResourceEntry{};
+    engine.registry.entry_count = new_entry_count;
+    engine.registry.free_slot_count = 0;
+    for (uint16_t i = 0; i < MAX_STATE_SLOTS; i++)
+        engine.registry.free_slots[i] = NODE_NONE;
+
+    for (uint16_t i = 0; i < pool.live_slot_count; i++) {
+        uint16_t context = pool.live_slots[i].owner_context;
+        if (context < MAX_OUTPUTS || context >= MAX_OUTPUTS + MAX_STATE_SLOTS)
+            continue;
+        uint16_t owner_slot = context - MAX_OUTPUTS;
+        if (remap[owner_slot] != NODE_NONE)
+            pool.live_slots[i].owner_context =
+                (uint16_t)(MAX_OUTPUTS + remap[owner_slot]);
+    }
+    for (uint16_t s = new_count; s < pool.state_slot_count; s++) {
+        pool.state_values[s] = 0.0;
+        pool.state_update_roots[s] = NODE_NONE;
+        pool.state_owner_context[s] = ANON_STATE_CONTEXT_NONE;
+        engine.state_sources[s] = StateUpdateSource{};
+    }
+    pool.state_slot_count = new_count;
+}
+
+static void compact_reachable_live_slots(SignalEngine& engine) {
+    NodePool& pool = engine.pool;
+    if (pool.live_slot_count == 0) return;
+    bool live[MAX_LIVE_SLOTS] = {};
+    for (uint16_t n = 0; n < pool.node_count; n++) {
+        if (pool.nodes[n].op != NodeOp::SlotLoad) continue;
+        uint16_t slot = (uint16_t)pool.nodes[n].imm;
+        if (slot < pool.live_slot_count) live[slot] = true;
+    }
+    uint16_t remap[MAX_LIVE_SLOTS];
+    for (uint16_t i = 0; i < MAX_LIVE_SLOTS; i++) remap[i] = NODE_NONE;
+    uint16_t new_count = 0;
+    for (uint16_t old = 0; old < pool.live_slot_count; old++) {
+        if (!live[old]) continue;
+        uint16_t fresh = new_count++;
+        remap[old] = fresh;
+        if (fresh != old) pool.live_slots[fresh] = pool.live_slots[old];
+    }
+    if (new_count == pool.live_slot_count) return;
+    for (uint16_t n = 0; n < pool.node_count; n++) {
+        if (pool.nodes[n].op != NodeOp::SlotLoad) continue;
+        uint16_t old = (uint16_t)pool.nodes[n].imm;
+        if (old < MAX_LIVE_SLOTS && remap[old] != NODE_NONE)
+            pool.nodes[n].imm = (double)remap[old];
+    }
+    for (uint16_t o = 0; o < MAX_OUTPUTS; o++) {
+        OutputDeps& deps = pool.output_deps[o];
+        uint16_t kept = 0;
+        for (uint16_t i = 0; i < deps.slot_count; i++) {
+            uint16_t old = deps.slots[i];
+            if (old < MAX_LIVE_SLOTS && remap[old] != NODE_NONE)
+                deps.slots[kept++] = remap[old];
+        }
+        deps.slot_count = kept;
+    }
+    for (uint16_t s = new_count; s < pool.live_slot_count; s++)
+        pool.live_slots[s] = NodePool::LiveSlot{};
+    pool.live_slot_count = new_count;
+}
+
+static void reclaim_unowned_resources(SignalEngine& engine) {
+    register_synth_external_roots(engine);
+    compact_reachable_state_slots(engine);
+    engine.pool.gc_unreachable_nodes();
+    compact_reachable_live_slots(engine);
+    engine.pool.gc_unreachable_nodes();
+    commit_synth_external_roots(engine);
+}
+
+static bool parse_numeric_vector(TokenStream& ts, double* values,
+                                 uint16_t& count, EvalResult& error) {
+    if (!ts.expect(TokenKind::LBracket)) {
+        error = make_error("Expected a vector", "Try: [1 2 3]");
+        return false;
+    }
+    count = 0;
+    while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
+        if (count >= 64) {
+            error = make_error("Vector definition is too long (max 64 values)",
+                               "Split the data into smaller vectors");
+            return false;
+        }
+        Token element = ts.consume();
+        if (element.kind != TokenKind::Number) {
+            error = make_error(
+                "Vector definitions require numeric literal elements",
+                "Replace the nonnumeric element or use a signal expression outside the data vector");
+            return false;
+        }
+        values[count++] = element.number;
+    }
+    if (!ts.expect(TokenKind::RBracket)) {
+        error = make_error("Vector definition is missing ']'",
+                           "Close the vector with ]");
+        return false;
+    }
+    return true;
+}
+
 // ── define ──────────────────────────────────────────────────────────────────
 
 static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
@@ -223,26 +431,19 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
     }
     else if (val_tok.kind == TokenKind::LBracket) {
         // Vector data: [1 2 3 4]
-        ts.consume(); // eat '['
         double values[64];
         uint16_t count = 0;
-        while (ts.peek().kind != TokenKind::RBracket && !ts.at_end() && count < 64) {
-            Token elem = ts.consume();
-            if (elem.kind == TokenKind::Number) {
-                values[count++] = elem.number;
-            }
-        }
-        if (!ts.expect(TokenKind::RBracket) ||
-            ts.peek().kind != TokenKind::RParen) {
-            return make_error("define has an invalid vector value",
+        EvalResult parse_error;
+        if (!parse_numeric_vector(ts, values, count, parse_error))
+            return parse_error;
+        if (ts.peek().kind != TokenKind::RParen)
+            return make_error("define accepts exactly one value",
                               "Try: (define name [1 2 3])");
-        }
 
         uint16_t table_id = engine.cells.store_data_table(values, count);
-        if (table_id == UINT8_MAX) {
-            return make_error("Out of data table storage",
-                              "Use (useq-clear) or reuse an existing vector");
-        }
+        if (table_id == UINT8_MAX)
+            return make_error("Data table storage is full — definition not applied",
+                              "Free space with (useq-clear) or reuse an existing vector");
         engine.cells.cells[sym].kind = CellKind::Data;
         engine.cells.cells[sym].data_table_id = table_id;
         engine.cells.cells[sym].revision++;
@@ -368,6 +569,7 @@ static EvalResult do_defn(TokenStream& ts, SignalEngine& engine,
 
     engine.cells.callables[sym] = info;
     engine.cells.cells[sym].kind = CellKind::Callable;
+    engine.cells.cells[sym].flags = 0;
     engine.cells.cells[sym].revision++;
 
     on_cell_changed(sym, engine);
@@ -643,9 +845,7 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     // Reclaim nodes orphaned by the recompile (e.g. the previous update
     // graph of this state slot), then rebuild execution order to include
     // state update subgraphs (F4).
-    register_synth_external_roots(engine);
-    engine.pool.gc_unreachable_nodes();
-    commit_synth_external_roots(engine);
+    reclaim_unowned_resources(engine);
     engine.pool.rebuild_execution_order();
     classify_outputs(engine.pool);
 
@@ -1660,9 +1860,7 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
 
     // Graph + controls + routing share one revision and one publication.
     engine.synth_graph.advance_revision();
-    register_synth_external_roots(engine);
-    engine.pool.gc_unreachable_nodes();
-    commit_synth_external_roots(engine);
+    reclaim_unowned_resources(engine);
     engine.pool.rebuild_execution_order();
     classify_outputs(engine.pool);
     return make_ok();
@@ -1770,9 +1968,7 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
                                    engine.pool.state_owner_context);
 
     // Reclaim nodes no longer reachable from any output root
-    register_synth_external_roots(engine);
-    engine.pool.gc_unreachable_nodes();
-    commit_synth_external_roots(engine);
+    reclaim_unowned_resources(engine);
 
     // Re-sort execution order
     engine.pool.rebuild_execution_order();
@@ -2593,9 +2789,7 @@ void recompile_all_outputs(SignalEngine& engine) {
     }
 
     // Reclaim stale nodes from any previous compilation (idempotent due to CSE)
-    register_synth_external_roots(engine);
-    engine.pool.gc_unreachable_nodes();
-    commit_synth_external_roots(engine);
+    reclaim_unowned_resources(engine);
     engine.pool.rebuild_execution_order();
     classify_outputs(engine.pool);
 }
@@ -2763,9 +2957,7 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
     // gc's before rebuilding; without this, live cell edits leak the old
     // graphs until the fixed node pool (360 nodes on firmware) fills up and
     // compilation silently fails.
-    register_synth_external_roots(engine);
-    engine.pool.gc_unreachable_nodes();
-    commit_synth_external_roots(engine);
+    reclaim_unowned_resources(engine);
     engine.pool.rebuild_execution_order();
 
     // Recompilation may have changed which load ops each output references

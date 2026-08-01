@@ -200,6 +200,119 @@ TEST_CASE("Reclaim: anonymous UGen output survives repeated dependency edits",
     REQUIRE(h.engine.pool.outputs[0].valid);
 }
 
+TEST_CASE("Reclaim: defstate replacement releases named and nested state resources",
+          "[reclaim][defstate]") {
+    ReclaimHarness h;
+
+    for (int i = 0; i < 48; i++) {
+        h.eval_ok("(defstate lifecycle-x 0 (+ lifecycle-x (integrate 1)))");
+        REQUIRE(h.engine.pool.state_slot_count >= 2);
+        if (i == 0) h.eval_ok("(a1 lifecycle-x)");
+
+        char replacement[80];
+        if ((i & 1) == 0) {
+            snprintf(replacement, sizeof(replacement),
+                     "(define lifecycle-x %d)", i + 10);
+        } else {
+            snprintf(replacement, sizeof(replacement),
+                     "(defs [lifecycle-x %d])", i + 10);
+        }
+        h.eval_ok(replacement);
+        INFO("iteration " << i);
+        REQUIRE(h.engine.pool.state_slot_count == 0);
+        REQUIRE(h.engine.registry.entry_count == 0);
+        REQUIRE(h.sample("a1") == Approx((double)i + 10.0));
+    }
+}
+
+TEST_CASE("Reclaim: state backing retained LKG graph survives failed reactive recompile",
+          "[reclaim][defstate][lkg]") {
+    ReclaimHarness h;
+    h.eval_ok("(defstate retained-x 2 (+ retained-x 1))");
+    h.eval_ok("(a1 retained-x)");
+    REQUIRE(h.engine.pool.state_slot_count == 1);
+    uint16_t old_root = h.engine.pool.outputs[0].root_node;
+
+    h.eval_ok("(define retained-x (no-such-function 1))");
+    REQUIRE(h.engine.pool.outputs[0].root_node == old_root);
+    REQUIRE(h.engine.pool.state_slot_count == 1);
+    REQUIRE(h.engine.pool.state_update_roots[0] != NODE_NONE);
+    REQUIRE(h.sample("a1") == Approx(2.0));
+
+    h.eval_ok("(a1 99)");
+    REQUIRE(h.engine.pool.state_slot_count == 0);
+    REQUIRE(h.sample("a1") == Approx(99.0));
+}
+
+TEST_CASE("Reclaim: state compaction remaps nested registry and live-edit owners",
+          "[reclaim][defstate][live-edit]") {
+    ReclaimHarness h;
+    h.eval_ok("(defstate compact-a 0 (+ compact-a 1))");
+    h.eval_ok("(a1 compact-a)");
+    h.eval_ok(
+        "(defstate compact-b 10 (+ compact-b "
+        "(integrate (live-edit 1 :id \"compact-rate\" :min 0 :max 2))))");
+    h.eval_ok("(a2 compact-b)");
+    REQUIRE(h.engine.pool.state_slot_count == 3);
+    REQUIRE(h.engine.registry.entry_count == 1);
+    REQUIRE(h.engine.pool.live_slot_count == 1);
+
+    h.eval_ok("(define compact-a 7)");
+    REQUIRE(h.engine.pool.state_slot_count == 2);
+    REQUIRE(h.engine.registry.entry_count == 1);
+    REQUIRE(h.engine.pool.live_slot_count == 1);
+
+    h.eval_ok(
+        "(defstate compact-b 10 (+ compact-b "
+        "(integrate (live-edit 1 :id \"compact-rate\" :min 0 :max 2))))");
+    REQUIRE(h.engine.pool.state_slot_count == 2);
+    REQUIRE(h.engine.registry.entry_count == 1);
+    REQUIRE(h.engine.pool.live_slot_count == 1);
+    REQUIRE(h.sample("a1") == Approx(7.0));
+    REQUIRE(h.sample("a2") == Approx(10.0));
+}
+
+TEST_CASE("Reclaim: nonnumeric vector define is rejected atomically",
+          "[reclaim][vectors]") {
+    ReclaimHarness h;
+    h.eval_ok("(define lifecycle-v [7 8])");
+    SymbolID sym = internSymbol("lifecycle-v");
+    Cell before = h.engine.cells.cells[sym];
+    uint8_t tables_before = h.engine.cells.data_table_count;
+
+    EvalResult rejected = h.eval("(define lifecycle-v [1 nope 2])");
+    REQUIRE(rejected.kind == EvalResult::Error);
+    REQUIRE(rejected.diagnostic_count >= 1);
+    REQUIRE(std::string(rejected.diagnostics[0].message).find("numeric") !=
+            std::string::npos);
+    REQUIRE(h.engine.cells.data_table_count == tables_before);
+    REQUIRE(h.engine.cells.cells[sym].kind == before.kind);
+    REQUIRE(h.engine.cells.cells[sym].data_table_id == before.data_table_id);
+    REQUIRE(h.engine.cells.cells[sym].value == Approx(before.value));
+
+    uint16_t length = 0;
+    const double* values = h.engine.cells.get_data_table(before.data_table_id, length);
+    REQUIRE(values != nullptr);
+    REQUIRE(length == 2);
+    REQUIRE(values[0] == Approx(7.0));
+    REQUIRE(values[1] == Approx(8.0));
+}
+
+TEST_CASE("Reclaim: nonnumeric vector in defs preserves previous binding",
+          "[reclaim][vectors][defs]") {
+    ReclaimHarness h;
+    h.eval_ok("(define lifecycle-v2 42)");
+    SymbolID sym = internSymbol("lifecycle-v2");
+    Cell before = h.engine.cells.cells[sym];
+    uint8_t tables_before = h.engine.cells.data_table_count;
+
+    EvalResult rejected = h.eval("(defs [lifecycle-v2 [1 nope 2]])");
+    REQUIRE(rejected.kind == EvalResult::Error);
+    REQUIRE(h.engine.cells.data_table_count == tables_before);
+    REQUIRE(h.engine.cells.cells[sym].kind == before.kind);
+    REQUIRE(h.engine.cells.cells[sym].value == Approx(42.0));
+}
+
 TEST_CASE("Reclaim: hundreds of identical output re-evals reuse source arena",
           "[reclaim][arena]") {
     ReclaimHarness h;
@@ -259,6 +372,21 @@ TEST_CASE("Reclaim: arena exhaustion fails the eval and never reverts the output
     h.eval_ok("(define off 2)");
     REQUIRE(h.sample("a1") == Approx(113.0)); // old program, new off
     REQUIRE(h.engine.pool.outputs[0].valid);
+}
+
+TEST_CASE("Reclaim: rejected shorter output candidate preserves recompilation source",
+          "[reclaim][arena][rollback]") {
+    ReclaimHarness h;
+    h.eval_ok("(define lifecycle-off 1)");
+    h.eval_ok("(a1 (+ lifecycle-off 100))");
+    REQUIRE(h.sample("a1") == Approx(101.0));
+
+    EvalResult rejected = h.eval("(a1 nope)");
+    REQUIRE(rejected.kind == EvalResult::Error);
+    REQUIRE(h.sample("a1") == Approx(101.0));
+
+    h.eval_ok("(define lifecycle-off 2)");
+    REQUIRE(h.sample("a1") == Approx(102.0));
 }
 
 TEST_CASE("Reclaim: arena exhaustion fails define/defn/defstate loudly",

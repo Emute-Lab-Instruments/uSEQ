@@ -137,6 +137,35 @@ GraphBuilder::GraphBuilder(NodePool& p, CellStore& c, const SourceArena& s)
     live_slot_count_at_start = pool.live_slot_count;
 }
 
+void GraphBuilder::remember_live_slot(uint16_t slot_index) {
+    if (slot_index >= live_slot_count_at_start) return;
+    for (uint16_t i = 0; i < live_slot_undo_count; i++) {
+        if (live_slot_undo[i].slot_index == slot_index) return;
+    }
+    if (live_slot_undo_count >= MAX_LIVE_SLOT_UNDO) return;
+    const NodePool::LiveSlot& slot = pool.live_slots[slot_index];
+    LiveSlotUndo& undo = live_slot_undo[live_slot_undo_count++];
+    undo.slot_index = slot_index;
+    undo.value = slot.value;
+    undo.min_val = slot.min_val;
+    undo.max_val = slot.max_val;
+    undo.seed = slot.seed;
+}
+
+void GraphBuilder::rollback_live_slots() {
+    for (uint16_t i = 0; i < live_slot_undo_count; i++) {
+        const LiveSlotUndo& undo = live_slot_undo[i];
+        NodePool::LiveSlot& slot = pool.live_slots[undo.slot_index];
+        slot.value = undo.value;
+        slot.min_val = undo.min_val;
+        slot.max_val = undo.max_val;
+        slot.seed = undo.seed;
+    }
+    for (uint16_t i = live_slot_count_at_start; i < pool.live_slot_count; i++)
+        pool.live_slots[i] = NodePool::LiveSlot{};
+    pool.live_slot_count = live_slot_count_at_start;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 bool GraphBuilder::is_const(uint16_t node_idx) const {
@@ -2664,6 +2693,11 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
 
     int16_t pre_existing = pool.find_live_slot(id_buf);
     if (pre_existing >= 0) {
+        if (pool.live_slots[pre_existing].owner_context != anon_state_context) {
+            return report_error_at_cat(DiagnosticCategory::Boundary, form_start, 1,
+                "duplicate live-edit :id is owned by another signal",
+                "Each output or state declaration must use distinct live-edit IDs");
+        }
         // Slot already allocated. If we're inside inline expansion, reuse is fine.
         // If we're NOT in inline expansion and we already saw this id in this
         // build, it's a true source-level duplicate.
@@ -2690,6 +2724,7 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
             shared_live_edit_ids->add(id_buf);
         }
         // Update bounds (may have changed on re-eval)
+        remember_live_slot((uint16_t)pre_existing);
         pool.live_slots[pre_existing].min_val = min_val;
         pool.live_slots[pre_existing].max_val = max_val;
         pool.live_slots[pre_existing].seed = seed;
@@ -2710,7 +2745,9 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
     }
 
     // 5. Allocate slot
-    int16_t slot_idx = pool.alloc_live_slot(id_buf, seed, min_val, max_val);
+    int16_t slot_idx = pool.alloc_live_slot(
+        id_buf, seed, min_val, max_val, NodePool::SlotVariant::Numeric,
+        0.0, -1, anon_state_context);
     if (slot_idx < 0) {
         return report_error_at_cat(DiagnosticCategory::Overflow, form_start, 1,
             MAX_LIVE_SLOTS == 256
@@ -3074,6 +3111,8 @@ GraphBuildResult build_output_graph(
     TimeContext ctx = { pool.make_raw_time_load() };
 
     uint16_t root = builder.compile_expr(ts, root_scope, ctx);
+
+    if (builder.has_error) builder.rollback_live_slots();
 
     // Warning #3: check for live-edit slots allocated but never read in this graph.
     // Walk from root, collect all SlotLoad imm values, then check which freshly

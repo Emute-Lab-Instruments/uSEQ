@@ -25,6 +25,12 @@
 
 1.7 **Vectors of numbers are first-class signal data.** They lower to fixed-size data tables and are consumed by `step`, `gates`, `seq`, `interp`, `for`, etc. When a vector is consumed as *data* by an index-reading primitive (`step`, `seq`, `gates`, `trigs`, `interp`, `gatesw`, ratio-rhythm functions, …) its elements **must be compile-time-constant numbers**: the vector lowers to a flat double table read by index (`VecIndex`/`VecLerp`), which cannot hold a per-slot signal. A time-varying element in that position (e.g. `[1 (sin beat) 3]` inside `step`) is a **compile error** (category `Type`), not a silent `0`. To sequence time-varying values, iterate with `for`, which binds each element *node* and so does support per-slot signals: `(for x [1 (sin beat) 3] …)`. (Per-slot signals for the data-consuming primitives are deferred; see [MAIN.md §5.7](MAIN.md).) (See `uSEQ/src/signal_engine/cell_store.{h,cpp}` — CellStore::store_data_table, data_pool, data_offsets, data_lengths, flat double arrays; `uSEQ/src/signal_engine/graph_builder.cpp` — compile_vector_literal, resolve_data_table, resolve_collection; `uSEQ/src/signal_engine/node_pool.h` — NodeOp::DataLoad, VecIndex, VecLerp.)
 
+1.7.1 A vector bound by top-level `define` or `defs` is numeric data and every
+element must be a numeric literal. Any nonnumeric element, missing closing
+bracket, excessive length, or data-table capacity failure rejects that binding
+atomically: the previous cell and table allocation remain unchanged. The
+compiler must not silently omit invalid elements.
+
 1.8 **Callables in signal context are pure.** They may close over compile-time-resolvable values but not over mutable state. They are inlined at every call site, unless it's beneficial to performance otherwise. See [functions.md](functions.md) for the full callable contract.
 
 1.9 **`nil` is a value, not an error.** `(define x nil)` is fine. Reading an unbound symbol is a compile-time error, not a `nil`-returning operation.

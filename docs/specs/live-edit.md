@@ -67,7 +67,7 @@
 
 Sharing a single node type would conflate these lifecycles in the executor, the output classifier, and any tooling that reasons about graph structure (e.g. determining whether an output depends on editor-driven state). The performance contract is preserved: `SlotLoad` is a single indexed array read from the slot table — O(1) per sample, identical hot-path cost to `InputLoad`.
 
-3.2 **Slot identity is the `:id` string.** Per allocation, the compiler builds a string→index map (id → slot index in the slot table). Wire-protocol and WASM-ABI messages carry the `:id` string; the runtime resolves it to an index at receive time (see [wire-protocol.md](wire-protocol.md) and §5). No hashing; no collision risk; in-flight messages crossing a recompile resolve against the post-recompile id table — if the slot still exists, the write lands; if not, the write is silently dropped per §5.4.
+3.2 **Slot identity is the `:id` string plus its persistent compiler owner.** The public wire identity remains the string, while the compiler records which output, state-update declaration, or synth-control context declared it. Recompiling that same owner may reuse the slot and preserve its value; a different owner may not silently alias it, even when the conflicting declarations arrive in separate eval calls. Per allocation, the compiler builds a string→index map (id → slot index in the slot table). Wire-protocol and WASM-ABI messages carry the `:id` string; the runtime resolves it to an index at receive time (see [wire-protocol.md](wire-protocol.md) and §5). No hashing; no collision risk; in-flight messages crossing a recompile resolve against the post-recompile id table — if the slot still exists, the write lands; if not, the write is silently dropped per §5.4.
 
 3.3 **Slot metadata table.** Alongside the compiled graph, the compiler emits a slot metadata table containing, per slot:
 - The original `:id` string (for diagnostic display and id-resolution).
@@ -79,13 +79,13 @@ Sharing a single node type would conflate these lifecycles in the executor, the 
 
 3.4 **Constant folding skips `live-edit`.** A `live-edit` node is opaque to constant folding ([compilation.md §1.3](compilation.md)) even when its bounds are constant. The whole point is that the value varies at runtime.
 
-3.5 **Duplicate ids are errors.** A `:id` names exactly one slot in v1. If two `live-edit` forms in the same compilation unit use the same `:id`, compilation fails (§4.1.2). The editor's paste handler ([../../../docs/specs/live-edit.md §3.9](../../../docs/specs/live-edit.md)) prevents accidental duplicates from routine paste; the compiler rule remains as the safety net for hand-typed cases.
+3.5 **Duplicate ids are errors.** A `:id` names exactly one active compiler-owned slot in v1. If a second output/state/control owner uses an ID that is already active, compilation fails whether the declarations were submitted together or in separate eval calls (§4.1.2). Repeated expansion of one textual declaration within the same owner may share its slot. The editor's paste handler ([../../../docs/specs/live-edit.md §3.9](../../../docs/specs/live-edit.md)) prevents accidental duplicates from routine paste; the compiler rule remains authoritative.
 
 3.6 **Dependency tracking.** A compiled graph carries the slot ids it reads alongside the cell symbols it inlined ([compilation.md §1.6](compilation.md)). The runtime indexes outputs by their slot dependencies for future selective notification (e.g., panel highlight on slot change). Slot writes do **not** dirty the graph (§3.7).
 
 3.7 **Slot writes never invalidate compiled graphs.** This is the load-bearing performance contract. A host write to a slot updates the slot value; the next sample tick reads the new value via the existing `SlotLoad` node. No recompilation, no graph invalidation, no allocation. Distinguishes live-edit slot writes from cell mutations ([compilation.md §1.7](compilation.md)) which *do* invalidate.
 
-3.8 **Recompilation triggers.** Slot allocation only changes during eval. Adding/removing a `live-edit` form (or changing its `:id`/`:min`/`:max`/`:options`/seed/variant) triggers normal recompilation of the enclosing form. The slot metadata table is rebuilt fresh per eval; the runtime preserves slot *values* across re-allocation when the `:id` survives (slot migration by id; analogous to [compilation.md §2.3](compilation.md) for state slots). Changes to compiler-irrelevant metadata (`:name`, `:step`, `:precision`) do not require recompilation but are picked up at the next eval that runs.
+3.8 **Recompilation triggers.** Slot allocation only changes during eval. Adding/removing a `live-edit` form (or changing its `:id`/`:min`/`:max`/`:options`/seed/variant) triggers normal recompilation of the enclosing form. A surviving `(owner, :id)` pair preserves its runtime value. After successful publication, slots unreachable from every published output, state-update graph, and synth-control graph are reclaimed and the remaining dense indices are remapped atomically. A rejected candidate restores the prior slot table and metadata. Changes to compiler-irrelevant metadata (`:name`, `:step`, `:precision`) do not require recompilation but are picked up at the next eval that runs.
 
 3.9 **Sub-tick guarantees preserved.** A `SlotLoad` node is a single indexed array read from the slot table — no allocation, no string lookup. The string→index resolution happens at slot-write receive time, not on the per-sample hot path. Slot table is sized at compile time and indexed by integer slot index. Matches the existing input-leaf cost.
 
@@ -95,7 +95,7 @@ Sharing a single node type would conflate these lifecycles in the executor, the 
 - The `live-edit` is the binding's value; not a wrapper around the value.
 - Redefining the name to a non-`live-edit` value is allowed and triggers normal cell-mutation recompilation; the slot is freed.
 
-3.11 **`(defn f [...] ... (live-edit …) ...)` shares the slot across callers.** A `live-edit` inside a function body allocates one slot per textual occurrence (one `:id`, one slot). All call sites of the function read the same slot — one knob, many usages. This is intended; if per-call-site identity is needed, the user passes the slot value as an argument and uses distinct `:id`s.
+3.11 **`(defn f [...] ... (live-edit …) ...)` shares the slot across calls within one owner.** A `live-edit` inside a function body allocates one slot per textual occurrence for the enclosing output/state/control owner. Repeated calls in that graph read the same slot. A call from a different persistent owner must use a distinct `:id`; otherwise the compiler rejects the cross-owner alias under §3.5.
 
 3.12 **Eager-consume heads (authoritative list).** `live-edit` is rejected as a direct argument of any of the following heads, where the value is consumed eagerly with no surviving binding:
 
@@ -140,7 +140,7 @@ Sharing a single node type would conflate these lifecycles in the executor, the 
 
 4.2.1 **Seed outside `[:min, :max]`** for numeric seed — `warning: live-edit seed <s> is outside [<m>, <M>] — will be clamped on push`. Slot is initialised to `clamp(seed, min, max)`.
 4.2.2 **`:options` missing** for keyword seed — `warning: live-edit on keyword <:foo> has no :options — defaulting to [<:foo>] (single-option enum)`. Slot is allocated with the singleton options vector. The user can edit the wrapper to add more options.
-4.2.3 **Slot allocated but never read** — `warning: live-edit :id "<id>" is allocated but no signal reads it`. Common when the user marks a literal in a `define` whose name is not (yet) used.
+4.2.3 **Slot declaration discarded by its graph** — `warning: live-edit slot allocated but never read in this signal graph`. The candidate may allocate the slot while compiling, but successful publication immediately reclaims it when no published graph reaches it.
 
 4.3 **Diagnostic framing** matches [MAIN.md §2.6](MAIN.md): "the compiler doesn't support this here", plain-language messages, working suggestions where applicable.
 
@@ -162,7 +162,7 @@ Sharing a single node type would conflate these lifecycles in the executor, the 
 
 5.5 **Slot read path.** During sampling, a `SlotLoad` node reads the slot value from the slot table. Cost: one indexed array read. Equivalent to a hardware input read.
 
-5.6 **Slot value persistence across recompilation.** When eval triggers recompile and the new slot table includes the same `:id`, the slot value carries over. When a slot disappears (its `:id` removed from source), its value is dropped on the runtime side. Editor-side persistence is independent ([../../../docs/specs/live-edit.md §7](../../../docs/specs/live-edit.md)).
+5.6 **Slot value persistence across recompilation.** When eval recompiles the same owner and its new graph includes the same `:id`, the slot value carries over. When a slot disappears from that owner and no published graph reaches it, its runtime value is dropped. A different owner cannot inherit it merely by reusing the string. Editor-side persistence is independent ([../../../docs/specs/live-edit.md §7](../../../docs/specs/live-edit.md)).
 
 5.7 **Initial value.** When a slot is freshly allocated and the host has not yet written to it, the slot value is the seed (clamped per §4.2.1). The host typically writes its persisted value (if any) within one frame of eval success; until then the seed governs.
 

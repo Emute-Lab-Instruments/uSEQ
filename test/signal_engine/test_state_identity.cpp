@@ -503,12 +503,11 @@ TEST_CASE("State identity: retired program state slots are reused",
     // Publishing a pure replacement retires the old program's only writer.
     h.eval_ok("(a1 0.5)");
     REQUIRE(h.engine.registry.entry_count == 0);
-    REQUIRE(h.engine.registry.free_slot_count == 1);
-    REQUIRE(h.engine.pool.state_update_roots[retired_slot] == NODE_NONE);
+    REQUIRE(h.engine.registry.free_slot_count == 0);
+    REQUIRE(h.engine.pool.state_slot_count == 0);
 
-    // A different program can reuse the hole without increasing the
-    // high-water mark, so repeated edit/replacement cycles do not exhaust
-    // fixed firmware state storage.
+    // A different program starts again at the compacted dense slot zero, so
+    // repeated edit/replacement cycles do not exhaust fixed firmware storage.
     h.eval_ok("(a2 (integrate 1 :id \"new-integrator\"))");
     REQUIRE(h.engine.registry.entry_count == 1);
     REQUIRE(h.engine.registry.entries[0].slot_index == retired_slot);

@@ -149,13 +149,17 @@ during per-sample execution.
 4.3 Recompilation is scoped by an owning compiler context (an output, a
 `defstate` update source, or a synth-control source). Before building a
 candidate, the context's existing entries are marked unseen. Resolving a
-matching key reactivates its slot and preserves its value.
+matching key reactivates its slot and preserves its value. A reachable state
+load also keeps its transition graph recursively reachable.
 
-4.4 On successful publication, unseen resources formerly owned by that
-context are retired: their update roots and owners are cleared and their slots
-enter a bounded free list. Later stateful programs and named `defstate`
-declarations reuse those holes before increasing the slot high-water mark. On
-rejection, registry entries, values, roots, owners, and the free list are
+4.4 On successful publication, the runtime computes reachability from every
+published output root, synth-control root, and named `defstate` cell. Unseen
+resources formerly owned by a replaced context are retired; unreachable slots
+are removed; the remaining slots are compacted; and graph loads, registry
+entries, nested owners, live-edit owners, values, update roots, and update
+sources are remapped atomically. A failed reactive recompile retains its LKG
+root, so that graph's resources stay reachable and continue evolving. On
+rejection, registry entries, values, roots, owners, and allocation metadata are
 restored exactly.
 
 4.5 `useq-clear` clears every session-owned state resource, anonymous or

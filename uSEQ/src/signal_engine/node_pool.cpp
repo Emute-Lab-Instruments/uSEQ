@@ -178,7 +178,8 @@ int16_t NodePool::find_live_slot(const char* id) const {
 }
 
 int16_t NodePool::alloc_live_slot(const char* id, double seed, double min_val, double max_val,
-                                   SlotVariant variant, double step, int precision) {
+                                   SlotVariant variant, double step, int precision,
+                                   uint16_t owner_context) {
     int16_t existing = find_live_slot(id);
     if (existing >= 0) {
         live_slots[existing].min_val = min_val;
@@ -203,6 +204,7 @@ int16_t NodePool::alloc_live_slot(const char* id, double seed, double min_val, d
     uint16_t idx = live_slot_count++;
     strncpy(live_slots[idx].id, id, MAX_LIVE_SLOT_ID - 1);
     live_slots[idx].id[MAX_LIVE_SLOT_ID - 1] = '\0';
+    live_slots[idx].owner_context = owner_context;
     live_slots[idx].value = seed;
     live_slots[idx].min_val = min_val;
     live_slots[idx].max_val = max_val;

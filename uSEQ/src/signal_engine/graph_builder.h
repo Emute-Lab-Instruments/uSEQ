@@ -111,6 +111,18 @@ struct GraphBuilder {
     // Cross-output shared ID tracking (set by build_output_graph when provided)
     SharedLiveEditIDs* shared_live_edit_ids = nullptr;
 
+    struct LiveSlotUndo {
+        uint16_t slot_index = 0;
+        double value = 0.0;
+        double min_val = 0.0;
+        double max_val = 1.0;
+        double seed = 0.0;
+    };
+    static constexpr uint16_t MAX_LIVE_SLOT_UNDO =
+        MAX_LIVE_SLOTS < MAX_IDS_PER_BUILD ? MAX_LIVE_SLOTS : MAX_IDS_PER_BUILD;
+    LiveSlotUndo live_slot_undo[MAX_LIVE_SLOT_UNDO] = {};
+    uint16_t live_slot_undo_count = 0;
+
     // Context flag: when true, compile_live_edit emits an error
     bool reject_live_edit = false;
 
@@ -249,6 +261,8 @@ struct GraphBuilder {
 
     // Live-edit
     uint16_t compile_live_edit(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    void remember_live_slot(uint16_t slot_index);
+    void rollback_live_slots();
 
     // Random / hash
     uint16_t compile_random(TokenStream& ts, Scope& scope, TimeContext& ctx);

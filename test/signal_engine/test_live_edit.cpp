@@ -117,6 +117,24 @@ TEST_CASE("cross-output duplicate :id is rejected", "[live-edit][ef7]")
     REQUIRE(r2.kind == sig::EvalResult::Error);
 }
 
+TEST_CASE("cross-output duplicate :id is rejected across separate eval calls",
+          "[live-edit][ownership]")
+{
+    LiveEditHarness h;
+    auto first = h.eval("(a1 (live-edit 0.5 :id \"owned\" :min 0 :max 1))");
+    REQUIRE(first.kind != sig::EvalResult::Error);
+    REQUIRE(h.engine.pool.live_slot_count == 1);
+
+    auto duplicate = h.eval("(a2 (live-edit 0.25 :id \"owned\" :min 0 :max 1))");
+    REQUIRE(duplicate.kind == sig::EvalResult::Error);
+    REQUIRE(duplicate.diagnostic_count > 0);
+    REQUIRE(std::string(duplicate.diagnostics[0].message).find("another signal") !=
+            std::string::npos);
+    REQUIRE(h.engine.pool.outputs[1].root_node == sig::NODE_NONE);
+    REQUIRE(h.engine.pool.live_slot_count == 1);
+    REQUIRE(h.tick(0.0) == Approx(0.5));
+}
+
 TEST_CASE("different :ids across outputs are allowed", "[live-edit][ef7]")
 {
     LiveEditHarness h;
@@ -134,6 +152,43 @@ TEST_CASE("MAX_LIVE_SLOTS is 256", "[live-edit][eh9]")
     REQUIRE(sig::MAX_LIVE_SLOTS == 256);
 }
 
+TEST_CASE("replacing one output with fresh live-edit IDs reclaims old slots",
+          "[live-edit][reclaim]")
+{
+    LiveEditHarness h;
+    for (size_t i = 0; i < sig::MAX_LIVE_SLOTS + 32; i++) {
+        std::string code = "(a1 (live-edit 0.5 :id \"knob-" +
+                           std::to_string(i) + "\" :min 0 :max 1))";
+        auto r = h.eval(code.c_str());
+        INFO("iteration " << i);
+        REQUIRE(r.kind != sig::EvalResult::Error);
+        REQUIRE(h.engine.pool.live_slot_count == 1);
+        REQUIRE(std::string(h.engine.pool.live_slots[0].id) ==
+                "knob-" + std::to_string(i));
+    }
+    REQUIRE(h.tick(0.0) == Approx(0.5));
+}
+
+TEST_CASE("rejected live-edit replacement restores slot metadata and value",
+          "[live-edit][rollback]")
+{
+    LiveEditHarness h;
+    REQUIRE(h.eval("(a1 (live-edit 0.5 :id \"stable\" :min 0 :max 1))").kind !=
+            sig::EvalResult::Error);
+    h.engine.pool.set_live_slot_value("stable", 0.8);
+
+    auto rejected = h.eval(
+        "(a1 (+ (live-edit 5 :id \"stable\" :min 4 :max 6)"
+        "       (live-edit 5 :id \"stable\" :min 4 :max 6)))");
+    REQUIRE(rejected.kind == sig::EvalResult::Error);
+    REQUIRE(h.engine.pool.live_slot_count == 1);
+    REQUIRE(h.engine.pool.live_slots[0].min_val == Approx(0.0));
+    REQUIRE(h.engine.pool.live_slots[0].max_val == Approx(1.0));
+    REQUIRE(h.engine.pool.live_slots[0].seed == Approx(0.5));
+    REQUIRE(h.engine.pool.live_slots[0].value == Approx(0.8));
+    REQUIRE(h.tick(0.0) == Approx(0.8));
+}
+
 // ── Warning #3: slot allocated but never read (useq-ijk) ───────────────────
 // TODO: Full cross-output dead-slot detection requires post-compilation analysis
 // across all outputs. This test covers the within-single-output case where the
@@ -147,8 +202,9 @@ TEST_CASE("warning emitted when live-edit slot is unused in output", "[live-edit
     auto r = h.eval("(a1 (do (live-edit 0.5 :id \"unused\" :min 0 :max 1) 1.0))");
     // Compilation should succeed (it's a warning, not an error)
     REQUIRE(r.kind != sig::EvalResult::Error);
-    // But the slot should be allocated
-    REQUIRE(h.engine.pool.live_slot_count == 1);
+    // The warning is emitted during compilation, but successful publication
+    // immediately reclaims the unreachable slot.
+    REQUIRE(h.engine.pool.live_slot_count == 0);
     // The output value should be 1.0 (the last form in do)
     double v = h.tick(0.0);
     REQUIRE(v == Approx(1.0));
