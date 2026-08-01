@@ -9,8 +9,10 @@ namespace sig {
 struct CellStore;
 
 // ── Diagnostic Types ────────────────────────────────────────────────────────
-// Compatible with the existing diagnostic.h types but using static strings
-// (no heap allocation for messages).
+// Compatible with the existing diagnostic.h types but using borrowed,
+// static-lifetime strings (no heap allocation for messages). Producers MUST
+// NOT pass stack buffers or temporary String storage: Diagnostic is copied by
+// value across builder/eval/active-health boundaries without copying text.
 
 enum class DiagnosticSeverity : uint8_t { Warning, Error };
 
@@ -30,8 +32,8 @@ struct Diagnostic {
     DiagnosticCategory category  = DiagnosticCategory::Runtime;
     uint16_t span_start          = 0;
     uint16_t span_len            = 0;
-    const char* message          = nullptr; // static string literal
-    const char* suggestion       = nullptr; // static string literal
+    const char* message          = nullptr; // borrowed static-lifetime text
+    const char* suggestion       = nullptr; // borrowed static-lifetime text
 };
 
 const char* severity_to_cstr(DiagnosticSeverity s);

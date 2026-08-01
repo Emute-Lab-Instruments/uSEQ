@@ -352,6 +352,7 @@ struct GraphBuilder {
 
     // Skip past a complete form in the token stream (for deferred parsing).
     static void skip_form(TokenStream& ts);
+    void report_oversized_vector(TokenStream& ts, const Token& excess);
 };
 
 // Shared "Too many state variables (max N)" message with the build's actual

@@ -413,6 +413,35 @@ TEST_CASE("For-loop unroll limits are enforced", "[robustness][for]")
     }
 }
 
+TEST_CASE("Oversized vector diagnostics have stable text and recover",
+          "[robustness][data][diagnostics]")
+{
+    RobustHarness h;
+    h.eval_ok("(a1 0.25)");
+
+    std::string vector = "[";
+    for (int i = 1; i <= 68; i++) {
+        if (i > 1) vector += " ";
+        vector += std::to_string(i);
+    }
+    vector += "]";
+
+    EvalResult rejected = h.eval_result(
+        "(a1 (step " + vector + " beat))");
+    REQUIRE(rejected.kind == EvalResult::Error);
+    REQUIRE(rejected.diagnostic_count > 0);
+    REQUIRE(rejected.diagnostics[0].category == DiagnosticCategory::Overflow);
+    REQUIRE(rejected.diagnostics[0].message != nullptr);
+    REQUIRE(std::string(rejected.diagnostics[0].message).find("64") !=
+            std::string::npos);
+
+    // The rejected replacement keeps the prior output and the next unrelated
+    // publication/sampling sequence remains usable.
+    REQUIRE(h.tick("a1", 0.0) == Approx(0.25));
+    h.eval_ok("(a2 0.5)");
+    REQUIRE(h.tick("a2", 0.1) == Approx(0.5));
+}
+
 // =============================================================================
 // 5. Data Pool Overflow
 // =============================================================================

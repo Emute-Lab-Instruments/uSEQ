@@ -427,6 +427,18 @@ void GraphBuilder::skip_form(TokenStream& ts) {
     }
 }
 
+void GraphBuilder::report_oversized_vector(TokenStream& ts,
+                                           const Token& excess) {
+    while (ts.peek().kind != TokenKind::RBracket && !ts.at_end())
+        skip_form(ts);
+    ts.expect(TokenKind::RBracket);
+    report_error_at_cat(
+        DiagnosticCategory::Overflow,
+        excess.span_start, excess.span_len,
+        "A vector can contain at most 64 elements",
+        "Remove elements until the vector has 64 or fewer");
+}
+
 // ── Temporal Templates ──────────────────────────────────────────────────────
 
 uint16_t GraphBuilder::expand_beat(TimeContext& ctx) {
@@ -592,15 +604,10 @@ uint16_t GraphBuilder::compile_expr(TokenStream& ts, Scope& scope, TimeContext& 
         // desynchronised the token stream, producing confusing errors later.
         if (!has_error && !nested_lambda &&
             ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
-            auto& si = SymbolIntern::getInstance();
-            const String& name = si.getString(op_tok.symbol);
-            char msg[128];
-            snprintf(msg, sizeof(msg),
-                     "'%s' got more arguments than expected",
-                     name.c_str());
             result = report_error_at_cat(DiagnosticCategory::Arity,
                 op_tok.span_start, op_tok.span_len,
-                msg, "Remove the extra arguments");
+                "This function got more arguments than expected",
+                "Remove the extra arguments");
             while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
                 if (ts.peek().kind == TokenKind::LParen) {
                     skip_form(ts);
@@ -3193,6 +3200,11 @@ uint16_t GraphBuilder::compile_vector_literal(TokenStream& ts, Scope& scope, Tim
                 "Use constants, or iterate with (for x [...] ...) for time-varying values");
         }
     }
+    if (count == 64 && ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
+        Token excess = ts.peek();
+        report_oversized_vector(ts, excess);
+        return NODE_NONE;
+    }
     ts.expect(TokenKind::RBracket);
 
     // Store as data table and return the length as a constant
@@ -3213,6 +3225,13 @@ GraphBuilder::Collection GraphBuilder::resolve_collection(TokenStream& ts, Scope
         while (ts.peek().kind != TokenKind::RBracket && !ts.at_end() && col.count < 64) {
             uint16_t elem = compile_expr(ts, scope, ctx);
             col.element_nodes[col.count++] = elem;
+        }
+        if (col.count == 64 && ts.peek().kind != TokenKind::RBracket &&
+            !ts.at_end()) {
+            Token excess = ts.peek();
+            report_oversized_vector(ts, excess);
+            col.ok = false;
+            return col;
         }
         ts.expect(TokenKind::RBracket);
         col.ok = true;
@@ -3339,6 +3358,12 @@ GraphBuilder::DataRef GraphBuilder::resolve_data_table(TokenStream& ts, Scope& s
                     "Use constants, or iterate with (for x [...] ...) for time-varying values");
                 return ref; // ref.ok == false
             }
+        }
+        if (count == 64 && ts.peek().kind != TokenKind::RBracket &&
+            !ts.at_end()) {
+            Token excess = ts.peek();
+            report_oversized_vector(ts, excess);
+            return ref;
         }
         ts.expect(TokenKind::RBracket);
 
