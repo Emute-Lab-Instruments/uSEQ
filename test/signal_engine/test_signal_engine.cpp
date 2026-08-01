@@ -1261,7 +1261,8 @@ TEST_CASE("Cold eval: defn creates callable", "[signal_engine][cold_eval]") {
     SymbolID bpm_sym = internSymbol("bpm");
     engine.cells.cells[bpm_sym] = { CellKind::Number, 0, 0, 1, 120.0 };
 
-    EvalResult r = eval_cold("(defn add1 [x] (+ x 1))", 24, engine);
+    const char* source = "(defn add1 [x] (+ x 1))";
+    EvalResult r = eval_cold(source, (uint32_t)strlen(source), engine);
     REQUIRE(r.kind == EvalResult::Ok);
 
     SymbolID fn_sym = SymbolIntern::getInstance().getID("add1");

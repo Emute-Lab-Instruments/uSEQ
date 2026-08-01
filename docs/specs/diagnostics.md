@@ -21,7 +21,9 @@
 
 ## 1. Source Span
 
-1.1 A **source span** locates a region of source text. Character offsets, not line/column — the editor (CodeMirror) works natively with character positions and can derive line/column for display.
+1.1 A **source span** locates a region of the submitted ASCII byte string.
+Offsets are bytes, not line/column; for accepted ASCII these are also editor
+character offsets, and the editor can derive line/column for display.
 
 ```cpp
 struct SourceSpan {
@@ -30,7 +32,12 @@ struct SourceSpan {
 };
 ```
 
-1.2 **Limit.** `uint16_t` allows offsets up to 65535. Live-coding expressions are short; this is sufficient. Source strings exceeding the limit emit diagnostics with a clamped `{0, 0}` span — the diagnostic is still produced, it just can't point at a specific location. (See `uSEQ/src/signal_engine/diagnostics.h` — Diagnostic.span_start, span_len, both uint16_t; `uSEQ/src/signal_engine/token.h` — Token.span_start, span_len; `uSEQ/src/signal_engine/node_pool.h` — Node.span_start, span_len.)
+1.2 **Limit.** `uint16_t` allows offsets through 65535. A submission longer
+than this representable span capacity is rejected during lexical preflight;
+accepted tokens and diagnostics never wrap or alias an unrelated source
+region. (See `uSEQ/src/signal_engine/diagnostics.h` — Diagnostic.span_start,
+span_len, both uint16_t; `uSEQ/src/signal_engine/token.h` — Token.span_start,
+span_len; `uSEQ/src/signal_engine/node_pool.h` — Node.span_start, span_len.)
 
 1.3 **Two coordinate spaces.** Spans live in either of two spaces; the system must not conflate them.
 
@@ -167,6 +174,10 @@ entry.
 ```
 
 The empty case (all outputs and named states healthy) is `[]`.
+Unassigning an output clears both its runtime-health record and any retained
+reactive-compile diagnostic at the same publication point as its program,
+history, source, dependencies, and resources. Reassignment starts that output
+with no superseded diagnostic.
 
 This includes compile errors from background recompilation (cell-mutation
 triggered), output-root numerical failures, and named-state update failures

@@ -5,6 +5,7 @@
 #include "src/modulisp/lisp/symbol_intern.h"
 
 #include <cmath>
+#include <cstring>
 #include <string>
 
 using namespace sig;
@@ -171,4 +172,114 @@ TEST_CASE("Rejected reactive state update is attributed and keeps its prior writ
     REQUIRE_FALSE(h.engine.state_compile_diagnostics[slot].active);
     h.tick(0, 2.0);
     REQUIRE(h.engine.pool.state_values[slot] == Approx(4.0));
+}
+
+TEST_CASE("Unassign clears runtime and reactive health with the program",
+          "[health][unassign][transaction]") {
+    Harness h;
+
+    h.eval_ok("(define health-unassign-dep 1)");
+    h.eval_ok("(a1 (* health-unassign-dep (* t 1e308)))");
+    REQUIRE(h.tick(0, 2.0) == Approx(0.0));
+    REQUIRE((h.engine.pool.runtime_fallback_mask & 1u) != 0);
+
+    h.eval_ok("(defn health-unassign-dep [x] x)");
+    REQUIRE(h.engine.output_compile_diagnostics[0].active);
+
+    h.eval_ok("(unassign a1)");
+    REQUIRE(output_health(h.engine.pool, 0) == OutputHealth::Idle);
+    REQUIRE((h.engine.pool.runtime_fallback_mask & 1u) == 0);
+    REQUIRE_FALSE(h.engine.output_compile_diagnostics[0].active);
+}
+
+TEST_CASE("State compaction remaps failure health and attributed source together",
+          "[health][state][compaction]") {
+    Harness h;
+    auto& symbols = SymbolIntern::getInstance();
+    SymbolID dropped = symbols.intern(String("health-remap-dropped"));
+    SymbolID kept = symbols.intern(String("health-remap-kept"));
+
+    h.eval_ok("(define health-remap-rate 0)");
+    h.eval_ok("(defstate health-remap-dropped 0 (+ health-remap-dropped 1))");
+    h.eval_ok("(defstate health-remap-kept 5 (/ 1 health-remap-rate))");
+    h.eval_ok("(a1 health-remap-dropped)");
+    h.eval_ok("(a2 health-remap-kept)");
+
+    const uint16_t old_kept_slot = h.engine.cells.cells[kept].data_table_id;
+    REQUIRE(old_kept_slot == 1);
+    h.tick(0, 0.0);
+    REQUIRE((h.engine.pool.state_update_failure_mask &
+             ((uint64_t)1 << old_kept_slot)) != 0);
+
+    // Retiring the lower slot compacts the still-failing state to slot zero.
+    h.eval_ok("(define health-remap-dropped 7)");
+    REQUIRE(h.engine.cells.cells[dropped].flags == 0);
+    REQUIRE(h.engine.pool.state_slot_count == 1);
+    REQUIRE(h.engine.cells.cells[kept].data_table_id == 0);
+    REQUIRE(h.engine.state_sources[0].state_symbol == kept);
+    REQUIRE((h.engine.pool.state_update_failure_mask & 1u) != 0);
+    REQUIRE((h.engine.pool.state_update_failure_mask & ~uint64_t{1}) == 0);
+
+    const StateUpdateSource& source = h.engine.state_sources[0];
+    const char* text = h.engine.arena.read(source.arena_offset);
+    REQUIRE(text != nullptr);
+    REQUIRE(std::string(text, source.arena_length) ==
+            "(/ 1 health-remap-rate)");
+
+    h.eval_ok("(define health-remap-rate 2)");
+    h.tick(1, 1.0);
+    REQUIRE(h.engine.pool.state_values[0] == Approx(0.5));
+    REQUIRE(h.engine.pool.state_update_failure_mask == 0);
+}
+
+TEST_CASE("Live-edit option reorder, rejected variant change, and reclamation are atomic",
+          "[health][live-edit][transaction]") {
+    Harness h;
+
+    h.eval_ok("(a1 (live-edit :beta :id \"health-mode\" :options [:alpha :beta]))");
+    REQUIRE(h.engine.pool.live_slot_count == 1);
+    h.engine.pool.set_live_slot_value("health-mode", 1.0);
+    REQUIRE(h.tick(0, 0.0) == Approx(1.0));
+
+    h.eval_ok("(a1 (live-edit :alpha :id \"health-mode\" :options [:beta :alpha]))");
+    const NodePool::LiveSlot before = h.engine.pool.live_slots[0];
+    REQUIRE(before.variant == NodePool::SlotVariant::Keyword);
+    REQUIRE(before.value == Approx(0.0));
+    REQUIRE(std::string(before.options[0]) == ":beta");
+
+    EvalResult rejected = h.eval(
+        "(a1 (live-edit 0.5 :id \"health-mode\" :min 0 :max 1) 99)");
+    REQUIRE(rejected.kind == EvalResult::Error);
+    REQUIRE(std::memcmp(&h.engine.pool.live_slots[0], &before,
+                        sizeof(before)) == 0);
+    REQUIRE(h.tick(0, 1.0) == Approx(0.0));
+
+    h.eval_ok("(unassign a1)");
+    REQUIRE(h.engine.pool.live_slot_count == 0);
+    h.eval_ok("(a1 (live-edit 0.25 :id \"health-mode\" :min 0 :max 1))");
+    REQUIRE(h.engine.pool.live_slot_count == 1);
+    REQUIRE(h.engine.pool.live_slots[0].variant ==
+            NodePool::SlotVariant::Numeric);
+    REQUIRE(h.engine.pool.live_slots[0].value == Approx(0.25));
+}
+
+TEST_CASE("One dependency mutation rejects every affected consumer independently",
+          "[health][reactive][multi-consumer]") {
+    Harness h;
+
+    h.eval_ok("(define health-shared-dep 2)");
+    h.eval_ok("(a1 (+ health-shared-dep 1))");
+    h.eval_ok("(a2 (* health-shared-dep 3))");
+    const uint16_t root_a1 = h.engine.pool.outputs[0].root_node;
+    const uint16_t root_a2 = h.engine.pool.outputs[1].root_node;
+    REQUIRE(h.tick(0, 0.0) == Approx(3.0));
+    REQUIRE(h.outputs[1] == Approx(6.0));
+
+    h.eval_ok("(defn health-shared-dep [x] x)");
+    REQUIRE(h.engine.output_compile_diagnostics[0].active);
+    REQUIRE(h.engine.output_compile_diagnostics[1].active);
+    REQUIRE(h.engine.pool.outputs[0].root_node == root_a1);
+    REQUIRE(h.engine.pool.outputs[1].root_node == root_a2);
+    REQUIRE(h.tick(0, 1.0) == Approx(3.0));
+    REQUIRE(h.outputs[1] == Approx(6.0));
 }

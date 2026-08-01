@@ -236,7 +236,12 @@ TEST_CASE("WASM sampling is diagnostic-pure and invalid projection is atomic",
     REQUIRE(reactive.find("\"output\":\"a1\"") != std::string::npos);
     REQUIRE(reactive.find("\"triggered_by\":\"wrapper-health-dep\"") !=
             std::string::npos);
+    eval_ok("(unassign a1)");
+    REQUIRE(useq_output_health("a1") == 0);
+    REQUIRE(active_diagnostics().find("wrapper-health-dep") ==
+            std::string::npos);
     eval_ok("(define wrapper-health-dep 2)");
+    eval_ok("(a1 (+ wrapper-health-dep 0.25))");
     REQUIRE(active_diagnostics().find("wrapper-health-dep") ==
             std::string::npos);
 

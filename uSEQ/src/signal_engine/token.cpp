@@ -1,5 +1,6 @@
 #include "token.h"
 #include "../modulisp/lisp/symbol_intern.h"
+#include <cmath>
 #include <cstring>
 #include <cstdlib>
 
@@ -95,6 +96,44 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
         }
         (*error_count)++;
     };
+
+    // Token spans are represented by uint16_t. Reject a submission that
+    // cannot be represented before scanning so no later cast can wrap a
+    // diagnostic or source slice onto unrelated bytes.
+    if (length > UINT16_MAX) {
+        emit_error(0, UINT16_MAX,
+                   "Program is too large for source-span tracking",
+                   "Split the submission into smaller forms");
+        Token eof;
+        eof.kind = TokenKind::Eof;
+        eof.span_start = UINT16_MAX;
+        if (max_tokens > 0) out[count++] = eof;
+        return count;
+    }
+    if (!source && length > 0) {
+        emit_error(0, 0, "Source buffer is null");
+        return count;
+    }
+
+    // The language source profile is ASCII. Preflight the complete byte
+    // string, including comments and string literals, before emitting any
+    // usable token. NUL is not whitespace and high bytes are never decoded
+    // through implementation-defined signed-char behaviour.
+    for (uint32_t j = 0; j < length; ++j) {
+        const unsigned char byte =
+            static_cast<unsigned char>(source[j]);
+        if (byte == 0 || byte >= 0x80) {
+            emit_error(j, 1,
+                       byte == 0
+                           ? "NUL is not allowed in source"
+                           : "Source must contain ASCII bytes only");
+            Token eof;
+            eof.kind = TokenKind::Eof;
+            eof.span_start = static_cast<uint16_t>(length);
+            if (max_tokens > 0) out[count++] = eof;
+            return count;
+        }
+    }
 
     while (i < length) {
         char c = source[i];
@@ -206,6 +245,18 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
                                   !is_symbol_char(source[num_end]);
                 if (clean_tail &&
                     is_plain_number_text(source + start, num_end - start)) {
+                    if (!std::isfinite(val)) {
+                        emit_error(start, (uint16_t)(num_end - start),
+                                   "Numeric literal is outside the finite binary64 range",
+                                   "Use a smaller finite decimal literal");
+                        Token t;
+                        t.kind = TokenKind::Error;
+                        t.span_start = (uint16_t)start;
+                        t.span_len = (uint16_t)(num_end - start);
+                        emit(t);
+                        i = num_end;
+                        continue;
+                    }
                     Token t;
                     t.kind = TokenKind::Number;
                     t.span_start = (uint16_t)start;
@@ -248,6 +299,17 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
             double val = strtod(buf, &end_ptr);
             if (end_ptr == buf + sym_len &&
                 is_plain_number_text(buf, sym_len)) {
+                if (!std::isfinite(val)) {
+                    emit_error(start, (uint16_t)sym_len,
+                               "Numeric literal is outside the finite binary64 range",
+                               "Use a smaller finite decimal literal");
+                    Token t;
+                    t.kind = TokenKind::Error;
+                    t.span_start = (uint16_t)start;
+                    t.span_len = (uint16_t)sym_len;
+                    emit(t);
+                    continue;
+                }
                 Token t;
                 t.kind = TokenKind::Number;
                 t.span_start = (uint16_t)start;

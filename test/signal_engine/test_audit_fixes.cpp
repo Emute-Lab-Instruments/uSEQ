@@ -623,6 +623,50 @@ TEST_CASE("A14: tokenizer rejects 0x/inf/nan and trailing-symbol numerics",
     REQUIRE(r.kind == EvalResult::Error);
 }
 
+TEST_CASE("A15: tokenizer preflights ASCII, finite literals, and span capacity",
+          "[audit][a15][tokenizer]") {
+    Token tokens[64];
+    Diagnostic errors[8];
+
+    auto rejects = [&](const char* source, uint32_t length) {
+        uint8_t error_count = 0;
+        TokenStream::tokenize(source, length, tokens, 64,
+                              errors, &error_count);
+        return error_count > 0;
+    };
+
+    const char nul_source[] = {'(', 'a', '1', ' ', '1', ')', '\0',
+                               '(', 'a', '2', ' ', '2', ')'};
+    REQUIRE(rejects(nul_source, sizeof(nul_source)));
+
+    const char high_source[] = {';', ' ', static_cast<char>(0x80), '\n',
+                                '(', 'a', '1', ' ', '1', ')'};
+    REQUIRE(rejects(high_source, sizeof(high_source)));
+    REQUIRE(rejects("1e9999", 6));
+    REQUIRE(rejects("+1e9999", 7));
+
+    std::string oversized((size_t)UINT16_MAX + 1, ' ');
+    REQUIRE(rejects(oversized.data(), (uint32_t)oversized.size()));
+
+    // Lexical preflight covers the whole submission before the first form
+    // can publish: a forbidden byte after a valid-looking definition leaves
+    // the cell table untouched.
+    SignalEngine engine;
+    engine.init_defaults(120.0, 4);
+    const char atomic_source[] = {
+        '(', 'd', 'e', 'f', 'i', 'n', 'e', ' ',
+        'a', '1', '5', '-', 'a', 't', 'o', 'm', 'i', 'c', ' ', '1', ')',
+        '\0',
+        '(', 'a', '1', ' ', '2', ')'
+    };
+    EvalResult result = eval_cold(atomic_source, sizeof(atomic_source), engine);
+    REQUIRE(result.kind == EvalResult::Error);
+    SymbolID symbol =
+        SymbolIntern::getInstance().intern(String("a15-atomic"));
+    REQUIRE(symbol < MAX_CELLS);
+    REQUIRE(engine.cells.cells[symbol].kind == CellKind::Empty);
+}
+
 // NOTE: the A1 case floods the shared symbol interner past MAX_CELLS, which
 // makes any fresh name interned after it out-of-range. Keep it LAST.
 

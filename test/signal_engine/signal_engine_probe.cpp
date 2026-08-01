@@ -207,7 +207,10 @@ struct Session {
     double prev_tick_time = 0.0;
     double hw_inputs[32] = {};
 
+    ~Session() { delete engine; }
+
     void init(double bpm = 120.0, int beats_per_bar = 4) {
+        delete engine;
         engine = new SignalEngine();
         engine->init_defaults(bpm, beats_per_bar);
         prev_tick_time = 0.0;

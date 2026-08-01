@@ -2091,6 +2091,10 @@ static EvalResult do_unassign(TokenStream& ts, SignalEngine& engine) {
     engine.pool.prev_output_values[output_index] = 0.0;
     engine.pool.output_deps[output_index].clear();
     engine.output_sources[output_index] = OutputSource{};
+    engine.pool.runtime_fallback_mask &=
+        ~((uint64_t)1 << output_index);
+    engine.output_compile_diagnostics[output_index] =
+        ActiveCompileDiagnostic{};
 
     engine.registry.begin_context(output_index);
     engine.registry.commit_context(output_index,

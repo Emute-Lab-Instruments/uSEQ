@@ -89,9 +89,13 @@ into the fixed live pool, but it snapshots every structure the builder can
 mutate. Failure restores the snapshot and reachability-GCs candidate nodes.
 Repeating a rejected form therefore cannot consume bounded capacity.
 
-1.15 **Exact syntax identity.** Delimiters are typed: `)` cannot close `[` and
-vice versa. Identifiers longer than the tokenizer's representable limit are
-syntax errors; they are never truncated and interned under an aliased name.
+1.15 **Exact syntax identity.** Source is an ASCII byte string: NUL and bytes
+`0x80..0xff` reject the complete submission, including when they occur inside
+comments or strings. Delimiters are typed: `)` cannot close `[` and vice
+versa. Numeric literals whose binary64 conversion is non-finite, identifiers
+longer than the name limit, and submissions longer than the `uint16_t` source
+span capacity are errors; none is truncated or wrapped into an aliased token,
+span, or value. Lexical preflight completes before the first form publishes.
 
 1.16 **Published references are validated at both ends.** Capacity must be
 proved before a definition is installed, and consumers independently reject
