@@ -90,6 +90,81 @@ TEST_CASE("set_live_slot_value ignores unknown ID", "[live-edit]")
     REQUIRE(h.engine.pool.live_slots[0].value == Approx(0.5));
 }
 
+TEST_CASE("boolean live-edit preserves its variant and coerces writes", "[live-edit][variant]")
+{
+    LiveEditHarness h;
+    auto r = h.eval("(a1 (live-edit true :id \"gate\"))");
+    REQUIRE(r.kind != sig::EvalResult::Error);
+    const auto& slot = h.engine.pool.live_slots[0];
+    REQUIRE(slot.variant == sig::NodePool::SlotVariant::Boolean);
+    REQUIRE(slot.seed == Approx(1.0));
+    REQUIRE(h.tick(0.0) == Approx(1.0));
+
+    h.engine.pool.set_live_slot_value("gate", 0.0);
+    REQUIRE(h.tick(0.0) == Approx(0.0));
+    h.engine.pool.set_live_slot_value("gate", -9.0);
+    REQUIRE(h.tick(0.0) == Approx(1.0));
+}
+
+TEST_CASE("keyword live-edit preserves options and validates writes", "[live-edit][variant]")
+{
+    LiveEditHarness h;
+    auto r = h.eval(
+        "(a1 (live-edit :up :id \"direction\" :options [:left :up :right]))");
+    REQUIRE(r.kind != sig::EvalResult::Error);
+    const auto& slot = h.engine.pool.live_slots[0];
+    REQUIRE(slot.variant == sig::NodePool::SlotVariant::Keyword);
+    REQUIRE(slot.options_count == 3);
+    REQUIRE(std::string(slot.options[0]) == ":left");
+    REQUIRE(std::string(slot.options[1]) == ":up");
+    REQUIRE(std::string(slot.options[2]) == ":right");
+    REQUIRE(slot.seed == Approx(1.0));
+    REQUIRE(h.tick(0.0) == Approx(1.0));
+
+    h.engine.pool.set_live_slot_value("direction", 2.0);
+    REQUIRE(h.tick(0.0) == Approx(2.0));
+    h.engine.pool.set_live_slot_value("direction", 9.0);
+    REQUIRE(h.tick(0.0) == Approx(2.0));
+}
+
+TEST_CASE("live-edit step and precision metadata reach the runtime slot", "[live-edit][metadata]")
+{
+    LiveEditHarness h;
+    auto r = h.eval(
+        "(a1 (live-edit 0.5 :id \"fine\" :min 0 :max 1 "
+        ":name \"Fine control\" :step 0.01 :precision 2))");
+    REQUIRE(r.kind != sig::EvalResult::Error);
+    REQUIRE(h.engine.pool.live_slots[0].step == Approx(0.01));
+    REQUIRE(h.engine.pool.live_slots[0].precision == 2);
+}
+
+TEST_CASE("keyword live-edit reorders options without changing the selected keyword",
+          "[live-edit][variant][recompile]")
+{
+    LiveEditHarness h;
+    REQUIRE(h.eval(
+        "(a1 (live-edit :up :id \"direction\" :options [:up :down]))").kind !=
+        sig::EvalResult::Error);
+    h.engine.pool.set_live_slot_value("direction", 1.0); // :down
+
+    REQUIRE(h.eval(
+        "(a1 (live-edit :up :id \"direction\" :options [:down :up]))").kind !=
+        sig::EvalResult::Error);
+    const auto& slot = h.engine.pool.live_slots[0];
+    REQUIRE(std::string(slot.options[(int)slot.value]) == ":down");
+    REQUIRE(slot.value == Approx(0.0));
+}
+
+TEST_CASE("keyword live-edit without options is repaired to a singleton", "[live-edit][variant]")
+{
+    LiveEditHarness h;
+    auto r = h.eval("(a1 (live-edit :solo :id \"mode\"))");
+    REQUIRE(r.kind != sig::EvalResult::Error);
+    REQUIRE(h.engine.pool.live_slots[0].options_count == 1);
+    REQUIRE(std::string(h.engine.pool.live_slots[0].options[0]) == ":solo");
+    REQUIRE(h.engine.pool.live_slots[0].value == Approx(0.0));
+}
+
 // ── Cross-output duplicate :id detection (useq-ef7) ────────────────────────
 
 TEST_CASE("duplicate :id in same output is rejected", "[live-edit][ef7]")

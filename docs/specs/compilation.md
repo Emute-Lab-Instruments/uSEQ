@@ -16,6 +16,9 @@
 - `uSEQ/src/signal_engine/executor.{h,cpp}` — `execute_all_outputs()`: single-sample forward pass (the hot path), `commit_state()`
 - `uSEQ/src/signal_engine/types.h` — limits (`MAX_TOTAL_NODES`, `MAX_STATE_SLOTS`, `MAX_INLINE_DEPTH`, etc.)
 - `uSEQ/src/signal_engine/symbols.def` — X-macro symbol table (builtins, side-effect forms, output names)
+- `test/signal_engine/test_builtin_conformance.cpp` — exhaustive executable
+  builtin/form catalogue, arity/boundary/type/keyword rejection, and
+  transactional non-mutation checks
 - `uSEQ/src/signal_engine/diagnostics.{h,cpp}` — `Diagnostic` struct, `find_fuzzy_match()` for "did you mean" suggestions
 - `test/signal_engine/test_signal_engine.cpp` — compilation and execution tests
 - `test/signal_engine/test_signal_engine_golden.cpp` — golden semantic tests
@@ -143,11 +146,24 @@ list. See [state-identity.md](state-identity.md).
 
 2.7 **Keyword arguments affect lowering.** Primitive calls may include trailing keyword arguments. The compiler validates keyword names and values during builtin lowering. For state-bearing primitives, identity-related keyword arguments such as `:id` and `:fresh` participate in state-resource identity. Duplicate active IDs are validated according to [state-identity.md](state-identity.md).
 
+2.8 **Builtin inventory and arity.** The normative family catalogue is
+[builtin-catalogue.md](builtin-catalogue.md). Every recognised symbol has an
+executable disposition derived alongside `symbols.def`; every bounded form is
+tested with accepted and rejected arities. In particular, `tri`/`sqr` are
+unary phase functions and `%` requires at least two arguments.
+
 ## 3. Compile-Time Rejection in Signal Context
 
 3.1 An expression is in **signal context** iff it is being compiled to a node graph (§1.5). The same rejection rules apply whether the graph will be sampled forever or executed once for performance.
 
-3.2 **Side-effect forms are rejected.** This includes (non-exhaustive): `define`, `defn`, `defstate` (state declaration is a top-level act, not a signal-context one — see [state.md §2.9](state.md)), output assignments (`a1`..`s8`, `q0`), `schedule`, `unschedule`, transport commands (`useq-play`, etc.), `eval`, `setbpm`, `settimesig`, `print`, `perf`, `timeit`. (See `uSEQ/src/signal_engine/graph_builder.cpp` — is_side_effect_form checks symbols tagged "side_effect" in symbols.def; `uSEQ/src/signal_engine/symbols.def` — side-effect symbol tags.)
+3.2 **Side-effect forms are rejected.** This includes `define`, `defn`,
+`defstate` (state declaration is a top-level act, not a signal-context one —
+see [state.md §2.9](state.md)), all 24 output assignments, `unassign`, and the
+transport/time forms in [builtin-catalogue.md](builtin-catalogue.md). Names
+such as `q0`, `schedule`, `unschedule`, dynamic `eval`, `print`, `perf`, and
+`timeit` are not recognised language forms. (See
+`uSEQ/src/signal_engine/graph_builder.cpp` — `is_side_effect_form`; and
+`uSEQ/src/signal_engine/symbols.def` — side-effect tags.)
 
 3.3 **Side effects are rejected anywhere in the subtree**, not just at the top of the form. `(a1 (if (> beat 0.5) (define x 1) 0))` is an error.
 

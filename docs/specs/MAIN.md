@@ -124,12 +124,12 @@ per-sample hot path.
 
 4.2 The stable core comprises:
 - The Reactive dialect, the value tower (numbers/strings/symbols/keywords/lists/vectors/nil/callables), and the implicit-lifting signal model.
-- Standard outputs (`a1`..`a8`, `d1`..`d8`, `s1`..`s8`, `q0`) and their wire contracts.
+- Standard outputs (`a1`..`a8`, `d1`..`d8`, `s1`..`s8`) and their wire contracts.
 - Standard time leaves (`t`, `t0`, `ground-time`) and derived phasors (`beat`/`bar`/`phrase`/`section` and their `-num`/`-dur` variants).
 - Pure time substitution via `premap`/`time-as` and substitution sugars (`fast`/`slow`/`offset`/`shift`), plus integrated local clocks via `rate-as`.
 - Cell reactivity: redefining a cell invalidates and recompiles every output that references it.
 - Cross-output `prev` reads, including the "bare output name = `prev`" sugar.
-- Hardware input leaves (`in1`/`in2`/`ain1`/`ain2`/`swm`/`swt`/`swr`/`rot`) on supported variants.
+- Hardware input leaves `in1`, `in2`, `ain1`, and `ain2`.
 - The compile-time rejection rules for signal context (no side effects, no recursion, no unbounded loops, no dynamic `eval`).
 - The scalar last-good-sample hold contract for runtime errors.
 
@@ -153,11 +153,11 @@ Items that span multiple sub-specs. Feature-specific open questions live in the 
 
 5.5 **Cross-target floating-point determinism.** Soft-float ARM vs. x86/WASM hard-float can diverge on transcendentals. The contract is "within tolerance" rather than "bit-identical"; the precise tolerance ladder is not currently specified — it lived in the deleted bytecode-VM spec and needs to be re-stated against the current engine.
 
-5.6 **Source of truth for builtins.** The specs name and define the builtins
-needed for each semantic area, but a complete canonical catalogue (with
-signal/imperative-mode availability flags, arity, types, semantics, keyword
-options, and statefulness) is still missing. Existing golden tests are a
-partial implementation check, not a substitute for that catalogue.
+5.6 **Source of truth for builtins.** [builtin-catalogue.md](builtin-catalogue.md)
+defines the compiler-recognised families, availability, arity, special
+semantics, keywords, and statefulness. Its executable row-complete inventory
+is checked against `symbols.def`, so adding a recognised name without a
+conformance disposition fails the test suite.
 
 5.7 **User-visible integer types.** Currently all numbers are doubles. The compiler may infer integer-ness internally for indices/counters. Whether to surface integer literals (`1i`?), an `(int x)` coercion, or stay doubles-only is open. Triggers for revisiting: concrete pattern bugs caused by FP rounding at vector indexing boundaries; sustained perf concerns on RP2040 soft-float (mostly absorbed by the move to RP2350 hard-float).
 
@@ -198,6 +198,10 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 6.11 [top-level.md](top-level.md) — top-level forms, eager evaluation, transport/tempo commands, dynamic `eval`.
 
 6.12 [compilation.md](compilation.md) — node-graph model, compile passes, time-warp flattening, loop unrolling, signal-context rejection rules.
+
+6.12.1 [builtin-catalogue.md](builtin-catalogue.md) — canonical recognised
+builtin/form families, exact ambiguous-surface decisions, and the exhaustive
+executable inventory rule.
 
 6.13 [failure-model.md](failure-model.md) — compile-time vs runtime errors, LKG fallback, per-output health states, success feedback, REPL-vs-output channels, batch-eval isolation, cascade-noise mitigation, chain of blame.
 

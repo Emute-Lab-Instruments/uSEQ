@@ -13,7 +13,7 @@
 //   control     — control flow
 //   signal      — domain signal function with custom compilation
 //   side_effect — side-effect forms (error in signal context)
-//   waveform    — waveform generators with special 1-or-2-arg handling
+//   waveform    — unary phase-to-value waveform functions
 
 // ── Temporal / time symbols ────────────────────────────────────────────────
 SYM(t,                   "t",                    none)
@@ -84,8 +84,8 @@ SYM(uni_to_bi,           "uni-to-bi",            unary)
 SYM(u_to_b,              "u>b",                  unary)
 
 // ── Binary math functions ──────────────────────────────────────────────────
-SYM(min_,                "min",                  binary)
-SYM(max_,                "max",                  binary)
+SYM(min_,                "min",                  arith)
+SYM(max_,                "max",                  arith)
 SYM(pow_,                "pow",                  binary)
 SYM(expt,                "expt",                 binary)
 SYM(mod_,                "mod",                  binary)
@@ -96,7 +96,7 @@ SYM(clamp,               "clamp",                ternary)
 SYM(lerp,                "lerp",                 ternary)
 SYM(scale,               "scale",                ternary)
 
-// ── Waveform generators (1-or-2-arg special handling) ──────────────────────
+// ── Unary phase-to-value waveform functions ────────────────────────────────
 SYM(tri,                 "tri",                  waveform)
 SYM(sqr,                 "sqr",                  waveform)
 
@@ -168,6 +168,7 @@ SYM(defn,                "defn",                 side_effect)
 SYM(defun,               "defun",                side_effect)
 SYM(defs,                "defs",                 side_effect)
 SYM(set,                 "set",                  side_effect)
+SYM(unassign,            "unassign",             side_effect)
 SYM(zeros_,              "zeros",                side_effect)
 SYM(get_expr,            "get-expr",             side_effect)
 SYM(set_bpm,             "set-bpm",              side_effect)
@@ -205,6 +206,13 @@ SYM(kw_freq,             ":freq",                none)
 SYM(kw_amp,              ":amp",                 none)
 SYM(kw_name,             ":name",                none)
 SYM(kw_version,          ":version",             none)
+// Live-edit-only metadata. These are explicit inventory entries even though
+// the generic symbol interner would otherwise create them on demand.
+SYM(kw_min,              ":min",                 none)
+SYM(kw_max,              ":max",                 none)
+SYM(kw_options,          ":options",             none)
+SYM(kw_step,             ":step",                none)
+SYM(kw_precision,        ":precision",           none)
 
 // ── State-identity wrapper (state-identity.md §6.3) ────────────────────────
 // `(with-state-id "<id>" <form>)` is the hidden identity wrapper the editor

@@ -52,6 +52,11 @@ integrated local clock. This is why `time-as` is the "position" tool and
 
 1.5 The timing cells (`bpm`, `beats-per-bar`, etc.) are ordinary cells (see [cells.md](cells.md)). Redefining `bpm` reactively updates every signal that derives from it. (See `cell_store.cpp` `init_timing_defaults()` and `cold_eval.cpp` `do_set_bpm()` / `on_cell_changed()` for reactive invalidation.)
 
+1.5.1 `(set-time-sig beats subdivision)` accepts a positive whole beat count
+and subdivision `4`. Other subdivisions are rejected because the current
+clock model stores quarter-note `beats-per-bar` and has no denominator cell;
+silently accepting (for example) `6/8` would produce a six-quarter-note bar.
+
 1.6 Phasors are bipolar-domain agnostic. Whether a phasor maps to a unipolar `[0,1]` or bipolar `[-1,1]` output is decided by the operator that consumes it (e.g. `usin` is unipolar, `sin` is mathematical, `sqr` thresholds).
 
 1.7 **Mathematical primitives are bipolar by default.** `(sin x)` is the standard `sin(x)`; `(u-sin p)` is `sin(2π·p)/2 + 1/2` — the unipolar phasor-domain convenience operator. The user picks which they want; the engine does not silently rescale. (See `node_pool.h` `NodeOp::Sin` vs `NodeOp::USin`; `node_pool.cpp` `eval_unary()` for the math.)

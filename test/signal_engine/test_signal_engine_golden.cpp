@@ -449,7 +449,7 @@ TEST_CASE("Golden semantics: waveform and sequence helpers",
     check_expr("ucos is unipolar cosine over phase",
                "(ucos beat)",
                {{0.0, 1.0, 1e-9}, {0.25, 0.0, 1e-9}});
-    check_expr("tri supports a pivot argument", "(tri 0.5 0.25)", {{0.0, 0.5, 1e-9}});
+    check_expr("tri maps one phase value", "(tri 0.25)", {{0.0, 0.5, 1e-9}});
     check_expr("sqr thresholds phase at half", "(sqr beat)", {{0.125, 1.0}, {0.375, 0.0}});
     check_expr("pulse uses supplied width", "(pulse beat 0.25)", {{0.1, 1.0}, {0.2, 0.0}});
     check_expr("bipolar to unipolar", "(b>u -1)", {{0.0, 0.0}});

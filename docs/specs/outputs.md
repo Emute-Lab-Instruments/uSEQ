@@ -1,6 +1,6 @@
 # Outputs
 
-> Spec: standard output sinks (`a1`..`a8`, `d1`..`d8`, `s1`..`s8`), `q0`,
+> Spec: standard output sinks (`a1`..`a8`, `d1`..`d8`, `s1`..`s8`),
 > active program / LKG / last sample slots. Counterpart to [MAIN.md](MAIN.md).
 > See [prev.md](prev.md) for cross-output reads and
 > [failure-model.md](failure-model.md) for LKG fallback.
@@ -33,6 +33,12 @@
 
 1.3 Assigning a numeric literal to an output is the constant signal: `(a1 0.5)` holds 0.5 forever. `(a1 0)` installs a running constant-zero program; it does not unassign the output.
 
+1.3.1 `(unassign a1)` is the explicit per-output removal form (and likewise
+for every `a1`..`a8`, `d1`..`d8`, and `s1`..`s8` sink). It clears that slot's
+active program, stored source, dependencies, previous/LKG sample, and
+owner-scoped state/live resources. It validates the complete form before
+mutation; an invalid name or extra argument leaves all outputs unchanged.
+
 1.4 Each output slot owns:
 - An **active program** (current compiled signal).
 - Its stored source and dependency set for reactive recompilation.
@@ -49,7 +55,8 @@ unchanged. A runtime failure retains the active program, substitutes the last
 healthy scalar sample for that tick, and retries the program on the next tick.
 See [failure-model.md](failure-model.md).
 
-1.6 `q0` is a **scheduling callback**, not an output. `(q0 expr)` runs `expr` once per quantisation period (default: bar boundary). Use it for top-level effects synchronised to the bar.
+1.6 `q0` is not a recognised name in the hardened language. Scheduling and
+quantised callback forms are outside this compiler's stable surface.
 
 1.7 Outputs not assigned by the user produce the compiler/runtime **neutral
 default**, numeric `0`, for every output class. This value is written

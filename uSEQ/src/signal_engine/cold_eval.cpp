@@ -1044,6 +1044,21 @@ static EvalResult do_set_time_sig(TokenStream& ts, SignalEngine& engine) {
         return make_error("set-time-sig accepts exactly two numbers",
                           "Try: (set-time-sig 4 4)");
     }
+    if (!std::isfinite(beats_tok.number) || beats_tok.number <= 0.0 ||
+        std::floor(beats_tok.number) != beats_tok.number) {
+        return make_error("set-time-sig needs a positive whole beat count",
+                          "Try: (set-time-sig 3 4)");
+    }
+    // The current clock model defines bpm and `beat` in quarter-note units;
+    // it has no denominator/subdivision cell.  Silently accepting 6/8 while
+    // calculating a six-quarter-note bar is wrong, so the supported surface
+    // is deliberately limited to */4 until that model is extended.
+    if (!std::isfinite(subdivision_tok.number) ||
+        subdivision_tok.number != 4.0) {
+        return make_error(
+            "set-time-sig currently supports quarter-note subdivision only",
+            "Try: (set-time-sig 3 4)");
+    }
     if (ts.peek().kind != TokenKind::RParen) {
         return make_error("set-time-sig accepts exactly two numbers",
                           "Try: (set-time-sig 4 4)");
@@ -1056,8 +1071,6 @@ static EvalResult do_set_time_sig(TokenStream& ts, SignalEngine& engine) {
     engine.cells.cells[bpb_sym].revision++;
     engine.cells.callables[bpb_sym] = CallableInfo{};
     on_cell_changed(bpb_sym, engine);
-
-    (void)subdivision_tok;
 
     return make_ok();
 }
@@ -1404,17 +1417,39 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     };
     constexpr uint16_t max_synth_bindings =
         MAX_NODEDEF_PARAMS + MAX_NODEDEF_AUDIO_INPUTS;
+    constexpr uint16_t max_synth_keywords = max_synth_bindings + 3;
     ParamBinding bindings[max_synth_bindings] = {};
     uint16_t binding_count = 0;
 
     // Track keywords seen (for duplicate detection).
-    SymbolID seen_kws[max_synth_bindings] = {};
+    SymbolID seen_kws[max_synth_keywords] = {};
     uint16_t seen_kw_count = 0;
+
+    auto remember_keyword = [&](const Token& kw_tok) -> EvalResult {
+        for (uint16_t i = 0; i < seen_kw_count; ++i) {
+            if (seen_kws[i] == kw_tok.symbol) {
+                const String& spelling =
+                    SymbolIntern::getInstance().getString(kw_tok.symbol);
+                char message[96];
+                std::snprintf(message, sizeof(message),
+                              "Synth keyword %s was already set in this form",
+                              spelling.c_str());
+                return make_synth_error_at(
+                    kw_tok, DiagnosticCategory::Arity,
+                    strdup_safe(message),
+                    "Remove the duplicate binding");
+            }
+        }
+        seen_kws[seen_kw_count++] = kw_tok.symbol;
+        return make_ok();
+    };
 
     bool kw_phase = true;
     while (kw_phase && ts.peek().kind == TokenKind::Symbol) {
         Token kw_tok = ts.peek();
         if (kw_tok.symbol == sym.kw_version) {
+            EvalResult unique = remember_keyword(kw_tok);
+            if (unique.kind == EvalResult::Error) return unique;
             ts.consume();
             Token v = ts.consume();
             if (v.kind != TokenKind::Number) {
@@ -1428,6 +1463,8 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
             continue;
         }
         if (kw_tok.symbol == sym.kw_name || kw_tok.symbol == sym.kw_id) {
+            EvalResult unique = remember_keyword(kw_tok);
+            if (unique.kind == EvalResult::Error) return unique;
             ts.consume();
             Token s = ts.consume();
             if (s.kind != TokenKind::String) {
@@ -1489,21 +1526,8 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
         const char* param_name = param_buf + 1; // strip leading ':'
 
         // Duplicate detection.
-        for (uint16_t i = 0; i < seen_kw_count; i++) {
-            if (seen_kws[i] == kw_tok.symbol) {
-                char msg[96];
-                std::snprintf(msg, sizeof(msg),
-                              "Parameter %s was already set in this synth form",
-                              param_buf);
-                return make_synth_error_at(
-                    kw_tok, DiagnosticCategory::Arity,
-                    strdup_safe(msg),
-                    "Remove the duplicate binding");
-            }
-        }
-        if (seen_kw_count < max_synth_bindings) {
-            seen_kws[seen_kw_count++] = kw_tok.symbol;
-        }
+        EvalResult unique = remember_keyword(kw_tok);
+        if (unique.kind == EvalResult::Error) return unique;
 
         // Validate the parameter is declared by this NodeDef.
         const NodeDefParam* pdesc = nodedef_find_param(def, param_name);
@@ -2044,6 +2068,40 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
 
 // ── Output assignment ───────────────────────────────────────────────────────
 
+static EvalResult do_unassign(TokenStream& ts, SignalEngine& engine) {
+    Token output_tok = ts.consume();
+    if (output_tok.kind != TokenKind::Symbol ||
+        !GraphBuilder::is_output_symbol(output_tok.symbol)) {
+        return make_error("unassign needs one output name",
+                          "Try: (unassign a1)");
+    }
+    if (ts.peek().kind != TokenKind::RParen) {
+        return make_error("unassign accepts exactly one output name",
+                          "Try: (unassign a1)");
+    }
+
+    const uint16_t output_index =
+        GraphBuilder::resolve_output_index(output_tok.symbol);
+
+    // Validation above is complete before the publication point.  Removing
+    // a program also removes its sample history, source/dependencies and
+    // owner-scoped state/live resources; the next running tick emits neutral
+    // zero for the now-inactive slot.
+    engine.pool.outputs[output_index] = OutputSlot{};
+    engine.pool.prev_output_values[output_index] = 0.0;
+    engine.pool.output_deps[output_index].clear();
+    engine.output_sources[output_index] = OutputSource{};
+
+    engine.registry.begin_context(output_index);
+    engine.registry.commit_context(output_index,
+                                   engine.pool.state_update_roots,
+                                   engine.pool.state_owner_context);
+    reclaim_unowned_resources(engine);
+    engine.pool.rebuild_execution_order();
+    classify_outputs(engine.pool);
+    return make_ok();
+}
+
 static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
                                     SignalEngine& engine,
                                     const char* source, uint32_t source_length,
@@ -2556,6 +2614,11 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         }
         if (op == sym.set) {
             EvalResult r = do_set(ts, engine, source);
+            ts.expect(TokenKind::RParen);
+            return r;
+        }
+        if (op == sym.unassign) {
+            EvalResult r = do_unassign(ts, engine);
             ts.expect(TokenKind::RParen);
             return r;
         }

@@ -283,6 +283,21 @@ audit_fixes_test_exe = executable(
 
 test('audit_fixes_test', audit_fixes_test_exe, timeout: 60)
 
+# ===== Exhaustive builtin/form catalogue conformance =====
+# symbols.def is compiled into the test inventory.  Any new recognised symbol
+# must receive an executable disposition and witness here before CI passes.
+
+builtin_conformance_test_exe = executable(
+  'test_builtin_conformance',
+  sources : ['signal_engine/test_builtin_conformance.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('builtin_conformance_test', builtin_conformance_test_exe, timeout: 120)
+
 # ===== Failure-mode tests (failure-model.md §2.1/§3/§5) =====
 
 failure_mode_test_exe = executable(

@@ -80,4 +80,37 @@ if (
   throw new Error("generated WASM did not expose the synth ABI-2 envelope");
 }
 
-console.log("generated WASM init/eval smoke passed");
+const liveEditResult = mod.ccall(
+  "useq_eval",
+  "string",
+  ["string"],
+  [
+    '(a2 (live-edit true :id "smoke-bool")) ' +
+      '(a3 (live-edit :up :id "smoke-keyword" :options [:left :up :right])) ' +
+      '(a4 (live-edit 0.5 :id "smoke-number" :min 0 :max 1 :step 0.01 :precision 2))',
+  ],
+);
+if (liveEditResult.startsWith("Error")) {
+  throw new Error(`generated WASM live-edit eval failed: ${liveEditResult}`);
+}
+const liveSlots = JSON.parse(
+  mod.ccall("useq_get_live_slots", "string", [], []),
+);
+const boolSlot = liveSlots.find((slot) => slot.id === "smoke-bool");
+const keywordSlot = liveSlots.find((slot) => slot.id === "smoke-keyword");
+const numberSlot = liveSlots.find((slot) => slot.id === "smoke-number");
+if (
+  boolSlot?.variant !== "boolean" ||
+  boolSlot.seed !== 1 ||
+  keywordSlot?.variant !== "keyword" ||
+  keywordSlot.seed !== 1 ||
+  JSON.stringify(keywordSlot.options) !==
+    JSON.stringify([":left", ":up", ":right"]) ||
+  numberSlot?.variant !== "numeric" ||
+  numberSlot.step !== 0.01 ||
+  numberSlot.precision !== 2
+) {
+  throw new Error("generated WASM did not preserve live-edit slot metadata");
+}
+
+console.log("generated WASM init/eval and live-edit metadata smoke passed");

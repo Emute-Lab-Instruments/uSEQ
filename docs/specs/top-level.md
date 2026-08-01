@@ -34,9 +34,13 @@ the language surface.
 - `(let [bindings...] body)` — local scope. At top level, also a value-producing expression.
 - `(do form1 form2 ...)` — sequence top-level forms; result is the last form's value. Each child is itself a top-level form.
 - `(if cond then else)` — conditional. The unselected branch is not evaluated.
-- Output assignment forms `a1`..`s8`, `q0`.
+- Output assignment forms `a1`..`a8`, `d1`..`d8`, and `s1`..`s8`.
+- `(unassign output)` — remove one `a1`..`a8`, `d1`..`d8`, or `s1`..`s8`
+  program and its compiler-owned resources; see [outputs.md](outputs.md).
 - Transport: `(useq-play)`, `(useq-pause)`, `(useq-stop)`, `(useq-rewind)`, `(useq-clear)`, `(useq-get-transport-state)`. (See `cold_eval.cpp` transport command handlers.)
-- Tempo / metre: `(setbpm bpm)`, `(getbpm n)`, `(settimesig num denom)`. (See `cold_eval.cpp` `do_set_bpm()` and `cell_store.cpp` `init_timing_defaults()`.)
+- Tempo / metre in the current compiler: `(set-bpm bpm)` and
+  `(set-time-sig beats 4)`. Other time-signature subdivisions are rejected,
+  not ignored; see [time.md](time.md).
 - `(set-quant-phasor expr)` — set the global phasor that gates quantised eval (§1.3 / [firmware.md §6](firmware.md)). Defaults to `bar`.
 - `(schedule name body period)` / `(unschedule name)` — see open question below.
 - `(eval string)` — dynamic evaluation. Top-level only; rejected in signal context.

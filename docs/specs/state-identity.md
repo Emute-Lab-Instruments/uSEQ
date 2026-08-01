@@ -113,8 +113,8 @@ resources it reads/updates and which roles those resources play.
 ```lisp
 (phasor 1 :id "phase-A")
 (saw 1 :id "phase-A")
-(tri 1 :id "phase-A")
-(sqr 1 :id "phase-A")
+(tri-osc 1 :id "phase-A")
+(sqr-osc 1 :id "phase-A")
 (lfo 1 :wave :tri :id "phase-A")
 ```
 
@@ -184,7 +184,7 @@ as pure reads of one separately declared state source.
 
 ```lisp
 (a1 (+ (saw 1 :id "phase-A")
-       (tri 2 :id "phase-A")))
+       (tri-osc 2 :id "phase-A")))
 ```
 
 Both forms would update the same oscillator phase with different rates. The

@@ -43,15 +43,25 @@
 
 2.3 **`:id`** is a string identifier, unique within a compilation unit (the user's whole document). The string itself is the wire-level identity of the slot — neither compiler nor runtime hashes it (§3.2). Strings are case-sensitive and treated as opaque tokens.
 
-2.4 **`:min` / `:max`** are numeric literals (or pure constant expressions resolvable at compile time). For numeric seeds, the compiler validates `:min < :max` and clamps incoming slot writes to `[:min, :max]` at the runtime boundary. For boolean seeds, `:min`/`:max` are accepted but ignored. For keyword seeds, `:min`/`:max` are accepted but ignored; `:options` governs the value space.
+2.4 **`:min` / `:max`** are finite numeric literals. For numeric seeds, both
+are required, the compiler validates `:min < :max`, and incoming slot writes
+are clamped to `[:min, :max]` at the runtime boundary. For boolean and keyword
+seeds they are optional and ignored; `:options` governs a keyword's value
+space.
 
-2.5 **`:name`** is an optional display string. Compiler-irrelevant; preserved for diagnostics and downstream tooling.
+2.5 **`:name`** is an optional display string. The compiler validates that it
+is a string but does not copy it into the runtime slot: the editor preserves
+and consumes the display name from the source wrapper. It has no effect on
+slot identity or execution.
 
 2.6 **`:options`** defines the value space for keyword seeds and is rejected for numeric/boolean. For keyword seeds it should be present in editor-authored source; if omitted, the compiler repairs it to a singleton vector containing the seed and emits a warning (§4.2.2). When present, it must be a vector of keyword literals and the seed must appear in the vector.
 
-2.7 **`:step`** is an optional numeric literal — the slider step granularity used by the editor. Compiler-irrelevant beyond preservation in the slot metadata; the runtime does not enforce step alignment on incoming writes.
+2.7 **`:step`** is an optional positive finite numeric literal — the slider
+step granularity used by the editor. It is preserved in slot metadata; the
+runtime does not enforce step alignment on incoming writes.
 
-2.8 **`:precision`** is an optional non-negative integer hint for numeric display. Compiler-irrelevant; preserved in slot metadata.
+2.8 **`:precision`** is an optional non-negative integer hint for numeric
+display. It is preserved in slot metadata.
 
 2.9 **Form is canonical at compile time.** Implementations may not introduce alternative shorthand surfaces in v1; the editor is the sole writer of `live-edit` forms in normal use.
 
@@ -75,7 +85,7 @@ Sharing a single node type would conflate these lifecycles in the executor, the 
 - The seed value (for the runtime to initialise the slot if no host write has arrived).
 - The variant tag (`numeric` / `boolean` / `keyword`) for type-correct slot reads.
 - For keywords, the `:options` vector (for runtime validation of host writes).
-- `:step` and `:precision` (preserved as opaque metadata for the host).
+- `:step` and `:precision` (preserved as metadata for the host).
 
 3.4 **Constant folding skips `live-edit`.** A `live-edit` node is opaque to constant folding ([compilation.md §1.3](compilation.md)) even when its bounds are constant. The whole point is that the value varies at runtime.
 

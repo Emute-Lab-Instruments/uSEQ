@@ -18,6 +18,20 @@ GraphBuilder::FormEntry GraphBuilder::form_table[FORM_TABLE_CAPACITY] = {};
 uint16_t GraphBuilder::form_table_count = 0;
 bool GraphBuilder::form_table_sorted = false;
 
+// Keyword options are single-assignment within one form. Last-value-wins
+// would make source meaning depend on parser order and can hide duplicated
+// editor payload fields, so every keyword parser uses this common guard.
+template <size_t N>
+static bool remember_keyword_once(SymbolID keyword, SymbolID (&seen)[N],
+                                  uint8_t& seen_count) {
+    for (uint8_t i = 0; i < seen_count; ++i) {
+        if (seen[i] == keyword) return false;
+    }
+    if (seen_count >= N) return false;
+    seen[seen_count++] = keyword;
+    return true;
+}
+
 void GraphBuilder::init_symbols() {
     if (symbols_initialized) return;
     auto& si = SymbolIntern::getInstance();
@@ -908,10 +922,18 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
 
     if (op == sym.tri || op == sym.sqr) {
         NodeOp nop = (op == sym.tri) ? NodeOp::Tri : NodeOp::Sqr;
+        if (ts.peek().kind == TokenKind::RParen) {
+            return report_error_at_cat(DiagnosticCategory::Arity,
+                op_tok.span_start, op_tok.span_len,
+                "This waveform needs exactly 1 phase value",
+                (op == sym.tri) ? "Try: (tri beat)" : "Try: (sqr beat)");
+        }
         uint16_t first = compile_expr(ts, scope, ctx);
         if (ts.peek().kind != TokenKind::RParen) {
-            uint16_t second = compile_expr(ts, scope, ctx);
-            return pool.make_unary(nop, second);
+            return report_error_at_cat(DiagnosticCategory::Arity,
+                op_tok.span_start, op_tok.span_len,
+                "This waveform takes exactly 1 phase value",
+                (op == sym.tri) ? "Try: (tri beat)" : "Try: (sqr beat)");
         }
         return pool.make_unary(nop, first);
     }
@@ -1273,6 +1295,15 @@ uint16_t GraphBuilder::compile_variadic_arithmetic(SymbolID op, TokenStream& ts,
     // Handle unary division: (/ x) → (/ 1 x)
     if (ts.peek().kind == TokenKind::RParen && nop == NodeOp::Div) {
         return pool.make_binop(NodeOp::Div, pool.make_const(1.0), result);
+    }
+
+    // `%` is a remainder operator, not an identity or unary transform.  The
+    // historical unary form returned its argument unchanged, which made a
+    // missing operand silently look successful.  Require a divisor.
+    if (ts.peek().kind == TokenKind::RParen && nop == NodeOp::Mod) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "'%' needs at least 2 values",
+            "Try: (% 7 3)");
     }
 
     // Left-fold remaining arguments
@@ -1800,11 +1831,18 @@ uint16_t GraphBuilder::compile_integrate(TokenStream& ts, Scope& scope, TimeCont
     if (rate == NODE_NONE) return NODE_NONE;
 
     StateID state_id = 0;
+    SymbolID seen_keywords[1] = {};
+    uint8_t seen_keyword_count = 0;
     while (ts.peek().kind == TokenKind::Symbol) {
         Token kw = ts.peek();
         const String& kw_str = getSymbolString(kw.symbol);
         if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
         ts.consume();
+        if (!remember_keyword_once(kw.symbol, seen_keywords, seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
         if (kw.symbol == sym.kw_id) {
             Token id_tok = ts.consume();
             if (id_tok.kind == TokenKind::String && source_base) {
@@ -1940,12 +1978,19 @@ uint16_t GraphBuilder::compile_phasor(TokenStream& ts, Scope& scope, TimeContext
 
     double init_phase = 0.0;
     StateID state_id = 0;
+    SymbolID seen_keywords[2] = {};
+    uint8_t seen_keyword_count = 0;
 
     while (ts.peek().kind == TokenKind::Symbol) {
         Token kw = ts.peek();
         const String& kw_str = getSymbolString(kw.symbol);
         if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
         ts.consume();
+        if (!remember_keyword_once(kw.symbol, seen_keywords, seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
         if (kw.symbol == sym.kw_phase) {
             uint16_t val = compile_expr(ts, scope, ctx);
             if (!is_const(val)) {
@@ -2003,6 +2048,8 @@ uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx
     double init_phase = 0.0;
     uint16_t pulse_width_node = pool.make_const(0.5);
     StateID state_id = 0;
+    SymbolID seen_keywords[4] = {};
+    uint8_t seen_keyword_count = 0;
 
     auto& si = SymbolIntern::getInstance();
 
@@ -2012,6 +2059,12 @@ uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx
         if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
 
         ts.consume();
+
+        if (!remember_keyword_once(kw.symbol, seen_keywords, seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
 
         if (kw.symbol == sym.kw_wave) {
             Token val = ts.consume();
@@ -2102,11 +2155,18 @@ uint16_t GraphBuilder::compile_slew(TokenStream& ts, Scope& scope, TimeContext& 
     if (rate == NODE_NONE) return NODE_NONE;
 
     StateID state_id = 0;
+    SymbolID seen_keywords[1] = {};
+    uint8_t seen_keyword_count = 0;
     while (ts.peek().kind == TokenKind::Symbol) {
         Token kw = ts.peek();
         const String& kw_str = getSymbolString(kw.symbol);
         if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
         ts.consume();
+        if (!remember_keyword_once(kw.symbol, seen_keywords, seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
         if (kw.symbol == sym.kw_id) {
             Token id_tok = ts.consume();
             if (id_tok.kind == TokenKind::String && source_base) {
@@ -2161,11 +2221,18 @@ uint16_t GraphBuilder::compile_one_pole(TokenStream& ts, Scope& scope, TimeConte
     if (cutoff == NODE_NONE) return NODE_NONE;
 
     StateID state_id = 0;
+    SymbolID seen_keywords[1] = {};
+    uint8_t seen_keyword_count = 0;
     while (ts.peek().kind == TokenKind::Symbol) {
         Token kw = ts.peek();
         const String& kw_str = getSymbolString(kw.symbol);
         if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
         ts.consume();
+        if (!remember_keyword_once(kw.symbol, seen_keywords, seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
         if (kw.symbol == sym.kw_id) {
             Token id_tok = ts.consume();
             if (id_tok.kind == TokenKind::String && source_base) {
@@ -2226,23 +2293,36 @@ uint16_t GraphBuilder::compile_env_follow(TokenStream& ts, Scope& scope, TimeCon
     uint16_t attack_node;
     uint16_t release_node;
 
-    if (ts.peek().kind != TokenKind::RParen) {
+    auto next_is_keyword = [&]() {
+        if (ts.peek().kind != TokenKind::Symbol) return false;
+        const String& name = getSymbolString(ts.peek().symbol);
+        return name.length() > 0 && name.c_str()[0] == ':';
+    };
+
+    if (ts.peek().kind != TokenKind::RParen && !next_is_keyword()) {
         attack_node = compile_expr(ts, scope, ctx);
     } else {
         attack_node = pool.make_const(10.0);
     }
-    if (ts.peek().kind != TokenKind::RParen) {
+    if (ts.peek().kind != TokenKind::RParen && !next_is_keyword()) {
         release_node = compile_expr(ts, scope, ctx);
     } else {
         release_node = pool.make_const(5.0);
     }
 
     StateID state_id = 0;
+    SymbolID seen_keywords[1] = {};
+    uint8_t seen_keyword_count = 0;
     while (ts.peek().kind == TokenKind::Symbol) {
         Token kw = ts.peek();
         const String& kw_str = getSymbolString(kw.symbol);
         if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
         ts.consume();
+        if (!remember_keyword_once(kw.symbol, seen_keywords, seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
         if (kw.symbol == sym.kw_id) {
             Token id_tok = ts.consume();
             if (id_tok.kind == TokenKind::String && source_base) {
@@ -2310,11 +2390,18 @@ uint16_t GraphBuilder::compile_sah(TokenStream& ts, Scope& scope, TimeContext& c
     if (trigger == NODE_NONE) return NODE_NONE;
 
     StateID state_id = 0;
+    SymbolID seen_keywords[1] = {};
+    uint8_t seen_keyword_count = 0;
     while (ts.peek().kind == TokenKind::Symbol) {
         Token kw = ts.peek();
         const String& kw_str = getSymbolString(kw.symbol);
         if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
         ts.consume();
+        if (!remember_keyword_once(kw.symbol, seen_keywords, seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
         if (kw.symbol == sym.kw_id) {
             Token id_tok = ts.consume();
             if (id_tok.kind == TokenKind::String && source_base) {
@@ -2366,11 +2453,18 @@ uint16_t GraphBuilder::compile_noise(TokenStream& ts, Scope& scope, TimeContext&
     // Output: HashIndex(counter) → [0,1]
 
     StateID state_id = 0;
+    SymbolID seen_keywords[1] = {};
+    uint8_t seen_keyword_count = 0;
     while (ts.peek().kind == TokenKind::Symbol) {
         Token kw = ts.peek();
         const String& kw_str = getSymbolString(kw.symbol);
         if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
         ts.consume();
+        if (!remember_keyword_once(kw.symbol, seen_keywords, seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
         if (kw.symbol == sym.kw_id) {
             Token id_tok = ts.consume();
             if (id_tok.kind == TokenKind::String && source_base) {
@@ -2415,11 +2509,18 @@ uint16_t GraphBuilder::compile_toggle(TokenStream& ts, Scope& scope, TimeContext
     if (trigger == NODE_NONE) return NODE_NONE;
 
     StateID state_id = 0;
+    SymbolID seen_keywords[1] = {};
+    uint8_t seen_keyword_count = 0;
     while (ts.peek().kind == TokenKind::Symbol) {
         Token kw = ts.peek();
         const String& kw_str = getSymbolString(kw.symbol);
         if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
         ts.consume();
+        if (!remember_keyword_once(kw.symbol, seen_keywords, seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
         if (kw.symbol == sym.kw_id) {
             Token id_tok = ts.consume();
             if (id_tok.kind == TokenKind::String && source_base) {
@@ -2476,6 +2577,8 @@ uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext&
     // Optional reset argument
     uint16_t reset_trigger = pool.make_const(0.0);
     StateID state_id = 0;
+    SymbolID seen_keywords[2] = {};
+    uint8_t seen_keyword_count = 0;
 
     // Parse keywords for :reset and :id
     while (ts.peek().kind == TokenKind::Symbol) {
@@ -2483,6 +2586,11 @@ uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext&
         const String& kw_str = getSymbolString(kw.symbol);
         if (kw_str.length() == 0 || kw_str.c_str()[0] != ':') break;
         ts.consume();
+        if (!remember_keyword_once(kw.symbol, seen_keywords, seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
         if (kw.symbol == sym.kw_reset) {
             reset_trigger = compile_expr(ts, scope, ctx);
         } else if (kw.symbol == sym.kw_id) {
@@ -2542,7 +2650,9 @@ uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext&
 // -- Live-edit ---------------------------------------------------------------
 
 uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (live-edit <seed> :id <string> :min <num> :max <num> [:name <str>] [:step <num>] [:precision <int>])
+    // (live-edit <literal> :id <string> [:min <num> :max <num>]
+    //            [:name <str>] [:options [<keyword> ...]]
+    //            [:step <num>] [:precision <non-negative-int>])
     uint16_t form_start = ts.peek().span_start > 0 ? ts.peek().span_start - 1 : 0;
 
     // 0. Reject if in a context that forbids live-edit (defstate :initial, quote)
@@ -2552,7 +2662,9 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
             "live-edit cannot appear inside defstate initial values or quoted forms");
     }
 
-    // 1. Parse seed — must be a numeric literal
+    // 1. Parse the literal seed and establish its wire representation.
+    // Numeric values remain doubles, booleans are 0/1, and keyword values are
+    // indices into the validated :options vector.
     Token seed_tok = ts.peek();
     if (seed_tok.kind == TokenKind::LParen) {
         // Peek for nested live-edit
@@ -2566,39 +2678,60 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
                 "Each live-edit wraps a single literal value");
         }
         return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
-            "live-edit seed must be a literal number, not an expression",
+            "live-edit seed must be a literal, not an expression",
             "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
     }
-    if (seed_tok.kind == TokenKind::Symbol) {
-        // Check for nested live-edit
+
+    NodePool::SlotVariant variant = NodePool::SlotVariant::Numeric;
+    double seed = 0.0;
+    char seed_keyword[MAX_LIVE_SLOT_OPTION_LEN] = {};
+    if (seed_tok.kind == TokenKind::Number) {
+        if (!std::isfinite(seed_tok.number)) {
+            return report_error_at_cat(DiagnosticCategory::Type,
+                seed_tok.span_start, seed_tok.span_len,
+                "live-edit numeric seed must be finite",
+                "Use a finite numeric literal");
+        }
+        seed = seed_tok.number;
+    } else if (seed_tok.kind == TokenKind::Symbol) {
         const String& name = getSymbolString(seed_tok.symbol);
-        if (name == "live-edit") {
-            return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
-                "Can't nest live-edit inside another live-edit",
-                "Each live-edit wraps a single literal value");
+        if (name == "true" || name == "false") {
+            variant = NodePool::SlotVariant::Boolean;
+            seed = (name == "true") ? 1.0 : 0.0;
+        } else if (name.length() > 1 && name.c_str()[0] == ':') {
+            if (name.length() >= MAX_LIVE_SLOT_OPTION_LEN) {
+                return report_error_at_cat(DiagnosticCategory::Overflow,
+                    seed_tok.span_start, seed_tok.span_len,
+                    "live-edit keyword seed is too long",
+                    "Use a keyword shorter than 32 bytes");
+            }
+            variant = NodePool::SlotVariant::Keyword;
+            std::memcpy(seed_keyword, name.c_str(), name.length());
+            seed_keyword[name.length()] = '\0';
+        } else {
+            return report_error_at_cat(DiagnosticCategory::Type,
+                seed_tok.span_start, seed_tok.span_len,
+                "live-edit seed must be a number, boolean, or keyword literal",
+                "Try 0.5, true, false, or :up");
         }
-        // Check for keywords appearing where seed should be (missing seed)
-        if (name.length() > 0 && name.c_str()[0] == ':') {
-            return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
-                "live-edit seed is missing — first arg must be a number",
-                "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
-        }
+    } else {
         return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
-            "live-edit seed must be a literal number",
+            "live-edit seed must be a number, boolean, or keyword literal",
             "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
     }
-    if (seed_tok.kind != TokenKind::Number) {
-        return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
-            "live-edit seed must be a literal number",
-            "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
-    }
-    double seed = seed_tok.number;
     ts.consume();
 
     // 2. Parse keyword arguments
     char id_buf[MAX_LIVE_SLOT_ID] = {};
     bool has_id = false, has_min = false, has_max = false;
+    bool has_options = false;
     double min_val = 0.0, max_val = 1.0;
+    double step = 0.0;
+    int precision = -1;
+    char options[MAX_LIVE_SLOT_OPTIONS][MAX_LIVE_SLOT_OPTION_LEN] = {};
+    uint8_t options_count = 0;
+    SymbolID seen_keywords[7] = {};
+    uint8_t seen_keyword_count = 0;
 
     auto& si = SymbolIntern::getInstance();
 
@@ -2608,6 +2741,13 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
         if (kw.length() == 0 || kw.c_str()[0] != ':') break;
 
         ts.consume(); // consume keyword
+
+        if (!remember_keyword_once(kw_tok.symbol, seen_keywords,
+                                   seen_keyword_count)) {
+            return report_error_cat(DiagnosticCategory::Arity, kw_tok,
+                "A keyword may appear only once in a form",
+                "Remove the duplicate keyword and keep one value");
+        }
 
         if (kw == ":id") {
             Token val = ts.consume();
@@ -2627,25 +2767,118 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
             has_id = true;
         } else if (kw == ":min") {
             Token val = ts.consume();
-            if (val.kind != TokenKind::Number) {
+            if (val.kind != TokenKind::Number || !std::isfinite(val.number)) {
                 return report_error_at_cat(DiagnosticCategory::Type, val.span_start, val.span_len,
-                    ":min must be a number",
+                    ":min must be a finite number",
                     "Try: :min 0");
             }
             min_val = val.number;
             has_min = true;
         } else if (kw == ":max") {
             Token val = ts.consume();
-            if (val.kind != TokenKind::Number) {
+            if (val.kind != TokenKind::Number || !std::isfinite(val.number)) {
                 return report_error_at_cat(DiagnosticCategory::Type, val.span_start, val.span_len,
-                    ":max must be a number",
+                    ":max must be a finite number",
                     "Try: :max 1");
             }
             max_val = val.number;
             has_max = true;
-        } else if (kw == ":name" || kw == ":step" || kw == ":precision") {
-            // Accept and skip — compiler-irrelevant metadata
+        } else if (kw == ":name") {
+            Token val = ts.consume();
+            if (val.kind != TokenKind::String) {
+                return report_error_at_cat(DiagnosticCategory::Type,
+                    val.span_start, val.span_len,
+                    ":name must be a string",
+                    "Try: :name \"cutoff\"");
+            }
+            // The editor consumes the display name from source. It has no
+            // effect on compiler/runtime slot identity.
+        } else if (kw == ":step") {
+            Token val = ts.consume();
+            if (val.kind != TokenKind::Number || !std::isfinite(val.number) ||
+                val.number <= 0.0) {
+                return report_error_at_cat(DiagnosticCategory::Type,
+                    val.span_start, val.span_len,
+                    ":step must be a positive finite number",
+                    "Try: :step 0.01");
+            }
+            step = val.number;
+        } else if (kw == ":precision") {
+            Token val = ts.consume();
+            if (val.kind != TokenKind::Number || !std::isfinite(val.number) ||
+                val.number < 0.0 || std::floor(val.number) != val.number ||
+                val.number > 2147483647.0) {
+                return report_error_at_cat(DiagnosticCategory::Type,
+                    val.span_start, val.span_len,
+                    ":precision must be a non-negative whole number",
+                    "Try: :precision 2");
+            }
+            precision = (int)val.number;
+        } else if (kw == ":options") {
+            Token open = ts.consume();
+            if (open.kind != TokenKind::LBracket) {
+                return report_error_at_cat(DiagnosticCategory::Type,
+                    open.span_start, open.span_len,
+                    ":options must be a vector of keywords",
+                    "Try: :options [:up :down]");
+            }
+            while (!ts.at_end() && ts.peek().kind != TokenKind::RBracket) {
+                Token option = ts.consume();
+                if (option.kind != TokenKind::Symbol) {
+                    return report_error_at_cat(DiagnosticCategory::Type,
+                        option.span_start, option.span_len,
+                        ":options entries must be keywords",
+                        "Try: :options [:up :down]");
+                }
+                const String& option_name = getSymbolString(option.symbol);
+                if (option_name.length() <= 1 || option_name.c_str()[0] != ':') {
+                    return report_error_at_cat(DiagnosticCategory::Type,
+                        option.span_start, option.span_len,
+                        ":options entries must be keywords",
+                        "Try: :options [:up :down]");
+                }
+                if (option_name.length() >= MAX_LIVE_SLOT_OPTION_LEN) {
+                    return report_error_at_cat(DiagnosticCategory::Overflow,
+                        option.span_start, option.span_len,
+                        "A live-edit option is too long",
+                        "Use keywords shorter than 32 bytes");
+                }
+                if (options_count >= MAX_LIVE_SLOT_OPTIONS) {
+                    return report_error_at_cat(DiagnosticCategory::Overflow,
+                        option.span_start, option.span_len,
+                        "Too many live-edit options",
+                        MAX_LIVE_SLOT_OPTIONS == 8
+                            ? "Use at most 8 options on firmware"
+                            : "Use at most 16 options");
+                }
+                for (uint8_t i = 0; i < options_count; ++i) {
+                    if (std::strncmp(options[i], option_name.c_str(),
+                                     MAX_LIVE_SLOT_OPTION_LEN) == 0) {
+                        return report_error_at_cat(DiagnosticCategory::Arity,
+                            option.span_start, option.span_len,
+                            "A live-edit option may appear only once",
+                            "Remove the duplicate option");
+                    }
+                }
+                std::memcpy(options[options_count], option_name.c_str(),
+                            option_name.length());
+                options[options_count][option_name.length()] = '\0';
+                ++options_count;
+            }
+            if (ts.peek().kind != TokenKind::RBracket) {
+                return report_error_at_cat(DiagnosticCategory::Syntax,
+                    open.span_start, open.span_len,
+                    "Unclosed live-edit :options vector",
+                    "Add the closing ]");
+            }
             ts.consume();
+            if (options_count == 0) {
+                return report_error_at_cat(DiagnosticCategory::Arity,
+                    open.span_start, open.span_len,
+                    "live-edit :options cannot be empty",
+                    "Include at least the seed keyword");
+            }
+            has_options = true;
         } else {
             // Unknown keyword — reject instead of silently skipping (A9,
             // values-types.md §2.3).
@@ -2659,20 +2892,50 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
             "live-edit requires :id",
             "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
     }
-    if (!has_min) {
+    if (variant == NodePool::SlotVariant::Numeric && !has_min) {
         return report_error_at_cat(DiagnosticCategory::Arity, form_start, 1,
             "live-edit requires :min",
             "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
     }
-    if (!has_max) {
+    if (variant == NodePool::SlotVariant::Numeric && !has_max) {
         return report_error_at_cat(DiagnosticCategory::Arity, form_start, 1,
             "live-edit requires :max",
             "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
     }
-    if (min_val >= max_val) {
+    if (variant == NodePool::SlotVariant::Numeric && min_val >= max_val) {
         return report_error_at_cat(DiagnosticCategory::Overflow, form_start, 1,
             "live-edit :min must be less than :max",
             "Swap :min and :max values");
+    }
+
+    if (variant != NodePool::SlotVariant::Keyword && has_options) {
+        return report_error_at_cat(DiagnosticCategory::Type, form_start, 1,
+            "live-edit :options is valid only for a keyword seed",
+            "Remove :options or use a keyword seed such as :up");
+    }
+    if (variant == NodePool::SlotVariant::Keyword) {
+        if (!has_options) {
+            std::strncpy(options[0], seed_keyword,
+                         MAX_LIVE_SLOT_OPTION_LEN - 1);
+            options_count = 1;
+            report_warning(form_start, 1,
+                "Keyword live-edit omitted :options; using the seed only",
+                "Add :options with every allowed keyword");
+        }
+        int seed_index = -1;
+        for (uint8_t i = 0; i < options_count; ++i) {
+            if (std::strncmp(options[i], seed_keyword,
+                             MAX_LIVE_SLOT_OPTION_LEN) == 0) {
+                seed_index = i;
+                break;
+            }
+        }
+        if (seed_index < 0) {
+            return report_error_at_cat(DiagnosticCategory::Type, form_start, 1,
+                "live-edit keyword seed must appear in :options",
+                "Add the seed keyword to the options vector");
+        }
+        seed = (double)seed_index;
     }
 
     // 4. Check for duplicate id — within this build AND across outputs.
@@ -2723,14 +2986,50 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
         if (shared_live_edit_ids && inline_depth == 0) {
             shared_live_edit_ids->add(id_buf);
         }
-        // Update bounds (may have changed on re-eval)
+        // Update validated metadata while preserving the live value when the
+        // variant is unchanged. Keyword preservation is by option spelling,
+        // so reordering :options cannot silently change the selected value.
         remember_live_slot((uint16_t)pre_existing);
-        pool.live_slots[pre_existing].min_val = min_val;
-        pool.live_slots[pre_existing].max_val = max_val;
-        pool.live_slots[pre_existing].seed = seed;
-        double& v = pool.live_slots[pre_existing].value;
-        if (v < min_val) v = min_val;
-        if (v > max_val) v = max_val;
+        NodePool::LiveSlot& old_slot = pool.live_slots[pre_existing];
+        const NodePool::SlotVariant old_variant = old_slot.variant;
+        double preserved_value = old_slot.value;
+        char preserved_keyword[MAX_LIVE_SLOT_OPTION_LEN] = {};
+        if (old_variant == NodePool::SlotVariant::Keyword) {
+            const int old_index = (int)old_slot.value;
+            if (old_index >= 0 && old_index < old_slot.options_count) {
+                std::strncpy(preserved_keyword, old_slot.options[old_index],
+                             MAX_LIVE_SLOT_OPTION_LEN - 1);
+            }
+        }
+        pool.alloc_live_slot(id_buf, seed, min_val, max_val, variant,
+                             step, precision, anon_state_context);
+        NodePool::LiveSlot& slot = pool.live_slots[pre_existing];
+        slot.options_count = options_count;
+        std::memset(slot.options, 0, sizeof(slot.options));
+        for (uint8_t i = 0; i < options_count; ++i) {
+            std::strncpy(slot.options[i], options[i],
+                         MAX_LIVE_SLOT_OPTION_LEN - 1);
+        }
+        if (old_variant != variant) {
+            slot.value = seed;
+        } else if (variant == NodePool::SlotVariant::Keyword) {
+            slot.value = seed;
+            for (uint8_t i = 0; i < options_count; ++i) {
+                if (std::strncmp(options[i], preserved_keyword,
+                                 MAX_LIVE_SLOT_OPTION_LEN) == 0) {
+                    slot.value = (double)i;
+                    break;
+                }
+            }
+        } else {
+            slot.value = preserved_value;
+            if (variant == NodePool::SlotVariant::Numeric) {
+                if (slot.value < min_val) slot.value = min_val;
+                if (slot.value > max_val) slot.value = max_val;
+            } else {
+                slot.value = slot.value != 0.0 ? 1.0 : 0.0;
+            }
+        }
         return pool.make_slot_load((uint16_t)pre_existing);
     }
 
@@ -2746,14 +3045,21 @@ uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeCont
 
     // 5. Allocate slot
     int16_t slot_idx = pool.alloc_live_slot(
-        id_buf, seed, min_val, max_val, NodePool::SlotVariant::Numeric,
-        0.0, -1, anon_state_context);
+        id_buf, seed, min_val, max_val, variant,
+        step, precision, anon_state_context);
     if (slot_idx < 0) {
         return report_error_at_cat(DiagnosticCategory::Overflow, form_start, 1,
             MAX_LIVE_SLOTS == 256
                 ? "too many live-edit slots (max 256)"
                 : "too many live-edit slots (max 32)",
             "Remove unused live-edit declarations");
+    }
+
+    NodePool::LiveSlot& slot = pool.live_slots[slot_idx];
+    slot.options_count = options_count;
+    for (uint8_t i = 0; i < options_count; ++i) {
+        std::strncpy(slot.options[i], options[i],
+                     MAX_LIVE_SLOT_OPTION_LEN - 1);
     }
 
     // 6. Return SlotLoad node
