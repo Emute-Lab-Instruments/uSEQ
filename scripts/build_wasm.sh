@@ -79,6 +79,8 @@ else
     echo "wasm-opt not found — skipping post-processing (install binaryen for smaller/faster WASM)"
 fi
 
+node scripts/wasm_init_smoke.mjs wasm
+
 # Report output sizes
 echo "Output:"
 ls -lh wasm/useq.js wasm/useq.wasm 2>/dev/null

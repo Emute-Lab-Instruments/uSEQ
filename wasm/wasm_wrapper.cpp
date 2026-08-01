@@ -33,7 +33,6 @@ static sig::Diagnostic g_last_diagnostics[16] = {};
 static uint8_t         g_last_diagnostic_count = 0;
 
 static String s_last_error;
-static bool   g_init_called = false;
 
 // ── Probe expression slots (probes.md §1.6) ────────────────────────────
 //
@@ -547,15 +546,19 @@ extern "C"
 {
     void useq_init()
     {
-        if (g_init_called) return;
+        if (g_engine) return;
 
-        g_engine = new sig::SignalEngine();
-        g_engine->init_defaults();
+        // Keep construction and initialization behind a local pointer. Some
+        // initialization paths reset process-global compiler registries; if
+        // the public pointer is published first, generated WASM can clear it
+        // again and leave an exported but permanently uninitialized module.
+        sig::SignalEngine* engine = new sig::SignalEngine();
+        engine->init_defaults();
 
         // Allocate batch workspace for WASM visualization
-        g_engine->pool.allocate_batch_workspace();
+        engine->pool.allocate_batch_workspace();
 
-        g_init_called = true;
+        g_engine = engine;
     }
 
     char* useq_eval(const char* input)
