@@ -293,6 +293,14 @@ TEST_CASE("synth: invalid parameters produce precise diagnostics",
         std::string msg = h.first_message("(synth \"osc/sine\" :amp 0.1)");
         REQUIRE(msg.find("freq") != std::string::npos);
     }
+
+    SECTION("empty explicit identity") {
+        REQUIRE(h.eval_fails(
+            "(synth \"osc/sine\" :name \"\" :freq 440)"));
+        std::string msg = h.first_message(
+            "(synth \"osc/sine\" :name \"\" :freq 440)");
+        REQUIRE(msg.find("identity") != std::string::npos);
+    }
 }
 
 // ============================================================================
@@ -400,6 +408,35 @@ TEST_CASE("synth: rejected control compilation restores graph resources",
     REQUIRE(h.engine.pool.state_slot_count == slots_ok);
     REQUIRE(h.engine.registry.entry_count == entries_ok);
     REQUIRE(h.engine.pool.state_update_roots[0] == update_ok);
+}
+
+TEST_CASE("synth: nested success cannot overwrite outer rollback image",
+          "[synth][transaction][nested][rollback]") {
+    SynthHarness h;
+
+    REQUIRE(h.eval_ok(
+        "(synth \"osc/sine\" :name \"lead\" "
+        ":freq (phasor 1 :id \"lead-phase\") :amp 0.2)"));
+    const uint32_t revision = h.engine.synth_graph.revision;
+    const std::string artifact = snapshot_synth_artifacts(h);
+    const uint16_t slots = h.engine.pool.state_slot_count;
+    const uint16_t entries = h.engine.registry.entry_count;
+    const uint16_t update_root = h.engine.pool.state_update_roots[0];
+    const double state_value = h.engine.pool.state_values[0];
+
+    REQUIRE(h.eval_fails(
+        "(synth \"osc/sine\" :name \"lead\" "
+        ":freq (phasor 2 :id \"lead-phase\") "
+        ":fm (synth \"osc/sine\" :name \"child\" :freq 3) "
+        ":amp missing-control)"));
+
+    REQUIRE(h.engine.synth_graph.revision == revision);
+    REQUIRE(snapshot_synth_artifacts(h) == artifact);
+    REQUIRE(h.engine.synth_graph.find("child") == nullptr);
+    REQUIRE(h.engine.pool.state_slot_count == slots);
+    REQUIRE(h.engine.registry.entry_count == entries);
+    REQUIRE(h.engine.pool.state_update_roots[0] == update_root);
+    REQUIRE(h.engine.pool.state_values[0] == Approx(state_value));
 }
 
 // ============================================================================

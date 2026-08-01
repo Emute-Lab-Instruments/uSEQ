@@ -223,7 +223,8 @@ admit all three.
 5.1 Node identity **is** state identity: each node instance is a state
 resource of resource kind `synth-node` under the machinery of
 [state-identity.md](state-identity.md). `:name <string>` is sugar that
-normalises to the explicit-ID surface (`:id`); a `synth` form with neither
+normalises to the explicit-ID surface (`:id`); explicit identities contain
+from 1 to 31 bytes, so the empty string is rejected transactionally. A `synth` form with neither
 receives an editor-generated hidden ID exactly as anonymous stateful
 expressions do.
 

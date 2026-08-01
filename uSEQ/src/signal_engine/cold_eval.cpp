@@ -1459,11 +1459,11 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     char identity_buf[MAX_SYNTH_IDENTITY];
     if (have_explicit_identity) {
         uint16_t n = identity_tok.string.length;
-        if (n >= MAX_SYNTH_IDENTITY) {
+        if (n == 0 || n >= MAX_SYNTH_IDENTITY) {
             return make_synth_error_at(
                 identity_tok, DiagnosticCategory::Overflow,
-                "Synth identity is too long",
-                "Use at most 31 bytes for :name or :id");
+                "Synth identity is empty or too long",
+                "Use from 1 to 31 bytes for :name or :id");
         }
         std::memcpy(identity_buf, source + identity_tok.string.offset, n);
         identity_buf[n] = '\0';
@@ -1505,10 +1505,14 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     // Restoring the SynthGraph first ensures graph rollback preserves its
     // old external roots during reachability GC.
     SynthGraph synth_snapshot = engine.synth_graph;
-    GraphMutationSnapshot graph_snapshot = capture_graph_mutations(engine);
+    // The outer synth transaction owns the graph rollback image. A nested
+    // synth is part of that same transaction; taking another image in the
+    // engine's single scratch pool would overwrite the outer pre-state.
+    GraphMutationSnapshot graph_snapshot;
+    if (!nested) graph_snapshot = capture_graph_mutations(engine);
     auto rollback_synth = [&](EvalResult error) {
         engine.synth_graph = synth_snapshot;
-        restore_graph_mutations(engine, graph_snapshot);
+        if (!nested) restore_graph_mutations(engine, graph_snapshot);
         return error;
     };
 
