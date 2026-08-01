@@ -42,6 +42,11 @@ The WASM adapter loads the freshly generated `wasm/useq.js` and
 same JSONL shape. Hardware still requires a serial adapter speaking the wire
 protocol (fw-safe subset only).
 
+The generated WASM capability manifest enumerates the fixed compiler limits,
+their cross-field relations, public-versus-internal output counts, and bounded
+counter domains. A component maximum is not a promise that every maximum is
+simultaneously realizable; combination witnesses remain separate.
+
 ### Layer 1: fixture corpus
 
 `test/conformance/<spec-area>/*.yaml`, mirroring `docs/specs/`:

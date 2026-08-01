@@ -144,21 +144,33 @@ def safe_cpp_expr(expression: str, values: dict[str, int]) -> int:
 def cpp_limits() -> dict[str, int]:
     files = [
         ROOT / "uSEQ" / "src" / "signal_engine" / "types.h",
+        ROOT / "uSEQ" / "src" / "signal_engine" / "graph_builder.h",
+        ROOT / "uSEQ" / "src" / "signal_engine" / "node_pool.h",
+        ROOT / "uSEQ" / "src" / "signal_engine" / "cold_eval.cpp",
         ROOT / "uSEQ" / "src" / "signal_engine" / "synth_registry.h",
         ROOT / "uSEQ" / "src" / "signal_engine" / "synth_graph.h",
+        ROOT / "uSEQ" / "src" / "firmware" / "hardware_io.h",
+        ROOT / "wasm" / "wasm_wrapper.cpp",
     ]
     wanted = {
         "MAX_CELLS", "MAX_TOTAL_NODES", "MAX_DATA_ENTRIES",
-        "MAX_DATA_TABLES", "MAX_LIVE_SLOTS", "SOURCE_ARENA_SIZE",
-        "MAX_OUTPUT_DEPS", "MAX_STATE_SLOTS", "MAX_OUTPUTS", "MAX_TOKENS",
+        "MAX_DATA_TABLES", "MAX_LIVE_SLOTS", "MAX_LIVE_SLOT_OPTIONS",
+        "SOURCE_ARENA_SIZE", "CSE_TABLE_SIZE", "MAX_OUTPUT_DEPS",
+        "MAX_STATE_SLOTS", "MAX_OUTPUTS", "MAX_TOKENS",
+        "MAX_CALLABLE_PARAMS", "MAX_SCOPE_DEPTH", "MAX_LOCAL_BINDINGS",
+        "MAX_DIAGNOSTICS", "MAX_INLINE_DEPTH", "MAX_COMPILE_DEPTH",
+        "MAX_LIVE_SLOT_ID", "MAX_LIVE_SLOT_OPTION_LEN",
+        "MAX_IDS_PER_BUILD", "MAX_EXTERNAL_ROOTS", "MAX_DEFS_BINDINGS",
+        "MAX_HW_INPUTS", "MAX_PROBE_SLOTS",
         "MAX_NODEDEF_PARAMS", "MAX_NODEDEF_AUDIO_INPUTS", "SYNTH_MAX_NODES",
+        "MAX_NODEDEF_ENTRIES", "MAX_NODEDEF_NAME", "MAX_SYNTH_IDENTITY",
         "MAX_SYNTH_DECLARATIONS", "MAX_SYNTH_CONTROLS",
         "MAX_SYNTH_CONNECTIONS", "MAX_SYNTH_NESTING",
         "SYNTH_ARTIFACT_JSON_CAP", "SYNTH_ARTIFACT_ABI_VERSION",
     }
     expressions: dict[str, str] = {}
     pattern = re.compile(
-        r"constexpr\s+(?:size_t|u?int(?:8|16|32|64)_t)\s+"
+        r"(?:static\s+)?constexpr\s+(?:int|size_t|u?int(?:8|16|32|64)_t)\s+"
         r"([A-Z][A-Z0-9_]*)\s*=\s*([^;]+);"
     )
     for path in files:
@@ -186,7 +198,56 @@ def cpp_limits() -> dict[str, int]:
     missing = wanted - values.keys()
     if missing:
         raise ManifestError("missing compiler limit(s): " + ", ".join(sorted(missing)))
-    return {name.lower(): values[name] for name in sorted(wanted)}
+    limits = {name.lower(): values[name] for name in sorted(wanted)}
+    # Token spans are uint16_t and the accepted source length is checked
+    # against UINT16_MAX before tokenization. Public CV/output names are the
+    # 24 a/d/s channels; MAX_OUTPUTS also includes internal execution slots.
+    limits["max_source_bytes"] = (1 << 16) - 1
+    limits["public_output_names"] = 24
+    return limits
+
+
+def cross_field_constraints(limits: dict[str, int]) -> list[dict[str, Any]]:
+    constraints = [
+        {
+            "id": "synth-controls-by-declarations-and-params",
+            "relation": "max_synth_controls == max_synth_declarations * max_nodedef_params",
+            "value": limits["max_synth_declarations"] * limits["max_nodedef_params"],
+        },
+        {
+            "id": "synth-connections-by-declarations",
+            "relation": "max_synth_connections == max_synth_declarations",
+            "value": limits["max_synth_declarations"],
+        },
+        {
+            "id": "cse-capacity-by-node-profile",
+            "relation": "cse_table_size == 2 * max_total_nodes",
+            "value": 2 * limits["max_total_nodes"],
+        },
+        {
+            "id": "public-output-subset",
+            "relation": "public_output_names <= max_outputs",
+            "value": limits["public_output_names"],
+        },
+        {
+            "id": "reactive-diagnostic-subject-capacity",
+            "relation": "max_reactive_diagnostic_subjects == max_outputs + max_state_slots + max_synth_controls",
+            "value": (limits["max_outputs"] + limits["max_state_slots"] +
+                      limits["max_synth_controls"]),
+        },
+    ]
+    for constraint in constraints[:3]:
+        field = {
+            "synth-controls-by-declarations-and-params": "max_synth_controls",
+            "synth-connections-by-declarations": "max_synth_connections",
+            "cse-capacity-by-node-profile": "cse_table_size",
+        }[constraint["id"]]
+        if limits[field] != constraint["value"]:
+            raise ManifestError(
+                f"cross-field constraint {constraint['id']} is false: "
+                f"{limits[field]} != {constraint['value']}"
+            )
+    return constraints
 
 
 def public_js_exports(js_text: str) -> list[str]:
@@ -228,6 +289,7 @@ def artifact_record(path: Path) -> dict[str, Any]:
 def build_manifest(postprocess: str) -> dict[str, Any]:
     profile = load_profile()
     validate_artifacts(profile)
+    limits = cpp_limits()
     emcc_version = first_version_line("emcc")
     if emcc_version is None:
         raise ManifestError("emcc is required to attest the compiler build")
@@ -250,7 +312,20 @@ def build_manifest(postprocess: str) -> dict[str, Any]:
             "module_factory": profile["module_factory"],
         },
         "capabilities": {
-            "hard_limits": cpp_limits(),
+            "hard_limits": limits,
+            "cross_field_constraints": cross_field_constraints(limits),
+            "counter_domains": {
+                "session_generation": {
+                    "storage": "uint32",
+                    "maximum": (1 << 32) - 1,
+                    "exhaustion_policy": "session must end before aliasing",
+                },
+                "synth_revision": {
+                    "storage": "uint32",
+                    "maximum": (1 << 32) - 1,
+                    "exhaustion_policy": "session must end before aliasing",
+                },
+            },
             "public_function_exports": profile["public_function_exports"],
             "runtime_methods": profile["runtime_methods"],
         },
