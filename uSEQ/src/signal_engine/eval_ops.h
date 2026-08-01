@@ -49,8 +49,12 @@ static inline double eval_binary_op(NodeOp op, double a, double b) {
         case NodeOp::Add:   return a + b;
         case NodeOp::Sub:   return a - b;
         case NodeOp::Mul:   return a * b;
-        case NodeOp::Div:   return (b != 0.0) ? a / b : 0.0;
-        case NodeOp::Mod:   return (b != 0.0) ? fmod(a, b) : 0.0;
+        // Preserve IEEE non-finite results. The output boundary owns recovery:
+        // default mode substitutes LKG and records unhealthy state; legacy
+        // ZeroSquash mode clamps the same result per node. Returning zero here
+        // would erase the runtime error before either policy can observe it.
+        case NodeOp::Div:   return a / b;
+        case NodeOp::Mod:   return fmod(a, b);
         case NodeOp::Expt:  return pow(a, b);
         case NodeOp::Min:   return (a < b) ? a : b;
         case NodeOp::Max:   return (a > b) ? a : b;

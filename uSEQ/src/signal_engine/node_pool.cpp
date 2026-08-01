@@ -296,9 +296,9 @@ uint16_t NodePool::make_binop(NodeOp op, uint16_t a, uint16_t b) {
     // results with zero would suppress the output-root failure signal and
     // change LKG/health semantics. The all-constant case above remains safe
     // because it is evaluated through the same primitive as the hot path.
-    // NOTE: no `Div a a -> 1` fold (A10) — runtime division defines a/0 = 0
-    // (eval_ops.h), so x/x is 0 whenever x is 0 (and NaN for NaN x). The
-    // constant/constant case is already folded through eval_binop above.
+    // NOTE: no `Div a a -> 1` fold (A10): IEEE 0/0 and Inf/Inf are NaN and
+    // must remain visible to output-root health/LKG handling. The constant/
+    // constant case is already folded through eval_binop above.
     if (op == NodeOp::Div && nb.op == NodeOp::Const && nb.imm == 1.0) return a;
 
     uint8_t flags = 0;

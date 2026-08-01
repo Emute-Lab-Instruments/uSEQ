@@ -870,22 +870,24 @@ TEST_CASE("Scope depth limits are respected", "[robustness][inline]")
 
 TEST_CASE("Arithmetic edge cases produce finite outputs", "[robustness][edge]")
 {
-    SECTION("Division by zero returns 0, not Inf/NaN")
+    SECTION("Division by zero activates bootstrap LKG")
     {
         RobustHarness h;
         h.eval_ok("(a1 (/ 1 0))");
         double v = h.sample("a1", 0.0);
         REQUIRE(std::isfinite(v));
         REQUIRE(v == Approx(0.0));
+        REQUIRE((h.engine.pool.runtime_fallback_mask & 1u) != 0);
     }
 
-    SECTION("Modulo by zero returns 0, not NaN")
+    SECTION("Modulo by zero activates bootstrap LKG")
     {
         RobustHarness h;
         h.eval_ok("(a1 (% 5 0))");
         double v = h.sample("a1", 0.0);
         REQUIRE(std::isfinite(v));
         REQUIRE(v == Approx(0.0));
+        REQUIRE((h.engine.pool.runtime_fallback_mask & 1u) != 0);
     }
 
     SECTION("sqrt of negative is finite")

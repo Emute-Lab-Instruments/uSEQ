@@ -302,13 +302,13 @@ TEST_CASE("Phase 4: compile error isolation and recovery", "[phase4][failure]") 
 
 TEST_CASE("Phase 4: non-finite value handling", "[phase4][numerical]") {
 
-    SECTION("division by zero returns finite value") {
+    SECTION("division by zero substitutes bootstrap LKG") {
         GoldenHarness h;
         h.assign_ok("a1", "(/ 1 0)");
         double val = h.sample("a1", 0.0);
         REQUIRE(std::isfinite(val));
-        // The engine explicitly returns 0 for div-by-zero
         REQUIRE(val == Approx(0.0));
+        REQUIRE((h.engine.pool.runtime_fallback_mask & 1u) != 0);
     }
 
     SECTION("legitimate large values stay finite") {
@@ -336,20 +336,22 @@ TEST_CASE("Phase 4: non-finite value handling", "[phase4][numerical]") {
         REQUIRE(std::isfinite(h.sample("a1", 0.0)));
     }
 
-    SECTION("mod by zero returns finite") {
+    SECTION("mod by zero substitutes bootstrap LKG") {
         GoldenHarness h;
         h.assign_ok("a1", "(% 5 0)");
         double val = h.sample("a1", 0.0);
         REQUIRE(std::isfinite(val));
         REQUIRE(val == Approx(0.0));
+        REQUIRE((h.engine.pool.runtime_fallback_mask & 1u) != 0);
     }
 
     SECTION("chained operations producing intermediate infinities stay finite") {
         GoldenHarness h;
-        // (/ 1 0) produces 0 (clamped), then (* 0 5) = 0
+        // The non-finite intermediate reaches the root and activates LKG.
         h.assign_ok("a1", "(* (/ 1 0) 5)");
         double val = h.sample("a1", 0.0);
         REQUIRE(std::isfinite(val));
+        REQUIRE((h.engine.pool.runtime_fallback_mask & 1u) != 0);
     }
 
     SECTION("NaN guard on executor output") {

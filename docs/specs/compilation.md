@@ -62,6 +62,11 @@ dependencies, state ownership, validity, and capacity.
 
 1.10 **Numerical health.** Per-sample evaluation produces an `IEEE 754 double`. NaN/Inf produced by an individual node is the engine's signal that the program is unhealthy this sample. Whole-output LKG fallback is the canonical recovery; see [failure-model.md](failure-model.md).
 
+Division and modulo use IEEE operations without a zero-divisor shortcut.
+Therefore constant folding and hot execution both preserve `Inf`/`NaN` for a
+zero divisor; the configured output failure policy, not the arithmetic
+primitive or optimizer, performs any LKG substitution or legacy zero squash.
+
 1.11 **Sub-tick guarantees.** The hot path (sampling) never allocates, never does string-keyed lookup, never compiles. All compilation work happens between ticks.
 
 1.12 **Per-form publication transaction.** A top-level form validates its

@@ -135,6 +135,18 @@ TEST_CASE("Optimizer preserves non-finite failure observability",
         REQUIRE(h.sample(0, 1.0) == Approx(0.75));
         REQUIRE(h.in_fallback(0));
     }
+
+    SECTION("constant division by zero") {
+        h.eval_ok("(a1 (/ 1 0))");
+        REQUIRE(h.sample(0, 0.0) == Approx(0.75));
+        REQUIRE(h.in_fallback(0));
+    }
+
+    SECTION("constant modulo by zero") {
+        h.eval_ok("(a1 (% 1 0))");
+        REQUIRE(h.sample(0, 0.0) == Approx(0.75));
+        REQUIRE(h.in_fallback(0));
+    }
 }
 
 TEST_CASE("Mode A: fallback does not poison LKG or other outputs",

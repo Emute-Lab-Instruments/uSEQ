@@ -680,7 +680,8 @@ TEST_CASE("Constant folding: all binary ops", "[signal_engine][node_pool]") {
     REQUIRE(fold_bin(NodeOp::Sub, 10.0, 3.0) == 7.0);
     REQUIRE(fold_bin(NodeOp::Mul, 3.0, 4.0) == 12.0);
     REQUIRE(fold_bin(NodeOp::Div, 10.0, 4.0) == 2.5);
-    REQUIRE(fold_bin(NodeOp::Div, 1.0, 0.0) == 0.0); // guarded
+    REQUIRE(std::isinf(fold_bin(NodeOp::Div, 1.0, 0.0)));
+    REQUIRE(std::isnan(fold_bin(NodeOp::Mod, 1.0, 0.0)));
     REQUIRE(fold_bin(NodeOp::Mod, 7.0, 3.0) == Approx(1.0));
     REQUIRE(fold_bin(NodeOp::Expt, 10.0, 2.0) == Approx(100.0)); // expt(a,b) = a^b
     REQUIRE(fold_bin(NodeOp::Min, 3.0, 7.0) == 3.0);
@@ -741,7 +742,7 @@ TEST_CASE("Graph builder: arithmetic via eval_at", "[signal_engine][graph_builde
         REQUIRE(eval_at("(- 5)", 0.0) == Approx(-5.0));
     }
 
-    SECTION("Division by zero: (/ 1 0) = 0") {
+    SECTION("Division by zero: bootstrap LKG is 0") {
         REQUIRE(eval_at("(/ 1 0)", 0.0) == 0.0);
     }
 
@@ -2219,11 +2220,11 @@ TEST_CASE("Range edge cases", "[signal_engine][graph_builder][range]") {
 // ── Division edge cases ─────────────────────────────────────────────────────
 
 TEST_CASE("Division edge cases", "[signal_engine][graph_builder][division]") {
-    SECTION("constant division by zero folds to 0") {
+    SECTION("constant division by zero reaches bootstrap LKG") {
         REQUIRE(eval_at("(/ 1 0)", 0.0) == Approx(0.0));
     }
 
-    SECTION("modulo by zero folds to 0") {
+    SECTION("constant modulo by zero reaches bootstrap LKG") {
         REQUIRE(eval_at("(% 5 0)", 0.0) == Approx(0.0));
     }
 
