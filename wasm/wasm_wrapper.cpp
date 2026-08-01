@@ -20,6 +20,7 @@
 #include <cstring>
 #include <cmath>
 #include <limits>
+#include <string>
 
 // ── Static state ───────────────────────────────────────────────────────────
 
@@ -28,6 +29,8 @@ static sig::SignalEngine* g_engine = nullptr;
 static double  g_hw_inputs[32]   = {};
 static double  g_current_time    = 0.0;
 static double  g_prev_tick_time  = 0.0;
+static double  g_authoritative_wall_frontier = 0.0;
+static bool    g_has_authoritative_wall_frontier = false;
 
 static sig::Diagnostic g_last_diagnostics[16] = {};
 static uint8_t         g_last_diagnostic_count = 0;
@@ -68,6 +71,10 @@ struct ProjectionFork {
     sig::StateResourceRegistry registry;
     double prev_output_values[sig::MAX_OUTPUTS];
     double lkg_values[sig::MAX_OUTPUTS];
+    bool output_valid[sig::MAX_OUTPUTS];
+    uint64_t runtime_fallback_mask;
+    double live_slot_values[sig::MAX_LIVE_SLOTS];
+    uint16_t live_slot_count;
     double prev_tick_time;
     double cell_values[sig::MAX_CELLS];
     double hw_inputs[32];
@@ -201,6 +208,40 @@ static bool needs_sequential_batch() {
     return false;
 }
 
+enum class ExecutionOwnership : uint8_t {
+    Observational,
+    Authoritative,
+};
+
+// Both public live-tick APIs advance the same VM. A single strict wall-time
+// frontier makes ownership fail closed: callers must choose one API as the
+// authoritative owner for each instant, and accidental duplicate/cross-owner
+// ticks cannot advance prev/state twice. Logical time may legitimately rewind
+// through transport commands, so monotonicity is enforced on host wall time.
+static bool validate_execution_time(double wall_time,
+                                    ExecutionOwnership ownership,
+                                    double& logical_time) {
+    if (!std::isfinite(wall_time)) {
+        s_last_error = "authoritative tick time must be finite";
+        return false;
+    }
+
+    logical_time = g_engine->state.logical_time(wall_time);
+    if (!std::isfinite(logical_time)) {
+        s_last_error = "authoritative logical tick time must be finite";
+        return false;
+    }
+
+    if (ownership == ExecutionOwnership::Authoritative &&
+        g_has_authoritative_wall_frontier &&
+        wall_time <= g_authoritative_wall_frontier) {
+        s_last_error =
+            "authoritative tick time must strictly increase; use one live-tick API";
+        return false;
+    }
+    return true;
+}
+
 // Clone post-tick live state into the projection fork.
 static void reset_projection_fork(double tick_time) {
     memcpy(g_projection_fork.state_values,
@@ -209,8 +250,16 @@ static void reset_projection_fork(double tick_time) {
     g_projection_fork.registry = g_engine->registry;
     memcpy(g_projection_fork.prev_output_values,
            g_engine->pool.prev_output_values, sizeof(g_projection_fork.prev_output_values));
-    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_projection_fork.lkg_values[i] = g_engine->pool.outputs[i].lkg_value;
+        g_projection_fork.output_valid[i] = g_engine->pool.outputs[i].valid;
+    }
+    g_projection_fork.runtime_fallback_mask =
+        g_engine->pool.runtime_fallback_mask;
+    g_projection_fork.live_slot_count = g_engine->pool.live_slot_count;
+    for (uint16_t i = 0; i < g_projection_fork.live_slot_count; i++)
+        g_projection_fork.live_slot_values[i] =
+            g_engine->pool.live_slots[i].value;
     g_projection_fork.prev_tick_time = tick_time;
     g_engine->cells.snapshot_values(g_projection_fork.cell_values, sig::MAX_CELLS);
     memcpy(g_projection_fork.hw_inputs, g_hw_inputs, sizeof(g_projection_fork.hw_inputs));
@@ -236,6 +285,8 @@ static void project_from_fork(
     double saved_prev_outputs[sig::MAX_OUTPUTS];
     double saved_lkg[sig::MAX_OUTPUTS];
     bool saved_valid[sig::MAX_OUTPUTS];
+    double saved_live_slot_values[sig::MAX_LIVE_SLOTS];
+    uint16_t saved_live_slot_count = g_engine->pool.live_slot_count;
     double saved_prev_t = g_prev_tick_time;
     memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
     memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
@@ -243,6 +294,8 @@ static void project_from_fork(
         saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
         saved_valid[i] = g_engine->pool.outputs[i].valid;
     }
+    for (uint16_t i = 0; i < saved_live_slot_count; i++)
+        saved_live_slot_values[i] = g_engine->pool.live_slots[i].value;
 
     // Snapshot the active-row map ONCE before the sample loop (A2). The loop
     // below runs commit_outputs, which sets valid=true for any output with a
@@ -254,7 +307,7 @@ static void project_from_fork(
     {
         uint16_t r = 0;
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
-            row_of[i] = (g_engine->pool.outputs[i].valid && r < num_active)
+            row_of[i] = (g_projection_fork.output_valid[i] && r < num_active)
                             ? r++ : sig::NODE_NONE;
     }
 
@@ -265,8 +318,16 @@ static void project_from_fork(
     g_engine->registry = g_projection_fork.registry;
     memcpy(g_engine->pool.prev_output_values,
            g_projection_fork.prev_output_values, sizeof(saved_prev_outputs));
-    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_engine->pool.outputs[i].lkg_value = g_projection_fork.lkg_values[i];
+        g_engine->pool.outputs[i].valid = g_projection_fork.output_valid[i];
+    }
+    g_engine->pool.runtime_fallback_mask =
+        g_projection_fork.runtime_fallback_mask;
+    g_engine->pool.live_slot_count = g_projection_fork.live_slot_count;
+    for (uint16_t i = 0; i < g_projection_fork.live_slot_count; i++)
+        g_engine->pool.live_slots[i].value =
+            g_projection_fork.live_slot_values[i];
     g_prev_tick_time = g_projection_fork.prev_tick_time;
 
     double output_values[sig::MAX_OUTPUTS] = {};
@@ -306,8 +367,16 @@ static void project_from_fork(
     g_projection_fork.registry = g_engine->registry;
     memcpy(g_projection_fork.prev_output_values,
            g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
-    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_projection_fork.lkg_values[i] = g_engine->pool.outputs[i].lkg_value;
+        g_projection_fork.output_valid[i] = g_engine->pool.outputs[i].valid;
+    }
+    g_projection_fork.runtime_fallback_mask =
+        g_engine->pool.runtime_fallback_mask;
+    g_projection_fork.live_slot_count = g_engine->pool.live_slot_count;
+    for (uint16_t i = 0; i < g_projection_fork.live_slot_count; i++)
+        g_projection_fork.live_slot_values[i] =
+            g_engine->pool.live_slots[i].value;
     g_projection_fork.prev_tick_time = g_prev_tick_time;
     if (num_samples > 0)
         g_projection_fork.frontier_time = t_array[num_samples - 1];
@@ -321,6 +390,9 @@ static void project_from_fork(
         g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
         g_engine->pool.outputs[i].valid = saved_valid[i];
     }
+    g_engine->pool.live_slot_count = saved_live_slot_count;
+    for (uint16_t i = 0; i < saved_live_slot_count; i++)
+        g_engine->pool.live_slots[i].value = saved_live_slot_values[i];
     g_prev_tick_time = saved_prev_t;
 }
 
@@ -403,11 +475,15 @@ static void execute_batch_sequential(
 // Execute the whole live graph once. Optional synth-control output is ordered
 // exactly like the published controls[] artefact, so the host can use array
 // position as its commit-plan channel index without evaluating a second VM.
-static void execute_at_time(double wall_time, double* output_values,
+static bool execute_at_time(double wall_time, double* output_values,
                             double* synth_control_values = nullptr,
-                            uint16_t synth_control_capacity = 0) {
+                            uint16_t synth_control_capacity = 0,
+                            ExecutionOwnership ownership =
+                                ExecutionOwnership::Observational) {
+    double t;
+    if (!validate_execution_time(wall_time, ownership, t)) return false;
+
     g_engine->state.current_wall_time = wall_time;
-    double t = g_engine->state.logical_time(wall_time);
     g_engine->state.current_time = t;
 
     if (!g_engine->state.is_playing) {
@@ -426,7 +502,11 @@ static void execute_at_time(double wall_time, double* output_values,
             }
         }
         g_engine->state.current_dt = 0.0;
-        return;
+        if (ownership == ExecutionOwnership::Authoritative) {
+            g_authoritative_wall_frontier = wall_time;
+            g_has_authoritative_wall_frontier = true;
+        }
+        return true;
     }
 
     double cell_values[sig::MAX_CELLS];
@@ -491,6 +571,11 @@ static void execute_at_time(double wall_time, double* output_values,
             g_engine->pool.outputs[i].lkg_value = output_values[i];
         }
     }
+    if (ownership == ExecutionOwnership::Authoritative) {
+        g_authoritative_wall_frontier = wall_time;
+        g_has_authoritative_wall_frontier = true;
+    }
+    return true;
 }
 
 // ── Probe pool management ─────────────────────────────────────────────────
@@ -661,10 +746,6 @@ extern "C"
             s_last_error = "uSEQ not initialized";
             return -1;
         }
-        if (!std::isfinite(wall_time)) {
-            s_last_error = "wall_time must be finite";
-            return -1;
-        }
         uint16_t count = g_engine->synth_graph.control_count();
         if (buffer_length < 0 || (uint32_t)buffer_length < count) {
             s_last_error = "Synth control buffer too small";
@@ -676,7 +757,9 @@ extern "C"
         }
         double ignored_outputs[sig::MAX_OUTPUTS] = {};
         double* controls = reinterpret_cast<double*>(buffer_ptr);
-        execute_at_time(wall_time, ignored_outputs, controls, count);
+        if (!execute_at_time(wall_time, ignored_outputs, controls, count,
+                             ExecutionOwnership::Authoritative))
+            return -1;
         s_last_error = "";
         return (int)count;
     }
@@ -711,7 +794,9 @@ extern "C"
         double saved_prev_t = g_prev_tick_time;
 
         double output_values[sig::MAX_OUTPUTS] = {};
-        execute_at_time(time_seconds, output_values);
+        bool executed = execute_at_time(
+            time_seconds, output_values, nullptr, 0,
+            ExecutionOwnership::Observational);
 
         // Restore all state
         memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
@@ -722,7 +807,8 @@ extern "C"
         g_engine->state = saved_engine_state;
         g_prev_tick_time = saved_prev_t;
 
-        return output_values[output_index];
+        return executed ? output_values[output_index]
+                        : std::numeric_limits<double>::quiet_NaN();
     }
 
     char* useq_last_error()
@@ -1643,8 +1729,10 @@ extern "C"
             s_last_error = "outputs_json must not be null";
             return -1;
         }
-        if (!std::isfinite(tick_time)) {
-            s_last_error = "tick_time must be finite";
+        double logical_tick_time;
+        if (!validate_execution_time(tick_time,
+                                     ExecutionOwnership::Authoritative,
+                                     logical_tick_time)) {
             return -1;
         }
         if (num_future_samples < 0) {
@@ -1686,8 +1774,6 @@ extern "C"
 
             // Projection validation is part of the call's precondition, not
             // phase 2: an invalid projection request must not commit phase 1.
-            double logical_tick_time =
-                g_engine->state.logical_time(tick_time);
             double logical_projection_end =
                 g_engine->state.logical_time(projection_end);
             double origin = logical_tick_time;
@@ -1740,7 +1826,9 @@ extern "C"
 
             // ── Phase 1: state-advancing tick ──────────────────────
             double tick_outputs[sig::MAX_OUTPUTS] = {};
-            execute_at_time(tick_time, tick_outputs);
+            if (!execute_at_time(tick_time, tick_outputs, nullptr, 0,
+                                 ExecutionOwnership::Authoritative))
+                return -1;
 
             for (int c = 0; c < num_channels; c++) {
                 uint16_t idx = output_indices[c];

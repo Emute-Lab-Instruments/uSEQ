@@ -9,7 +9,7 @@
 ## Source files
 
 - `wasm/wasm_wrapper.cpp` — primary implementation:
-  - `ProjectionFork` struct (state_values, prev_output_values, lkg_values, prev_tick_time, cell_values, hw_inputs, frontier_time, start_time, valid).
+  - `ProjectionFork` struct (declared state, previous outputs, output validity/LKG/fallback health, live-edit values, frozen cells/inputs, previous tick time, and projection metadata).
   - `reset_projection_fork()` — clones post-tick live state into the fork (spec section 3).
   - `project_from_fork()` — saves live state, installs fork state, runs sequential sample loop, saves fork advances, restores live state (spec section 4).
   - `useq_tick_and_project()` — combined ABI: phase 1 state-advancing tick, phase 2 projection (mode 0=none, 1=reset-fill, 2=extend-frontier) (spec section 7).
@@ -17,6 +17,9 @@
 - `uSEQ/src/signal_engine/executor.cpp` — `execute_all_outputs()`, `commit_state()`, `commit_outputs()` used by both live ticks and projection ticks.
 - `uSEQ/src/signal_engine/executor.h` — `ExecutionContext` struct (t, dt, cell_values, hw_inputs, prev_outputs, output_values, workspace).
 - `uSEQ/src/signal_engine/node_pool.h` — `NodePool` state arrays (state_values, prev_output_values, OutputSlot::lkg_value) that the fork clones.
+- `test/signal_engine/test_wasm_wrapper_projection.cpp` — native adversarial
+  tests for authoritative tick ownership, invalid-time atomicity, and complete
+  projection-fork isolation.
 
 ---
 
@@ -52,7 +55,9 @@ stateful expressions cannot be faked by repeatedly evaluating isolated points.
 - declared state slots;
 - `prev_output_values`;
 - last-known-good / last-sample bookkeeping;
-- the previous tick time used for `dt`.
+- the previous tick time used for `dt`;
+- one wrapper-global authoritative wall-time frontier shared by every
+  state-advancing WASM tick API.
 
 2.3 Projection ticks update only the projection fork. They must not mutate live
 declared state, live `prev_output_values`, live output LKG state, or live
@@ -67,6 +72,7 @@ previous tick time.
 - a clone of `prev_output_values`;
 - a clone of the previous tick time used for `dt`;
 - output validity / last-known-good state required to evaluate active outputs;
+- the runtime fallback-health mask at the fork frontier;
 - frozen external input values captured at fork creation.
 
 (See `wasm_wrapper.cpp` `ProjectionFork` struct which implements all of these fields.)
@@ -78,6 +84,16 @@ advanced under the frozen inputs.
 2.6 The projection fork should share immutable compiled graph structures with
 live state where possible. Mutable runtime vectors must be copied or otherwise
 isolated so projection ticks cannot affect live ticks.
+
+2.7 `useq_tick_synth_controls` and `useq_tick_and_project` are alternative
+owners of the same live VM, not two passes over independent state. Across both
+APIs, authoritative wall times must be finite and strictly increasing. The
+first successful call at an instant consumes that frontier; a duplicate or
+decreasing call fails with `-1` before changing declared state, `prev`, LKG,
+health, transport timing, or the projection fork. Read-only sampling APIs do
+not consume the authoritative frontier. Logical time may still decrease after
+an explicit transport rewind because ownership monotonicity is measured in
+host wall time.
 
 ---
 
@@ -225,7 +241,15 @@ The editor must be able to distinguish:
 - the output JSON cannot be parsed;
 - the caller-provided buffer is too small;
 - extension is requested before a projection fork exists;
-- projection times are non-finite or non-monotonic.
+- projection times are non-finite or non-monotonic;
+- the authoritative tick time is non-finite, duplicates the consumed
+  frontier, or moves behind it.
+
+7.6 An app must select exactly one live-tick owner for each wall-time instant.
+Calling both `useq_tick_synth_controls` and `useq_tick_and_project` at the same
+instant is an ownership error, not a request for two views of one tick. Hosts
+that need both result shapes must choose the API that owns the frame and derive
+or transport the other view without advancing this VM a second time.
 
 ---
 

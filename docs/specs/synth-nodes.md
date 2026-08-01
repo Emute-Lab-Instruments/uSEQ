@@ -413,11 +413,15 @@ bindings does not change state ownership. Cell changes recompile dependent
 control roots failure-atomically. External roots participate in both GC and
 execution order.
 
-7.2.3 `useq_tick_synth_controls` is the authoritative WASM sampling boundary.
+7.2.3 `useq_tick_synth_controls` is an authoritative WASM sampling boundary.
 One call executes the live graph once, advances state once, and returns values
-in the exact order of the published control table. A non-finite control root
-holds its last finite value (or zero before the first finite sample) and state
-owned by that failed control does not advance invisibly.
+in the exact order of the published control table. It shares a single strict
+wall-time frontier with `useq_tick_and_project`; an app chooses one of those
+APIs as the live-VM owner for an instant, and a duplicate or decreasing call
+fails before execution. A non-finite control root holds its last finite value
+(or zero before the first finite sample) and state owned by that failed control
+does not advance invisibly. See [visualisation-projection.md](visualisation-projection.md)
+§2.7 and §7.6.
 
 7.3 `prev`: param roots do not join the `prev` namespace ([prev.md](prev.md))
 — there is no `(prev <node> <param>)`. `(prev a1)` etc. *inside* a param
