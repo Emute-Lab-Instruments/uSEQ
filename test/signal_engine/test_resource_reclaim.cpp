@@ -344,6 +344,160 @@ TEST_CASE("Reclaim: hundreds of identical output re-evals reuse source arena",
     REQUIRE(h.engine.pool.outputs[0].valid);
 }
 
+TEST_CASE("Reclaim: legal longer replacements keep all source owners bounded",
+          "[reclaim][arena][replacement]") {
+    ReclaimHarness h;
+
+    const std::string callable_short = "(define lifecycle-x (+ 1 2))";
+    const std::string callable_long =
+        "(define lifecycle-x (+ 1 2 333333 444444))";
+    const std::string function_short =
+        "(defn lifecycle-f [x] (+ x 1))";
+    const std::string function_long =
+        "(defn lifecycle-f [x] (+ x 1 222222 333333))";
+    const std::string state_short =
+        "(defstate lifecycle-s 0 (+ lifecycle-s 1))";
+    const std::string state_long =
+        "(defstate lifecycle-s 0 (+ lifecycle-s 1 222222 333333))";
+    const std::string output_short =
+        "(a1 (+ lifecycle-x (lifecycle-f 1)))";
+    const std::string output_long =
+        "(a1 (+ lifecycle-x (lifecycle-f 1) 222222 333333))";
+
+    auto install = [&](bool longer) {
+        h.eval_ok(longer ? callable_long : callable_short);
+        h.eval_ok(longer ? function_long : function_short);
+        h.eval_ok(longer ? state_long : state_short);
+        h.eval_ok(longer ? output_long : output_short);
+    };
+
+    install(false);
+    const uint32_t short_live_bytes = h.engine.arena.write_head;
+    install(true);
+    const uint32_t long_live_bytes = h.engine.arena.write_head;
+    REQUIRE(long_live_bytes > short_live_bytes);
+    REQUIRE(long_live_bytes < SOURCE_ARENA_SIZE);
+
+    // Cumulative replacement text exceeds the desktop arena many times and
+    // the 4 KiB firmware arena much earlier. N, N+1, and continued reuse all
+    // remain bounded by the four currently-published sources.
+    const uint32_t replacements =
+        static_cast<uint32_t>(SOURCE_ARENA_SIZE / 8 + 1);
+    for (uint32_t i = 0; i < replacements; i++) {
+        INFO("replacement " << i);
+        bool longer = (i & 1u) != 0;
+        install(longer);
+        REQUIRE(h.engine.arena.write_head ==
+                (longer ? long_live_bytes : short_live_bytes));
+    }
+    install(false); // N+1 after historical bytes exceed the fixed store.
+    REQUIRE(h.engine.arena.write_head == short_live_bytes);
+    REQUIRE(h.engine.pool.outputs[0].valid);
+}
+
+TEST_CASE("Reclaim: callable retirement cannot alias a compacted live source",
+          "[reclaim][arena][ownership]") {
+    ReclaimHarness h;
+    h.eval_ok("(define retired (+ 10 20 30))");
+    h.eval_ok("(a1 (+ 1000 2))");
+    const uint32_t with_callable = h.engine.arena.write_head;
+
+    // Retiring the callable removes its metadata before compaction. A later
+    // definition must append/recompact, not reuse the stale old offset and
+    // overwrite a1's now-relocated source.
+    h.eval_ok("(define retired 7)");
+    REQUIRE(h.engine.arena.write_head < with_callable);
+    h.eval_ok("(define retired (+ 1 2 3 4 5))");
+    REQUIRE(h.sample("a1") == Approx(1002.0));
+    h.eval_ok("(define unrelated 9)");
+    REQUIRE(h.sample("a1") == Approx(1002.0));
+}
+
+TEST_CASE("Reclaim: mixed owners remain readable after relocation and recompile",
+          "[reclaim][arena][ownership][reactive][synth]") {
+    ReclaimHarness h;
+    h.eval_ok("(define retired-prefix (+ 10 20 30))");
+    h.eval_ok("(define reactive-source 1)");
+    h.eval_ok("(defstate mixed-state 0 (+ mixed-state 1))");
+    h.eval_ok("(a1 (+ reactive-source mixed-state))");
+    h.eval_ok(
+        "(synth \"osc/sine\" :name \"mixed-synth\" "
+        ":freq (+ reactive-source beat) :amp (+ 0.1 (* 0.01 bar)))");
+
+    const uint32_t before_retirement = h.engine.arena.write_head;
+    h.eval_ok("(define retired-prefix 7)");
+    REQUIRE(h.engine.arena.write_head < before_retirement);
+
+    auto require_live_region = [&](uint32_t offset, uint32_t length) {
+        REQUIRE(length > 0);
+        REQUIRE(offset < h.engine.arena.write_head);
+        REQUIRE(length <= h.engine.arena.write_head - offset);
+        REQUIRE(h.engine.arena.read(offset) != nullptr);
+    };
+
+    SymbolID mixed_state = internSymbol("mixed-state");
+    REQUIRE(h.engine.cells.cells[mixed_state].flags == 0x02);
+    uint16_t state_slot = h.engine.cells.cells[mixed_state].data_table_id;
+    REQUIRE(state_slot < h.engine.pool.state_slot_count);
+    const StateUpdateSource& state_source = h.engine.state_sources[state_slot];
+    REQUIRE(state_source.has_source);
+    require_live_region(state_source.arena_offset, state_source.arena_length);
+
+    REQUIRE(h.engine.output_sources[0].has_source);
+    require_live_region(h.engine.output_sources[0].arena_offset,
+                        h.engine.output_sources[0].arena_length);
+    REQUIRE(h.engine.synth_graph.control_count() == 2);
+    for (uint16_t i = 0; i < h.engine.synth_graph.control_count(); i++) {
+        const SynthControlChannel& control = h.engine.synth_graph.controls[i];
+        require_live_region(control.source_offset, control.source_length);
+        REQUIRE(control.root_node != NODE_NONE);
+        REQUIRE(control.root_node < h.engine.pool.node_count);
+    }
+
+    // Relocated output and synth-control source must still drive reactive
+    // recompilation when their shared dependency changes.
+    h.eval_ok("(define reactive-source 2)");
+    REQUIRE(h.engine.pool.outputs[0].valid);
+    REQUIRE(h.sample("a1") == Approx(2.0));
+    REQUIRE(h.engine.synth_graph.control_count() == 2);
+    for (uint16_t i = 0; i < h.engine.synth_graph.control_count(); i++) {
+        const SynthControlChannel& control = h.engine.synth_graph.controls[i];
+        require_live_region(control.source_offset, control.source_length);
+        REQUIRE(control.root_node != NODE_NONE);
+        REQUIRE(control.root_node < h.engine.pool.node_count);
+    }
+}
+
+TEST_CASE("Reclaim: do and scope compact between child transactions",
+          "[reclaim][arena][do][scope][capacity]") {
+    ReclaimHarness h;
+
+    h.eval_ok("(define retired-in-do (+ 1 2 3 4))");
+    h.engine.arena.write_head = SOURCE_ARENA_SIZE - 2;
+    h.eval_ok(
+        "(do (define retired-in-do 7) "
+        "(define published-in-do (+ 100 20 3)))");
+    REQUIRE(h.engine.cells.cells[internSymbol("retired-in-do")].kind ==
+            CellKind::Number);
+    REQUIRE(h.engine.cells.cells[internSymbol("published-in-do")].kind ==
+            CellKind::Callable);
+    REQUIRE(h.engine.arena.write_head < SOURCE_ARENA_SIZE / 4);
+
+    h.engine.arena.write_head = SOURCE_ARENA_SIZE - 2;
+    h.eval_ok(
+        "(scope (define published-in-do 8) "
+        "(define published-in-scope (+ 200 30 4)))");
+    REQUIRE(h.engine.cells.cells[internSymbol("published-in-do")].kind ==
+            CellKind::Number);
+    REQUIRE(h.engine.cells.cells[internSymbol("published-in-scope")].kind ==
+            CellKind::Callable);
+    REQUIRE(h.engine.arena.write_head < SOURCE_ARENA_SIZE / 4);
+
+    // Both newly stored callables remain usable after a further compaction.
+    h.eval_ok("(a1 (+ published-in-scope 1))");
+    REQUIRE(h.sample("a1") == Approx(235.0));
+}
+
 // ============================================================================
 // F5: source-arena exhaustion fails loudly instead of reverting outputs
 // ============================================================================

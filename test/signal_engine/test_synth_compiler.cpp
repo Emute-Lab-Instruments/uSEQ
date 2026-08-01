@@ -205,6 +205,54 @@ TEST_CASE("synth: omitted amplitude uses registry default 0.2",
     REQUIRE(sine->amp_default == Approx(0.2));
 }
 
+TEST_CASE("synth: optional-control replacement keeps source use live-bounded",
+          "[synth][reclaim][arena]") {
+    SynthHarness h;
+    const std::string without_amp =
+        "(synth \"osc/sine\" :name \"bounded\" :freq (+ 400 beat))";
+    const std::string with_amp =
+        "(synth \"osc/sine\" :name \"bounded\" :freq (+ 400 beat) "
+        ":amp (+ 0.1 (* 0.01 bar)))";
+
+    REQUIRE(h.eval_ok(without_amp));
+    const uint32_t one_control_bytes = h.engine.arena.write_head;
+    REQUIRE(one_control_bytes > 0);
+
+    // N successful absent/present replacements exceed the arena capacity
+    // under the old append-only lifecycle. Every iteration has only one live
+    // identity and at most two live control sources.
+    const uint32_t replacements =
+        static_cast<uint32_t>(SOURCE_ARENA_SIZE / 8 + 1);
+    uint32_t two_control_bytes = 0;
+    for (uint32_t i = 0; i < replacements; i++) {
+        INFO("replacement " << i);
+        REQUIRE(h.eval_ok(with_amp));
+        REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+        REQUIRE(h.engine.synth_graph.control_count() == 2);
+        if (i == 0) two_control_bytes = h.engine.arena.write_head;
+        REQUIRE(h.engine.arena.write_head == two_control_bytes);
+
+        REQUIRE(h.eval_ok(without_amp));
+        REQUIRE(h.engine.synth_graph.control_count() == 1);
+        REQUIRE(h.engine.arena.write_head == one_control_bytes);
+    }
+
+    // N+1 and reuse remain successful after cumulative replacement text far
+    // exceeds the fixed arena. A longer same-slot edit may append while
+    // staging, then compacts back to exactly the current live source bytes.
+    REQUIRE(h.eval_ok(with_amp));
+    REQUIRE(h.engine.arena.write_head == two_control_bytes);
+    REQUIRE(h.eval_ok(
+        "(synth \"osc/sine\" :name \"bounded\" "
+        ":freq (+ 400 (* beat 2) (* bar 3)) "
+        ":amp (+ 0.1 (* 0.01 bar)))"));
+    const uint32_t longer_live_bytes = h.engine.arena.write_head;
+    REQUIRE(longer_live_bytes > two_control_bytes);
+    REQUIRE(longer_live_bytes < SOURCE_ARENA_SIZE);
+    REQUIRE(h.eval_ok(without_amp));
+    REQUIRE(h.engine.arena.write_head == one_control_bytes);
+}
+
 // ============================================================================
 // VAL-COMP-004: Supplied stable identity is authoritative
 // ============================================================================

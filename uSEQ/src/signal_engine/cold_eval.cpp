@@ -381,6 +381,103 @@ static void reclaim_unowned_resources(SignalEngine& engine) {
     commit_synth_external_roots(engine);
 }
 
+// Compact every source region still owned by published compiler state.
+//
+// SourceArena::store_reuse() prevents growth when a replacement fits its old
+// slot, but a deliberately omitted synth control has no live slot to reuse
+// when it is later reintroduced. Alternating an optional control present /
+// absent therefore used to consume the append-only arena until a one-node
+// patch could no longer be edited. Successful synth publication is a safe
+// compaction boundary: parsing and graph construction are complete, all live
+// owners have their final offsets, and no later step in the transaction can
+// fail.
+//
+// The high bit is a temporary in-place visited marker. SOURCE_ARENA_SIZE is
+// far below 2^31 in every build profile, so no valid arena offset can carry
+// it. Repeated minimum selection avoids a large firmware-stack descriptor
+// array; the bounded O(owner_count^2) work occurs only on the cold edit path.
+static void compact_live_source_arena(SignalEngine& engine) {
+    constexpr uint32_t moved_bit = UINT32_C(0x80000000);
+
+    auto visit_live_sources = [&](auto&& visit) {
+        for (uint32_t c = 0; c < MAX_CELLS; c++) {
+            if (engine.cells.cells[c].kind != CellKind::Callable) continue;
+            CallableInfo& info = engine.cells.callables[c];
+            if (info.source_length > 0)
+                visit(info.source_offset, info.source_length);
+        }
+        for (uint16_t o = 0; o < MAX_OUTPUTS; o++) {
+            OutputSource& output = engine.output_sources[o];
+            if (output.has_source && output.arena_length > 0)
+                visit(output.arena_offset, output.arena_length);
+        }
+        for (uint16_t s = 0; s < MAX_STATE_SLOTS; s++) {
+            StateUpdateSource& state = engine.state_sources[s];
+            if (state.has_source && state.arena_length > 0)
+                visit(state.arena_offset, state.arena_length);
+        }
+        for (uint16_t i = 0; i < engine.synth_graph.control_count(); i++) {
+            SynthControlChannel& control = engine.synth_graph.controls[i];
+            if (control.source_length > 0)
+                visit(control.source_offset, control.source_length);
+        }
+    };
+
+    // Validate every reference before changing any offset. Published state
+    // should make this impossible; returning preserves the debuggable corrupt
+    // state rather than turning a bad reference into an out-of-bounds move.
+    bool valid = true;
+    visit_live_sources([&](uint32_t& offset, uint32_t length) {
+        if (offset >= SOURCE_ARENA_SIZE ||
+            length > SOURCE_ARENA_SIZE - offset ||
+            offset + length > engine.arena.write_head) {
+            valid = false;
+        }
+    });
+    if (!valid) return;
+
+    uint32_t compacted_head = 0;
+    while (true) {
+        uint32_t next_offset = UINT32_MAX;
+        uint32_t next_length = 0;
+        visit_live_sources([&](uint32_t& offset, uint32_t length) {
+            if ((offset & moved_bit) != 0) return;
+            if (offset < next_offset) {
+                next_offset = offset;
+                next_length = length;
+            } else if (offset == next_offset && length > next_length) {
+                // Shared regions are not currently emitted, but treating an
+                // exact-offset alias as one region keeps compaction coherent.
+                next_length = length;
+            }
+        });
+        if (next_offset == UINT32_MAX) break;
+
+        if (next_length > 0 && compacted_head != next_offset) {
+            memmove(engine.arena.data + compacted_head,
+                    engine.arena.data + next_offset, next_length);
+        }
+        visit_live_sources([&](uint32_t& offset, uint32_t) {
+            if (offset == next_offset) offset = moved_bit | compacted_head;
+        });
+        compacted_head += next_length;
+    }
+
+    visit_live_sources([&](uint32_t& offset, uint32_t) {
+        offset &= ~moved_bit;
+    });
+    engine.arena.write_head = compacted_head;
+}
+
+static bool source_aliases_live_arena(const char* source,
+                                      const SignalEngine& engine) {
+    if (!source) return false;
+    uintptr_t address = reinterpret_cast<uintptr_t>(source);
+    uintptr_t begin = reinterpret_cast<uintptr_t>(engine.arena.data);
+    uintptr_t end = begin + SOURCE_ARENA_SIZE;
+    return address >= begin && address < end;
+}
+
 static bool parse_numeric_vector(TokenStream& ts, double* values,
                                  uint16_t& count, EvalResult& error) {
     if (!ts.expect(TokenKind::LBracket)) {
@@ -438,6 +535,7 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
         // defstate marker (flags 0x02) — otherwise graph_builder keeps emitting a
         // state_load from the old slot and this define is silently ignored.
         engine.cells.cells[sym].flags = 0;
+        engine.cells.callables[sym] = CallableInfo{};
     }
     else if (val_tok.kind == TokenKind::LBracket) {
         // Vector data: [1 2 3 4]
@@ -459,6 +557,7 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
         engine.cells.cells[sym].revision++;
         engine.cells.cells[sym].value = (double)count;
         engine.cells.cells[sym].flags = 0; // clear stale defstate marker (see above)
+        engine.cells.callables[sym] = CallableInfo{};
     }
     else {
         // Expression — store source text as callable with 0 params
@@ -482,7 +581,9 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
         uint32_t len = 0;
         if (source && byte_end > byte_start && byte_end <= source_length) {
             len = byte_end - byte_start;
-            const CallableInfo& previous = engine.cells.callables[sym];
+            const CallableInfo previous =
+                engine.cells.cells[sym].kind == CellKind::Callable
+                    ? engine.cells.callables[sym] : CallableInfo{};
             offset = engine.arena.store_reuse(
                 previous.source_offset, previous.source_length,
                 source + byte_start, len);
@@ -564,7 +665,9 @@ static EvalResult do_defn(TokenStream& ts, SignalEngine& engine,
     // a half-updated definition (F5).
     if (source && byte_end > byte_start && byte_end <= source_length) {
         uint32_t len = byte_end - byte_start;
-        const CallableInfo& previous = engine.cells.callables[sym];
+        const CallableInfo previous =
+            engine.cells.cells[sym].kind == CellKind::Callable
+                ? engine.cells.callables[sym] : CallableInfo{};
         uint32_t offset = engine.arena.store_reuse(
             previous.source_offset, previous.source_length,
             source + byte_start, len);
@@ -617,6 +720,7 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
             engine.cells.cells[sym].kind = CellKind::Number;
             engine.cells.cells[sym].revision++;
             engine.cells.cells[sym].value = v;
+            engine.cells.callables[sym] = CallableInfo{};
         }
     };
 
@@ -861,6 +965,7 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
 
     // Notify dependents so outputs referencing this cell get recompiled
     on_cell_changed(sym, engine);
+    engine.cells.callables[sym] = CallableInfo{};
 
     return make_ok();
 }
@@ -885,6 +990,7 @@ static EvalResult do_set_bpm(TokenStream& ts, SignalEngine& engine) {
     engine.cells.cells[bpm_sym].kind = CellKind::Number;
     engine.cells.cells[bpm_sym].value = val.number;
     engine.cells.cells[bpm_sym].revision++;
+    engine.cells.callables[bpm_sym] = CallableInfo{};
     on_cell_changed(bpm_sym, engine);
     return make_ok();
 }
@@ -914,6 +1020,7 @@ static EvalResult do_set_time_sig(TokenStream& ts, SignalEngine& engine) {
     engine.cells.cells[bpb_sym].kind = CellKind::Number;
     engine.cells.cells[bpb_sym].value = beats_tok.number;
     engine.cells.cells[bpb_sym].revision++;
+    engine.cells.callables[bpb_sym] = CallableInfo{};
     on_cell_changed(bpb_sym, engine);
 
     (void)subdivision_tok;
@@ -2174,8 +2281,9 @@ static EvalResult do_defs(TokenStream& ts, SignalEngine& engine,
                                   "Try: (defs [x (+ 1 2)])");
             }
             uint32_t len = byte_end - byte_start;
-            const CallableInfo& previous =
-                engine.cells.callables[name_tok.symbol];
+            const CallableInfo previous =
+                engine.cells.cells[name_tok.symbol].kind == CellKind::Callable
+                    ? engine.cells.callables[name_tok.symbol] : CallableInfo{};
             bool can_reuse =
                 previous.source_offset <= SOURCE_ARENA_SIZE &&
                 previous.source_length <=
@@ -2227,6 +2335,7 @@ static EvalResult do_defs(TokenStream& ts, SignalEngine& engine,
             engine.cells.cells[cell_sym].flags = 0;
             engine.cells.cells[cell_sym].revision++;
             engine.cells.cells[cell_sym].value = val_tok.number;
+            engine.cells.callables[cell_sym] = CallableInfo{};
         } else if (val_tok.kind == TokenKind::LBracket) {
             ts.consume();
             double values[64];
@@ -2242,13 +2351,15 @@ static EvalResult do_defs(TokenStream& ts, SignalEngine& engine,
             engine.cells.cells[cell_sym].data_table_id = table_id;
             engine.cells.cells[cell_sym].revision++;
             engine.cells.cells[cell_sym].value = (double)count;
+            engine.cells.callables[cell_sym] = CallableInfo{};
         } else {
             uint32_t byte_start = span_begin(ts, ts.pos);
             GraphBuilder::skip_form(ts);
             uint32_t byte_end = span_end_of(ts, ts.pos);
             uint32_t len = byte_end - byte_start;
             const CallableInfo previous =
-                engine.cells.callables[cell_sym];
+                engine.cells.cells[cell_sym].kind == CellKind::Callable
+                    ? engine.cells.callables[cell_sym] : CallableInfo{};
             uint32_t offset = engine.arena.store_reuse(
                 previous.source_offset, previous.source_length,
                 source + byte_start, len);
@@ -2631,6 +2742,8 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         // do / scope — evaluate children sequentially
         if (op == sym.do_ || op == sym.scope) {
             EvalResult last = make_ok();
+            bool compact_between_forms =
+                !source_aliases_live_arena(source, engine);
             while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) {
                 last = eval_form(ts, engine, source, source_length, shared_ids);
                 if (last.kind == EvalResult::Error) {
@@ -2645,6 +2758,13 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                     ts.expect(TokenKind::RParen);
                     return last;
                 }
+                // Each child is its own publication transaction. Compact at
+                // that boundary so one explicit do/scope cannot strand source
+                // proportional to its edit history. A Text result can point
+                // into the arena (get-expr), so defer until a later non-Text
+                // child or the next external eval.
+                if (compact_between_forms && last.kind != EvalResult::Text)
+                    compact_live_source_arena(engine);
             }
             ts.expect(TokenKind::RParen);
             return last;
@@ -2756,6 +2876,7 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
 
     // Handle multiple forms (implicit do)
     EvalResult last = make_ok();
+    bool compact_between_forms = !source_aliases_live_arena(source, engine);
     while (!ts.at_end() && ts.peek().kind != TokenKind::Eof) {
         last = eval_form(ts, engine, source, length, &shared_ids);
         if (last.kind == EvalResult::Error) {
@@ -2763,6 +2884,12 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
             // earlier committed forms, stop at the first rejected one.
             return last;
         }
+        // All fallible work for this per-form transaction is complete. Keep
+        // arena use proportional to published owners rather than replacement
+        // history. Do not relocate an arena-backed input buffer or a Text
+        // result whose pointer is itself the requested stored source.
+        if (compact_between_forms && last.kind != EvalResult::Text)
+            compact_live_source_arena(engine);
     }
 
     return last;

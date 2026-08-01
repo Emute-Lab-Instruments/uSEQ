@@ -101,6 +101,16 @@ fixed traversal stack is therefore bounded by `node_count <= MAX_TOTAL_NODES`
 even when CSE creates a high-sharing DAG with more incoming edges than nodes.
 Traversal capacity must never silently drop a reachable dependency.
 
+1.18 **Source storage is bounded by live owners, not edit history.** After
+each successful external per-form publication boundary (including children of
+`do`/`scope`), the cold path compacts callable, output, state-update, and synth
+control source regions in offset order and updates every owning offset. A
+longer legal replacement may append while it is staged, but committed storage
+is reclaimed before the next form. Retiring a callable clears its source
+metadata so a later definition cannot alias a relocated live region. Rejected
+forms retain the previous source bytes and offsets. Arena-backed internal
+recompile input is never relocated while it is being read.
+
 ## 2. State-Bearing Constructs
 
 The semantics of `defstate`/`integrate`/UGens/`time-as`/`rate-as` and their interaction with local time contexts live in [state.md](state.md). This section captures only what the compilation pipeline needs to know.

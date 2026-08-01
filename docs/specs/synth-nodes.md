@@ -436,6 +436,13 @@ incoming connections, control rows/sources, compiled roots, state resources,
 and shared revision atomically. Nested forms do not advance the revision
 independently. Failure in any later parameter or whole-graph endpoint/port/
 cycle validation restores the preceding graph and every bounded resource.
+
+7.4.1 At the successful per-form boundary, the shared source arena is compacted
+to the regions still owned by live callables, outputs, state updates, and synth
+controls ([compilation.md](compilation.md) §1.18). Removing and later
+reintroducing an optional control, or replacing a control with longer source,
+therefore cannot consume storage in proportion to edit history. Rejected
+candidates retain the prior source layout.
 In a multi-form submission, an earlier successful synth form remains
 committed if a later sibling fails, following [compilation.md](compilation.md)
 §1.13.
