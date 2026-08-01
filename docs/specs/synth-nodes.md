@@ -327,20 +327,23 @@ the patch graph, per [failure-model.md](failure-model.md) §2.6
 keep sounding.
 
 5.9 **Runtime failure.** Each control channel is a root with the standard
-non-finite policy ([failure-model.md](failure-model.md) §3): a param
-whose expression yields NaN/∞ substitutes its last finite value, is
-marked unhealthy, and emits a diagnostic — a NaN never reaches DSP state.
-Node health states: `running` (all channels healthy), `fallback` (≥ 1
-channel substituting), `error` (DSP trap or engine-level failure —
-containment app-side, `synthesis.md` §3.6). Chain-of-blame attribution
-([failure-model.md](failure-model.md) §9) extends to
-`(node, param)` roots.
+non-finite value policy ([failure-model.md](failure-model.md) §3): a param
+whose expression yields NaN/∞ substitutes its last finite value (or neutral
+zero before its first finite sample), so a NaN never reaches DSP state. The
+current engine exposes no per-control runtime-health mask or derived runtime
+diagnostic; the synth-control slot in `useq_active_diagnostics()` is reserved
+for rejected reactive compilation. DSP traps and engine-level failure remain
+contained app-side (`synthesis.md` §3.6).
 
 5.10 **Cell-driven changes.** Redefining a cell recompiles dependent
 param graphs ([cells.md](cells.md)) *without* an eval of the synth form;
 such recompilation feeds the same diff as §5.5 (including voice-width
 changes, §5.6a below). Dependency indexing extends from per-output to
-per-`(node, param)` roots.
+per-`(node, param)` roots. A rejected candidate retains that control's old
+root, LKG, dependencies, and owned state, and publishes one reactive diagnostic
+keyed by `(node identity, param)`. A later reject replaces that slot; a clean
+reactive compile clears it. Declaration replacement, parameter removal, or
+`(useq-clear)` removes the corresponding slots with the artifact rows.
 
 ### Vectors (polyphony)
 

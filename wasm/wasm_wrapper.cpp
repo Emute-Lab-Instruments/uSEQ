@@ -884,8 +884,9 @@ extern "C"
 
     const char* useq_active_diagnostics()
     {
-        // Contract (diagnostics.md §4.2): a JSON array of live output and
-        // named-state diagnostics; "[]" when every subject is healthy.
+        // Contract (diagnostics.md §4.2): a JSON array of live output,
+        // named-state, and synth-control diagnostics; "[]" when every
+        // subject is healthy.
         // Runtime masks describe the most recent authoritative execution;
         // rejected reactive candidates retain their own attributed compile
         // diagnostic while the previous program keeps running.
@@ -899,6 +900,11 @@ extern "C"
             has_active = g_engine->output_compile_diagnostics[i].active;
         for (uint16_t i = 0; i < sig::MAX_STATE_SLOTS && !has_active; i++)
             has_active = g_engine->state_compile_diagnostics[i].active;
+        for (uint16_t i = 0;
+             i < g_engine->synth_graph.control_count() && !has_active; i++) {
+            has_active = g_engine->synth_graph.controls[i]
+                             .compile_diagnostic.active();
+        }
         if (!has_active) return alloc_cstr("[]");
 
         JsonBuilder json;
@@ -981,6 +987,34 @@ extern "C"
                 ? d->message
                 : "A declared state update produced NaN/Inf; holding its previous finite value");
             if (active.active && active.triggered_by != 0)
+                json.field("triggered_by",
+                           getSymbolString(active.triggered_by));
+            json.object_end();
+        }
+
+        // Synth controls have one reactive slot and no derived runtime
+        // diagnostic. Iterate the published control table directly so JSON
+        // order is byte-for-byte the artifact controls[] order, including
+        // after dense declaration replacement/removal.
+        for (uint16_t i = 0; i < g_engine->synth_graph.control_count(); i++) {
+            const sig::SynthControlChannel& control =
+                g_engine->synth_graph.controls[i];
+            const auto& active = control.compile_diagnostic;
+            if (!active.active()) continue;
+            json.object_begin();
+            json.field("subject", "synth-control");
+            json.field("identity", control.identity);
+            json.field("control", control.param_name);
+            json.field("severity", sig::severity_to_cstr(active.severity));
+            json.field("category", sig::category_to_cstr(active.category));
+            json.field("status", "retained");
+            json.field("start", static_cast<int>(active.span_start));
+            json.field("end", static_cast<int>(active.span_start +
+                                                 active.span_len));
+            json.field("message", active.message ? active.message : "");
+            if (active.suggestion)
+                json.field("suggestion", active.suggestion);
+            if (active.triggered_by != 0)
                 json.field("triggered_by",
                            getSymbolString(active.triggered_by));
             json.object_end();

@@ -279,4 +279,73 @@ TEST_CASE("WASM sampling is diagnostic-pure and invalid projection is atomic",
     REQUIRE(useq_tick_synth_controls(30.0, 0, 0) == 0);
     REQUIRE(active_diagnostics().find("wrapper-orphan-state") ==
             std::string::npos);
+
+    // Synth controls are independently retained programs. A rejected
+    // dependency recompile preserves every old root/LKG and publishes one
+    // diagnostic per control in the exact public artifact order.
+    eval_ok("(useq-clear)");
+    eval_ok("(define wrapper-synth-dep 110)");
+    eval_ok("(synth \"osc/sine\" :name \"wrap-a\" :freq wrapper-synth-dep :amp wrapper-synth-dep)");
+    eval_ok("(synth \"osc/sine\" :name \"wrap-b\" :freq wrapper-synth-dep :amp wrapper-synth-dep)");
+    REQUIRE(useq_tick_synth_controls(31.0, buffer.wasm_ptr(), 8) == 4);
+    for (uint16_t i = 0; i < 4; i++)
+        REQUIRE(buffer.data()[i] == Approx(110.0));
+
+    eval_ok("(defn wrapper-synth-dep [x] x)");
+    const std::string synth_failure = active_diagnostics();
+    const std::string a_freq =
+        "\"identity\":\"wrap-a\",\"control\":\"freq\"";
+    const std::string a_amp =
+        "\"identity\":\"wrap-a\",\"control\":\"amp\"";
+    const std::string b_freq =
+        "\"identity\":\"wrap-b\",\"control\":\"freq\"";
+    const std::string b_amp =
+        "\"identity\":\"wrap-b\",\"control\":\"amp\"";
+    const size_t a_freq_pos = synth_failure.find(a_freq);
+    const size_t a_amp_pos = synth_failure.find(a_amp);
+    const size_t b_freq_pos = synth_failure.find(b_freq);
+    const size_t b_amp_pos = synth_failure.find(b_amp);
+    REQUIRE(a_freq_pos != std::string::npos);
+    REQUIRE(a_amp_pos != std::string::npos);
+    REQUIRE(b_freq_pos != std::string::npos);
+    REQUIRE(b_amp_pos != std::string::npos);
+    REQUIRE(a_freq_pos < a_amp_pos);
+    REQUIRE(a_amp_pos < b_freq_pos);
+    REQUIRE(b_freq_pos < b_amp_pos);
+    REQUIRE(synth_failure.find(
+                "\"triggered_by\":\"wrapper-synth-dep\"") !=
+            std::string::npos);
+    REQUIRE(useq_tick_synth_controls(32.0, buffer.wasm_ptr(), 8) == 4);
+    for (uint16_t i = 0; i < 4; i++)
+        REQUIRE(buffer.data()[i] == Approx(110.0));
+
+    // Same-identity replacement creates fresh subjects, while the failed
+    // declaration that remains published keeps its slots as rows shift.
+    eval_ok("(synth \"osc/sine\" :name \"wrap-a\" :freq 220 :amp 0.2)");
+    const std::string after_replace = active_diagnostics();
+    REQUIRE(after_replace.find("\"identity\":\"wrap-a\"") ==
+            std::string::npos);
+    REQUIRE(after_replace.find(b_freq) != std::string::npos);
+    REQUIRE(after_replace.find(b_amp) != std::string::npos);
+    eval_ok("(define wrapper-synth-dep 120)");
+    REQUIRE(active_diagnostics() == "[]");
+
+    // Removing a parameter removes its slot, and a full session clear removes
+    // all remaining synth-control subjects.
+    eval_ok("(define wrapper-synth-amp 0.5)");
+    eval_ok("(synth \"osc/sine\" :name \"wrap-b\" :freq 330 :amp wrapper-synth-amp)");
+    eval_ok("(defn wrapper-synth-amp [x] x)");
+    REQUIRE(active_diagnostics().find(
+                "\"identity\":\"wrap-b\",\"control\":\"amp\"") !=
+            std::string::npos);
+    eval_ok("(synth \"osc/sine\" :name \"wrap-b\" :freq 330)");
+    REQUIRE(active_diagnostics() == "[]");
+
+    eval_ok("(define wrapper-synth-clear 440)");
+    eval_ok("(synth \"osc/sine\" :name \"wrap-clear\" :freq wrapper-synth-clear)");
+    eval_ok("(defn wrapper-synth-clear [x] x)");
+    REQUIRE(active_diagnostics().find("\"identity\":\"wrap-clear\"") !=
+            std::string::npos);
+    eval_ok("(useq-clear)");
+    REQUIRE(active_diagnostics() == "[]");
 }

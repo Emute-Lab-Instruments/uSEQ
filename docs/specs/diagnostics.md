@@ -162,18 +162,29 @@ const char* useq_active_diagnostics();
 Returns a JSON **array** of active diagnostics. Output entries carry an
 `output` attribution. Named-state entries carry `{"subject":"state",
 "state":"name"}` so a broken declared update remains observable even when
-no output currently consumes it. Background-recompile entries also carry the
-documented `triggered_by` chain-of-blame field. Healthy subjects contribute no
-entry.
+no output currently consumes it. Synth-control reactive entries carry
+`{"subject":"synth-control","identity":"node","control":"param"}`.
+Background-recompile entries also carry the documented `triggered_by`
+chain-of-blame field. Healthy subjects contribute no entry.
 
 ```json
 [
   {"output": "a1", "severity": "error", "category": "arithmetic", "message": "..."},
-  {"output": "d3", "severity": "warning", "message": "..."}
+  {"output": "d3", "severity": "warning", "message": "..."},
+  {"subject": "state", "state": "phase", "status": "held", "message": "..."},
+  {"subject": "synth-control", "identity": "bass", "control": "freq", "status": "retained", "message": "..."}
 ]
 ```
 
-The empty case (all outputs and named states healthy) is `[]`.
+There is exactly one retained reactive-compile slot per output, dense named
+state, and published synth-control row. Its subject key is respectively the
+output index, state slot, or `(identity, control)`. A later rejection for that
+same subject replaces the complete record; this is intentionally not a
+cause-set. Serialization is deterministic: outputs in output-index order,
+named states in dense slot order, then synth controls in the public artifact's
+`controls[]` order.
+
+The empty case (all outputs, named states, and synth controls healthy) is `[]`.
 Unassigning an output clears both its runtime-health record and any retained
 reactive-compile diagnostic at the same publication point as its program,
 history, source, dependencies, and resources. Reassignment starts that output
@@ -181,8 +192,10 @@ with no superseded diagnostic.
 
 This includes compile errors from background recompilation (cell-mutation
 triggered), output-root numerical failures, and named-state update failures
-from the current frame. The editor maps output entries to output health and
-state entries to the named state declaration.
+from the current frame. A synth-control entry reports only rejected reactive
+compilation; the current ABI does not derive a second runtime-nonfinite record
+for controls. The editor maps output entries to output health, state entries to
+the named state declaration, and synth entries to the matching artifact row.
 
 ### 4.2.1 `useq_output_health`
 
@@ -222,12 +235,17 @@ Returns runtime-only diagnostics (`RuntimeDiagnostic` shape) for every output in
 ### 4.4 Clearing policy
 
 - `useq_last_diagnostics()` is cleared at the start of every `useq_eval()` call. It only reflects the most recent eval.
-- Per-output or named-state **compile** diagnostics are cleared when that same consumer is successfully recompiled (new expression assigned, or a dependency change triggers a clean recompile).
+- Per-output, named-state, or synth-control **compile** diagnostics are cleared
+  when that same subject is successfully recompiled. Direct replacement of a
+  synth declaration creates fresh control subjects, removal drops the removed
+  subjects, and `(useq-clear)` drops every synth-control subject.
 - Per-output **runtime** diagnostics are cleared when the output commits a
   healthy sample or a replacement program is successfully published; a
   rejected replacement preserves the live health unchanged.
 - Named-state runtime diagnostics clear on the first finite committed update.
-- `useq_active_diagnostics()` is the union of active output and named-state diagnostics and is never cleared wholesale — it reflects the live system.
+- `useq_active_diagnostics()` is the union of active output, named-state, and
+  synth-control diagnostics. Apart from explicit session clear, records are
+  cleared by their owning subject lifecycle rather than by unrelated evals.
 
 ### 4.5 Polling cadence
 

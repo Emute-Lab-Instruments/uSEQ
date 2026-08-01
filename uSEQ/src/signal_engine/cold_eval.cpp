@@ -118,6 +118,26 @@ static void publish_reactive_diagnostic(ActiveCompileDiagnostic& active,
     }
 }
 
+static void publish_synth_reactive_diagnostic(
+        SynthControlChannel& control, SymbolID triggered_by,
+        const Diagnostic& diagnostic) {
+#ifndef ARDUINO
+    control.compile_diagnostic.publish(triggered_by, diagnostic);
+#else
+    (void)control;
+    (void)triggered_by;
+    (void)diagnostic;
+#endif
+}
+
+static void clear_synth_reactive_diagnostic(SynthControlChannel& control) {
+#ifndef ARDUINO
+    control.compile_diagnostic.clear();
+#else
+    (void)control;
+#endif
+}
+
 // Graph construction currently interns directly into the live NodePool. Keep
 // a bounded rollback image in the engine's already-allocated scratch pool so a
 // rejected build cannot change state resources, live-edit metadata, or future
@@ -3227,14 +3247,27 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
         if (!depends || control.source_length == 0) continue;
 
         const char* src = engine.arena.read(control.source_offset);
-        if (!src) continue;
+        if (!src) {
+            const Diagnostic diagnostic = {
+                DiagnosticSeverity::Error, DiagnosticCategory::Runtime,
+                0, 0,
+                "Stored synth-control source is unavailable; the previous control is still running",
+                "Replace the synth declaration with valid control source"
+            };
+            publish_synth_reactive_diagnostic(control, cell_id, diagnostic);
+            continue;
+        }
         Token tokens[MAX_TOKENS];
         Diagnostic parse_diagnostics[8];
         uint8_t parse_error_count = 0;
         uint16_t count = TokenStream::tokenize(
             src, control.source_length, tokens, MAX_TOKENS,
             parse_diagnostics, &parse_error_count);
-        if (parse_error_count != 0) continue;
+        if (parse_error_count != 0) {
+            publish_synth_reactive_diagnostic(
+                control, cell_id, parse_diagnostics[0]);
+            continue;
+        }
 
         TokenStream ts;
         memcpy(ts.tokens, tokens, count * sizeof(Token));
@@ -3248,6 +3281,19 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
             &engine.registry, nullptr, control.owner_context);
         if (result.has_error) {
             restore_graph_mutations(engine, graph_snapshot);
+            if (result.diagnostic_count > 0) {
+                publish_synth_reactive_diagnostic(
+                    control, cell_id, result.diagnostics[0]);
+            } else {
+                const Diagnostic diagnostic = {
+                    DiagnosticSeverity::Error,
+                    DiagnosticCategory::Runtime, 0, 0,
+                    "A synth-control dependency change could not be applied; the previous control is still running",
+                    "Repair the changed definition"
+                };
+                publish_synth_reactive_diagnostic(
+                    control, cell_id, diagnostic);
+            }
             continue;
         }
         control.root_node = result.root_node;
@@ -3257,6 +3303,7 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
         engine.registry.commit_context(
             control.owner_context, engine.pool.state_update_roots,
             engine.pool.state_owner_context);
+        clear_synth_reactive_diagnostic(control);
     }
 
     // Reclaim nodes orphaned by the recompiles above (F4). Every sibling

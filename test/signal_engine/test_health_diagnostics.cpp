@@ -283,3 +283,71 @@ TEST_CASE("One dependency mutation rejects every affected consumer independently
     REQUIRE(h.tick(0, 1.0) == Approx(3.0));
     REQUIRE(h.outputs[1] == Approx(6.0));
 }
+
+TEST_CASE("Synth-control reactive slots retain LKG and follow artifact lifecycle",
+          "[health][reactive][synth-control]") {
+    Harness h;
+    SymbolID cause = SymbolIntern::getInstance().intern(
+        String("health-synth-dep"));
+
+    h.eval_ok("(define health-synth-dep 100)");
+    h.eval_ok("(synth \"osc/sine\" :name \"diag-a\" :freq health-synth-dep :amp health-synth-dep)");
+    h.eval_ok("(synth \"osc/sine\" :name \"diag-b\" :freq health-synth-dep :amp health-synth-dep)");
+    REQUIRE(h.engine.synth_graph.control_count() == 4);
+
+    uint16_t old_roots[MAX_SYNTH_CONTROLS] = {};
+    for (uint16_t i = 0; i < 4; ++i) {
+        SynthControlChannel& control = h.engine.synth_graph.controls[i];
+        old_roots[i] = control.root_node;
+        control.lkg_value = 10.0 + i;
+        control.has_lkg = true;
+    }
+
+    h.eval_ok("(defn health-synth-dep [x] x)");
+    for (uint16_t i = 0; i < 4; ++i) {
+        const SynthControlChannel& control = h.engine.synth_graph.controls[i];
+        REQUIRE(control.root_node == old_roots[i]);
+        REQUIRE(control.has_lkg);
+        REQUIRE(control.lkg_value == Approx(10.0 + i));
+        REQUIRE(control.compile_diagnostic.active());
+        REQUIRE(control.compile_diagnostic.triggered_by == cause);
+        REQUIRE(control.compile_diagnostic.message != nullptr);
+    }
+    REQUIRE(std::string(h.engine.synth_graph.controls[0].identity) == "diag-a");
+    REQUIRE(std::string(h.engine.synth_graph.controls[0].param_name) == "freq");
+    REQUIRE(std::string(h.engine.synth_graph.controls[1].param_name) == "amp");
+    REQUIRE(std::string(h.engine.synth_graph.controls[2].identity) == "diag-b");
+
+    // Direct replacement clears only that declaration's subjects. Dense
+    // artifact order moves the surviving failed declaration ahead of it.
+    h.eval_ok("(synth \"osc/sine\" :name \"diag-a\" :freq 220 :amp 0.2)");
+    REQUIRE(h.engine.synth_graph.control_count() == 4);
+    REQUIRE(std::string(h.engine.synth_graph.controls[0].identity) == "diag-b");
+    REQUIRE(h.engine.synth_graph.controls[0].compile_diagnostic.active());
+    REQUIRE(h.engine.synth_graph.controls[1].compile_diagnostic.active());
+    REQUIRE(std::string(h.engine.synth_graph.controls[2].identity) == "diag-a");
+    REQUIRE_FALSE(h.engine.synth_graph.controls[2].compile_diagnostic.active());
+    REQUIRE_FALSE(h.engine.synth_graph.controls[3].compile_diagnostic.active());
+
+    h.eval_ok("(define health-synth-dep 200)");
+    REQUIRE_FALSE(h.engine.synth_graph.controls[0].compile_diagnostic.active());
+    REQUIRE_FALSE(h.engine.synth_graph.controls[1].compile_diagnostic.active());
+
+    // Removing one optional control removes its diagnostic slot; full clear
+    // removes every synth-control subject.
+    h.eval_ok("(define health-synth-amp 0.5)");
+    h.eval_ok("(synth \"osc/sine\" :name \"diag-b\" :freq 330 :amp health-synth-amp)");
+    h.eval_ok("(defn health-synth-amp [x] x)");
+    REQUIRE(h.engine.synth_graph.controls[3].compile_diagnostic.active());
+    h.eval_ok("(synth \"osc/sine\" :name \"diag-b\" :freq 330)");
+    REQUIRE(h.engine.synth_graph.control_count() == 3);
+    for (uint16_t i = 0; i < 3; ++i)
+        REQUIRE_FALSE(h.engine.synth_graph.controls[i].compile_diagnostic.active());
+
+    h.eval_ok("(define health-synth-clear 440)");
+    h.eval_ok("(synth \"osc/sine\" :name \"diag-clear\" :freq health-synth-clear)");
+    h.eval_ok("(defn health-synth-clear [x] x)");
+    REQUIRE(h.engine.synth_graph.controls[3].compile_diagnostic.active());
+    h.eval_ok("(useq-clear)");
+    REQUIRE(h.engine.synth_graph.control_count() == 0);
+}

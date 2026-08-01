@@ -14,6 +14,15 @@ const mod = await createModule({
   },
 });
 
+const evalOk = (source) => {
+  const value = mod.ccall("useq_eval", "string", ["string"], [source]);
+  if (value.startsWith("Error")) {
+    throw new Error(`generated WASM eval failed for ${source}: ${value}`);
+  }
+};
+const activeDiagnostics = () =>
+  JSON.parse(mod.ccall("useq_active_diagnostics", "string", [], []));
+
 if (mod.ccall("useq_output_health", "number", ["string"], ["a1"]) !== -1) {
   throw new Error("generated WASM health query did not fail closed before init");
 }
@@ -113,4 +122,113 @@ if (
   throw new Error("generated WASM did not preserve live-edit slot metadata");
 }
 
-console.log("generated WASM init/eval and live-edit metadata smoke passed");
+// Exercise the actual generated linear-memory ABI for retained synth-control
+// programs, not merely the native wrapper compiled on a 64-bit host.
+evalOk("(useq-clear)");
+evalOk("(define wasm-synth-dep 110)");
+evalOk(
+  '(synth "osc/sine" :name "wasm-a" :freq wasm-synth-dep :amp wasm-synth-dep)',
+);
+evalOk(
+  '(synth "osc/sine" :name "wasm-b" :freq wasm-synth-dep :amp wasm-synth-dep)',
+);
+const controlPtr = mod.ccall("malloc", "number", ["number"], [8 * 8]);
+if (!controlPtr) throw new Error("generated WASM control buffer allocation failed");
+const tickControls = (time) =>
+  mod.ccall(
+    "useq_tick_synth_controls",
+    "number",
+    ["number", "number", "number"],
+    [time, controlPtr, 8],
+  );
+const controlValues = (count) =>
+  Array.from(mod.HEAPF64.subarray(controlPtr / 8, controlPtr / 8 + count));
+
+try {
+  if (
+    tickControls(4) !== 4 ||
+    controlValues(4).some((value) => value !== 110)
+  ) {
+    throw new Error("generated WASM did not seed synth-control LKG values");
+  }
+
+  evalOk("(defn wasm-synth-dep [x] x)");
+  const rejected = activeDiagnostics();
+  const rejectedOrder = rejected.map(
+    ({ subject, identity, control }) => `${subject}:${identity}:${control}`,
+  );
+  if (
+    JSON.stringify(rejectedOrder) !==
+      JSON.stringify([
+        "synth-control:wasm-a:freq",
+        "synth-control:wasm-a:amp",
+        "synth-control:wasm-b:freq",
+        "synth-control:wasm-b:amp",
+      ]) ||
+    rejected.some(
+      (diagnostic) =>
+        diagnostic.triggered_by !== "wasm-synth-dep" ||
+        diagnostic.status !== "retained",
+    )
+  ) {
+    throw new Error(
+      "generated WASM did not serialize synth diagnostics in artifact order",
+    );
+  }
+  if (
+    tickControls(5) !== 4 ||
+    controlValues(4).some((value) => value !== 110)
+  ) {
+    throw new Error("generated WASM did not retain synth-control LKG on reject");
+  }
+
+  evalOk('(synth "osc/sine" :name "wasm-a" :freq 220 :amp 0.2)');
+  const afterReplacement = activeDiagnostics();
+  if (
+    afterReplacement.length !== 2 ||
+    afterReplacement.some((diagnostic) => diagnostic.identity !== "wasm-b")
+  ) {
+    throw new Error("generated WASM did not replace synth diagnostic subjects");
+  }
+  evalOk("(define wasm-synth-dep 120)");
+  if (activeDiagnostics().length !== 0) {
+    throw new Error("generated WASM did not clear repaired synth diagnostics");
+  }
+
+  evalOk("(define wasm-synth-amp 0.5)");
+  evalOk(
+    '(synth "osc/sine" :name "wasm-b" :freq 330 :amp wasm-synth-amp)',
+  );
+  evalOk("(defn wasm-synth-amp [x] x)");
+  const optionalFailure = activeDiagnostics();
+  if (
+    optionalFailure.length !== 1 ||
+    optionalFailure[0].identity !== "wasm-b" ||
+    optionalFailure[0].control !== "amp"
+  ) {
+    throw new Error("generated WASM did not attribute optional-control reject");
+  }
+  evalOk('(synth "osc/sine" :name "wasm-b" :freq 330)');
+  if (activeDiagnostics().length !== 0) {
+    throw new Error("generated WASM retained a removed synth-control slot");
+  }
+
+  evalOk("(define wasm-synth-clear 440)");
+  evalOk(
+    '(synth "osc/sine" :name "wasm-clear" :freq wasm-synth-clear)',
+  );
+  evalOk("(defn wasm-synth-clear [x] x)");
+  if (activeDiagnostics()[0]?.identity !== "wasm-clear") {
+    throw new Error("generated WASM did not expose clear-test diagnostic");
+  }
+  evalOk("(useq-clear)");
+  if (activeDiagnostics().length !== 0) {
+    throw new Error("generated WASM did not clear synth diagnostic subjects");
+  }
+} finally {
+  mod.ccall("free", null, ["number"], [controlPtr]);
+}
+
+console.log(
+  "generated WASM init/eval, live-edit metadata, and synth diagnostics passed",
+);

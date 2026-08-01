@@ -3,6 +3,7 @@
 
 #include "types.h"
 #include "synth_registry.h"
+#include "diagnostics.h"
 #include <cstdint>
 #include <cstring>
 
@@ -66,7 +67,47 @@ struct SynthControlChannel {
     // Root-level non-finite containment for the audio control producer.
     double lkg_value                    = 0.0;
     bool has_lkg                        = false;
+
+    // One fixed reactive-compile diagnostic slot per published control on the
+    // WASM/desktop synth host. Keeping it on the dense row makes replacement,
+    // removal, rollback, and artifact-order remapping atomic. Firmware does
+    // not implement the synth host (synth-nodes.md §6.1), so it must not spend
+    // scarce RP2040 SRAM on an ABI that cannot be observed there.
+#ifndef ARDUINO
+    struct CompileDiagnostic {
+        const char* message = nullptr;
+        const char* suggestion = nullptr;
+        // Cell-backed symbols are bounded by MAX_CELLS before mutation, so a
+        // 16-bit cause preserves every possible trigger without paying for
+        // the interner's unbounded 32-bit ID in all 512 control rows.
+        uint16_t triggered_by = 0;
+        uint16_t span_start = 0;
+        uint16_t span_len = 0;
+        DiagnosticSeverity severity = DiagnosticSeverity::Error;
+        DiagnosticCategory category = DiagnosticCategory::Runtime;
+
+        void clear() { *this = CompileDiagnostic{}; }
+        bool active() const { return message != nullptr; }
+        void publish(SymbolID cause, const Diagnostic& diagnostic) {
+            // A non-null message is the active marker. Every compiler
+            // diagnostic is expected to have text; preserve the slot even if
+            // a future producer violates that expectation.
+            message = diagnostic.message ? diagnostic.message : "";
+            suggestion = diagnostic.suggestion;
+            triggered_by = static_cast<uint16_t>(cause);
+            span_start = diagnostic.span_start;
+            span_len = diagnostic.span_len;
+            severity = diagnostic.severity;
+            category = diagnostic.category;
+        }
+    } compile_diagnostic;
+#endif
 };
+
+#ifndef ARDUINO
+static_assert(MAX_CELLS <= UINT16_MAX,
+              "synth diagnostic trigger IDs must cover every mutable cell");
+#endif
 
 struct SynthConnection {
     char from[MAX_SYNTH_IDENTITY] = {};
@@ -151,7 +192,12 @@ struct SynthGraph {
     // Append a control channel. Returns nullptr if capacity is full.
     SynthControlChannel* append_control() {
         if (control_count_value >= MAX_SYNTH_CONTROLS) return nullptr;
-        return &controls[control_count_value++];
+        // Dense-table compaction leaves retired bytes above the logical end.
+        // A newly appended control is a new subject, so it must not inherit
+        // the prior row's LKG, dependencies, or reactive diagnostic slot.
+        SynthControlChannel& control = controls[control_count_value++];
+        control = SynthControlChannel{};
+        return &control;
     }
 
     SynthConnection* append_connection() {

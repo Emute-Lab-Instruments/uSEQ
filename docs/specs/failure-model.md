@@ -66,7 +66,9 @@ its finite root or reuses that scalar.
 
 2.6 **Compile-time errors do not consume fallback.** A program that fails to
 compile is not promoted, demoted, or substituted; the active graph, held
-sample, source, dependencies, state ownership, and health are unchanged.
+sample, source, dependencies, state ownership, and health are unchanged. The
+same publication rule applies to a rejected reactive synth-control candidate:
+its prior root and control LKG remain live.
 
 ## 3. Numerical Hygiene
 
@@ -172,16 +174,30 @@ later forms are not executed.
 
 ## 9. Chain of Blame
 
-9.1 When a cell mutation triggers recompilation of dependent outputs and one of those recompilations fails, the error is *caused by* the cell change but *manifests in* the output expression. The user needs to see both halves to know what to fix.
+9.1 When a cell mutation triggers recompilation of a dependent output, named
+state, or synth control and that recompilation fails, the error is *caused by*
+the cell change but *manifests in* the persistent consumer expression. The user
+needs to see both halves to know what to fix.
 
 9.2 The diagnostic carries a `triggered_by` field ([diagnostics.md §2](diagnostics.md)) holding the symbol name of the mutated cell that triggered the recompile. The frontend renders it as context — *"this broke because `x` changed"* — alongside the primary message.
 
-9.3 **Span attribution.** The diagnostic's source span points at the *reference site* where the mutated symbol is used inside the output expression, not at the redefinition site. The user needs to see which part of their signal expression depends on the symbol whose meaning changed; the redefinition is in another pane and is by definition the recent action.
+9.3 **Span attribution.** The diagnostic's source span points at the *reference
+site* where the mutated symbol is used inside the consumer expression, not at
+the redefinition site. The user needs to see which part of the persistent
+program depends on the symbol whose meaning changed; the redefinition is in
+another pane and is by definition the recent action.
 
-9.4 A rejected background output or named-state recompile publishes one active
-compile diagnostic indexed by the consumer, including `triggered_by`. The old
-root, dependencies, state and resources remain live. A subsequent successful
-recompile of that consumer clears its diagnostic; unrelated evals do not.
+9.4 A rejected background output, named-state, or synth-control recompile
+publishes one active compile diagnostic indexed by the consumer, including
+`triggered_by`. The old root, dependencies, state and resources remain live. A
+subsequent successful recompile of that consumer clears its diagnostic;
+unrelated evals do not. A later rejection replaces the consumer's complete
+record rather than accumulating multiple causes.
+
+9.5 Active diagnostics serialize in stable ownership order: output index,
+dense named-state slot, then synth artifact control order. Direct replacement,
+parameter removal, and full clear remove the corresponding synth-control slots
+atomically with the public artifact.
 
 ## 10. Batch-Eval Isolation
 
