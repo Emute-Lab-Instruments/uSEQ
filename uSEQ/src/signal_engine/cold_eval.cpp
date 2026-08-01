@@ -313,6 +313,15 @@ static void compact_reachable_state_slots(SignalEngine& engine) {
             pool.live_slots[i].owner_context =
                 (uint16_t)(MAX_OUTPUTS + remap[owner_slot]);
     }
+    for (uint16_t s = 0; s < new_count; s++) {
+        uint16_t context = pool.state_owner_context[s];
+        if (context < MAX_OUTPUTS || context >= MAX_OUTPUTS + MAX_STATE_SLOTS)
+            continue;
+        uint16_t owner_slot = context - MAX_OUTPUTS;
+        if (remap[owner_slot] != NODE_NONE)
+            pool.state_owner_context[s] =
+                (uint16_t)(MAX_OUTPUTS + remap[owner_slot]);
+    }
     for (uint16_t s = new_count; s < pool.state_slot_count; s++) {
         pool.state_values[s] = 0.0;
         pool.state_update_roots[s] = NODE_NONE;

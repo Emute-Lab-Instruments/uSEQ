@@ -261,6 +261,11 @@ TEST_CASE("Reclaim: state compaction remaps nested registry and live-edit owners
     REQUIRE(h.engine.pool.state_slot_count == 2);
     REQUIRE(h.engine.registry.entry_count == 1);
     REQUIRE(h.engine.pool.live_slot_count == 1);
+    REQUIRE(h.engine.cells.cells[internSymbol("compact-b")].data_table_id == 0);
+    REQUIRE(h.engine.pool.state_owner_context[0] == MAX_OUTPUTS);
+    REQUIRE(h.engine.pool.state_owner_context[1] == MAX_OUTPUTS);
+    REQUIRE(h.engine.registry.entries[0].owner_context == MAX_OUTPUTS);
+    REQUIRE(h.engine.pool.live_slots[0].owner_context == MAX_OUTPUTS);
 
     h.eval_ok(
         "(defstate compact-b 10 (+ compact-b "
