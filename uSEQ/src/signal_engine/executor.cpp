@@ -13,6 +13,25 @@ static FailureMode g_failure_mode = FailureMode::LkgFallback;
 void set_failure_mode(FailureMode mode) { g_failure_mode = mode; }
 FailureMode get_failure_mode() { return g_failure_mode; }
 
+OutputHealth output_health(const NodePool& pool, uint16_t output_index) {
+    if (output_index >= MAX_OUTPUTS) return OutputHealth::Idle;
+    const OutputSlot& slot = pool.outputs[output_index];
+    if (!slot.valid || slot.root_node == NODE_NONE) return OutputHealth::Idle;
+    if (((pool.runtime_fallback_mask >> output_index) & 1u) == 0)
+        return OutputHealth::Running;
+    return slot.has_lkg ? OutputHealth::Fallback : OutputHealth::Error;
+}
+
+const char* output_health_to_cstr(OutputHealth health) {
+    switch (health) {
+        case OutputHealth::Idle: return "idle";
+        case OutputHealth::Running: return "running";
+        case OutputHealth::Fallback: return "fallback";
+        case OutputHealth::Error: return "error";
+    }
+    return "idle";
+}
+
 // ── Single-node evaluation ──────────────────────────────────────────────────
 // Load ops and data ops need runtime context and are handled here directly.
 // Pure-math ops delegate to the shared eval_ops.h functions.
@@ -166,7 +185,7 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
                 // Non-finite at the root: substitute the last-known-good
                 // value (or the neutral default when no LKG exists —
                 // failure-model.md §2.4) and record the fallback.
-                v = pool.outputs[i].valid ? pool.outputs[i].lkg_value : 0.0;
+                v = pool.outputs[i].has_lkg ? pool.outputs[i].lkg_value : 0.0;
                 fallback_mask |= (uint64_t)1 << i;
             }
             ctx.output_values[i] = v;
@@ -187,9 +206,12 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
 void commit_outputs(NodePool& pool, const double* output_values) {
     for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
         pool.prev_output_values[i] = output_values[i];
-        if (pool.outputs[i].root_node != NODE_NONE) {
+        bool substituted =
+            ((pool.runtime_fallback_mask >> i) & 1u) != 0;
+        if (pool.outputs[i].root_node != NODE_NONE && !substituted &&
+            std::isfinite(output_values[i])) {
             pool.outputs[i].lkg_value = output_values[i];
-            pool.outputs[i].valid = true;
+            pool.outputs[i].has_lkg = true;
         }
     }
 }
@@ -200,6 +222,7 @@ void commit_state(NodePool& pool, const double* workspace,
                   const uint16_t* failed_owner_contexts,
                   uint16_t failed_owner_count) {
     for (uint16_t s = 0; s < pool.state_slot_count; ++s) {
+        uint64_t state_bit = (uint64_t)1 << s;
         if (pool.state_update_roots[s] != NODE_NONE) {
             uint16_t owner = pool.state_owner_context[s];
             if (owner < MAX_OUTPUTS &&
@@ -222,8 +245,20 @@ void commit_state(NodePool& pool, const double* workspace,
             // Never commit non-finite state: in LkgFallback mode NaN/Inf can
             // flow through the workspace, and a poisoned state slot would
             // never recover. Keep the previous (finite) value instead.
-            if (std::isfinite(v)) pool.state_values[s] = v;
+            if (std::isfinite(v)) {
+                pool.state_values[s] = v;
+                pool.state_update_failure_mask &= ~state_bit;
+            } else {
+                pool.state_update_failure_mask |= state_bit;
+            }
+        } else {
+            pool.state_update_failure_mask &= ~state_bit;
         }
+    }
+    if (pool.state_slot_count < 64) {
+        uint64_t live_bits = pool.state_slot_count == 0
+            ? 0 : (((uint64_t)1 << pool.state_slot_count) - 1);
+        pool.state_update_failure_mask &= live_bits;
     }
 }
 

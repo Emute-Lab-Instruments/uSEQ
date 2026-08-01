@@ -24,6 +24,7 @@ double useq_eval_output(const char* name, double time_seconds);
 char* useq_eval_outputs_time_window(
     const char* outputs_json, double start_time, double end_time, int num_samples);
 const char* useq_active_diagnostics();
+int useq_output_health(const char* name);
 int useq_tick_and_project(
     const char* outputs_json,
     double tick_time,
@@ -99,14 +100,19 @@ private:
 
 TEST_CASE("WASM sampling is diagnostic-pure and invalid projection is atomic",
           "[wasm-wrapper][projection][failure-mode]") {
+    REQUIRE(useq_output_health("a1") == -1);
     useq_init();
+    REQUIRE(useq_output_health("a2") == 0);
 
     // At t=0 this overflows, while at t=1 it is exactly zero. This lets a
     // healthy read-only sample try to clear a live fallback diagnostic.
     eval_ok("(a1 (* (* (- t 1) 1e308) 1e308))");
     REQUIRE(useq_tick_and_project("[]", 0.0, 0, 0.0, 0, 0, 0) == 0);
-    REQUIRE(active_diagnostics().find("\"output\":\"a1\"") !=
-            std::string::npos);
+    std::string first_failure = active_diagnostics();
+    REQUIRE(first_failure.find("\"output\":\"a1\"") != std::string::npos);
+    REQUIRE(first_failure.find("\"state\":\"error\"") != std::string::npos);
+    REQUIRE(useq_output_health("a1") == 3);
+    REQUIRE(useq_output_health("not-an-output") == -1);
 
     REQUIRE(useq_eval_output("a1", 1.0) == Approx(0.0));
     REQUIRE(active_diagnostics().find("\"output\":\"a1\"") !=
@@ -121,13 +127,27 @@ TEST_CASE("WASM sampling is diagnostic-pure and invalid projection is atomic",
     // The live tick falls back at t=0; the projection's final sample is
     // healthy at t=1. Projection must restore the post-tick live mask.
     REQUIRE(useq_tick_and_project("[]", 0.5, 1, 1.0, 1, 0, 0) == 0);
-    REQUIRE(active_diagnostics().find("\"output\":\"a1\"") !=
-            std::string::npos);
+    std::string later_failure = active_diagnostics();
+    REQUIRE(later_failure.find("\"output\":\"a1\"") != std::string::npos);
+    // Observational sampling/projection cannot establish LKG, so this remains
+    // a first-ever Error until an authoritative finite tick commits.
+    REQUIRE(later_failure.find("\"state\":\"error\"") != std::string::npos);
 
     // Check the opposite transition too: a healthy live tick followed by a
     // failing future sample must not invent a live fallback diagnostic.
     REQUIRE(useq_tick_and_project("[]", 1.0, 1, 2.0, 1, 0, 0) == 0);
     REQUIRE(active_diagnostics() == "[]");
+    REQUIRE(useq_output_health("a1") == 1);
+
+    // Once one authoritative finite root exists, the next non-finite root is
+    // observably Fallback rather than bootstrap Error.
+    REQUIRE(useq_tick_synth_controls(1.5, 0, 0) == 0);
+    REQUIRE(useq_output_health("a1") == 2);
+
+    eval_ok("(a1 7)");
+    REQUIRE(useq_output_health("a1") == 1);
+    REQUIRE(active_diagnostics().find("\"output\":\"a1\"") ==
+            std::string::npos);
 
     // User evaluation invalidates the fork. Neither a missing extend fork nor
     // a reset-fill endpoint at/before its origin may advance prev(a1).
@@ -205,4 +225,53 @@ TEST_CASE("WASM sampling is diagnostic-pure and invalid projection is atomic",
     REQUIRE(useq_eval_output("a2", 23.0) == Approx(3.0));
     REQUIRE(useq_eval_output("a3", 23.0) == Approx(11.0));
     REQUIRE(useq_eval_output("a4", 23.0) == Approx(1e308));
+
+    // Background output recompilation keeps the previous graph and publishes
+    // chain-of-blame until the changed dependency is repaired.
+    eval_ok("(define wrapper-health-dep 1)");
+    eval_ok("(a1 (+ wrapper-health-dep 0.25))");
+    REQUIRE(useq_tick_synth_controls(24.0, 0, 0) == 0);
+    eval_ok("(defn wrapper-health-dep [x] x)");
+    std::string reactive = active_diagnostics();
+    REQUIRE(reactive.find("\"output\":\"a1\"") != std::string::npos);
+    REQUIRE(reactive.find("\"triggered_by\":\"wrapper-health-dep\"") !=
+            std::string::npos);
+    eval_ok("(define wrapper-health-dep 2)");
+    REQUIRE(active_diagnostics().find("wrapper-health-dep") ==
+            std::string::npos);
+
+    // A named-state update can fail while its consumer output remains finite.
+    // The held-state diagnostic is attributed directly to the state and
+    // clears on the first recovered update.
+    eval_ok("(define wrapper-health-rate 1)");
+    eval_ok("(defstate wrapper-health-state 0 (/ 1 wrapper-health-rate))");
+    eval_ok("(a1 wrapper-health-state)");
+    REQUIRE(useq_tick_synth_controls(25.0, 0, 0) == 0);
+    eval_ok("(define wrapper-health-rate 0)");
+    REQUIRE(useq_tick_synth_controls(26.0, 0, 0) == 0);
+    std::string state_failure = active_diagnostics();
+    REQUIRE(state_failure.find("declared state update") != std::string::npos);
+    REQUIRE(state_failure.find("\"subject\":\"state\"") != std::string::npos);
+    REQUIRE(state_failure.find("\"state\":\"wrapper-health-state\"") !=
+            std::string::npos);
+    eval_ok("(define wrapper-health-rate 2)");
+    REQUIRE(useq_tick_synth_controls(27.0, 0, 0) == 0);
+    REQUIRE(active_diagnostics().find("declared state update") ==
+            std::string::npos);
+
+    // State health remains directly observable even with no output consumer.
+    eval_ok("(define wrapper-orphan-rate 1)");
+    eval_ok("(defstate wrapper-orphan-state 0 (/ 1 wrapper-orphan-rate))");
+    REQUIRE(useq_tick_synth_controls(28.0, 0, 0) == 0);
+    eval_ok("(define wrapper-orphan-rate 0)");
+    REQUIRE(useq_tick_synth_controls(29.0, 0, 0) == 0);
+    std::string orphan_failure = active_diagnostics();
+    REQUIRE(orphan_failure.find("\"subject\":\"state\"") !=
+            std::string::npos);
+    REQUIRE(orphan_failure.find("\"state\":\"wrapper-orphan-state\"") !=
+            std::string::npos);
+    eval_ok("(define wrapper-orphan-rate 2)");
+    REQUIRE(useq_tick_synth_controls(30.0, 0, 0) == 0);
+    REQUIRE(active_diagnostics().find("wrapper-orphan-state") ==
+            std::string::npos);
 }

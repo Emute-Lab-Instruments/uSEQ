@@ -16,7 +16,7 @@
   - `execute_batch_sequential()` — stateful batch evaluation with state save/restore.
 - `uSEQ/src/signal_engine/executor.cpp` — `execute_all_outputs()`, `commit_state()`, `commit_outputs()` used by both live ticks and projection ticks.
 - `uSEQ/src/signal_engine/executor.h` — `ExecutionContext` struct (t, dt, cell_values, hw_inputs, prev_outputs, output_values, workspace).
-- `uSEQ/src/signal_engine/node_pool.h` — `NodePool` state arrays (state_values, prev_output_values, OutputSlot::lkg_value) that the fork clones.
+- `uSEQ/src/signal_engine/node_pool.h` — `NodePool` state arrays (state_values, prev_output_values, OutputSlot::lkg_value/has_lkg, output fallback and state-update failure masks) that the fork clones.
 - `test/signal_engine/test_wasm_wrapper_projection.cpp` — native adversarial
   tests for authoritative tick ownership, invalid-time atomicity, and complete
   projection-fork isolation.

@@ -495,13 +495,16 @@ compiler context preserve their state. Removed keys are retired and their
 slots become reusable. A rejected candidate restores values, update roots,
 owners, registry entries, and capacity exactly.
 
-11.4 **A NaN or non-finite value in a state cell is treated as a runtime error** at the moment it would propagate to an output root. The output falls back to LKG. The state cell may continue to hold the bad value internally; the next healthy compilation supersedes it.
-
-> *Implementation suggestion:* the runtime may opt to clamp `defstate` updates that produce non-finite values to the previous tick's value, preventing a single bad sample from poisoning subsequent ticks. This is a hygiene measure, not a substitute for LKG. Document precisely which it does.
+11.4 **A NaN or non-finite state-update candidate is rejected at the state
+commit boundary.** The state retains its previous finite value and publishes
+an active diagnostic attributed to the named state, even when no output
+currently consumes it. A later finite update commits and clears that
+diagnostic. If the same non-finite value also reaches an output root, that
+output independently follows the LKG/error rules in [failure-model.md].
 
 11.5 **Stateful cells survive the failure of any individual output.** If `(a1 ...)` fails and falls back to LKG, but `(a2 ...)` references `phase` (a `defstate` cell), `phase`'s state continues to advance based on its own update body. State-cell state is not coupled to the health of any one output.
 
-11.6 **Stateful cells whose update body errors at runtime** stop updating: the state holds at its previous value until the user fixes the update. The rest of the signal graph continues to read the held value. A diagnostic surfaces the broken update.
+11.6 **Stateful cells whose update body errors at runtime** stop updating: the state holds at its previous value until the update next produces a finite candidate. The rest of the signal graph continues to read the held value. A state-attributed diagnostic remains active across unrelated evals and clears on that recovery.
 
 11.7 **Local-clock failures are isolated.** If a `rate-as` local clock produces a non-finite or otherwise invalid local `dt`, only state-bearing nodes in that local-clock context stop updating or fall back according to their output's LKG rules. The source cells and other local-clock contexts continue.
 

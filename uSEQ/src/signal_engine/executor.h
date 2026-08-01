@@ -28,6 +28,19 @@ enum class FailureMode : uint8_t {
 void set_failure_mode(FailureMode mode);
 FailureMode get_failure_mode();
 
+// Output assignment and last-good existence are independent.  In
+// particular, an active program whose first sample is non-finite is Error,
+// while the same failure after a finite commit is Fallback.
+enum class OutputHealth : uint8_t {
+    Idle,
+    Running,
+    Fallback,
+    Error,
+};
+
+OutputHealth output_health(const NodePool& pool, uint16_t output_index);
+const char* output_health_to_cstr(OutputHealth health);
+
 // ── Execution Context ──────────────────────────────────────────────────────
 // Bundles every per-tick datum the executor needs, replacing the previous
 // 10-parameter execute_all_outputs signature.
@@ -47,14 +60,15 @@ struct ExecutionContext {
 
 // ── Single-Sample Execution ─────────────────────────────────────────────────
 // One forward pass through topologically-sorted nodes.
-// Uses LKG fallback for outputs with no current graph but a valid previous value.
+// Uses LKG fallback for outputs with a current graph and a finite committed
+// previous value; a first-ever failure emits neutral zero and remains Error.
 
 void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx);
 
 // ── Post-Tick Commit ────────────────────────────────────────────────────────
 // After execute_all_outputs, call this to:
 //   1. Copy output_values → pool.prev_output_values (for next tick's PrevOutputLoad)
-//   2. Update lkg_value / valid on each active output slot
+//   2. Promote only finite, non-substituted roots to lkg_value / has_lkg
 // This mutates pool state, so it is NOT used in the batch/visualization path.
 
 void commit_outputs(NodePool& pool, const double* output_values);
@@ -62,7 +76,9 @@ void commit_outputs(NodePool& pool, const double* output_values);
 // ── Post-Tick State Commit ─────────────────────────────────────────────────
 // After execute_all_outputs, call this to update state slots from their
 // update graphs.  State update roots must already have been executed as
-// part of the node graph (they share the workspace).
+// part of the node graph (they share the workspace). Non-finite candidates
+// retain the previous value and publish state_update_failure_mask until a
+// later finite candidate clears it.
 
 void commit_state(NodePool& pool, const double* workspace,
                   const uint16_t* failed_owner_contexts = nullptr,

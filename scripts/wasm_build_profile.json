@@ -45,6 +45,7 @@
     "useq_last_error",
     "useq_last_diagnostics",
     "useq_active_diagnostics",
+    "useq_output_health",
     "useq_synth_artifacts",
     "useq_set_live_inputs",
     "useq_set_failure_mode",

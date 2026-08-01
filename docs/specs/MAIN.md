@@ -41,7 +41,7 @@ Firmware composition:
 
 WASM build:
 
-- `wasm/wasm_wrapper.cpp` — WASM ABI: `useq_init`, `useq_eval`, `useq_last_diagnostics`, `useq_active_diagnostics`, batch evaluation, projection fork
+- `wasm/wasm_wrapper.cpp` — WASM ABI: `useq_init`, `useq_eval`, `useq_last_diagnostics`, `useq_active_diagnostics`, fail-closed `useq_output_health`, batch evaluation, projection fork
 
 Port abstractions:
 

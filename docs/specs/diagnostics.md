@@ -14,7 +14,7 @@
 - `uSEQ/src/signal_engine/graph_builder.{h,cpp}` — `report_error()`, `report_error_with_fuzzy_match()`, `report_warning()`, `GraphBuildResult.diagnostics`
 - `uSEQ/src/signal_engine/cold_eval.{h,cpp}` — `EvalResult.diagnostics` (diagnostics from eval), diagnostic propagation
 - `uSEQ/src/signal_engine/token.{h,cpp}` — `Token.span_start`/`span_len` (source span on every token), tokenizer error diagnostics
-- `wasm/wasm_wrapper.cpp` — `useq_last_diagnostics()` (JSON array from last eval), `useq_active_diagnostics()` (per-output health state), JSON serialization via `JsonBuilder`
+- `wasm/wasm_wrapper.cpp` — `useq_last_diagnostics()` (JSON array from last eval), `useq_active_diagnostics()` (active output/state health), fail-closed scalar `useq_output_health()`, JSON serialization via `JsonBuilder`
 - `uSEQ/src/firmware/serial_protocol.{h,cpp}` — `send_eval_response()` (embeds diagnostics in JSON), `send_diagnostics()` (standalone diagnostic frames)
 - `uSEQ/src/utils/json_builder.h` — `JsonBuilder`: lightweight JSON construction for diagnostic serialization
 - `uSEQ/src/utils/error_messages.{h,cpp}` — static error message strings
@@ -143,14 +143,21 @@ Spans are eval-relative — they reference offsets into the code string passed t
 
 ### 4.2 `useq_active_diagnostics`
 
-(See `wasm/wasm_wrapper.cpp` — useq_active_diagnostics function; reports per-output runtime LKG-fallback entries from `NodePool::runtime_fallback_mask`, see [failure-model.md §3.2](failure-model.md).)
+(See `wasm/wasm_wrapper.cpp` — `useq_active_diagnostics`; reports runtime
+output/state failures plus retained reactive-compile failures, see
+[failure-model.md §3.2](failure-model.md).)
 
 ```cpp
 EMSCRIPTEN_KEEPALIVE
 const char* useq_active_diagnostics();
 ```
 
-Returns a JSON **array** of per-output diagnostics. Each entry is a `RuntimeDiagnostic` that carries its own output attribution (the output it belongs to), so a single flat array describes the active state of every output. Outputs with no active diagnostics contribute no entries.
+Returns a JSON **array** of active diagnostics. Output entries carry an
+`output` attribution. Named-state entries carry `{"subject":"state",
+"state":"name"}` so a broken declared update remains observable even when
+no output currently consumes it. Background-recompile entries also carry the
+documented `triggered_by` chain-of-blame field. Healthy subjects contribute no
+entry.
 
 ```json
 [
@@ -159,9 +166,25 @@ Returns a JSON **array** of per-output diagnostics. Each entry is a `RuntimeDiag
 ]
 ```
 
-The empty case (all outputs healthy) is `[]`.
+The empty case (all outputs and named states healthy) is `[]`.
 
-This includes both compile errors from background recompilation (cell-mutation triggered) and runtime errors from the current frame. The editor maps each array entry to its corresponding output-health entry via the entry's output attribution.
+This includes compile errors from background recompilation (cell-mutation
+triggered), output-root numerical failures, and named-state update failures
+from the current frame. The editor maps output entries to output health and
+state entries to the named state declaration.
+
+### 4.2.1 `useq_output_health`
+
+```cpp
+int useq_output_health(const char* name);
+```
+
+Returns the authoritative scalar health enum for a standard output: `0` idle,
+`1` running, `2` fallback with an LKG, `3` error with no LKG, or `-1` for an
+invalid name or uninitialised runtime. Invalid input therefore fails closed
+rather than aliasing an output. The generated-WASM smoke test exercises every
+state and the assignment/recovery transition through the exported ABI. This
+avoids clients inferring bootstrap error versus fallback from diagnostic text.
 
 ### 4.3 `useq_output_diagnostics`
 
@@ -188,9 +211,12 @@ Returns runtime-only diagnostics (`RuntimeDiagnostic` shape) for every output in
 ### 4.4 Clearing policy
 
 - `useq_last_diagnostics()` is cleared at the start of every `useq_eval()` call. It only reflects the most recent eval.
-- Per-output **compile** diagnostics are cleared when the output is successfully recompiled (new expression assigned, or a dependency change triggers a clean recompile).
-- Per-output **runtime** diagnostics are cleared when the output runs a full healthy sample batch.
-- `useq_active_diagnostics()` is the union of all per-output state and is never cleared explicitly — it reflects the live state of the system.
+- Per-output or named-state **compile** diagnostics are cleared when that same consumer is successfully recompiled (new expression assigned, or a dependency change triggers a clean recompile).
+- Per-output **runtime** diagnostics are cleared when the output commits a
+  healthy sample or a replacement program is successfully published; a
+  rejected replacement preserves the live health unchanged.
+- Named-state runtime diagnostics clear on the first finite committed update.
+- `useq_active_diagnostics()` is the union of active output and named-state diagnostics and is never cleared wholesale — it reflects the live system.
 
 ### 4.5 Polling cadence
 

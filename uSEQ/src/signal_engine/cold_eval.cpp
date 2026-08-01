@@ -33,8 +33,12 @@ void SignalEngine::reset_session_storage(double bpm, int beats_per_bar,
     scratch_pool.reset();
     for (uint16_t i = 0; i < MAX_OUTPUTS; i++)
         output_sources[i] = OutputSource{};
-    for (uint16_t i = 0; i < MAX_STATE_SLOTS; i++)
+    for (uint16_t i = 0; i < MAX_OUTPUTS; i++)
+        output_compile_diagnostics[i] = ActiveCompileDiagnostic{};
+    for (uint16_t i = 0; i < MAX_STATE_SLOTS; i++) {
         state_sources[i] = StateUpdateSource{};
+        state_compile_diagnostics[i] = ActiveCompileDiagnostic{};
+    }
     registry.clear();
     if (publish_synth_clear) {
         SynthRevision next_revision = synth_graph.revision + 1;
@@ -94,6 +98,24 @@ static EvalResult make_too_many_definitions_error() {
         "Remove unused definitions or reuse existing names"
     };
     return r;
+}
+
+static void publish_reactive_diagnostic(ActiveCompileDiagnostic& active,
+                                        SymbolID triggered_by,
+                                        const GraphBuildResult& result) {
+    active = ActiveCompileDiagnostic{};
+    active.active = true;
+    active.triggered_by = triggered_by;
+    if (result.diagnostic_count > 0) {
+        active.diagnostic = result.diagnostics[0];
+    } else {
+        active.diagnostic = {
+            DiagnosticSeverity::Error, DiagnosticCategory::Runtime,
+            0, 0,
+            "A dependency change could not be applied; the previous program is still running",
+            "Repair the changed definition"
+        };
+    }
 }
 
 // Graph construction currently interns directly into the live NodePool. Keep
@@ -252,6 +274,8 @@ static void compact_reachable_state_slots(SignalEngine& engine) {
             pool.state_update_roots[fresh] = pool.state_update_roots[old];
             pool.state_owner_context[fresh] = pool.state_owner_context[old];
             engine.state_sources[fresh] = engine.state_sources[old];
+            engine.state_compile_diagnostics[fresh] =
+                engine.state_compile_diagnostics[old];
         }
     }
     if (new_count == pool.state_slot_count) return;
@@ -328,7 +352,15 @@ static void compact_reachable_state_slots(SignalEngine& engine) {
         pool.state_update_roots[s] = NODE_NONE;
         pool.state_owner_context[s] = ANON_STATE_CONTEXT_NONE;
         engine.state_sources[s] = StateUpdateSource{};
+        engine.state_compile_diagnostics[s] = ActiveCompileDiagnostic{};
     }
+    uint64_t remapped_state_failures = 0;
+    for (uint16_t old = 0; old < MAX_STATE_SLOTS; old++) {
+        if (remap[old] == NODE_NONE) continue;
+        if ((pool.state_update_failure_mask & ((uint64_t)1 << old)) != 0)
+            remapped_state_failures |= (uint64_t)1 << remap[old];
+    }
+    pool.state_update_failure_mask = remapped_state_failures;
     pool.state_slot_count = new_count;
 }
 
@@ -945,6 +977,7 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
         engine.state_sources[state_slot].arena_length = src_len;
         engine.state_sources[state_slot].has_source = true;
     }
+    engine.state_sources[state_slot].state_symbol = sym;
 
     // Store the update root and dependencies
     engine.pool.state_update_roots[state_slot] = result.root_node;
@@ -955,6 +988,7 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     engine.registry.commit_context(owner_context,
                                    engine.pool.state_update_roots,
                                    engine.pool.state_owner_context);
+    engine.state_compile_diagnostics[state_slot] = ActiveCompileDiagnostic{};
 
     // Reclaim nodes orphaned by the recompile (e.g. the previous update
     // graph of this state slot), then rebuild execution order to include
@@ -2099,6 +2133,12 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
     // Install the new graph root
     engine.pool.outputs[output_index].root_node = result.root_node;
     engine.pool.outputs[output_index].valid = true;
+    // The rejected sample belonged to the superseded program. Successful
+    // publication starts the replacement in Running state; it may retain the
+    // old finite LKG for safety, but it must not retain stale failure health.
+    engine.pool.runtime_fallback_mask &= ~((uint64_t)1 << output_index);
+    engine.output_compile_diagnostics[output_index] =
+        ActiveCompileDiagnostic{};
 
     // Store cell dependencies for this output
     engine.pool.output_deps[output_index].clear();
@@ -2936,6 +2976,9 @@ void recompile_all_outputs(SignalEngine& engine) {
         if (!result.has_error) {
             engine.pool.outputs[i].root_node = result.root_node;
             engine.pool.outputs[i].valid = true;
+            engine.pool.runtime_fallback_mask &= ~((uint64_t)1 << i);
+            engine.output_compile_diagnostics[i] =
+                ActiveCompileDiagnostic{};
 
             // Populate dependency tracking so on_cell_changed() works later
             engine.pool.output_deps[i].clear();
@@ -2989,6 +3032,10 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                     if (!result.has_error) {
                         engine.pool.outputs[i].root_node = result.root_node;
                         engine.pool.outputs[i].valid = true;
+                        engine.pool.runtime_fallback_mask &=
+                            ~((uint64_t)1 << i);
+                        engine.output_compile_diagnostics[i] =
+                            ActiveCompileDiagnostic{};
 
                         // Refresh the dependency list (F8) — the recompiled
                         // graph may reference different cells (e.g. a cell
@@ -3009,7 +3056,22 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                         // root, validity, dependencies, state values, and
                         // capacity when the candidate is rejected.
                         restore_graph_mutations(engine, graph_snapshot);
+                        publish_reactive_diagnostic(
+                            engine.output_compile_diagnostics[i], cell_id,
+                            result);
                     }
+                } else {
+                    ActiveCompileDiagnostic& active =
+                        engine.output_compile_diagnostics[i];
+                    active = ActiveCompileDiagnostic{};
+                    active.active = true;
+                    active.triggered_by = cell_id;
+                    active.diagnostic = {
+                        DiagnosticSeverity::Error,
+                        DiagnosticCategory::Syntax, 0, 0,
+                        "Stored output source could not be parsed; the previous program is still running",
+                        "Reassign this output with valid source"
+                    };
                 }
             }
         }
@@ -3053,6 +3115,8 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                 &engine.registry, nullptr, owner_context);
             if (!result.has_error) {
                 engine.pool.state_update_roots[s] = result.root_node;
+                engine.state_compile_diagnostics[s] =
+                    ActiveCompileDiagnostic{};
                 // Update dependencies
                 engine.state_sources[s].dep_count = result.dep_count;
                 for (uint8_t d = 0; d < result.dep_count; d++) {
@@ -3063,7 +3127,21 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
                     engine.pool.state_owner_context);
             } else {
                 restore_graph_mutations(engine, graph_snapshot);
+                publish_reactive_diagnostic(
+                    engine.state_compile_diagnostics[s], cell_id, result);
             }
+        } else {
+            ActiveCompileDiagnostic& active =
+                engine.state_compile_diagnostics[s];
+            active = ActiveCompileDiagnostic{};
+            active.active = true;
+            active.triggered_by = cell_id;
+            active.diagnostic = {
+                DiagnosticSeverity::Error, DiagnosticCategory::Syntax,
+                0, 0,
+                "Stored state update source could not be parsed; the previous update is still running",
+                "Redefine this state with a valid update expression"
+            };
         }
     }
 

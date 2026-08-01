@@ -10,7 +10,7 @@
 ### Source Files
 
 - `uSEQ/src/signal_engine/executor.{h,cpp}` — `execute_all_outputs()` (per-output isolation, LKG fallback via `OutputSlot.lkg_value`), `commit_outputs()` (LKG promotion), `commit_state()` (state-slot updates)
-- `uSEQ/src/signal_engine/node_pool.h` — `OutputSlot` (`root_node`, `lkg_value`, `valid` flag — the per-output health state storage)
+- `uSEQ/src/signal_engine/node_pool.h` — `OutputSlot` (`root_node`, active-assignment `valid`, `lkg_value`, independent `has_lkg`); runtime output/state failure masks
 - `uSEQ/src/signal_engine/graph_builder.{h,cpp}` — compile-time error reporting (`report_error`, `report_error_cat`, `report_warning`), `GraphBuildResult.has_error`, dependency tracking for chain-of-blame (`dep_cells`)
 - `uSEQ/src/signal_engine/cold_eval.{h,cpp}` — `EvalResult` (diagnostic array, error kind), `on_cell_changed()` (dependency-triggered recompilation — chain of blame source)
 - `uSEQ/src/signal_engine/diagnostics.{h,cpp}` — `Diagnostic` struct (severity, category, span, message, suggestion), `DiagnosticSeverity`, `DiagnosticCategory`
@@ -55,8 +55,10 @@ prevents oscillators and integrators from advancing inaudibly behind a held
 sample. Named/shared state sources have their own writer context and continue
 according to their own finite-update rule.
 
-2.4 **Bootstrap.** If no healthy sample has ever been committed, the stored
-value is the compiler-domain neutral output, numeric `0`.
+2.4 **Bootstrap.** If no healthy sample has ever been committed, no LKG exists.
+The published substitute is still the compiler-domain neutral output, numeric
+`0`, but health is `error`, not `fallback`; committing that substitute does
+not manufacture an LKG.
 
 2.5 **No fallback chains.** There is exactly one held scalar per output, not a
 chain of candidate programs or values. Every runtime sample either publishes
@@ -84,7 +86,9 @@ fallback set (`NodePool::runtime_fallback_mask`) on every live execution pass:
 a sample whose root is finite clears that output's fallback state. Read-only
 sampling and projection restore this diagnostic field with the rest of the
 runtime snapshot and cannot create or clear live health. State commits follow
-§2.3 and never accept non-finite update roots.
+§2.3 and never accept non-finite update roots. Each rejected state update sets
+its slot in `state_update_failure_mask`; a later finite candidate commits and
+clears that same bit. Projection snapshots preserve both masks.
 
 > **Status note.** Prior to v1.2.0 the implementation only performed the `zero` squash (spec drift flagged by two independent audits). The `lkg` path above is now implemented and is the default; the squash survives solely as the opt-in legacy mode.
 
@@ -94,14 +98,18 @@ runtime snapshot and cannot create or clear live health. State commits follow
 
 ## 5. Per-Output Health States
 
-5.1 Every output is in exactly one of four states at any time. (See `uSEQ/src/signal_engine/node_pool.h` — OutputSlot: root_node==NODE_NONE is idle, valid+lkg determines running/fallback/error; `uSEQ/src/signal_engine/executor.cpp` — commit_outputs updates lkg_value and valid flag.)
+5.1 Every output is in exactly one of four states at any time. (See
+`uSEQ/src/signal_engine/node_pool.h` — `valid`/`root_node` identify an active
+assignment while `has_lkg` independently identifies a committed finite root;
+`uSEQ/src/signal_engine/executor.cpp` — `output_health()` and
+`commit_outputs()`.)
 
 | State | Meaning |
 |---|---|
 | `idle` | No program assigned. Output emits the neutral default (`0`). |
 | `running` | Active program is healthy and producing samples. |
 | `fallback` | The latest live sample was unhealthy; output held its last finite sample. |
-| `error` | No LKG available; output is holding its last valid sample (or neutral default). |
+| `error` | Latest live sample was unhealthy and no LKG has ever existed; output holds neutral zero. |
 
 5.2 Transitions:
 
@@ -109,8 +117,9 @@ runtime snapshot and cannot create or clear live health. State commits follow
 idle ── (assign) ─────────► running
 running ── (compile fail on new assignment) ─► running   (active unchanged)
 running ── (runtime error) ──────────────────► fallback
+running-with-no-LKG ── (first runtime error) ─► error
 fallback ── (next healthy sample or assignment) ─► running
-error ── (new healthy assignment) ───────────► running
+error ── (next healthy committed sample) ────► running
 * ── (clear) ────────────────────────────────► idle
 ```
 
@@ -168,6 +177,11 @@ later forms are not executed.
 9.2 The diagnostic carries a `triggered_by` field ([diagnostics.md §2](diagnostics.md)) holding the symbol name of the mutated cell that triggered the recompile. The frontend renders it as context — *"this broke because `x` changed"* — alongside the primary message.
 
 9.3 **Span attribution.** The diagnostic's source span points at the *reference site* where the mutated symbol is used inside the output expression, not at the redefinition site. The user needs to see which part of their signal expression depends on the symbol whose meaning changed; the redefinition is in another pane and is by definition the recent action.
+
+9.4 A rejected background output or named-state recompile publishes one active
+compile diagnostic indexed by the consumer, including `triggered_by`. The old
+root, dependencies, state and resources remain live. A subsequent successful
+recompile of that consumer clears its diagnostic; unrelated evals do not.
 
 ## 10. Batch-Eval Isolation
 

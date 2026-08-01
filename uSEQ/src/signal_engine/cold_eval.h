@@ -108,8 +108,21 @@ struct StateUpdateSource {
     uint32_t arena_offset = 0;
     uint32_t arena_length = 0;
     bool has_source = false;
+    // Named defstate attribution for runtime/reactive diagnostics. Anonymous
+    // output-owned state leaves this as INVALID_ID (0).
+    SymbolID state_symbol = 0;
     SymbolID dep_cells[MAX_OUTPUT_DEPS] = {};
     uint8_t dep_count = 0;
+};
+
+// A rejected background recompile is not the result of the current eval's
+// output form, so its diagnostic must outlive EvalResult. The indexed owner
+// (output slot or named-state slot) plus triggered_by forms the chain of
+// blame while the previous compiled consumer remains published.
+struct ActiveCompileDiagnostic {
+    bool active = false;
+    SymbolID triggered_by = 0;
+    Diagnostic diagnostic = {};
 };
 
 struct SignalEngine {
@@ -119,6 +132,8 @@ struct SignalEngine {
     EngineState state;
     OutputSource output_sources[MAX_OUTPUTS] = {};
     StateUpdateSource state_sources[MAX_STATE_SLOTS] = {};
+    ActiveCompileDiagnostic output_compile_diagnostics[MAX_OUTPUTS] = {};
+    ActiveCompileDiagnostic state_compile_diagnostics[MAX_STATE_SLOTS] = {};
 
     StateResourceRegistry registry;
     NodePool scratch_pool;

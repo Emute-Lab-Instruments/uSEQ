@@ -80,8 +80,12 @@ struct Node {
 struct OutputSlot {
     uint16_t root_node = NODE_NONE;
     double lkg_value   = 0.0;      // last known good output value
+    // `valid` is retained as the active-assignment bit for source/API
+    // compatibility.  It does NOT mean that a healthy sample has been
+    // observed: a freshly compiled program is active before its first tick.
     bool valid         = false;
-    uint8_t pad[7]     = {};
+    bool has_lkg       = false;    // at least one finite root was committed
+    uint8_t pad[6]     = {};
 };
 
 // ── Per-Output Dependencies ─────────────────────────────────────────────────
@@ -148,6 +152,14 @@ struct NodePool {
     // `const NodePool&` — this is diagnostic bookkeeping, not graph state.
     mutable uint64_t runtime_fallback_mask = 0;
     static_assert(MAX_OUTPUTS <= 64, "runtime_fallback_mask is 64-bit");
+
+    // Bit s is active when state slot s most recently produced a non-finite
+    // update candidate.  The previous finite state remains installed until
+    // that same update root recovers.  This is separate from output fallback:
+    // a named defstate can fail while every consuming output remains finite.
+    uint64_t state_update_failure_mask = 0;
+    static_assert(MAX_STATE_SLOTS <= 64,
+                  "state_update_failure_mask is 64-bit");
 
     // ── Cross-sample state ──────────────────────────────────────────────
     double state_values[MAX_STATE_SLOTS]  = {};       // current state (read during execution)

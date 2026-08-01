@@ -483,6 +483,7 @@ void NodePool::reset() {
     memset(output_input_mask, 0, sizeof(output_input_mask));
     memset(prev_output_values, 0, sizeof(prev_output_values));
     runtime_fallback_mask = 0;
+    state_update_failure_mask = 0;
     memset(state_values, 0, sizeof(state_values));
     for (uint16_t s = 0; s < MAX_STATE_SLOTS; s++) {
         state_update_roots[s] = NODE_NONE;

@@ -237,12 +237,7 @@ struct Session {
         if (commit) {
             commit_state(engine->pool, workspace);
             prev_tick_time = t;
-            for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
-                if (engine->pool.outputs[i].valid) {
-                    engine->pool.prev_output_values[i] = output_values[i];
-                    engine->pool.outputs[i].lkg_value  = output_values[i];
-                }
-            }
+            commit_outputs(engine->pool, output_values);
         }
     }
 };
@@ -365,20 +360,8 @@ static void op_health(Session& s, const char* line) {
         respond_error(msg.c_str());
         return;
     }
-    const OutputSlot& slot = s.engine->pool.outputs[output_index];
-    // Health per failure-model.md §5: runtime fallback (non-finite value at
-    // the output root, LKG substituted) is tracked in the pool's
-    // runtime_fallback_mask, recomputed on every execution pass.
-    const char* health = "idle";
-    if (slot.root_node != NODE_NONE) {
-        bool in_fallback =
-            (s.engine->pool.runtime_fallback_mask >> output_index) & 1;
-        if (in_fallback) {
-            health = slot.valid ? "fallback" : "error";
-        } else {
-            health = slot.valid ? "running" : "fallback";
-        }
-    }
+    const char* health = output_health_to_cstr(
+        output_health(s.engine->pool, output_index));
     std::string out = "{\"ok\":true,\"health\":\"";
     out += health;
     out += "\"}";

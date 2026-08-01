@@ -88,10 +88,10 @@ static const char* node_op_name(sig::NodeOp op) {
     return "Unknown";
 }
 
-static const char* health_name(const sig::OutputSlot& slot) {
-    if (slot.root_node == sig::NODE_NONE) return "idle";
-    if (slot.valid) return "running";
-    return "error";
+static const char* health_name(const sig::NodePool& pool,
+                               uint16_t output_index) {
+    return sig::output_health_to_cstr(
+        sig::output_health(pool, output_index));
 }
 
 static bool op_has_imm(sig::NodeOp op) {
@@ -397,7 +397,7 @@ static String serialize_graph(const char* output_filter) {
 
         j.object_begin()
             .field("name", name)
-            .field("health", health_name(slot))
+            .field("health", health_name(pool, oi))
             .field("root", static_cast<int>(slot.root_node));
 
         // Nodes
@@ -483,10 +483,9 @@ static String serialize_state() {
     // Outputs
     j.array_begin("outputs");
     for (uint16_t i = 0; i < 24; ++i) {
-        const auto& slot = engine.pool.outputs[i];
         j.object_begin()
             .field("name", output_name(i))
-            .field("health", health_name(slot))
+            .field("health", health_name(engine.pool, i))
             .object_end();
     }
     j.array_end();

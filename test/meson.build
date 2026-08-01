@@ -296,6 +296,19 @@ failure_mode_test_exe = executable(
 
 test('failure_mode_test', failure_mode_test_exe, timeout: 60)
 
+# ===== Persistent output/state/reactive health diagnostics =====
+
+health_diagnostics_test_exe = executable(
+  'test_health_diagnostics',
+  sources : ['signal_engine/test_health_diagnostics.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('health_diagnostics_test', health_diagnostics_test_exe, timeout: 60)
+
 # ===== WASM Wrapper Projection/Purity Contract Tests =====
 
 wasm_wrapper_projection_test_exe = executable(

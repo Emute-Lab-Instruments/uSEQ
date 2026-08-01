@@ -1216,7 +1216,8 @@ void SerialProtocol::handle_get_state(const char* /*payload*/, size_t /*len*/)
                     o.field("source", src_str.c_str());
                 }
             }
-            const char* health = slot.valid ? "running" : "fallback";
+            const char* health = sig::output_health_to_cstr(
+                sig::output_health(engine->pool, i));
             o.field("health", health);
             snprintf(numbuf, sizeof(numbuf), "%.15g", slot.lkg_value);
             o.field_raw("lkgValue", String(numbuf));

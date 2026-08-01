@@ -72,7 +72,9 @@ struct ProjectionFork {
     double prev_output_values[sig::MAX_OUTPUTS];
     double lkg_values[sig::MAX_OUTPUTS];
     bool output_valid[sig::MAX_OUTPUTS];
+    bool output_has_lkg[sig::MAX_OUTPUTS];
     uint64_t runtime_fallback_mask;
+    uint64_t state_update_failure_mask;
     double live_slot_values[sig::MAX_LIVE_SLOTS];
     uint16_t live_slot_count;
     double prev_tick_time;
@@ -97,21 +99,24 @@ static void reset_host_session_caches() {
 // the pool is otherwise passed as const. Sampling/projection APIs are
 // observational: preserve the live diagnostic state across every such pass,
 // including exceptional exits.
-class PreserveRuntimeFallbackMask {
+class PreserveRuntimeHealth {
 public:
-    explicit PreserveRuntimeFallbackMask(sig::NodePool& pool)
-        : pool_(pool), saved_(pool.runtime_fallback_mask) {}
+    explicit PreserveRuntimeHealth(sig::NodePool& pool)
+        : pool_(pool), saved_fallback_(pool.runtime_fallback_mask),
+          saved_state_(pool.state_update_failure_mask) {}
 
-    ~PreserveRuntimeFallbackMask() {
-        pool_.runtime_fallback_mask = saved_;
+    ~PreserveRuntimeHealth() {
+        pool_.runtime_fallback_mask = saved_fallback_;
+        pool_.state_update_failure_mask = saved_state_;
     }
 
-    PreserveRuntimeFallbackMask(const PreserveRuntimeFallbackMask&) = delete;
-    PreserveRuntimeFallbackMask& operator=(const PreserveRuntimeFallbackMask&) = delete;
+    PreserveRuntimeHealth(const PreserveRuntimeHealth&) = delete;
+    PreserveRuntimeHealth& operator=(const PreserveRuntimeHealth&) = delete;
 
 private:
     sig::NodePool& pool_;
-    uint64_t saved_;
+    uint64_t saved_fallback_;
+    uint64_t saved_state_;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -163,6 +168,20 @@ static uint16_t resolve_output_name(const char* name) {
         case 's': return 16 + num;
         default:  return sig::NODE_NONE;
     }
+}
+
+static bool format_output_name(uint16_t index, char (&name)[3]) {
+    name[0] = name[1] = name[2] = 0;
+    if (index < 8) {
+        name[0] = 'a'; name[1] = (char)('1' + index);
+    } else if (index < 16) {
+        name[0] = 'd'; name[1] = (char)('1' + index - 8);
+    } else if (index < 24) {
+        name[0] = 's'; name[1] = (char)('1' + index - 16);
+    } else {
+        return false;
+    }
+    return true;
 }
 
 // Evaluate any signal expression at a given time via the cold eval scratch
@@ -253,9 +272,13 @@ static void reset_projection_fork(double tick_time) {
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_projection_fork.lkg_values[i] = g_engine->pool.outputs[i].lkg_value;
         g_projection_fork.output_valid[i] = g_engine->pool.outputs[i].valid;
+        g_projection_fork.output_has_lkg[i] =
+            g_engine->pool.outputs[i].has_lkg;
     }
     g_projection_fork.runtime_fallback_mask =
         g_engine->pool.runtime_fallback_mask;
+    g_projection_fork.state_update_failure_mask =
+        g_engine->pool.state_update_failure_mask;
     g_projection_fork.live_slot_count = g_engine->pool.live_slot_count;
     for (uint16_t i = 0; i < g_projection_fork.live_slot_count; i++)
         g_projection_fork.live_slot_values[i] =
@@ -276,7 +299,7 @@ static void project_from_fork(
     const double* t_array, int num_samples,
     uint16_t num_active, double* batch_buf)
 {
-    PreserveRuntimeFallbackMask preserve_fallback_mask(g_engine->pool);
+    PreserveRuntimeHealth preserve_runtime_health(g_engine->pool);
 
     // Save live state
     double saved_state[sig::MAX_STATE_SLOTS];
@@ -285,6 +308,7 @@ static void project_from_fork(
     double saved_prev_outputs[sig::MAX_OUTPUTS];
     double saved_lkg[sig::MAX_OUTPUTS];
     bool saved_valid[sig::MAX_OUTPUTS];
+    bool saved_has_lkg[sig::MAX_OUTPUTS];
     double saved_live_slot_values[sig::MAX_LIVE_SLOTS];
     uint16_t saved_live_slot_count = g_engine->pool.live_slot_count;
     double saved_prev_t = g_prev_tick_time;
@@ -293,6 +317,7 @@ static void project_from_fork(
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
         saved_valid[i] = g_engine->pool.outputs[i].valid;
+        saved_has_lkg[i] = g_engine->pool.outputs[i].has_lkg;
     }
     for (uint16_t i = 0; i < saved_live_slot_count; i++)
         saved_live_slot_values[i] = g_engine->pool.live_slots[i].value;
@@ -321,9 +346,13 @@ static void project_from_fork(
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_engine->pool.outputs[i].lkg_value = g_projection_fork.lkg_values[i];
         g_engine->pool.outputs[i].valid = g_projection_fork.output_valid[i];
+        g_engine->pool.outputs[i].has_lkg =
+            g_projection_fork.output_has_lkg[i];
     }
     g_engine->pool.runtime_fallback_mask =
         g_projection_fork.runtime_fallback_mask;
+    g_engine->pool.state_update_failure_mask =
+        g_projection_fork.state_update_failure_mask;
     g_engine->pool.live_slot_count = g_projection_fork.live_slot_count;
     for (uint16_t i = 0; i < g_projection_fork.live_slot_count; i++)
         g_engine->pool.live_slots[i].value =
@@ -370,9 +399,13 @@ static void project_from_fork(
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_projection_fork.lkg_values[i] = g_engine->pool.outputs[i].lkg_value;
         g_projection_fork.output_valid[i] = g_engine->pool.outputs[i].valid;
+        g_projection_fork.output_has_lkg[i] =
+            g_engine->pool.outputs[i].has_lkg;
     }
     g_projection_fork.runtime_fallback_mask =
         g_engine->pool.runtime_fallback_mask;
+    g_projection_fork.state_update_failure_mask =
+        g_engine->pool.state_update_failure_mask;
     g_projection_fork.live_slot_count = g_engine->pool.live_slot_count;
     for (uint16_t i = 0; i < g_projection_fork.live_slot_count; i++)
         g_projection_fork.live_slot_values[i] =
@@ -389,6 +422,7 @@ static void project_from_fork(
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
         g_engine->pool.outputs[i].valid = saved_valid[i];
+        g_engine->pool.outputs[i].has_lkg = saved_has_lkg[i];
     }
     g_engine->pool.live_slot_count = saved_live_slot_count;
     for (uint16_t i = 0; i < saved_live_slot_count; i++)
@@ -404,13 +438,14 @@ static void execute_batch_sequential(
     const double* cell_values,
     uint16_t num_active, double* batch_buf)
 {
-    PreserveRuntimeFallbackMask preserve_fallback_mask(g_engine->pool);
+    PreserveRuntimeHealth preserve_runtime_health(g_engine->pool);
 
     // Save all mutable state so visualization doesn't corrupt the live signal
     double saved_state[sig::MAX_STATE_SLOTS];
     double saved_prev_outputs[sig::MAX_OUTPUTS];
     double saved_lkg[sig::MAX_OUTPUTS];
     bool saved_valid[sig::MAX_OUTPUTS];
+    bool saved_has_lkg[sig::MAX_OUTPUTS];
     uint16_t saved_slot_count = g_engine->pool.state_slot_count;
     double saved_prev_t = g_prev_tick_time;
     memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
@@ -418,6 +453,7 @@ static void execute_batch_sequential(
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
         saved_valid[i] = g_engine->pool.outputs[i].valid;
+        saved_has_lkg[i] = g_engine->pool.outputs[i].has_lkg;
     }
 
     // Snapshot the active-row map ONCE before the sample loop (A2) — see
@@ -467,6 +503,7 @@ static void execute_batch_sequential(
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
         g_engine->pool.outputs[i].valid = saved_valid[i];
+        g_engine->pool.outputs[i].has_lkg = saved_has_lkg[i];
     }
     g_engine->pool.state_slot_count = saved_slot_count;
     g_prev_tick_time = saved_prev_t;
@@ -488,7 +525,7 @@ static bool execute_at_time(double wall_time, double* output_values,
 
     if (!g_engine->state.is_playing) {
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-            output_values[i] = g_engine->pool.outputs[i].valid
+            output_values[i] = g_engine->pool.outputs[i].has_lkg
                 ? g_engine->pool.outputs[i].lkg_value : 0.0;
         }
         if (synth_control_values) {
@@ -564,13 +601,10 @@ static bool execute_at_time(double wall_time, double* output_values,
     g_engine->state.reset_dt_on_next_tick = false;
     g_prev_tick_time = t;
 
-    // Update previous output values for next tick
-    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-        if (g_engine->pool.outputs[i].valid) {
-            g_engine->pool.prev_output_values[i] = output_values[i];
-            g_engine->pool.outputs[i].lkg_value = output_values[i];
-        }
-    }
+    // Publish the values actually heard, but promote only finite roots that
+    // were not substituted. This preserves the no-LKG Error state across a
+    // first-ever non-finite sample.
+    sig::commit_outputs(g_engine->pool, output_values);
     if (ownership == ExecutionOwnership::Authoritative) {
         g_authoritative_wall_frontier = wall_time;
         g_has_authoritative_wall_frontier = true;
@@ -778,19 +812,22 @@ extern "C"
             return std::numeric_limits<double>::quiet_NaN();
         }
 
-        PreserveRuntimeFallbackMask preserve_fallback_mask(g_engine->pool);
+        PreserveRuntimeHealth preserve_runtime_health(g_engine->pool);
 
         // Save all mutable state — useq_eval_output is read-only and must
         // not corrupt live engine state (execute_at_time advances everything).
         double saved_state[sig::MAX_STATE_SLOTS];
         double saved_prev_outputs[sig::MAX_OUTPUTS];
         double saved_lkg[sig::MAX_OUTPUTS];
+        bool saved_has_lkg[sig::MAX_OUTPUTS];
         uint16_t saved_slot_count = g_engine->pool.state_slot_count;
         sig::EngineState saved_engine_state = g_engine->state;
         memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
         memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
-        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
             saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
+            saved_has_lkg[i] = g_engine->pool.outputs[i].has_lkg;
+        }
         double saved_prev_t = g_prev_tick_time;
 
         double output_values[sig::MAX_OUTPUTS] = {};
@@ -801,8 +838,10 @@ extern "C"
         // Restore all state
         memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
         memcpy(g_engine->pool.prev_output_values, saved_prev_outputs, sizeof(saved_prev_outputs));
-        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++)
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
             g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
+            g_engine->pool.outputs[i].has_lkg = saved_has_lkg[i];
+        }
         g_engine->pool.state_slot_count = saved_slot_count;
         g_engine->state = saved_engine_state;
         g_prev_tick_time = saved_prev_t;
@@ -845,42 +884,120 @@ extern "C"
 
     const char* useq_active_diagnostics()
     {
-        // Contract (diagnostics.md §4.2): a JSON ARRAY of per-output active
-        // diagnostics; "[]" when every output is healthy. Runtime fallback
-        // (failure-model.md §2.1) is reported from the engine pool's
-        // runtime_fallback_mask — set when a non-finite value reached an
-        // output root and the LKG value was substituted on the most recent
-        // execution pass (FailureMode::LkgFallback only).
-        if (!g_engine || g_engine->pool.runtime_fallback_mask == 0) {
+        // Contract (diagnostics.md §4.2): a JSON array of live output and
+        // named-state diagnostics; "[]" when every subject is healthy.
+        // Runtime masks describe the most recent authoritative execution;
+        // rejected reactive candidates retain their own attributed compile
+        // diagnostic while the previous program keeps running.
+        if (!g_engine) {
             return alloc_cstr("[]");
         }
+
+        bool has_active = g_engine->pool.runtime_fallback_mask != 0 ||
+            g_engine->pool.state_update_failure_mask != 0;
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS && !has_active; i++)
+            has_active = g_engine->output_compile_diagnostics[i].active;
+        for (uint16_t i = 0; i < sig::MAX_STATE_SLOTS && !has_active; i++)
+            has_active = g_engine->state_compile_diagnostics[i].active;
+        if (!has_active) return alloc_cstr("[]");
 
         JsonBuilder json;
         json.array_begin_unkeyed();
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
             if (!(g_engine->pool.runtime_fallback_mask & ((uint64_t)1 << i)))
                 continue;
-            // Reverse of resolve_output_name(): a1-a8 = 0-7, d1-d8 = 8-15,
-            // s1-s8 = 16-23. Indices beyond the named ranges are unreachable
-            // from user programs; skip defensively.
             char name[3] = {0, 0, 0};
-            if (i < 8)       { name[0] = 'a'; name[1] = (char)('1' + i); }
-            else if (i < 16) { name[0] = 'd'; name[1] = (char)('1' + i - 8); }
-            else if (i < 24) { name[0] = 's'; name[1] = (char)('1' + i - 16); }
-            else continue;
+            if (!format_output_name(i, name)) continue;
+            sig::OutputHealth health = sig::output_health(g_engine->pool, i);
 
             json.object_begin();
             json.field("output", name);
-            json.field("severity", "warning");
+            json.field("severity",
+                       health == sig::OutputHealth::Error
+                           ? "error" : "warning");
             json.field("category", "arithmetic");
-            json.field("state", "fallback");
-            json.field("message",
-                       "Non-finite value (NaN/Inf) reached this output; "
-                       "holding the last-known-good value");
+            json.field("state", sig::output_health_to_cstr(health));
+            if (health == sig::OutputHealth::Error) {
+                json.field("message",
+                           "Non-finite value (NaN/Inf) reached this output "
+                           "before any healthy sample; holding neutral zero");
+            } else {
+                json.field("message",
+                           "Non-finite value (NaN/Inf) reached this output; "
+                           "holding the last-known-good value");
+            }
+            json.object_end();
+        }
+
+        // Background output recompiles retain their previous program but
+        // keep the rejected candidate's first diagnostic active until the
+        // same dependency chain compiles cleanly.
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+            const sig::ActiveCompileDiagnostic& active =
+                g_engine->output_compile_diagnostics[i];
+            if (!active.active) continue;
+            char name[3] = {0, 0, 0};
+            if (!format_output_name(i, name)) continue;
+            const sig::Diagnostic& d = active.diagnostic;
+            json.object_begin();
+            json.field("output", name);
+            json.field("severity", sig::severity_to_cstr(d.severity));
+            json.field("category", sig::category_to_cstr(d.category));
+            json.field("state", sig::output_health_to_cstr(
+                sig::output_health(g_engine->pool, i)));
+            json.field("start", static_cast<int>(d.span_start));
+            json.field("end", static_cast<int>(d.span_start + d.span_len));
+            json.field("message", d.message ? d.message : "");
+            if (d.suggestion) json.field("suggestion", d.suggestion);
+            if (active.triggered_by != 0)
+                json.field("triggered_by",
+                           getSymbolString(active.triggered_by));
+            json.object_end();
+        }
+
+        // Named-state health is its own subject: a defstate update can fail
+        // before any output consumes it. Emit one state-attributed record so
+        // that failure never disappears merely because the routing changed.
+        for (uint16_t s = 0; s < g_engine->pool.state_slot_count; s++) {
+            bool runtime_failed =
+                (g_engine->pool.state_update_failure_mask &
+                 ((uint64_t)1 << s)) != 0;
+            const sig::ActiveCompileDiagnostic& active =
+                g_engine->state_compile_diagnostics[s];
+            if (!runtime_failed && !active.active) continue;
+            sig::SymbolID state_symbol =
+                g_engine->state_sources[s].state_symbol;
+            if (state_symbol == 0) continue;
+            const sig::Diagnostic* d = active.active
+                ? &active.diagnostic : nullptr;
+            json.object_begin();
+            json.field("subject", "state");
+            json.field("state", getSymbolString(state_symbol));
+            json.field("severity", "error");
+            json.field("category", d
+                ? sig::category_to_cstr(d->category) : "arithmetic");
+            json.field("status", "held");
+            json.field("message", d && d->message
+                ? d->message
+                : "A declared state update produced NaN/Inf; holding its previous finite value");
+            if (active.active && active.triggered_by != 0)
+                json.field("triggered_by",
+                           getSymbolString(active.triggered_by));
             json.object_end();
         }
         json.array_end();
         return alloc_string(json.build());
+    }
+
+    // Stable scalar health query for actual-WASM conformance. Values match
+    // sig::OutputHealth: 0 idle, 1 running, 2 fallback, 3 error; -1 denotes
+    // an uninitialised runtime or invalid output name.
+    int useq_output_health(const char* name)
+    {
+        if (!g_engine) return -1;
+        uint16_t index = resolve_output_name(name);
+        if (index == sig::NODE_NONE) return -1;
+        return static_cast<int>(sig::output_health(g_engine->pool, index));
     }
 
     /**
@@ -1329,7 +1446,7 @@ extern "C"
                 return alloc_cstr("{\"error\": \"Failed to parse outputs JSON\"}");
             }
 
-            PreserveRuntimeFallbackMask preserve_fallback_mask(g_engine->pool);
+            PreserveRuntimeHealth preserve_runtime_health(g_engine->pool);
 
             // Resolve output indices
             std::vector<uint16_t> output_indices;
@@ -1471,7 +1588,7 @@ extern "C"
                 return -1;
             }
 
-            PreserveRuntimeFallbackMask preserve_fallback_mask(g_engine->pool);
+            PreserveRuntimeHealth preserve_runtime_health(g_engine->pool);
 
             int num_channels = (int)outputs.size();
             int required_slots = num_channels * num_samples;

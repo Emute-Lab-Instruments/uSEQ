@@ -7,7 +7,7 @@
 
 ## Source files
 
-- `uSEQ/src/signal_engine/node_pool.h` — `OutputSlot` struct (root_node, lkg_value, valid); `NodePool::outputs[MAX_OUTPUTS]`; `prev_output_values[]`.
+- `uSEQ/src/signal_engine/node_pool.h` — `OutputSlot` struct (root_node, lkg_value, active-assignment `valid`, independent `has_lkg`); `NodePool::outputs[MAX_OUTPUTS]`; `prev_output_values[]`.
 - `uSEQ/src/signal_engine/graph_builder.cpp` — `resolve_output_index()` maps `a1`..`s8` to 0..23; output assignment compilation.
 - `uSEQ/src/signal_engine/graph_builder.h` — `resolve_output_index()` declaration.
 - `uSEQ/src/signal_engine/cold_eval.cpp` — top-level output assignment dispatch; `do_useq_clear()`; output source storage for recompilation.
@@ -38,7 +38,8 @@
 - Its stored source and dependency set for reactive recompilation.
 - A **last healthy sample value** used only for scalar runtime fallback.
 
-(See `node_pool.h` `OutputSlot` — `root_node` is the active program and
+(See `node_pool.h` `OutputSlot` — `root_node`/`valid` identify the active
+assignment, `has_lkg` records whether a finite root has ever committed, and
 `lkg_value` is the scalar fallback sample; `cold_eval.h` `OutputSource` stores
 source text for recompilation.) There is no separately retained LKG program.
 
