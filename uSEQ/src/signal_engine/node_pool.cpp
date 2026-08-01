@@ -351,52 +351,50 @@ uint16_t NodePool::make_select(uint16_t cond, uint16_t true_val, uint16_t false_
 
 // ── Topological sort ────────────────────────────────────────────────────────
 
-void NodePool::rebuild_execution_order() {
-    // Mark reachable nodes from output roots
-    bool reachable[MAX_TOTAL_NODES] = {};
-
-    // DFS from each output root
+static void mark_reachable_nodes(const NodePool& pool, bool* marked) {
+    memset(marked, 0, MAX_TOTAL_NODES * sizeof(bool));
     uint16_t stack[MAX_TOTAL_NODES];
     uint16_t stack_top = 0;
 
-    // Cheap inline push helper: refuses to write past the fixed-size stack and
-    // skips nodes already known reachable, which keeps the worst-case stack
-    // depth bounded on dense DAGs (a node reachable via many paths would
-    // otherwise be pushed once per in-edge before being marked).
-    auto push = [&](uint16_t child) {
-        if (child == NODE_NONE || child >= node_count) return;
-        if (reachable[child]) return;
-        if (stack_top >= MAX_TOTAL_NODES) return; // OOB guard: stack full, drop
+    // Mark on discovery, before enqueueing. Mark-on-pop allows a shared child
+    // to occupy the pending stack once per incoming edge; a high-sharing DAG
+    // can then fill a MAX_TOTAL_NODES stack with duplicates and silently drop
+    // a genuinely undiscovered dependency. With discovery marking, every
+    // valid node is pushed at most once, so stack_top is bounded by node_count
+    // (and node_count itself is bounded by MAX_TOTAL_NODES).
+    auto discover = [&](uint16_t child) {
+        if (child == NODE_NONE || child >= pool.node_count || marked[child]) return;
+        marked[child] = true;
         stack[stack_top++] = child;
     };
 
     for (uint16_t o = 0; o < MAX_OUTPUTS; o++) {
-        if (outputs[o].root_node != NODE_NONE) {
-            push(outputs[o].root_node);
-        }
+        discover(pool.outputs[o].root_node);
     }
 
     // Include state update roots in reachability
-    for (uint16_t s = 0; s < state_slot_count; s++) {
-        if (state_update_roots[s] != NODE_NONE) {
-            push(state_update_roots[s]);
-        }
+    for (uint16_t s = 0; s < pool.state_slot_count; s++) {
+        discover(pool.state_update_roots[s]);
     }
 
     // External roots are executable synth-control roots, not merely GC pins.
-    for (uint16_t e = 0; e < external_root_count; e++) {
-        push(external_roots[e]);
+    for (uint16_t e = 0; e < pool.external_root_count; e++) {
+        discover(pool.external_roots[e]);
     }
 
     while (stack_top > 0) {
         uint16_t idx = stack[--stack_top];
-        if (idx == NODE_NONE || idx >= node_count || reachable[idx]) continue;
-        reachable[idx] = true;
-        const Node& n = nodes[idx];
-        push(n.input_a);
-        push(n.input_b);
-        push(n.input_c);
+        const Node& n = pool.nodes[idx];
+        discover(n.input_a);
+        discover(n.input_b);
+        discover(n.input_c);
     }
+}
+
+void NodePool::rebuild_execution_order() {
+    // Mark reachable nodes from every executable/publication root.
+    bool reachable[MAX_TOTAL_NODES];
+    mark_reachable_nodes(*this, reachable);
 
     // Topological sort via Kahn's algorithm on reachable nodes
     // Since node indices are allocated in dependency order (inputs before outputs),
@@ -411,45 +409,8 @@ void NodePool::rebuild_execution_order() {
 
 void NodePool::gc_unreachable_nodes() {
     // 1. Mark reachable from output roots
-    bool live[MAX_TOTAL_NODES] = {};
-    uint16_t stack[MAX_TOTAL_NODES];
-    uint16_t stack_top = 0;
-
-    // Cheap inline push helper: refuses to write past the fixed-size stack and
-    // skips nodes already marked live, bounding worst-case depth on dense DAGs.
-    auto push = [&](uint16_t child) {
-        if (child == NODE_NONE || child >= node_count) return;
-        if (live[child]) return;
-        if (stack_top >= MAX_TOTAL_NODES) return; // OOB guard: stack full, drop
-        stack[stack_top++] = child;
-    };
-
-    for (uint16_t o = 0; o < MAX_OUTPUTS; o++) {
-        if (outputs[o].root_node != NODE_NONE)
-            push(outputs[o].root_node);
-    }
-    // Include state update roots
-    for (uint16_t s = 0; s < state_slot_count; s++) {
-        if (state_update_roots[s] != NODE_NONE)
-            push(state_update_roots[s]);
-    }
-    // Include external roots (synth control channel expressions, etc.).
-    // These must survive GC and have their indices remapped exactly like
-    // output roots; otherwise the host would read stale/freed nodes when
-    // sampling the synth control table after a GC pass (VAL-COMP-011).
-    for (uint16_t e = 0; e < external_root_count; e++) {
-        if (external_roots[e] != NODE_NONE)
-            push(external_roots[e]);
-    }
-    while (stack_top > 0) {
-        uint16_t idx = stack[--stack_top];
-        if (idx >= node_count || live[idx]) continue;
-        live[idx] = true;
-        const Node& n = nodes[idx];
-        push(n.input_a);
-        push(n.input_b);
-        push(n.input_c);
-    }
+    bool live[MAX_TOTAL_NODES];
+    mark_reachable_nodes(*this, live);
 
     // 2. Build remap table and compact live nodes to front
     uint16_t remap[MAX_TOTAL_NODES];

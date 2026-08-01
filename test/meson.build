@@ -239,6 +239,21 @@ resource_reclaim_test_exe = executable(
 
 test('resource_reclaim_test', resource_reclaim_test_exe)
 
+# ===== NodePool Traversal Adversarial Tests =====
+# High-sharing DAGs must not fill the fixed DFS stack with duplicate pending
+# nodes and silently lose reachable dependencies during GC/order rebuilding.
+
+node_pool_traversal_test_exe = executable(
+  'test_node_pool_traversal',
+  sources : ['signal_engine/test_node_pool_traversal.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('node_pool_traversal_test', node_pool_traversal_test_exe)
+
 # ===== P1 Compiler Correctness Tests =====
 # Regression suite for the three v1.2.0 "silent wrong value" compiler bugs:
 # time-varying vector elements, define-over-defstate, and >32 let bindings.

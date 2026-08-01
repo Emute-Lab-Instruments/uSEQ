@@ -19,6 +19,8 @@
 - `uSEQ/src/signal_engine/diagnostics.{h,cpp}` — `Diagnostic` struct, `find_fuzzy_match()` for "did you mean" suggestions
 - `test/signal_engine/test_signal_engine.cpp` — compilation and execution tests
 - `test/signal_engine/test_signal_engine_golden.cpp` — golden semantic tests
+- `test/signal_engine/test_node_pool_traversal.cpp` — adversarial reachability,
+  execution-order, and GC tests for high-sharing DAGs
 
 1.1 Every signal expression is compiled to a **node graph** — a finite,
 acyclic, topologically-sortable structure stored as a flat node array. The hot
@@ -87,6 +89,12 @@ syntax errors; they are never truncated and interned under an aliased name.
 proved before a definition is installed, and consumers independently reject
 out-of-range table/slot references. Fixed-store overflow never yields a
 sentinel that can later be interpreted as a valid index.
+
+1.17 **Reachability is bounded by nodes, not edges.** Execution-order rebuilds
+and node GC discover each valid node at most once before enqueueing it. The
+fixed traversal stack is therefore bounded by `node_count <= MAX_TOTAL_NODES`
+even when CSE creates a high-sharing DAG with more incoming edges than nodes.
+Traversal capacity must never silently drop a reachable dependency.
 
 ## 2. State-Bearing Constructs
 
