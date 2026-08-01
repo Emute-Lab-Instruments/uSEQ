@@ -835,13 +835,15 @@ extern "C"
             ok = true;
         }
         if (!ok) {
-            // Rendering can only fail on a too-small buffer (cannot happen
-            // here) or — for the abi-wrapper path — on an unsupported
-            // consumer version. We pass the engine's own version, so the
-            // failure path here is purely defensive.
+            // Never turn a serialization failure into a valid-looking empty
+            // revision: that would direct the host to tear down a healthy
+            // graph. Missing declaration/control arrays make this envelope
+            // fail closed in every ABI-2 consumer.
             std::snprintf(buf, sizeof(buf),
-                "{\"abi\":%u,\"revision\":0,\"declarations\":[],\"controls\":[],\"connections\":[]}",
-                (unsigned)sig::SYNTH_ARTIFACT_ABI_VERSION);
+                "{\"abi\":%u,\"revision\":%lu,"
+                "\"artifact_error\":\"serialization-capacity\"}",
+                (unsigned)sig::SYNTH_ARTIFACT_ABI_VERSION,
+                (unsigned long)(g_engine ? g_engine->synth_graph.revision : 0));
         }
         return alloc_cstr(buf);
     }

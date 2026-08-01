@@ -21,6 +21,7 @@
 #include "src/signal_engine/synth_graph.h"
 #include "src/signal_engine/synth_registry.h"
 
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -122,6 +123,33 @@ TEST_CASE("synth: wasm abi wrapper marks the snapshot with abi version",
     bool rejected = synth_artifacts_render_abi_wrapper(
         h.engine, SYNTH_ARTIFACT_ABI_VERSION + 7, buf, sizeof(buf));
     REQUIRE_FALSE(rejected);
+}
+
+TEST_CASE("synth: maximum accepted shipped graph fits artifact capacity",
+          "[synth][capacity][serialization]") {
+    SynthHarness h;
+    for (uint16_t i = 0; i < SYNTH_MAX_NODES; i++) {
+        char id[32];
+        std::snprintf(id, sizeof(id), "node-%026u", (unsigned)i);
+        std::string code = "(synth \"osc/sine\" :name \"";
+        code += id;
+        code += "\" :freq 440 :amp 0.25)";
+        INFO("declaration " << i);
+        REQUIRE(h.eval_ok(code));
+    }
+    REQUIRE(h.engine.synth_graph.declaration_count() == SYNTH_MAX_NODES);
+    REQUIRE(h.engine.synth_graph.control_count() == SYNTH_MAX_NODES * 2);
+
+    char body[SYNTH_ARTIFACT_JSON_CAP];
+    REQUIRE(synth_graph_render_json(
+        h.engine.synth_graph, body, sizeof(body)));
+    REQUIRE(std::string(body).find("\"error\"") == std::string::npos);
+
+    char wrapped[SYNTH_ARTIFACT_JSON_CAP + 64];
+    REQUIRE(synth_artifacts_render_abi_wrapper(
+        h.engine, SYNTH_ARTIFACT_ABI_VERSION,
+        wrapped, sizeof(wrapped)));
+    REQUIRE(std::string(wrapped).find("artifact_error") == std::string::npos);
 }
 
 // ============================================================================

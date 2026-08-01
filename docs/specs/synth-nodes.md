@@ -433,6 +433,13 @@ In a multi-form submission, an earlier successful synth form remains
 committed if a later sibling fails, following [compilation.md](compilation.md)
 §1.13.
 
+7.5 Artifact serialization is part of publication evidence, not an implicit
+graph-clear command. Every graph accepted by the shipped registry fits the
+bounded ABI buffer. If serialization nevertheless fails, the WASM surface
+returns an explicit error envelope without declaration/control arrays and
+retains the published graph and revision; it never substitutes revision zero
+with empty arrays.
+
 ---
 
 ## 8. Open / Deferred
