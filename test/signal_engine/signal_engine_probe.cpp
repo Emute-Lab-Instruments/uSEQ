@@ -217,6 +217,10 @@ struct Session {
     // If commit is true, state slots commit and prev-output values advance
     // (a "tick"); otherwise the engine is left untouched (a "sample").
     void execute_at(double t, double* output_values, bool commit) {
+        const uint64_t saved_runtime_fallback_mask =
+            engine->pool.runtime_fallback_mask;
+        const uint64_t saved_state_update_failure_mask =
+            engine->pool.state_update_failure_mask;
         double cell_vals[MAX_CELLS];
         engine->cells.snapshot_values(cell_vals, MAX_CELLS);
         double workspace[MAX_TOTAL_NODES];
@@ -238,6 +242,14 @@ struct Session {
             commit_state(engine->pool, workspace);
             prev_tick_time = t;
             commit_outputs(engine->pool, output_values);
+        } else {
+            // Sampling is an observation, not a live execution pass. Match
+            // the generated-WASM adapter by restoring diagnostic health that
+            // execute_all_outputs computes while producing the candidate.
+            engine->pool.runtime_fallback_mask =
+                saved_runtime_fallback_mask;
+            engine->pool.state_update_failure_mask =
+                saved_state_update_failure_mask;
         }
     }
 };

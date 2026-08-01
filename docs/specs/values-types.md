@@ -35,6 +35,16 @@ compiler must not silently omit invalid elements.
 
 1.9 **`nil` is a value, not an error.** `(define x nil)` is fine. Reading an unbound symbol is a compile-time error, not a `nil`-returning operation.
 
+1.10 **Core arithmetic follows IEEE-754 binary64 before the output health
+boundary.** In particular, division by exact signed zero produces the ordinary
+IEEE infinity or NaN result and `mod` uses `fmod`, including its NaN result for
+a zero divisor. These non-finite intermediates are not rewritten to numeric
+zero by the language. In the default `lkg` failure mode, a non-finite output
+root is contained by [failure-model.md](failure-model.md) §2–3: the observable
+sample is the last finite committed value, or neutral zero if none exists, and
+health becomes `fallback` or `error`. The legacy `zero` mode is an explicit
+compatibility policy, not the arithmetic definition.
+
 ## 2. Keyword Arguments
 
 2.1 Keywords are first-class values. A keyword literal begins with `:` and

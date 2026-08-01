@@ -81,8 +81,8 @@
   spec: failure-model.md §3.1
   tags: [smoke, values-types, audit-regression, a10]
   steps:
-    # A10: runtime defines a/0 = 0, so x/x is 0 at x = 0; the old
-    # Div a a -> 1 fold was unsound.
+    # A10: x/x is non-finite at x = 0 and is therefore contained by the
+    # output health boundary; the old Div a a -> 1 fold was unsound.
     - eval: "(a1 (/ (saw 1) (saw 1)))"
     - sample: {output: a1, times: [0.0]}
       expect_values: [0.0]
@@ -90,10 +90,12 @@
     - sample: {output: a2, times: [0.5]}
       expect_values: [1.0]
 
-- name: division-by-zero-yields-zero
+- name: division-by-zero-is-contained-at-output-boundary
   spec: failure-model.md §3.1
   tags: [full, values-types]
   steps:
     - eval: "(a1 (/ 1 0))"
     - sample: {output: a1, times: [0.0]}
-      expect_values: [0.0]
+      expect_values: [0.0]              # neutral substitute; no LKG exists
+    - tick: 0.0
+    - health: {output: a1, expect: error}

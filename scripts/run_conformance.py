@@ -45,6 +45,7 @@ DEFAULT_PROBE_CANDIDATES = [
     PROJECT_ROOT / "build-probe" / "test" / "signal_engine_probe",
     PROJECT_ROOT / "build" / "test" / "signal_engine_probe",
 ]
+DEFAULT_WASM_PROBE = PROJECT_ROOT / "scripts" / "wasm_conformance_probe.mjs"
 
 VALID_STEP_OPS = {"eval", "tick", "sample", "clear", "health", "config"}
 VALID_STEP_KEYS = VALID_STEP_OPS | {
@@ -311,15 +312,19 @@ def run_case(probe_path: Path, case: dict) -> None:
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-def resolve_probe(explicit: str | None) -> Path:
+def resolve_probe(explicit: str | None, target: str) -> Path:
     if explicit:
         p = Path(explicit)
         if not p.is_file():
             raise SystemExit(f"Missing probe executable: {p}")
         return p
-    for c in DEFAULT_PROBE_CANDIDATES:
+    candidates = ([DEFAULT_WASM_PROBE] if target == "wasm"
+                  else DEFAULT_PROBE_CANDIDATES)
+    for c in candidates:
         if c.is_file():
             return c
+    if target == "wasm":
+        raise SystemExit("Could not find scripts/wasm_conformance_probe.mjs.")
     raise SystemExit("Could not find signal_engine_probe. Pass --probe or "
                      "build it (meson setup build && ninja -C build -j4).")
 
@@ -345,10 +350,6 @@ def main() -> int:
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
-    if args.target == "wasm":
-        raise SystemExit("--target wasm: not implemented yet (needs the node "
-                         "wrapper over the WASM exports; see the design doc "
-                         "Layer 0). Use --target native.")
     if args.target == "serial":
         raise SystemExit("--target serial: not implemented (release-gate "
                          "adapter, fw-safe subset).")
@@ -394,7 +395,8 @@ def main() -> int:
     if args.validate:
         return 0
 
-    probe = resolve_probe(args.probe)
+    probe = resolve_probe(args.probe, args.target)
+    print(f"Target: {args.target}; probe: {probe}")
 
     # Run.
     area_stats: dict[str, list[int]] = defaultdict(lambda: [0, 0])  # pass, fail

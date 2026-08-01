@@ -1,6 +1,8 @@
 # Conformance & Benchmark Suite Design
 
-Status: proposed (2026-07-14, post v1.2.0 audit round). Companion to `docs/specs/MAIN.md`.
+Status: native and generated-WASM fixture adapters implemented; serial adapter,
+cross-adapter diff reporting, fuzzing, and benchmark rollout remain proposed.
+Companion to `docs/specs/MAIN.md`.
 
 ## Part 1 — Implementation-independent conformance suite
 
@@ -34,9 +36,11 @@ Ops:
 {"op":"config", "opt_level":0}                             // optional: disable compile optimizations (for differential soundness testing)
 ```
 
-Each target implements this once: native binary (exists, extend), WASM via a
-~50-line node wrapper over the existing exports, hardware via a serial adapter
-speaking the wire protocol (fw-safe subset only).
+The native binary and generated-WASM Node adapter implement this contract.
+The WASM adapter loads the freshly generated `wasm/useq.js` and
+`wasm/useq.wasm` artifacts and translates their exported diagnostics into the
+same JSONL shape. Hardware still requires a serial adapter speaking the wire
+protocol (fw-safe subset only).
 
 ### Layer 1: fixture corpus
 
