@@ -8,6 +8,7 @@
 #include "../modulisp/lisp/symbol_intern.h"
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 namespace sig {
 
@@ -1218,9 +1219,18 @@ static uint16_t allocate_synth_owner_context(
 static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
                            const char* source, uint32_t source_length,
                            char* out_identity = nullptr,
-                           bool nested = false) {
+                           bool nested = false,
+                           const SynthGraph* transaction_snapshot = nullptr,
+                           uint16_t nested_depth = 0) {
     GraphBuilder::init_symbols();
     auto& sym = GraphBuilder::sym;
+
+    if (nested_depth >= MAX_SYNTH_NESTING) {
+        return make_synth_error_at(
+            ts.peek(), DiagnosticCategory::Overflow,
+            "Synth routing is nested too deeply",
+            "Use at most 16 nested synth nodes in one routing chain");
+    }
 
     // ── Parse def name (required string) ────────────────────────────────
     Token def_name_tok = ts.consume();
@@ -1504,7 +1514,18 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     // removing the old declaration or compiling replacement controls.
     // Restoring the SynthGraph first ensures graph rollback preserves its
     // old external roots during reachability GC.
-    SynthGraph synth_snapshot = engine.synth_graph;
+    SynthGraph* owned_snapshot = nullptr;
+    if (!transaction_snapshot) {
+        owned_snapshot = new (std::nothrow) SynthGraph(engine.synth_graph);
+        if (!owned_snapshot) {
+            return make_synth_error_at(
+                def_name_tok, DiagnosticCategory::Overflow,
+                "Not enough memory to stage the synth transaction",
+                "Reduce the synth graph and retry");
+        }
+        transaction_snapshot = owned_snapshot;
+    }
+    const SynthGraph& synth_snapshot = *transaction_snapshot;
     // The outer synth transaction owns the graph rollback image. A nested
     // synth is part of that same transaction; taking another image in the
     // engine's single scratch pool would overwrite the outer pre-state.
@@ -1513,6 +1534,7 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     auto rollback_synth = [&](EvalResult error) {
         engine.synth_graph = synth_snapshot;
         if (!nested) restore_graph_mutations(engine, graph_snapshot);
+        delete owned_snapshot;
         return error;
     };
 
@@ -1684,7 +1706,8 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
                 nested_ts.pos = 2; // after `(` and `synth`
                 EvalResult child = do_synth(
                     nested_ts, engine, source, source_length,
-                    from_identity, true);
+                    from_identity, true, transaction_snapshot,
+                    (uint16_t)(nested_depth + 1));
                 if (child.kind == EvalResult::Error)
                     return rollback_synth(child);
                 // Updating an existing child compacts the declaration table;
@@ -1737,12 +1760,12 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
         }
         engine.registry.begin_context(owner_context);
 
-        Token expr_tokens[MAX_TOKENS];
         Diagnostic expr_parse_errors[8];
         uint8_t expr_parse_err_count = 0;
         const char* expr_source = source + b.expr_byte_start;
+        TokenStream ets;
         uint16_t expr_count = TokenStream::tokenize(
-            expr_source, expr_len, expr_tokens, MAX_TOKENS,
+            expr_source, expr_len, ets.tokens, MAX_TOKENS,
             expr_parse_errors, &expr_parse_err_count);
         if (expr_parse_err_count > 0) {
             EvalResult r;
@@ -1756,8 +1779,6 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
             return rollback_synth(r);
         }
 
-        TokenStream ets;
-        std::memcpy(ets.tokens, expr_tokens, expr_count * sizeof(Token));
         ets.count = expr_count;
         ets.pos = 0;
 
@@ -1876,6 +1897,7 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     reclaim_unowned_resources(engine);
     engine.pool.rebuild_execution_order();
     classify_outputs(engine.pool);
+    delete owned_snapshot;
     return make_ok();
 }
 

@@ -43,7 +43,7 @@ FLAGS=(
     "-D__not_in_flash_func(x)="
     "-DWASM_BUILD"
     "-std=c++17"
-    "-O3"
+    "-Oz"
     "-flto"
 )
 
@@ -52,6 +52,7 @@ EM_FLAGS=(
     "-s EXPORTED_FUNCTIONS=[\"_useq_init\",\"_useq_eval\",\"_useq_update_time\",\"_useq_set_input_value\",\"_useq_eval_output\",\"_useq_eval_outputs_time_window\",\"_useq_eval_outputs_time_window_into\",\"_useq_tick_and_project\",\"_useq_tick_synth_controls\",\"_useq_last_error\",\"_useq_last_diagnostics\",\"_useq_active_diagnostics\",\"_useq_synth_artifacts\",\"_useq_set_live_inputs\",\"_useq_set_failure_mode\",\"_useq_get_failure_mode\",\"_useq_get_live_slots\",\"_useq_apply_state_snapshot\",\"_useq_output_classifications\",\"_useq_output_dependencies\",\"_useq_probe_set\",\"_useq_probe_sample\",\"_useq_probe_free\",\"_malloc\",\"_free\"]"
     "-s EXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\",\"UTF8ToString\"]"
     "-s ALLOW_MEMORY_GROWTH=1"
+    "-s STACK_SIZE=2097152"
     "-s MODULARIZE=1"
     "-s EXPORT_NAME='createModule'"
     "-s ENVIRONMENT='web'"
@@ -72,8 +73,8 @@ echo "emcc build successful."
 
 # Post-process with wasm-opt if available (Binaryen)
 if command -v wasm-opt &> /dev/null; then
-    echo "Running wasm-opt -O3..."
-    wasm-opt -O3 --all-features wasm/useq.wasm -o wasm/useq.wasm
+    echo "Running wasm-opt -Oz..."
+    wasm-opt -Oz --all-features wasm/useq.wasm -o wasm/useq.wasm
     echo "wasm-opt complete."
 else
     echo "wasm-opt not found — skipping post-processing (install binaryen for smaller/faster WASM)"

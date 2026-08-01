@@ -194,7 +194,10 @@ position, declaring an anonymous node patched inline:
 ```
 
 Nested forms are sugar: semantically identical to a top-level `synth` with
-a derived identity (§5.2) referenced by the parent.
+a derived identity (§5.2) referenced by the parent. A routing chain contains
+at most 16 nested synth forms; deeper input is an `Overflow` compile error.
+This explicit language limit bounds cold-path stack use on WASM and embedded
+targets.
 
 4.4 Cycles through audio inputs are an error in v1 (feedback requires an
 explicit delay def; relaxing this is deferred, §8).

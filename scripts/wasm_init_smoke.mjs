@@ -19,10 +19,24 @@ const result = mod.ccall("useq_eval", "string", ["string"], ["(a1 1)"]);
 if (result.startsWith("Error")) {
   throw new Error(`generated WASM initialization/eval failed: ${result}`);
 }
+const synthResult = mod.ccall(
+  "useq_eval",
+  "string",
+  ["string"],
+  ['(synth "osc/sine" :name "smoke" :freq 440 :amp 0.25)'],
+);
+if (synthResult.startsWith("Error")) {
+  throw new Error(`generated WASM synth eval failed: ${synthResult}`);
+}
 const artifacts = JSON.parse(
   mod.ccall("useq_synth_artifacts", "string", [], []),
 );
-if (artifacts.abi !== 2 || !Array.isArray(artifacts.connections)) {
+if (
+  artifacts.abi !== 2 ||
+  artifacts.declarations?.[0]?.identity !== "smoke" ||
+  artifacts.controls?.length !== 2 ||
+  !Array.isArray(artifacts.connections)
+) {
   throw new Error("generated WASM did not expose the synth ABI-2 envelope");
 }
 
