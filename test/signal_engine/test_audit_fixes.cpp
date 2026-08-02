@@ -312,6 +312,16 @@ TEST_CASE("Clear is fresh-session equivalent for compiler-owned storage",
     REQUIRE(h.engine.pool.state_slot_count > 0);
     REQUIRE(h.engine.output_sources[0].has_source);
 
+    h.engine.state.time_offset = 5.0;
+    h.engine.state.transport_offset = -3.0;
+    h.engine.state.is_playing = false;
+    h.engine.state.current_time = 12.0;
+    h.engine.state.current_dt = 0.5;
+    h.engine.state.current_wall_time = 20.0;
+    h.engine.state.paused_time = 12.0;
+    h.engine.state.has_pause_anchor = true;
+    h.engine.state.reset_dt_on_next_tick = false;
+
     uint32_t generation = h.engine.session_generation;
     h.eval_ok("(useq-clear)");
 
@@ -332,6 +342,15 @@ TEST_CASE("Clear is fresh-session equivalent for compiler-owned storage",
     REQUIRE(h.engine.synth_graph.declaration_count() == 0);
     REQUIRE(h.engine.pool.output_class[0] == OutputClass::Inactive);
     REQUIRE(h.engine.pool.output_input_mask[0] == 0);
+    REQUIRE(h.engine.state.time_offset == 0.0);
+    REQUIRE(h.engine.state.transport_offset == 0.0);
+    REQUIRE(h.engine.state.is_playing);
+    REQUIRE(h.engine.state.current_time == 0.0);
+    REQUIRE(h.engine.state.current_dt == 0.0);
+    REQUIRE(h.engine.state.current_wall_time == 0.0);
+    REQUIRE(h.engine.state.paused_time == 0.0);
+    REQUIRE_FALSE(h.engine.state.has_pause_anchor);
+    REQUIRE(h.engine.state.reset_dt_on_next_tick);
 
     // The same names and resource IDs can be used immediately as fresh
     // definitions; no stale callable source or table reference survives.

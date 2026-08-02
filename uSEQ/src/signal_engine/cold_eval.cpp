@@ -1096,6 +1096,10 @@ static EvalResult do_set_time_sig(TokenStream& ts, SignalEngine& engine) {
 }
 
 static EvalResult do_useq_clear(SignalEngine& engine) {
+    // A session clear is a semantic reset, not only a compiler-storage reset.
+    // Monotonic session/synth notification tokens remain owned by
+    // reset_session_storage().
+    engine.state = EngineState{};
     engine.reset_session_storage();
     return make_ok();
 }
