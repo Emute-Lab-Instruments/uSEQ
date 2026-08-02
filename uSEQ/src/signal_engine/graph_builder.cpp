@@ -191,11 +191,19 @@ double GraphBuilder::const_value(uint16_t node_idx) const {
 }
 
 void GraphBuilder::add_dependency(SymbolID s) {
+    if (s >= MAX_CELLS) {
+        report_error_at_cat(
+            DiagnosticCategory::Overflow, 0, 0,
+            "Cell dependency exceeds the retained definition range",
+            "Remove unused definitions or reuse an existing name");
+        return;
+    }
+    const CellIndex cell_index = static_cast<CellIndex>(s);
     for (uint8_t i = 0; i < dep_count; i++) {
-        if (dep_cells[i] == s) return;
+        if (dep_cells[i] == cell_index) return;
     }
     if (dep_count < MAX_OUTPUT_DEPS) {
-        dep_cells[dep_count++] = s;
+        dep_cells[dep_count++] = cell_index;
         return;
     }
     report_error_at_cat(
@@ -3495,7 +3503,7 @@ GraphBuildResult build_output_graph(
 
     // Copy dependency info
     memcpy(result.dep_cells, builder.dep_cells,
-           builder.dep_count * sizeof(SymbolID));
+           builder.dep_count * sizeof(CellIndex));
     result.dep_count = builder.dep_count;
 
     return result;

@@ -110,8 +110,8 @@ struct StateUpdateSource {
     bool has_source = false;
     // Named defstate attribution for runtime/reactive diagnostics. Anonymous
     // output-owned state leaves this as INVALID_ID (0).
-    SymbolID state_symbol = 0;
-    SymbolID dep_cells[MAX_OUTPUT_DEPS] = {};
+    CellIndex state_symbol = 0;
+    CellIndex dep_cells[MAX_OUTPUT_DEPS] = {};
     uint8_t dep_count = 0;
 };
 

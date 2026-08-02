@@ -14,13 +14,13 @@ profile states only the behavior it implements and measures.
 
 ### 1. Target runtime headroom is incompletely measured *(2026-08-02)*
 
-**What.** The production `musicthing` image uses 151,068 bytes of static RAM
-and leaves a 110,880-byte linked main-RAM heap span; `musicthing-observe`
-uses 152,332 bytes and leaves 109,616 bytes. The native constrained-profile
-runner exercises declared combined and near-boundary workloads, and the Wokwi
-adapter now enforces the target telemetry contract. No hosted-simulator or
-physical-device run has yet recorded a heap low-water mark or stack watermark
-under those workloads.
+**What.** The pinned-toolchain VPS baseline at revision `4dfd43e` records
+150,236 bytes of PlatformIO static RAM and a 111,712-byte linked main-RAM heap
+span for `musicthing`; `musicthing-observe` records 151,500 and 110,448 bytes,
+respectively. The native constrained-profile runner exercises declared
+combined and near-boundary workloads, and the Wokwi adapter enforces the
+target telemetry contract. No hosted-simulator or physical-device run has yet
+recorded a heap low-water mark or stack watermark under those workloads.
 
 **Why it matters.** Static fit alone does not establish safe combined runtime
 headroom under deep compilation, protocol activity, and firmware execution.

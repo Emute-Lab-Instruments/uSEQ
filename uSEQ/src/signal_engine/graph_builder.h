@@ -69,7 +69,7 @@ struct GraphBuildResult {
     bool has_error = false;
 
     // Cell dependencies discovered during graph compilation
-    SymbolID dep_cells[MAX_OUTPUT_DEPS] = {};
+    CellIndex dep_cells[MAX_OUTPUT_DEPS] = {};
     uint8_t dep_count = 0;
 };
 
@@ -90,7 +90,7 @@ struct GraphBuilder {
     bool has_error = false;
 
     // Dependency tracking (populated during build)
-    SymbolID dep_cells[MAX_OUTPUT_DEPS] = {};
+    CellIndex dep_cells[MAX_OUTPUT_DEPS] = {};
     uint8_t dep_count = 0;
 
     // Recursion guard for inline stack

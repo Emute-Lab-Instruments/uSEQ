@@ -20,19 +20,20 @@ void OutputDeps::clear() {
     slot_count = 0;
 }
 
-void OutputDeps::add(SymbolID sym) {
+void OutputDeps::add(CellIndex cell_index) {
     // Deduplicate
     for (uint8_t i = 0; i < count; i++) {
-        if (cells[i] == sym) return;
+        if (cells[i] == cell_index) return;
     }
     if (count < MAX_OUTPUT_DEPS) {
-        cells[count++] = sym;
+        cells[count++] = cell_index;
     }
 }
 
 bool OutputDeps::contains(SymbolID sym) const {
+    if (sym >= MAX_CELLS) return false;
     for (uint8_t i = 0; i < count; i++) {
-        if (cells[i] == sym) return true;
+        if (cells[i] == static_cast<CellIndex>(sym)) return true;
     }
     return false;
 }

@@ -61,7 +61,7 @@ struct SynthControlChannel {
     uint16_t owner_context              = 0;
     uint32_t source_offset              = 0;
     uint32_t source_length              = 0;
-    SymbolID dep_cells[MAX_OUTPUT_DEPS] = {};
+    CellIndex dep_cells[MAX_OUTPUT_DEPS] = {};
     uint8_t dep_count                   = 0;
 
     // Root-level non-finite containment for the audio control producer.

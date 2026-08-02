@@ -92,7 +92,7 @@ struct OutputSlot {
 // Populated during graph construction. Used for dirty recompilation.
 
 struct OutputDeps {
-    SymbolID cells[MAX_OUTPUT_DEPS] = {};
+    CellIndex cells[MAX_OUTPUT_DEPS] = {};
     uint8_t count = 0;
 
     // Live-edit slot indices referenced by this output's graph.
@@ -105,7 +105,7 @@ struct OutputDeps {
     uint16_t slot_count = 0;
 
     void clear();
-    void add(SymbolID sym);
+    void add(CellIndex cell_index);
     bool contains(SymbolID sym) const;
 
     void add_slot(uint16_t slot_index);

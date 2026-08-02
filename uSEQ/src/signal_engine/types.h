@@ -70,6 +70,14 @@ constexpr size_t MAX_SYNTH_CONTROL_ROOTS = FIRMWARE_MAX_SYNTH_CONTROLS;
 constexpr size_t MAX_SYNTH_CONTROL_ROOTS = 512;
 #endif
 
+// Persistent dependency records refer only to entries in CellStore, not to
+// the unbounded symbol-interner namespace.  A compact index therefore covers
+// every valid dependency in every build profile without narrowing the public
+// definition capacity.
+using CellIndex = uint16_t;
+static_assert(MAX_CELLS <= static_cast<size_t>(UINT16_MAX) + 1,
+              "CellIndex must represent every retained cell");
+
 constexpr uint16_t NODE_NONE        = 0xFFFF;
 constexpr uint8_t  FLAG_TIME_INVARIANT = 0x01;
 
