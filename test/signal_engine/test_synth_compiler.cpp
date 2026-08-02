@@ -172,9 +172,10 @@ TEST_CASE("synth: amplitude form compiles with both controls",
     // Both :freq and :amp must be bound control channels.
     bool has_freq = false, has_amp = false;
     for (uint16_t i = 0; i < graph.control_count(); i++) {
-        const auto& ch = graph.controls[i];
-        if (ch.param_name == std::string("freq")) has_freq = true;
-        if (ch.param_name == std::string("amp"))  has_amp = true;
+        const NodeDefParam* parameter = graph.parameter_for_control(i);
+        REQUIRE(parameter != nullptr);
+        if (parameter->name == std::string("freq")) has_freq = true;
+        if (parameter->name == std::string("amp"))  has_amp = true;
     }
     REQUIRE(has_freq);
     REQUIRE(has_amp);
@@ -196,7 +197,9 @@ TEST_CASE("synth: omitted amplitude uses registry default 0.2",
     REQUIRE(graph.control_count() == 1);
 
     // The single channel must be freq.
-    REQUIRE(graph.controls[0].param_name == std::string("freq"));
+    const NodeDefParam* parameter = graph.parameter_for_control(0);
+    REQUIRE(parameter != nullptr);
+    REQUIRE(parameter->name == std::string("freq"));
 
     // The NodeDef registry must declare freq default 440 and amp default 0.2.
     const NodeDefDescriptor* sine = synth_registry_find("osc/sine", 2);
@@ -386,8 +389,10 @@ TEST_CASE("synth: multi-form eval retains earlier committed forms",
 
     REQUIRE(h.engine.synth_graph.revision > rev_after_first);
     REQUIRE(h.engine.synth_graph.declaration_count() == decl_count);
-    REQUIRE(std::string(h.engine.synth_graph.controls[0].param_name) ==
-            "freq");
+    const NodeDefParam* parameter =
+        h.engine.synth_graph.parameter_for_control(0);
+    REQUIRE(parameter != nullptr);
+    REQUIRE(std::string(parameter->name) == "freq");
     uint16_t freq_root = h.engine.synth_graph.controls[0].root_node;
     REQUIRE(freq_root != NODE_NONE);
     REQUIRE(h.engine.pool.nodes[freq_root].op == NodeOp::Const);
@@ -716,8 +721,11 @@ TEST_CASE("synth: control ownership is stable across parameter reordering",
     for (uint16_t i = 0; i < h.engine.synth_graph.control_count(); i++) {
         const SynthControlChannel& control =
             h.engine.synth_graph.controls[i];
-        if (std::string(control.param_name) == "freq") freq = &control;
-        if (std::string(control.param_name) == "amp") amp = &control;
+        const NodeDefParam* parameter =
+            h.engine.synth_graph.parameter_for_control(i);
+        REQUIRE(parameter != nullptr);
+        if (std::string(parameter->name) == "freq") freq = &control;
+        if (std::string(parameter->name) == "amp") amp = &control;
     }
     REQUIRE(freq != nullptr);
     REQUIRE(amp != nullptr);

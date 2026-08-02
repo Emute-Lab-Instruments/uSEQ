@@ -317,8 +317,14 @@ TEST_CASE("Synth-control reactive slots retain LKG and follow artifact lifecycle
         h.engine.synth_graph.declaration_for_control(0);
     REQUIRE(first_owner != nullptr);
     REQUIRE(std::string(first_owner->identity) == "diag-a");
-    REQUIRE(std::string(h.engine.synth_graph.controls[0].param_name) == "freq");
-    REQUIRE(std::string(h.engine.synth_graph.controls[1].param_name) == "amp");
+    const NodeDefParam* first_parameter =
+        h.engine.synth_graph.parameter_for_control(0);
+    const NodeDefParam* second_parameter =
+        h.engine.synth_graph.parameter_for_control(1);
+    REQUIRE(first_parameter != nullptr);
+    REQUIRE(second_parameter != nullptr);
+    REQUIRE(std::string(first_parameter->name) == "freq");
+    REQUIRE(std::string(second_parameter->name) == "amp");
     const SynthDeclaration* third_owner =
         h.engine.synth_graph.declaration_for_control(2);
     REQUIRE(third_owner != nullptr);

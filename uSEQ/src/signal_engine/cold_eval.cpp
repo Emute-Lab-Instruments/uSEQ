@@ -1372,7 +1372,8 @@ static const SynthControlChannel* find_synth_control(
         declaration->first_control_index + declaration->control_count);
     for (uint16_t i = declaration->first_control_index; i < end; i++) {
         const SynthControlChannel& control = graph.controls[i];
-        if (std::strcmp(control.param_name, param_name) == 0)
+        const NodeDefParam* parameter = graph.parameter_for_control(i);
+        if (parameter && std::strcmp(parameter->name, param_name) == 0)
             return &control;
     }
     return nullptr;
@@ -2017,7 +2018,15 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
                 "Synth control table is full",
                 "Use (useq-clear) to free earlier synths"));
         }
-        std::strncpy(ctl->param_name, b.desc->name, MAX_NODEDEF_NAME - 1);
+        const ptrdiff_t parameter_index = b.desc - def->params;
+        if (parameter_index < 0 ||
+            parameter_index >= static_cast<ptrdiff_t>(def->param_count) ||
+            parameter_index >= static_cast<ptrdiff_t>(MAX_NODEDEF_PARAMS)) {
+            return rollback_synth(make_synth_error_at(
+                b.kw_tok, DiagnosticCategory::Runtime,
+                "NodeDef parameter metadata is inconsistent", nullptr));
+        }
+        ctl->param_index = static_cast<uint8_t>(parameter_index);
         ctl->rate_class = b.desc->rate_class;
         ctl->smoothing_class = b.desc->smoothing_class;
         ctl->root_node = gbr.root_node;

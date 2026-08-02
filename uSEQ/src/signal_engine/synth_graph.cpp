@@ -89,12 +89,13 @@ bool synth_graph_render_json(const SynthGraph& graph, char* out, uint32_t cap) {
         const SynthControlChannel& c = graph.controls[i];
         const SynthDeclaration* declaration =
             graph.declaration_for_control(i);
-        if (!declaration) return false;
+        const NodeDefParam* parameter = graph.parameter_for_control(i);
+        if (!declaration || !parameter) return false;
         if (i > 0 && !emit(",")) return false;
         if (!emit("{\"identity\":")) return false;
         if (!emit_quoted(declaration->identity)) return false;
         if (!emit(",\"param\":")) return false;
-        if (!emit_quoted(c.param_name)) return false;
+        if (!emit_quoted(parameter->name)) return false;
         if (!emit(",\"rate\":")) return false;
         if (!emit(c.rate_class == SynthRateClass::Block ? "\"block\"" : "\"fast\"")) return false;
         if (!emit(",\"smoothing\":")) return false;

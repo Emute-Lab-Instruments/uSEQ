@@ -1005,13 +1005,15 @@ extern "C"
                 g_engine->synth_graph.controls[i];
             const sig::SynthDeclaration* declaration =
                 g_engine->synth_graph.declaration_for_control(i);
+            const sig::NodeDefParam* parameter =
+                g_engine->synth_graph.parameter_for_control(i);
             const auto& active = control.compile_diagnostic;
             if (!active.active()) continue;
-            if (!declaration) {
+            if (!declaration || !parameter) {
                 json.object_begin();
                 json.field("subject", "synth-control");
                 json.field("identity", "");
-                json.field("control", control.param_name);
+                json.field("control", "");
                 json.field("severity", "error");
                 json.field("category", "runtime");
                 json.field("status", "error");
@@ -1023,7 +1025,7 @@ extern "C"
             json.object_begin();
             json.field("subject", "synth-control");
             json.field("identity", declaration->identity);
-            json.field("control", control.param_name);
+            json.field("control", parameter->name);
             json.field("severity", sig::severity_to_cstr(active.severity));
             json.field("category", sig::category_to_cstr(active.category));
             json.field("status", "retained");

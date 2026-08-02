@@ -46,10 +46,11 @@ struct SynthDeclaration {
 // the param expression's compiled root_node out of the live NodePool each
 // control block. The root_node value is internal and must NOT appear in
 // the serialised public artefact (VAL-COMP-012). Ownership is represented by
-// the declaration's dense first_control_index/control_count range, avoiding
-// one repeated identity string per row.
+// the declaration's dense first_control_index/control_count range. Parameter
+// names are resolved from the immutable NodeDef descriptor by param_index.
+// These two indices avoid repeated identity and parameter strings per row.
 struct SynthControlChannel {
-    char    param_name[MAX_NODEDEF_NAME] = {};   // e.g. "freq", "amp"
+    uint8_t param_index                  = 0;
     SynthRateClass rate_class           = SynthRateClass::Block;
     SynthSmoothingClass smoothing_class = SynthSmoothingClass::Step;
 
@@ -104,6 +105,9 @@ struct SynthControlChannel {
     } compile_diagnostic;
 #endif
 };
+
+static_assert(MAX_NODEDEF_PARAMS <= UINT8_MAX,
+              "synth parameter indices must cover every NodeDef parameter");
 
 #if !defined(ARDUINO) && !defined(USEQ_FIRMWARE_PROFILE)
 static_assert(MAX_CELLS <= UINT16_MAX,
@@ -168,6 +172,21 @@ struct SynthGraph {
             }
         }
         return nullptr;
+    }
+
+    const NodeDefParam* parameter_for_control(uint16_t control_index) const {
+        const SynthDeclaration* declaration =
+            declaration_for_control(control_index);
+        if (!declaration) return nullptr;
+        const NodeDefDescriptor* descriptor = synth_registry_find(
+            declaration->def_name, declaration->def_version);
+        if (!descriptor) return nullptr;
+        const uint8_t parameter_index = controls[control_index].param_index;
+        if (parameter_index >= descriptor->param_count ||
+            parameter_index >= MAX_NODEDEF_PARAMS) {
+            return nullptr;
+        }
+        return &descriptor->params[parameter_index];
     }
 
     // Reset to empty. Used by (useq-clear) and at startup. Does NOT advance
