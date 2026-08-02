@@ -26,13 +26,15 @@ corpus, and retain a distinct result grade. Tracked in ergo `2f440020`.
 
 ### 2. Target runtime headroom is incompletely measured *(2026-08-02)*
 
-**What.** The current target build uses 92.3% of static RAM. Flash use is
-17.0%, but no target stack watermark has been measured.
+**What.** The current instrumented `musicthing` target build uses 58.1% of
+PlatformIO-counted static RAM and leaves a 109,664-byte linked main-RAM heap
+span. Flash use is 17.2%, but no target heap low-water mark or stack watermark
+has been measured under representative combined workloads.
 
 **Why it matters.** Static fit alone does not establish safe combined runtime
 headroom under deep compilation, protocol activity, and firmware execution.
 
-**Rough cost.** M: add a target stack-watermark observation and representative
+**Rough cost.** M: add heap and stack high-water observations and representative
 combined workloads before claiming runtime headroom.
 
 ### 3. Clause-level evidence remains incomplete *(2026-08-02)*

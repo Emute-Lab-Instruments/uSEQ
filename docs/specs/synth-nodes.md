@@ -385,6 +385,15 @@ inert; a single capability diagnostic (severity `info`) reports that audio
 output is unavailable in the current mode. (This spec owns that
 diagnostic's severity; the app spec cites it.)
 
+6.3 **Profile-specific retained capacity.** The RP2040 profile retains all 64
+declarations supported by the shipped NodeDef registry. Because every shipped
+descriptor has at most two control parameters, it reserves 128 persistent
+control rows. Native and generated-WASM profiles retain the wider 512-row
+descriptor ceiling. A registry contract test rejects any firmware build whose
+shipped descriptors can exceed the RP2040 row bound; reaching the declared
+bound remains a transactional `Overflow` diagnostic rather than partial
+publication.
+
 ---
 
 ## 7. Compilation Surface

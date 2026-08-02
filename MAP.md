@@ -22,7 +22,8 @@ compiler/control runtime. The canonical language entry point is
 - `test/conformance/` — data-driven language corpus shared by native and
   generated-WASM adapters.
 - `scripts/` — native/WASM builds, conformance adapters, manifest generation,
-  NodeDef inspection, benchmarks, and PlatformIO helpers.
+  NodeDef inspection, benchmarks, PlatformIO helpers, and exact RP2040 ELF
+  memory accounting (`rp2040_memory_report.py`, `rp2040_budget.json`).
 - `docs/specs/` — canonical language, runtime, firmware, diagnostics, state,
   synth, and protocol specifications; `docs/SEMANTICS.md` is a compatibility
   pointer only.
@@ -36,6 +37,9 @@ compiler/control runtime. The canonical language entry point is
 
 - Fixed capacities reject before publication; a rejected form must not alter
   live behavior or consume bounded resources.
+- The RP2040 profile retains 64 synth declarations and 128 control rows, which
+  covers every parameter combination in the shipped registry; host profiles
+  retain the 512-row descriptor ceiling.
 - Native and generated-WASM conformance use the same fixtures. A target build,
   browser execution, and physical-device observation are separate evidence
   profiles.

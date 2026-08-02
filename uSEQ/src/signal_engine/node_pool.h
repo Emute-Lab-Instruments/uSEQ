@@ -215,7 +215,8 @@ struct NodePool {
     // expressions (VAL-COMP-011). External clients register root indices
     // here; the GC walks and remaps them. The pool itself does not attach
     // semantics to these slots.
-    static constexpr uint16_t MAX_EXTERNAL_ROOTS = 512;
+    static constexpr uint16_t MAX_EXTERNAL_ROOTS =
+        static_cast<uint16_t>(MAX_SYNTH_CONTROL_ROOTS);
     uint16_t external_roots[MAX_EXTERNAL_ROOTS] = {};
     uint16_t external_root_count = 0;
 

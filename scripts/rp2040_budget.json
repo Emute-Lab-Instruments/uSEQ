@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "target": "rp2040-musicthing",
+  "min_linker_heap_bytes": 98304,
+  "max_flash_image_bytes": 1048576
+}

@@ -45,6 +45,9 @@ for the dated mission-level gaps.
   record.
 - `pio run -e musicthing` establishes target compile, link, and static size;
   it is not a physical-execution result.
+- `python3 scripts/rp2040_memory_report.py` reads the exact linked ELF and
+  enforces the 96KiB main-heap and 1MiB flash-image headroom gates. Runtime
+  heap and stack watermarks remain separate target observations.
 
 ## Building the Firmware
 
@@ -56,10 +59,12 @@ Build the firmware in Arduino IDE, using the [Earle Philhower Pico core](https:/
 | ------------- | ------------- |
 | Board  | Generic RP2040  |
 | Boot Stage 2  | W25Q080 QSPI /2  |
-| Flash Size | 8MB (Sketch 1MB, FS: 7MB) |
+| Flash Size | 16MB (Sketch 2MB, FS: 14MB) for `musicthing` |
 | CPU Speed | 250MHz (Overclock) |
 | Optimize | Optimize Even More (-O3) |
 
 Overclock the Pico at 250Mhz and set the optimisation level to -O3.
+Other program-card capacities require a matching PlatformIO partition profile;
+the default `musicthing` environment is the 16MB card profile.
 
 We welcome pull requests.

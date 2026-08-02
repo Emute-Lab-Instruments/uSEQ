@@ -121,8 +121,13 @@ struct SynthConnection {
 // audio input, so one edge per declaration covers the shipped registry.
 constexpr uint16_t MAX_SYNTH_DECLARATIONS = SYNTH_MAX_NODES;
 constexpr uint16_t MAX_SYNTH_CONTROLS =
-    MAX_SYNTH_DECLARATIONS * MAX_NODEDEF_PARAMS;
+    static_cast<uint16_t>(MAX_SYNTH_CONTROL_ROOTS);
 constexpr uint16_t MAX_SYNTH_CONNECTIONS = MAX_SYNTH_DECLARATIONS;
+#ifndef ARDUINO
+static_assert(MAX_SYNTH_CONTROLS ==
+                  MAX_SYNTH_DECLARATIONS * MAX_NODEDEF_PARAMS,
+              "host synth storage must cover the descriptor ceiling");
+#endif
 // Bounds recursive audio-routing compilation and its cold-path stack use.
 constexpr uint16_t MAX_SYNTH_NESTING = 16;
 
