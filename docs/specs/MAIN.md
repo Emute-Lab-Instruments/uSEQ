@@ -59,7 +59,10 @@ Tests:
 
 ## 1. Frame
 
-1.1 ModuLisp is the live-coding language for the uSEQ eurorack module. It is a Lisp dialect that runs both on firmware (RP2040/RP2350) and in the browser via WASM, with identical observable semantics.
+1.1 ModuLisp is the live-coding language for the uSEQ eurorack module. The
+compiler/control core runs on firmware (RP2040/RP2350) and in the browser via
+WASM. Clauses shared by both profiles have the same language meaning; adapter,
+resource, clock, audio, and evidence boundaries are stated per profile.
 
 1.2 The product use case is a performer typing expressions and pressing an eval key while the module produces voltages. The language is shaped by that constraint: outputs must keep producing values across edits, errors, and recompilation. Feedback latency must be low; nothing the user types should ever silently lose music.
 
@@ -67,7 +70,11 @@ Tests:
 
 1.4 ModuLisp has **two mutually-exclusive evaluation dialects**: **Reactive** (default, FRP) and **Imperative** (traditional Lisp REPL). A session runs in exactly one. Unless qualified, this spec describes Reactive semantics. See [dialects.md](dialects.md).
 
-1.5 Implementations target two interchangeable shapes — firmware on the RP2040/RP2350 and an in-browser WASM build of the same interpreter. Both are first-class. The user's code, edits, and evaluations behave the same against either, modulo per-target performance budgets and documented numerical tolerance.
+1.5 Firmware and generated WASM are both first-class profiles of the same
+interpreter. Interchangeability is claimed only for the common capability
+surface and executed conformance cases, modulo documented numerical
+tolerances. Generated-runtime wall-frontier rules, browser audio, firmware
+resources, and physical-device observations are separate profile contracts.
 
 ---
 
@@ -161,7 +168,12 @@ conformance disposition fails the test suite.
 
 5.7 **User-visible integer types.** Currently all numbers are doubles. The compiler may infer integer-ness internally for indices/counters. Whether to surface integer literals (`1i`?), an `(int x)` coercion, or stay doubles-only is open. Triggers for revisiting: concrete pattern bugs caused by FP rounding at vector indexing boundaries; sustained perf concerns on RP2040 soft-float (mostly absorbed by the move to RP2350 hard-float).
 
-5.8 **State-preserving signal abstractions.** The semantic design lives in [state.md](state.md). Stable identity for anonymous stateful expressions lives in [state-identity.md](state-identity.md). Implementation is pending; until it lands, oscillators-under-modulation and DSP-style state must still be expressed via `prev`-on-output gymnastics. The cross-cutting open questions (catalogue growth, `rate-as` implementation scope, state reset mechanics, etc.) live in [state.md §13](state.md).
+5.8 **State-preserving signal abstractions.** The implemented state-resource
+model lives in [state.md](state.md), with stable identity, single-writer
+ownership, retention, reclamation, and compaction rules in
+[state-identity.md](state-identity.md). Remaining design questions stay in the
+deferred sections of those specifications rather than changing the published
+ownership model implicitly.
 
 5.9 **`prev` window across batches.** The `prev` contract is "previous sample within the current batch / previous tick on firmware". The exact semantics at batch boundaries (does `prev` at the first sample of a new batch read the last sample of the previous batch, or the neutral default?) needs an explicit answer; current engines tend to carry forward, but this should be normalised. See [prev.md](prev.md).
 
@@ -189,7 +201,9 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.7 [functions.md](functions.md) — `defn`/`fn`/`lambda`, inlining in signal context, recursion rules, variadic arithmetic.
 
-6.8 [outputs.md](outputs.md) — output sinks (`a1`..`a8`, `d1`..`d8`, `s1`..`s8`), `q0` scheduling, active program / LKG / last sample slots.
+6.8 [outputs.md](outputs.md) — output sinks (`a1`..`a8`, `d1`..`d8`,
+`s1`..`s8`), explicit unassignment, active assignment, previous sample,
+last-good scalar, health, and owner-scoped reclamation.
 
 6.9 [prev.md](prev.md) — cross-output reads, the "bare name = prev" sugar, batch semantics, feedback loops.
 

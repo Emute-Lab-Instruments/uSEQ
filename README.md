@@ -30,6 +30,21 @@ More info from [https://www.emutelabinstruments.co.uk/useq/](https://www.emutela
 
 The firmware/language specs live in [docs/specs/MAIN.md](docs/specs/MAIN.md).
 Protocol details live in [docs/specs/wire-protocol.md](docs/specs/wire-protocol.md).
+Read [MAP.md](MAP.md) for the repository index and [ALIGNMENT.md](ALIGNMENT.md)
+for the dated mission-level gaps.
+
+## Verification
+
+- `meson setup build && meson compile -C build && meson test -C build` runs
+  the native suites.
+- `python3 scripts/run_conformance.py --probe build/test/signal_engine_probe --target native`
+  runs the shared language corpus against the native probe.
+- `scripts/build_wasm.sh` builds and checks the generated interpreter;
+  `python3 scripts/run_conformance.py --target wasm` runs the same corpus
+  against it; `python3 scripts/wasm_manifest.py verify` verifies its compiler
+  record.
+- `pio run -e musicthing` establishes target compile, link, and static size;
+  it is not a physical-execution result.
 
 ## Building the Firmware
 
