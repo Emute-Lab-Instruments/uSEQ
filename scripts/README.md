@@ -2,6 +2,10 @@
 
 This directory contains build and utility scripts for the uSEQ project.
 
+Run the acceptance commands below inside `nix-shell`, or use
+`nix-shell --run '<command>'` on an unattended host. The tracked environment
+includes PyYAML as well as the native, WASM, and PlatformIO toolchains.
+
 ## Scripts
 
 ### `build_wasm.sh`

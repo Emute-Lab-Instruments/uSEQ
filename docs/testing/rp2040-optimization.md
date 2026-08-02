@@ -29,21 +29,27 @@ rather than replaces the earlier ones.
 The full local grades run with:
 
 ```bash
-python3 scripts/run_rp2040_profile.py
+nix-shell --run 'python3 scripts/run_rp2040_profile.py'
 ```
 
 The hosted simulator grade runs with:
 
 ```bash
-python3 scripts/run_wokwi_rp2040.py
+nix-shell --run 'python3 scripts/run_wokwi_rp2040.py'
 ```
 
 For an optimization candidate, run all non-physical grades through the
 non-overwriting composition command:
 
 ```bash
-python3 scripts/run_rp2040_goal_gate.py
+nix-shell --run 'python3 scripts/run_rp2040_goal_gate.py'
 ```
+
+The tracked Nix shell includes PyYAML for the shared conformance runner and
+the tool classes used by the composed gate: native C++, Meson, PlatformIO,
+Emscripten, Binaryen, WABT, and Node.js. Candidate comparisons must use one
+unchanged Nixpkgs revision or channel state; entering a newly updated channel
+is a toolchain change and requires a new baseline.
 
 ## Current budgets
 

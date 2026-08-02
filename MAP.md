@@ -42,6 +42,8 @@ compiler/control runtime. The canonical language entry point is
   `test/meson.build` — native build and suite registration. `musicthing` is
   the production profile; `musicthing-observe` adds structured telemetry for
   simulator and physical-device measurement.
+- `shell.nix` — declared native/conformance/WASM/PlatformIO tool environment
+  for local and unattended RP2040 candidate gates.
 
 ## Conventions and local boundaries
 

@@ -35,6 +35,10 @@ for the dated mission-level gaps.
 
 ## Verification
 
+- `nix-shell` enters the declared compiler, conformance, WASM, PlatformIO,
+  and RP2040 goal-gate environment. On unattended hosts, use
+  `nix-shell --run '<command>'` so PyYAML and the target tools come from the
+  same environment.
 - `meson setup build && meson compile -C build && meson test -C build` runs
   the native suites.
 - `python3 scripts/run_conformance.py --probe build/test/signal_engine_probe --target native`
