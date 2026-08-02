@@ -21,9 +21,13 @@ compiler/control runtime. The canonical language entry point is
   contract tests; these are not physical-device observations.
 - `test/conformance/` — data-driven language corpus shared by native and
   generated-WASM adapters.
+- `bench/firmware-corpus/` — declared moderate, combined-high, and focused
+  near-boundary workloads for the native RP2040 capacity profile;
+  `manifest.json` makes the intended utilization bands executable.
 - `scripts/` — native/WASM builds, conformance adapters, manifest generation,
-  NodeDef inspection, benchmarks, PlatformIO helpers, and exact RP2040 ELF
-  memory accounting (`rp2040_memory_report.py`, `rp2040_budget.json`).
+  NodeDef inspection, benchmarks, PlatformIO helpers, and RP2040 acceptance
+  orchestration (`run_rp2040_profile.py`, `rp2040_memory_report.py`,
+  `rp2040_budget.json`).
 - `docs/specs/` — canonical language, runtime, firmware, diagnostics, state,
   synth, and protocol specifications; `docs/SEMANTICS.md` is a compatibility
   pointer only.
@@ -43,8 +47,8 @@ compiler/control runtime. The canonical language entry point is
   covers every parameter combination in the shipped registry; host profiles
   retain the 512-row descriptor ceiling.
 - Native and generated-WASM conformance use the same fixtures. A target build,
-  browser execution, and physical-device observation are separate evidence
-  profiles.
+  firmware-capacity native process, simulator run, browser execution, and
+  physical-device observation are separate evidence profiles.
 - `scripts/build_wasm.sh` generates the interpreter and its compiler-owned
   capability record. NodeDef, application-served, and firmware-build fields
   belong to separate records.

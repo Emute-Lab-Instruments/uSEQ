@@ -8,8 +8,7 @@ DEFS=(-DUSE_OWN_ARDUINO_STR -DUSE_STD_IO -DNO_ETL
       '-D__not_in_flash(section)=' '-D__not_in_flash_func(x)='
       -DENABLE_SIGNAL_ENGINE)
 
-SRCS=(bench/bench_probe.cpp
-      uSEQ/src/signal_engine/diagnostics.cpp
+ENGINE_SRCS=(uSEQ/src/signal_engine/diagnostics.cpp
       uSEQ/src/signal_engine/token.cpp
       uSEQ/src/signal_engine/cell_store.cpp
       uSEQ/src/signal_engine/node_pool.cpp
@@ -24,6 +23,48 @@ SRCS=(bench/bench_probe.cpp
       uSEQ/src/utils/itoa.cpp
       uSEQ/src/utils/log.cpp)
 
-g++ -O2 -std=c++17 -IuSEQ -IuSEQ/src -IuSEQ/src/devtools \
-    "${DEFS[@]}" "${SRCS[@]}" -lm -o bench/bench_probe
-echo "built bench/bench_probe"
+build_probe() {
+    local output="$1"
+    local main_source="$2"
+    shift 2
+    g++ -O2 -std=c++17 -IuSEQ -IuSEQ/src -IuSEQ/src/devtools \
+        "${DEFS[@]}" "$@" "$main_source" "${ENGINE_SRCS[@]}" -lm -o "$output"
+    echo "built $output"
+}
+
+TARGET="${1:-bench}"
+case "$TARGET" in
+    desktop)
+        build_probe bench/bench_probe bench/bench_probe.cpp
+        ;;
+    firmware)
+        build_probe bench/bench_probe_firmware bench/bench_probe.cpp \
+            -DUSEQ_FIRMWARE_PROFILE=1
+        ;;
+    conformance)
+        build_probe bench/signal_engine_probe_firmware \
+            test/signal_engine/signal_engine_probe.cpp \
+            -DUSEQ_FIRMWARE_PROFILE=1
+        ;;
+    endurance)
+        build_probe bench/firmware_profile_endurance \
+            bench/firmware_profile_endurance.cpp -DUSEQ_FIRMWARE_PROFILE=1
+        build_probe bench/firmware_profile_endurance_asan \
+            bench/firmware_profile_endurance.cpp -DUSEQ_FIRMWARE_PROFILE=1 \
+            -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer
+        ;;
+    bench)
+        build_probe bench/bench_probe bench/bench_probe.cpp
+        build_probe bench/bench_probe_firmware bench/bench_probe.cpp \
+            -DUSEQ_FIRMWARE_PROFILE=1
+        ;;
+    all)
+        "$0" bench
+        "$0" conformance
+        "$0" endurance
+        ;;
+    *)
+        echo "usage: $0 [desktop|firmware|conformance|endurance|bench|all]" >&2
+        exit 2
+        ;;
+esac

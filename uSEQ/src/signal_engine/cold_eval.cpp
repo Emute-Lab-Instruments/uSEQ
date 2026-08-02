@@ -129,7 +129,7 @@ static void publish_reactive_diagnostic(ActiveCompileDiagnostic& active,
 static void publish_synth_reactive_diagnostic(
         SynthControlChannel& control, SymbolID triggered_by,
         const Diagnostic& diagnostic) {
-#ifndef ARDUINO
+#if !defined(ARDUINO) && !defined(USEQ_FIRMWARE_PROFILE)
     control.compile_diagnostic.publish(triggered_by, diagnostic);
 #else
     (void)control;
@@ -139,7 +139,7 @@ static void publish_synth_reactive_diagnostic(
 }
 
 static void clear_synth_reactive_diagnostic(SynthControlChannel& control) {
-#ifndef ARDUINO
+#if !defined(ARDUINO) && !defined(USEQ_FIRMWARE_PROFILE)
     control.compile_diagnostic.clear();
 #else
     (void)control;

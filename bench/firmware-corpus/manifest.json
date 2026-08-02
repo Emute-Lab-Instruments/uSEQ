@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "profile": "rp2040-firmware",
+  "workload_requirements": {
+    "moderate-mixed": {
+      "minimum_ratios": {
+        "nodes": 0.2,
+        "state_slots": 0.2,
+        "live_slots": 0.25
+      }
+    },
+    "high-combined": {
+      "minimum_ratios": {
+        "nodes": 0.4,
+        "data_entries": 0.5,
+        "state_slots": 0.5,
+        "live_slots": 0.5
+      },
+      "maximum_ratios": {
+        "nodes": 0.85,
+        "arena": 0.85
+      }
+    },
+    "high-node": {
+      "minimum_ratios": {
+        "nodes": 0.7
+      },
+      "maximum_ratios": {
+        "nodes": 0.9
+      }
+    },
+    "high-state": {
+      "minimum_ratios": {
+        "state_slots": 0.875
+      }
+    },
+    "high-live": {
+      "minimum_ratios": {
+        "live_slots": 1
+      }
+    },
+    "high-table": {
+      "minimum_ratios": {
+        "data_entries": 0.75
+      }
+    },
+    "high-synth": {
+      "minimum_ratios": {
+        "synth_declarations": 0.75,
+        "synth_controls": 0.75
+      }
+    }
+  },
+  "common_requirements": {
+    "recompile_success_count": 200
+  }
+}

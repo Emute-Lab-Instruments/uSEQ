@@ -1,0 +1,9 @@
+; high-state — uses 15 of the 16 firmware state slots with valid outputs.
+(a1 (slew (one-pole (usin beat) 5) 2))
+(a2 (env-follow (usin (fast 2 beat)) 50 5))
+(a3 (one-pole (slew (tri beat) 4) 8))
+(a4 (slew (env-follow (sqr beat) 30 3) 1))
+(a5 (one-pole (phasor 2) 6))
+(a6 (env-follow (one-pole (ucos bar) 3) 40 4))
+(a7 (slew (phasor 0.5) 3))
+(a8 (one-pole (env-follow (tri (fast 3 beat)) 20 2) 7))

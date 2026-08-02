@@ -73,7 +73,7 @@ struct SynthControlChannel {
     // removal, rollback, and artifact-order remapping atomic. Firmware does
     // not implement the synth host (synth-nodes.md §6.1), so it must not spend
     // scarce RP2040 SRAM on an ABI that cannot be observed there.
-#ifndef ARDUINO
+#if !defined(ARDUINO) && !defined(USEQ_FIRMWARE_PROFILE)
     struct CompileDiagnostic {
         const char* message = nullptr;
         const char* suggestion = nullptr;
@@ -104,7 +104,7 @@ struct SynthControlChannel {
 #endif
 };
 
-#ifndef ARDUINO
+#if !defined(ARDUINO) && !defined(USEQ_FIRMWARE_PROFILE)
 static_assert(MAX_CELLS <= UINT16_MAX,
               "synth diagnostic trigger IDs must cover every mutable cell");
 #endif
@@ -123,7 +123,7 @@ constexpr uint16_t MAX_SYNTH_DECLARATIONS = SYNTH_MAX_NODES;
 constexpr uint16_t MAX_SYNTH_CONTROLS =
     static_cast<uint16_t>(MAX_SYNTH_CONTROL_ROOTS);
 constexpr uint16_t MAX_SYNTH_CONNECTIONS = MAX_SYNTH_DECLARATIONS;
-#ifndef ARDUINO
+#if !defined(ARDUINO) && !defined(USEQ_FIRMWARE_PROFILE)
 static_assert(MAX_SYNTH_CONTROLS ==
                   MAX_SYNTH_DECLARATIONS * MAX_NODEDEF_PARAMS,
               "host synth storage must cover the descriptor ceiling");

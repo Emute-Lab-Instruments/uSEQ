@@ -1,0 +1,11 @@
+; high-live — fills the 16 firmware live-control slots.
+(a1 (* (live-edit 0.5 :id "k1" :min 0 :max 1) (usin beat)))
+(a2 (+ (live-edit 0.2 :id "k2" :min 0 :max 1) (* (live-edit 0.3 :id "k3" :min 0 :max 1) (tri bar))))
+(a3 (scale (live-edit 0.1 :id "k4" :min 0 :max 1) (live-edit 0.9 :id "k5" :min 0 :max 1) (phasor 1)))
+(a4 (slew (live-edit 0.5 :id "k6" :min 0 :max 1) (live-edit 2 :id "k7" :min 0 :max 10)))
+(d1 (pulse beat (live-edit 0.25 :id "k8" :min 0 :max 1)))
+(d2 (euclid 3 8 (fast (live-edit 1 :id "k9" :min 0.1 :max 8) bar)))
+(s1 (+ (live-edit 0.4 :id "k10" :min 0 :max 1) (live-edit 0.6 :id "k11" :min 0 :max 1)))
+(s2 (lerp (live-edit 0 :id "k12" :min 0 :max 1) (live-edit 1 :id "k13" :min 0 :max 1) (usin bar)))
+(s3 (* (live-edit 0.7 :id "k14" :min 0 :max 1) (one-pole (live-edit 0.5 :id "k15" :min 0 :max 1) 5)))
+(s4 (+ (live-edit 0.5 :id "k16" :min 0 :max 1) (usin beat)))

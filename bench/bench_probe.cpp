@@ -11,6 +11,7 @@
 //             the post-optimization count is reported.)
 //   execute:  ns/tick — median over batches totalling >= 1e6 ticks of the
 //             full execute/commit loop (with live-slot churn if slots exist).
+//   capacity: retained-resource use and the corresponding compile-time limit.
 //
 // Emits JSONL: {"workload":..., "phase":..., "metric":..., "value":..., "unit":...}
 //
@@ -21,6 +22,7 @@
 #include "src/signal_engine/graph_builder.h"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -43,6 +45,21 @@ static int g_errors = 0;
 static void emit(const char* phase, const char* metric, double value, const char* unit) {
     printf("{\"workload\":\"%s\",\"phase\":\"%s\",\"metric\":\"%s\",\"value\":%.6g,\"unit\":\"%s\"}\n",
            g_workload, phase, metric, value, unit);
+}
+
+static uint16_t cells_used(const SignalEngine& current) {
+    uint16_t used = 0;
+    for (uint16_t i = 0; i < MAX_CELLS; ++i) {
+        if (current.cells.cells[i].kind != CellKind::Empty) used++;
+    }
+    return used;
+}
+
+static uint16_t data_entries_used(const SignalEngine& current) {
+    if (current.cells.data_table_count == 0) return 0;
+    const uint16_t last = current.cells.data_table_count - 1;
+    return static_cast<uint16_t>(current.cells.data_offsets[last] +
+                                 current.cells.data_lengths[last]);
 }
 
 // Split file into top-level forms; strip ';' line comments.
@@ -162,6 +179,7 @@ int main(int argc, char* argv[]) {
             re_us.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
         }
         emit("compile", "recompile_median", median(re_us), "us");
+        emit("compile", "recompile_success_count", re_us.size(), "evals");
         if (re_fail_at >= 0)
             emit("compile", "recompile_arena_exhausted_at", re_fail_at, "evals");
     }
@@ -171,6 +189,25 @@ int main(int argc, char* argv[]) {
     emit("compile", "exec_count", engine.pool.exec_count, "nodes");
     emit("compile", "state_slots", engine.pool.state_slot_count, "slots");
     emit("compile", "live_slots", engine.pool.live_slot_count, "slots");
+    emit("capacity", "nodes_used", engine.pool.node_count, "nodes");
+    emit("capacity", "nodes_capacity", MAX_TOTAL_NODES, "nodes");
+    emit("capacity", "cells_used", cells_used(engine), "cells");
+    emit("capacity", "cells_capacity", MAX_CELLS, "cells");
+    emit("capacity", "arena_used", engine.arena.write_head, "bytes");
+    emit("capacity", "arena_capacity", SOURCE_ARENA_SIZE, "bytes");
+    emit("capacity", "data_entries_used", data_entries_used(engine), "entries");
+    emit("capacity", "data_entries_capacity", MAX_DATA_ENTRIES, "entries");
+    emit("capacity", "state_slots_used", engine.pool.state_slot_count, "slots");
+    emit("capacity", "state_slots_capacity", MAX_STATE_SLOTS, "slots");
+    emit("capacity", "live_slots_used", engine.pool.live_slot_count, "slots");
+    emit("capacity", "live_slots_capacity", MAX_LIVE_SLOTS, "slots");
+    emit("capacity", "synth_declarations_used",
+         engine.synth_graph.declaration_count(), "declarations");
+    emit("capacity", "synth_declarations_capacity", MAX_SYNTH_DECLARATIONS,
+         "declarations");
+    emit("capacity", "synth_controls_used", engine.synth_graph.control_count(),
+         "controls");
+    emit("capacity", "synth_controls_capacity", MAX_SYNTH_CONTROLS, "controls");
 
     // ── Execute: ns/tick, median over batches totalling >= 1e6 ticks ──────
     engine.pool.rebuild_execution_order();
@@ -205,6 +242,12 @@ int main(int argc, char* argv[]) {
             ctx.output_values = output_values;
             ctx.workspace     = workspace;
             execute_all_outputs(engine.pool, ctx);
+            for (double value : output_values) {
+                if (!std::isfinite(value)) {
+                    emit("execute", "non_finite_outputs", 1, "count");
+                    return 1;
+                }
+            }
             commit_state(engine.pool, workspace);
             commit_outputs(engine.pool, output_values);
             prev_t = t;

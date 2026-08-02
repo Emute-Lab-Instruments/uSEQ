@@ -26,6 +26,21 @@ authenticate a publisher against malicious substitution. Authentication needs
 an external trust anchor such as a signed release or trusted distribution
 channel for the manifest and the exact artifacts it names.
 
+### `run_rp2040_profile.py`
+
+Runs the default local acceptance surface for RP2040 optimization:
+
+```bash
+python3 scripts/run_rp2040_profile.py
+```
+
+It runs the native suite and conformance corpus, rebuilds native probes with
+the exact firmware capacities, enforces the declared firmware workload bands,
+runs optimized and ASan/UBSan endurance checks, links `musicthing` and
+`musicthing-observe`, and applies exact ELF memory gates. Evidence is written
+under `build/rp2040-profile/<revision>/`. Native timing remains comparative;
+simulator and physical-device observations have separate result grades.
+
 ### `serve.py`
 Simple Python web server for testing the WASM build locally.
 

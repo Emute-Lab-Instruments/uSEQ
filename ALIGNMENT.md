@@ -12,32 +12,21 @@ profile states only the behavior it implements and measures.
 
 ## Top defects
 
-### 1. Exact firmware-profile execution remains unobserved *(2026-08-02)*
+### 1. Target runtime headroom is incompletely measured *(2026-08-02)*
 
-**What.** Native and generated-WASM probes execute the shared corpus, and the
-`musicthing` target compiles and links, but there is no host runner using the
-exact firmware capacities and adapter path.
-
-**Why it matters.** Desktop results and target buildability cannot establish
-firmware execution equivalence or exact boundary behavior.
-
-**Rough cost.** M: construct the profile runner, select the representable
-corpus, and retain a distinct result grade. Tracked in ergo `2f440020`.
-
-### 2. Target runtime headroom is incompletely measured *(2026-08-02)*
-
-**What.** The current instrumented `musicthing` target build uses 58.1% of
-PlatformIO-counted static RAM and leaves a 109,664-byte linked main-RAM heap
-span. Flash use is 17.2%, but no target heap low-water mark or stack watermark
-has been measured under representative combined workloads.
+**What.** The production `musicthing` image uses 151,068 bytes of static RAM
+and leaves a 110,880-byte linked main-RAM heap span; `musicthing-observe`
+uses 152,300 bytes and leaves 109,648 bytes. The native constrained-profile
+runner now exercises declared combined and near-boundary workloads, but no
+target heap low-water mark or stack watermark has been observed under them.
 
 **Why it matters.** Static fit alone does not establish safe combined runtime
 headroom under deep compilation, protocol activity, and firmware execution.
 
-**Rough cost.** M: add heap and stack high-water observations and representative
-combined workloads before claiming runtime headroom.
+**Rough cost.** M: run the observation image through the serial simulator
+adapter and then the physical-device subset before claiming runtime headroom.
 
-### 3. Clause-level evidence remains incomplete *(2026-08-02)*
+### 2. Clause-level evidence remains incomplete *(2026-08-02)*
 
 **What.** Aggregate native and generated suites pass, while parts of the
 prospective clause registry still lack a machine-readable clause-to-case-to-
@@ -49,7 +38,7 @@ clause or every target profile.
 **Rough cost.** M-L: split compound clauses, finish stable case identifiers,
 add the serial subset, and make missing joins fail the intended grade.
 
-### 4. Reference-defined numerical families need frozen comparison records *(2026-08-02)*
+### 3. Reference-defined numerical families need frozen comparison records *(2026-08-02)*
 
 **What.** Complex rhythm, random, ratio, and remaining stateful families are
 explicitly reference-defined, and transcendental equivalence is tolerance-

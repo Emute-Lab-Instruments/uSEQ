@@ -11,11 +11,14 @@ using SymbolID = SymbolIntern::SymbolID;
 
 // ── Limits ──────────────────────────────────────────────────────────────────
 // Firmware builds use smaller limits to fit within the RP2040's 264 KB SRAM.
+// USEQ_FIRMWARE_PROFILE selects the same retained capacities in a native
+// process so capacity and endurance workloads can run without Arduino I/O.
+// It is a resource-profile simulation, not target timing evidence.
 // WASM/desktop builds keep generous limits since memory is plentiful.
 // MAX_CELLS must exceed the number of built-in symbols (~177) since cells
 // are indexed by SymbolID and user-defined names follow the built-ins.
 
-#ifdef ARDUINO
+#if defined(ARDUINO) || defined(USEQ_FIRMWARE_PROFILE)
 constexpr size_t MAX_CELLS             = 256;
 constexpr size_t MAX_TOTAL_NODES       = 360;
 constexpr size_t MAX_DATA_ENTRIES      = 512;
@@ -61,7 +64,7 @@ constexpr size_t BATCH_CHUNK_SIZE   = 256;
 // roots.  Native/WASM retain the wider descriptor ceiling so richer host-only
 // registries do not inherit the RP2040 storage constraint.
 constexpr size_t FIRMWARE_MAX_SYNTH_CONTROLS = 128;
-#ifdef ARDUINO
+#if defined(ARDUINO) || defined(USEQ_FIRMWARE_PROFILE)
 constexpr size_t MAX_SYNTH_CONTROL_ROOTS = FIRMWARE_MAX_SYNTH_CONTROLS;
 #else
 constexpr size_t MAX_SYNTH_CONTROL_ROOTS = 512;

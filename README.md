@@ -51,6 +51,11 @@ for the dated mission-level gaps.
 - `pio run -e musicthing-observe` builds the release-equivalent telemetry
   image used by simulator and physical-device capacity/endurance runs;
   `musicthing` remains the production image without devtools overhead.
+- `python3 scripts/run_rp2040_profile.py` runs the full local RP2040
+  acceptance surface: native correctness, constrained-profile conformance,
+  capacity and sanitized endurance workloads, both target links, and exact
+  ELF memory gates. See
+  [docs/testing/rp2040-optimization.md](docs/testing/rp2040-optimization.md).
 
 ## Building the Firmware
 

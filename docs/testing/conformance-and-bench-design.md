@@ -1,8 +1,10 @@
 # Conformance & Benchmark Suite Design
 
-Status: native and generated-WASM fixture adapters and the native benchmark are
-implemented; the serial adapter, cross-adapter diff reporting, fuzzing, and
-WASM/RP2040 benchmark lanes remain proposed.
+Status: native and generated-WASM fixture adapters, desktop benchmarks, and a
+native runner using the exact RP2040 retained capacities are implemented. The
+serial adapter, cross-adapter diff reporting, fuzzing, generated-WASM
+benchmark, simulator timing, and physical-target timing lanes remain separate
+work.
 Companion to `docs/specs/MAIN.md`.
 
 ## Part 1 — Implementation-independent conformance suite
@@ -151,8 +153,17 @@ counts from `objdump` (cheap, catches double-creep without hardware).
 - `bench/bench_probe.cpp` (seed: the audit's `/tmp/useq_bench/bench.cpp`):
   loads a corpus file, emits JSONL `{workload, phase, metric, value}`.
 - `scripts/run_bench.py`: orchestrates native + WASM (+ `--serial` for
-  hardware), writes `bench/results/<git-sha>.json`, `--compare <baseline-sha>`
-  prints a delta table and exits non-zero on >10% regression in the smoke set.
+  hardware). The implemented `--profile desktop|firmware` modes write distinct
+  results; firmware mode also enforces the utilization bands in
+  `bench/firmware-corpus/manifest.json`.
+- `bench/firmware_profile_endurance.cpp`: alternates valid replacements,
+  rejects invalid replacements without resource mutation, churns live inputs,
+  executes finite-output checks, and periodically clears and reloads the
+  combined-high program. Optimized and ASan/UBSan builds must produce the same
+  deterministic checksum.
+- `scripts/run_rp2040_profile.py`: composes native correctness, the constrained
+  profile, both target links, exact ELF accounting, and endurance evidence into
+  one result directory.
 - Discipline: every optimization commit cites its before/after JSON in the
   commit body. x86 numbers are a proxy; RP2040 numbers gate releases.
 
@@ -163,4 +174,5 @@ counts from `objdump` (cheap, catches double-creep without hardware).
 2. Bench probe + corpus + native/WASM runners + baseline JSON for current tip.
 3. Differential (native↔WASM) in CI; `opt_level=0` probe flag + soundness diff.
 4. Fuzz generator nightly; shrinker feeding the fixture corpus.
-5. RP2040 bench firmware target + serial conformance adapter (release gates).
+5. RP2040 observation firmware + serial conformance/benchmark adapter
+   (simulator and physical release gates).

@@ -1,1 +1,5 @@
 bench_probe
+bench_probe_firmware
+signal_engine_probe_firmware
+firmware_profile_endurance
+firmware_profile_endurance_asan
