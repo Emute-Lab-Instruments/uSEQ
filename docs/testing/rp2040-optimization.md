@@ -60,9 +60,10 @@ visible in the same evidence used for retention.
 On the VPS, PlatformIO 6.1.18 is installed in the isolated
 `~/.cache/useq-rp2040-goal/platformio-6.1.18` virtual environment. The Nixpkgs
 PlatformIO wrapper requires bubblewrap user namespaces, which the production
-VPS denies. `shell.nix` adds the isolated binary when present while retaining
-Nix ownership of the remaining toolchain. This exception can be removed when
-the host supports the Nix wrapper or an unwrapped Nix package is adopted.
+VPS denies. The preparation script exposes only a `pio` shim from that
+environment; `shell.nix` retains its own Python and the rest of the Nix
+toolchain. This exception can be removed when the host supports the Nix
+wrapper or an unwrapped Nix package is adopted.
 
 ## Current budgets
 
