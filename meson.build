@@ -19,6 +19,10 @@ san_flags = []
 cov_flags = []
 if get_option('sanitizers')
   san_flags = ['-fsanitize=address,undefined', '-fno-omit-frame-pointer']
+  # Instrumentation must be present at both compile and link time.  Without
+  # the link arguments, -Dsanitizers=true compiles instrumented objects but
+  # leaves every executable with unresolved ASan/UBSan runtime symbols.
+  add_project_link_arguments(san_flags, language : 'cpp')
 endif
 if get_option('coverage')
   cov_flags = ['--coverage', '-O0', '-g']
