@@ -11,13 +11,11 @@
 > [firmware.md](firmware.md) (tick loop), [diagnostics.md](diagnostics.md)
 > (compiler diagnostics — a separate system).
 >
-> The devtools system is **dev-build-only**. It compiles to nothing in
-> release firmware. It is distinct from the existing `USEQ_DEBUG` printf
+> The devtools system is **measurement-image-only**. It compiles to nothing in
+> production firmware. It is distinct from the existing `USEQ_DEBUG` printf
 > system, which remains available for human-readable debug logging.
 
 ### Source Files
-
-(To be created)
 
 - `uSEQ/src/devtools/devtools.h` — public `dt::` namespace API; inline no-op stubs when `USEQ_DEVTOOLS` is not defined
 - `uSEQ/src/devtools/devtools.cpp` — state struct, collection logic, serialization, protocol handler
@@ -70,11 +68,11 @@ No string literals, no branches, no struct fields survive.
 
 2.2 Build configuration:
 
-- **PlatformIO** (`platformio.ini`): `-DUSEQ_DEVTOOLS=1` in
-  environments where devtools are desired (typically `musicthing`,
-  `musicthing-debug`, `musicthing-verbose`; never `minimal`).
-- **Meson** (`meson.build`): new boolean option `enable_devtools`
-  (default: `true` for desktop/test builds), maps to
+- **PlatformIO** (`platformio.ini`): `musicthing-observe` adds
+  `-DUSEQ_DEVTOOLS=1` to the production `musicthing` flags. The production
+  `musicthing` and capacity-reduced `minimal` images exclude it.
+- **Meson** (`meson.build`): boolean option `enable_devtools`
+  (default: `true` for desktop/test builds) maps to
   `-DUSEQ_DEVTOOLS=1`.
 - **WASM**: not compiled in. The browser has its own devtools; firmware
   devtools are for the physical device.
@@ -223,9 +221,10 @@ call — only the most recent value is retained.
 
 | Gauge | Where |
 |-------|-------|
-| `"heap_free"` | `firmware.cpp` — once per tick (or per N ticks) |
-| `"nodes"` | `cold_eval.cpp` — after compilation (used, capacity) |
-| `"arena"` | `cold_eval.cpp` — after compilation (used, capacity) |
+| `"watchdog_reboot"` | `firmware.cpp` — once at initialization |
+
+Heap, stack, and engine-capacity measurements are produced directly by the
+`resources` channel rather than registered as general-purpose gauges.
 
 ### 3.5 Streaming and Protocol Integration
 
@@ -337,7 +336,7 @@ well under 2 KB.
 selects the operation.
 
 All `debug` messages are gated behind `USEQ_DEVTOOLS` at compile time.
-A release-build device that receives a `debug` message MUST ignore it
+A production device that receives a `debug` message MUST ignore it
 per the forward-compatibility rule
 ([wire-protocol.md §3.4](wire-protocol.md)).
 
@@ -555,12 +554,32 @@ Returns the event ring buffer contents (most recent first).
   "channel": "resources",
   "data": {
     "heap_free": 42800,
-    "nodes":  {"used": 47, "capacity": 1024},
-    "arena":  {"used": 1280, "capacity": 16384},
-    "cells":  {"used": 12, "capacity": 512}
+    "heap_min_free": 39120,
+    "core0_stack_margin_intact": true,
+    "core0_stack":       {"used": 912, "capacity": 2048},
+    "nodes":             {"used": 47, "capacity": 1024},
+    "arena":             {"used": 1280, "capacity": 16384},
+    "cells":             {"used": 12, "capacity": 512},
+    "state_slots":       {"used": 3, "capacity": 256},
+    "live_slots":        {"used": 2, "capacity": 32},
+    "synth_declarations": {"used": 4, "capacity": 64},
+    "synth_controls":    {"used": 8, "capacity": 128},
+    "watchdog_reboot": 0
   }
 }
 ```
+
+`heap_free` and `heap_min_free` are bytes. The latter is the lowest value
+observed at firmware-tick and compiler sampling points. It measures aggregate
+free heap, not the largest contiguous allocation, so fragmentation remains a
+separate failure mode.
+
+The core-0 stack watermark is initialized after firmware construction and is
+a conservative upper bound: the unpainted initialization margin is counted as
+used. `core0_stack_margin_intact` becomes false when execution reaches the
+lowest sampled byte above the SDK's 32-byte guard region. The current DSP
+engine does not execute work on core 1, so core-1 runtime stack usage is not
+reported. The linked core-1 reserve remains part of the ELF memory report.
 
 #### `io`
 
@@ -635,7 +654,7 @@ new entry in `capabilities` response, new query handler).
 | `graph` | off, poll | Zero (reads existing `NodePool`) | JSON serialization of node arrays |
 | `state` | off, poll | Zero (reads existing engine state) | JSON serialization |
 | `eval` | off, events | 1 ring-buffer write per event | JSON serialization per event |
-| `resources` | off, poll, stream | 1 `free_heap()` + struct reads | Small JSON |
+| `resources` | off, poll, stream | heap sample each tick and at compiler allocation boundaries; stack-canary scan on emission | Small JSON |
 | `io` | off, poll, stream | Zero (reads existing buffers) | Small JSON |
 | `protocol` | off, poll, stream | Counter increments | Small JSON |
 
@@ -680,16 +699,21 @@ before can orient itself from this response alone.
 
 ## 8. Implementation Constraints
 
-8.1 **Zero allocation.** All devtools state is in fixed-size static
-arrays. The `dt::` functions never call `malloc`, `new`, or grow any
-dynamic container. The JSON serialization uses the existing `JsonBuilder`
-(`uSEQ/src/utils/json_builder.h`), which builds strings on the stack
-via the project's `String` type.
+8.1 **Fixed collection state.** All persistent devtools state is in
+fixed-size static arrays. Collection calls do not allocate. Query and stream
+emission use the existing `JsonBuilder` (`uSEQ/src/utils/json_builder.h`) and
+the Arduino `String` type, which may allocate transient heap storage. Runtime
+memory acceptance therefore uses the minimum observed during the workload and
+allows explicit measurement-image overhead; the production image is assessed
+separately from `musicthing-observe`.
 
 8.2 **No hot-path impact when disabled.** When `USEQ_DEVTOOLS` is not
 defined, the inline stubs produce zero instructions. When defined, the
-tick-profiling overhead is ~6 `micros()` calls per tick (~6 µs total on
-RP2040) — well within the watchdog budget.
+tick profiler calls `micros()` at phase boundaries, and the resource sampler
+reads heap state each tick. The core-0 stack canary is scanned only when the
+resources channel is queried or emitted. The resulting timing cost is an
+empirical property of the measurement image and must be reported by the
+capacity/endurance run rather than assumed.
 
 8.3 **No interference with must-deliver messages.** All devtools
 emission is opportunistic. The `emit_streaming()` call checks

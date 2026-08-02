@@ -24,6 +24,7 @@ Commands:
 
 Environments:
     musicthing          Music Thing Modular (default)
+    musicthing-observe  Release-equivalent build with structured telemetry
     hardware_v0_2       uSEQ Hardware v0.2
     hardware_v1_0       uSEQ Hardware v1.0
     minimal             Minimal build

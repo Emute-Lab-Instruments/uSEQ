@@ -64,6 +64,9 @@ void Firmware::init()
 #else
     dt::init(nullptr);
 #endif
+#ifdef ARDUINO
+    dt::gauge("watchdog_reboot", watchdog_caused_reboot() ? 1u : 0u);
+#endif
 
     // 9. LED → green (ready)
 #ifdef ENABLE_LED_CONTROL
@@ -201,6 +204,7 @@ void Firmware::tick()
     serial.send_stream_data(output_values, sig::MAX_OUTPUTS,
                             io.inputs, firmware::MAX_HW_INPUTS);
     dt::tick_end();
+    dt::sample_runtime_memory();
 #if USEQ_DEVTOOLS
     {
         bool can_wr = true;

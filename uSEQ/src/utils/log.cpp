@@ -288,7 +288,7 @@ void report_custom_function_error(const String& function_name, const String& msg
 
 int free_heap() { 
     #ifdef ARDUINO
-    return rp2040.getFreeHeap() / 1024; 
+    return rp2040.getFreeHeap();
     #else
     return 1000000; // Dummy value for non-Arduino environments
     #endif
@@ -328,7 +328,7 @@ DebugLogger::DebugLogger(String s) : m_name(s)
     inc_level();
     if (print_free_heap)
     {
-        debug_print("free heap (start): " + String(start_heap) + "KB");
+        debug_print("free heap (start): " + String(start_heap) + " bytes");
     }
 }
 
@@ -341,9 +341,10 @@ DebugLogger::~DebugLogger()
     debug_print("[DBG] " + m_name + " END.");
     if (print_free_heap)
     {
-        debug_print(m_spaces + "free heap (end): " + String(end_heap) + "KB");
+        debug_print(m_spaces + "free heap (end): " + String(end_heap) +
+                    " bytes");
         debug_print(m_spaces + "heap difference: " + String(end_heap - start_heap) +
-                    "KB");
+                    " bytes");
     }
 
     dec_level();

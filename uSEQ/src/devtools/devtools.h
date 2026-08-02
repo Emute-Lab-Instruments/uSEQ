@@ -41,6 +41,12 @@ void gauge(const char* name, uint32_t value, uint32_t capacity);
 // graph/state queries. Must be called before any other dt:: function.
 void init(sig::SignalEngine* engine);
 
+// Sample heap usage into the monotonic runtime low-water record. The compiler
+// calls this immediately after its largest transient allocations; the
+// firmware tick samples steady state. The retained stack canary is scanned
+// when the resources channel is queried or emitted.
+void sample_runtime_memory();
+
 // ── Protocol Integration ───────────────────────────────────────────────────
 // Called by SerialProtocol::dispatch_message() for type "debug".
 // write_fn emits a JSON string to serial (caller provides the function).
@@ -67,6 +73,7 @@ inline void gauge(const char*, uint32_t) {}
 inline void gauge(const char*, uint32_t, uint32_t) {}
 
 inline void init(sig::SignalEngine*) {}
+inline void sample_runtime_memory() {}
 
 using WriteFn = void(*)(const char*, size_t);
 inline bool handle_debug_message(const char*, size_t, WriteFn) { return false; }

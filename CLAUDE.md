@@ -275,6 +275,9 @@ The firmware supports multiple hardware configurations:
   - All features enabled (DSP, I2C, tempo estimation, RGB LED)
   - Inverted outputs for Music Thing hardware
 
+- **musicthing-observe** - Production-equivalent Music Thing measurement image
+  - Adds structured runtime memory and timing telemetry
+
 - **hardware_v0_2** - uSEQ Hardware v0.2
   - DSP, I2C networking, rotary encoder
 
@@ -292,7 +295,7 @@ The firmware supports multiple hardware configurations:
 ### Arduino/PlatformIO Build Settings
 - **Board**: Generic RP2040 (Earle Philhower Pico core)
 - **CPU Speed**: 250MHz (Overclock)
-- **Flash**: 8MB (Sketch 1MB, FS: 7MB)
+- **Flash**: 16MB (`musicthing`: sketch 2MB, filesystem 14MB)
 - **Optimization**: -O3 (Optimize Even More)
 - **Boot Stage 2**: W25Q080 QSPI /2
 

@@ -222,3 +222,39 @@ TEST_CASE("D6 unknown action returns false (unhandled)",
     // No response should have been written for an unknown action
     REQUIRE(s_last_json.empty());
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// D7 — resources: returns memory watermarks and engine capacity ratios
+// ══════════════════════════════════════════════════════════════════════════
+
+TEST_CASE("D7 resources response exposes memory and capacity telemetry",
+          "[contract][devtools]")
+{
+    sig::SignalEngine engine;
+    engine.init_defaults();
+    dt::init(&engine);
+    s_last_json.clear();
+
+    const char* msg =
+        R"({"type":"debug","action":"query","channel":"resources","requestId":"q-res-1"})";
+
+    bool handled = dt::handle_debug_message(msg, strlen(msg), capture_write);
+
+    REQUIRE(handled);
+    REQUIRE(json_contains(s_last_json, "\"success\":true"));
+    REQUIRE(json_contains(s_last_json, "\"channel\":\"resources\""));
+    REQUIRE(json_contains(s_last_json, "\"heap_free\":"));
+    REQUIRE(json_contains(s_last_json, "\"heap_min_free\":"));
+    REQUIRE(json_contains(s_last_json,
+                          "\"core0_stack_margin_intact\":true"));
+    REQUIRE(json_contains(s_last_json, "\"core0_stack\":{"));
+    REQUIRE(json_contains(s_last_json, "\"nodes\":{"));
+    REQUIRE(json_contains(s_last_json, "\"arena\":{"));
+    REQUIRE(json_contains(s_last_json, "\"cells\":{"));
+    REQUIRE(json_contains(s_last_json, "\"state_slots\":{"));
+    REQUIRE(json_contains(s_last_json, "\"live_slots\":{"));
+    REQUIRE(json_contains(s_last_json, "\"synth_declarations\":{"));
+    REQUIRE(json_contains(s_last_json, "\"synth_controls\":{"));
+    REQUIRE(json_contains(s_last_json, "\"used\":"));
+    REQUIRE(json_contains(s_last_json, "\"capacity\":"));
+}

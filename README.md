@@ -48,6 +48,9 @@ for the dated mission-level gaps.
 - `python3 scripts/rp2040_memory_report.py` reads the exact linked ELF and
   enforces the 96KiB main-heap and 1MiB flash-image headroom gates. Runtime
   heap and stack watermarks remain separate target observations.
+- `pio run -e musicthing-observe` builds the release-equivalent telemetry
+  image used by simulator and physical-device capacity/endurance runs;
+  `musicthing` remains the production image without devtools overhead.
 
 ## Building the Firmware
 

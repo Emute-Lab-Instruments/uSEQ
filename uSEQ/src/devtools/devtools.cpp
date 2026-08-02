@@ -8,6 +8,13 @@
 #include <cstring>
 #include <climits>
 
+#if defined(ARDUINO_ARCH_RP2040)
+extern "C" {
+extern uint8_t __StackBottom;
+extern uint8_t __StackTop;
+}
+#endif
+
 #ifdef USE_STD_IO
 #include <chrono>
 static uint32_t dt_micros() {
@@ -164,6 +171,16 @@ struct DevToolsState {
     Gauge gauges[16] = {};
     uint8_t gauge_count = 0;
 
+    struct {
+        uint32_t heap_free = 0;
+        uint32_t heap_min_free = UINT32_MAX;
+        uint32_t core0_stack_capacity = 0;
+        uint32_t core0_stack_high_water = 0;
+        uintptr_t core0_stack_fill_end = 0;
+        bool core0_stack_initialized = false;
+        bool core0_stack_margin_intact = true;
+    } memory;
+
     uint32_t last_stream_us = 0;
 };
 
@@ -179,8 +196,66 @@ constexpr uint32_t TICK_WINDOW_SIZE = 100;
 
 namespace dt {
 
+namespace {
+void sample_core0_stack() {
+#if defined(ARDUINO_ARCH_RP2040)
+    if (s.memory.core0_stack_initialized) {
+        constexpr uintptr_t SDK_STACK_GUARD_BYTES = 32;
+        constexpr uint8_t STACK_PATTERN = 0xA5;
+        const uintptr_t bottom = reinterpret_cast<uintptr_t>(&__StackBottom);
+        const uintptr_t top = reinterpret_cast<uintptr_t>(&__StackTop);
+        const uintptr_t sample_begin = bottom + SDK_STACK_GUARD_BYTES;
+        uintptr_t first_touched = sample_begin;
+        while (first_touched < s.memory.core0_stack_fill_end &&
+               *reinterpret_cast<volatile uint8_t*>(first_touched) ==
+                   STACK_PATTERN) {
+            first_touched++;
+        }
+        const uint32_t used = static_cast<uint32_t>(top - first_touched);
+        if (used > s.memory.core0_stack_high_water)
+            s.memory.core0_stack_high_water = used;
+        s.memory.core0_stack_margin_intact =
+            *reinterpret_cast<volatile uint8_t*>(sample_begin) ==
+            STACK_PATTERN;
+    }
+#endif
+}
+} // namespace
+
 void init(sig::SignalEngine* engine) {
+    s = DevToolsState{};
     s.engine = engine;
+
+#if defined(ARDUINO_ARCH_RP2040)
+    // The RP2040 SDK may configure the lowest aligned 32-byte stack
+    // subregion as an MPU guard. Keep the watermark outside that region.
+    constexpr uintptr_t SDK_STACK_GUARD_BYTES = 32;
+    constexpr uintptr_t STACK_SAMPLE_GUARD = 128;
+    constexpr uint8_t STACK_PATTERN = 0xA5;
+    uintptr_t stack_pointer = 0;
+    asm volatile("mov %0, sp" : "=r"(stack_pointer));
+    const uintptr_t bottom = reinterpret_cast<uintptr_t>(&__StackBottom);
+    const uintptr_t top = reinterpret_cast<uintptr_t>(&__StackTop);
+    s.memory.core0_stack_capacity = static_cast<uint32_t>(top - bottom);
+    const uintptr_t sample_begin = bottom + SDK_STACK_GUARD_BYTES;
+    if (stack_pointer > sample_begin + STACK_SAMPLE_GUARD &&
+        stack_pointer <= top) {
+        const uintptr_t fill_end = stack_pointer - STACK_SAMPLE_GUARD;
+        std::memset(reinterpret_cast<void*>(sample_begin), STACK_PATTERN,
+                    fill_end - sample_begin);
+        s.memory.core0_stack_fill_end = fill_end;
+        s.memory.core0_stack_initialized = true;
+    }
+#endif
+    sample_runtime_memory();
+}
+
+void sample_runtime_memory() {
+    int heap = free_heap();
+    if (heap < 0) heap = 0;
+    s.memory.heap_free = static_cast<uint32_t>(heap);
+    if (s.memory.heap_free < s.memory.heap_min_free)
+        s.memory.heap_min_free = s.memory.heap_free;
 }
 
 void tick_begin() {
@@ -528,9 +603,49 @@ static String serialize_eval() {
 }
 
 static String serialize_resources() {
+    sample_runtime_memory();
+    sample_core0_stack();
     JsonBuilder j;
     j.object_begin()
-        .field("heap_free", free_heap());
+        .field("heap_free", static_cast<int>(s.memory.heap_free))
+        .field("heap_min_free", static_cast<int>(s.memory.heap_min_free))
+        .field("core0_stack_margin_intact",
+               s.memory.core0_stack_margin_intact);
+    {
+        JsonBuilder stack;
+        stack.object_begin()
+            .field("used", static_cast<int>(s.memory.core0_stack_high_water))
+            .field("capacity", static_cast<int>(s.memory.core0_stack_capacity))
+            .object_end();
+        j.field_raw("core0_stack", stack.build());
+    }
+    if (s.engine) {
+        uint16_t cells_used = 0;
+        for (uint16_t i = 0; i < sig::MAX_CELLS; ++i) {
+            if (s.engine->cells.cells[i].kind != sig::CellKind::Empty)
+                cells_used++;
+        }
+        auto ratio = [&j](const char* name, uint32_t used,
+                          uint32_t capacity) {
+            JsonBuilder value;
+            value.object_begin()
+                .field("used", static_cast<int>(used))
+                .field("capacity", static_cast<int>(capacity))
+                .object_end();
+            j.field_raw(name, value.build());
+        };
+        ratio("nodes", s.engine->pool.node_count, sig::MAX_TOTAL_NODES);
+        ratio("arena", s.engine->arena.write_head, sig::SOURCE_ARENA_SIZE);
+        ratio("cells", cells_used, sig::MAX_CELLS);
+        ratio("state_slots", s.engine->pool.state_slot_count,
+              sig::MAX_STATE_SLOTS);
+        ratio("live_slots", s.engine->pool.live_slot_count,
+              sig::MAX_LIVE_SLOTS);
+        ratio("synth_declarations", s.engine->synth_graph.declaration_count(),
+              sig::MAX_SYNTH_DECLARATIONS);
+        ratio("synth_controls", s.engine->synth_graph.control_count(),
+              sig::MAX_SYNTH_CONTROLS);
+    }
     for (uint8_t i = 0; i < s.gauge_count; ++i) {
         if (s.gauges[i].capacity > 0) {
             JsonBuilder g;

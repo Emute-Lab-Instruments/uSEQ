@@ -12,7 +12,7 @@ ENV="${1:-musicthing}"
 DEVICE="${2:-}"
 
 # Valid environments
-VALID_ENVS="musicthing hardware_v0_2 hardware_v1_0 minimal musicthing-debug musicthing-verbose"
+VALID_ENVS="musicthing musicthing-observe hardware_v0_2 hardware_v1_0 minimal musicthing-debug musicthing-verbose"
 
 # Check if environment is valid
 if ! echo "$VALID_ENVS" | grep -wq "$ENV"; then

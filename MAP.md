@@ -31,7 +31,9 @@ compiler/control runtime. The canonical language entry point is
 - `hardware/`, `interfaces/`, `samples/` — hardware material, external
   interfaces, and example programs.
 - `platformio.ini` — target firmware profiles; `meson.build` and
-  `test/meson.build` — native build and suite registration.
+  `test/meson.build` — native build and suite registration. `musicthing` is
+  the production profile; `musicthing-observe` adds structured telemetry for
+  simulator and physical-device measurement.
 
 ## Conventions and local boundaries
 

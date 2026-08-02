@@ -5,12 +5,20 @@
 #include "graph_builder.h"
 #include "executor.h"
 #include "synth_registry.h"
+#include "../devtools/devtools.h"
 #include "../modulisp/lisp/symbol_intern.h"
 #include <cstdio>
 #include <cstring>
 #include <new>
 
 namespace sig {
+
+namespace {
+struct RuntimeMemorySampleScope {
+    RuntimeMemorySampleScope() { dt::sample_runtime_memory(); }
+    ~RuntimeMemorySampleScope() { dt::sample_runtime_memory(); }
+};
+} // namespace
 
 // ── SignalEngine::init_defaults ────────────────────────────────────────────
 
@@ -1706,6 +1714,7 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     SynthGraph* owned_snapshot = nullptr;
     if (!transaction_snapshot) {
         owned_snapshot = new (std::nothrow) SynthGraph(engine.synth_graph);
+        dt::sample_runtime_memory();
         if (!owned_snapshot) {
             return make_synth_error_at(
                 def_name_tok, DiagnosticCategory::Overflow,
@@ -2970,6 +2979,7 @@ void commit_synth_external_roots(SignalEngine& engine) {
 // ── eval_cold entry point (SignalEngine version) ───────────────────────────
 
 EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) {
+    RuntimeMemorySampleScope memory_sample_scope;
     Token tokens[MAX_TOKENS];
     Diagnostic parse_errors[8];
     uint8_t parse_error_count = 0;
