@@ -2,5 +2,16 @@
   "schema_version": 1,
   "target": "rp2040-musicthing",
   "min_linker_heap_bytes": 98304,
-  "max_flash_image_bytes": 1048576
+  "max_flash_image_bytes": 1048576,
+  "runtime": {
+    "min_heap_free_bytes": 49152,
+    "min_core0_stack_remaining_bytes": 512,
+    "max_compile_us": 200000,
+    "compile_p99_us": {
+      "moderate-mixed": 10000,
+      "high-combined": 100000
+    },
+    "max_tick_p99_us": 1000,
+    "min_tick_samples": 20
+  }
 }

@@ -2,9 +2,9 @@
 
 Status: native and generated-WASM fixture adapters, desktop benchmarks, and a
 native runner using the exact RP2040 retained capacities are implemented. The
-serial adapter, cross-adapter diff reporting, fuzzing, generated-WASM
-benchmark, simulator timing, and physical-target timing lanes remain separate
-work.
+Wokwi serial capacity/timing adapter is implemented; full serial conformance,
+cross-adapter diff reporting, fuzzing, generated-WASM benchmarking, and
+physical-target timing remain separate work.
 Companion to `docs/specs/MAIN.md`.
 
 ## Part 1 — Implementation-independent conformance suite
@@ -164,6 +164,11 @@ counts from `objdump` (cheap, catches double-creep without hardware).
 - `scripts/run_rp2040_profile.py`: composes native correctness, the constrained
   profile, both target links, exact ELF accounting, and endurance evidence into
   one result directory.
+- `scripts/run_wokwi_rp2040.py`: generates a serial/GPIO scenario for the real
+  observation ELF and gates target compile/tick timing, heap/stack telemetry,
+  reset state, workload capacity, transactional rejection, and VCD activity.
+- `scripts/run_rp2040_goal_gate.py`: gives optimization loops a single
+  non-overwriting candidate gate that composes both evidence grades.
 - Discipline: every optimization commit cites its before/after JSON in the
   commit body. x86 numbers are a proxy; RP2040 numbers gate releases.
 

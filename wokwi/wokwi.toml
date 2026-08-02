@@ -1,0 +1,4 @@
+[wokwi]
+version = 1
+firmware = "../.pio/build/musicthing-observe/firmware.uf2"
+elf = "../.pio/build/musicthing-observe/firmware.elf"

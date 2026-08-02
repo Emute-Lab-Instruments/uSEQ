@@ -422,3 +422,10 @@ osc_sine_wasm_smoke = find_program('../scripts/osc_sine_wasm_smoke.mjs')
 test('osc_sine_wasm_smoke', node_bin,
      args : [osc_sine_wasm_smoke.full_path(), wasm_artefact_path],
      timeout: 30)
+
+# ===== RP2040 Wokwi acceptance-runner contract =============================
+
+python3 = find_program('python3')
+wokwi_runner_contract = find_program('scripts/test_run_wokwi_rp2040.py')
+test('rp2040_wokwi_runner_contract', python3,
+     args : [wokwi_runner_contract.full_path()], timeout: 30)

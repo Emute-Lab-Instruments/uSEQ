@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "author": "uSEQ",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-pi-pico",
+      "id": "pico",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "gate1",
+      "top": 25,
+      "left": -155,
+      "attrs": { "label": "Gate 1", "bounce": "0" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "gate2",
+      "top": 105,
+      "left": -155,
+      "attrs": { "label": "Gate 2", "bounce": "0" }
+    },
+    {
+      "type": "wokwi-logic-analyzer",
+      "id": "logic",
+      "top": 10,
+      "left": 285,
+      "attrs": {
+        "bufferSize": "200000"
+      }
+    }
+  ],
+  "connections": [
+    [ "pico:GP2", "gate1:1.l", "green", [] ],
+    [ "gate1:2.l", "pico:GND.1", "black", [] ],
+    [ "pico:GP3", "gate2:1.l", "green", [] ],
+    [ "gate2:2.l", "pico:GND.2", "black", [] ],
+    [ "pico:GP8", "logic:D0", "blue", [] ],
+    [ "pico:GP9", "logic:D1", "blue", [] ],
+    [ "pico:GP22", "logic:D2", "purple", [] ],
+    [ "pico:TP4", "logic:D3", "purple", [] ],
+    [ "logic:GND", "pico:GND.8", "black", [] ]
+  ],
+  "dependencies": {}
+}

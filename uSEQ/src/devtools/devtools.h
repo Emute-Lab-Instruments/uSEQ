@@ -24,6 +24,12 @@ void tick_begin();
 void mark(const char* phase);
 void tick_end();
 
+// Measure the compiler/evaluator interval around one wire-level eval. The
+// duration excludes serial parsing and response emission, and is retained for
+// poll-based target acceptance.
+void eval_begin();
+void eval_end(bool success);
+
 // ── Events ─────────────────────────────────────────────────────────────────
 void event(const char* channel, const char* message,
            const char* detail = nullptr);
@@ -63,6 +69,8 @@ void emit_streaming(WriteFn write_fn, bool can_write);
 inline void tick_begin() {}
 inline void mark(const char*) {}
 inline void tick_end() {}
+inline void eval_begin() {}
+inline void eval_end(bool) {}
 
 inline void event(const char*, const char*, const char* = nullptr) {}
 inline void event(const char*, const char*, int) {}

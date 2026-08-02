@@ -251,10 +251,50 @@ TEST_CASE("D7 resources response exposes memory and capacity telemetry",
     REQUIRE(json_contains(s_last_json, "\"nodes\":{"));
     REQUIRE(json_contains(s_last_json, "\"arena\":{"));
     REQUIRE(json_contains(s_last_json, "\"cells\":{"));
+    REQUIRE(json_contains(s_last_json, "\"data_entries\":{"));
     REQUIRE(json_contains(s_last_json, "\"state_slots\":{"));
     REQUIRE(json_contains(s_last_json, "\"live_slots\":{"));
     REQUIRE(json_contains(s_last_json, "\"synth_declarations\":{"));
     REQUIRE(json_contains(s_last_json, "\"synth_controls\":{"));
     REQUIRE(json_contains(s_last_json, "\"used\":"));
     REQUIRE(json_contains(s_last_json, "\"capacity\":"));
+}
+
+TEST_CASE("D8 eval query exposes target compile duration and outcome counts",
+          "[contract][devtools]")
+{
+    dt::init(nullptr);
+    dt::eval_begin();
+    dt::eval_end(true);
+    dt::eval_begin();
+    dt::eval_end(false);
+    s_last_json.clear();
+
+    const char* msg =
+        R"({"type":"debug","action":"query","channel":"eval","requestId":"q-eval-1"})";
+    REQUIRE(dt::handle_debug_message(msg, strlen(msg), capture_write));
+
+    REQUIRE(json_contains(s_last_json, "\"success\":true"));
+    REQUIRE(json_contains(s_last_json, "\"channel\":\"eval\""));
+    REQUIRE(json_contains(s_last_json, "\"last_us\":"));
+    REQUIRE(json_contains(s_last_json, "\"max_us\":"));
+    REQUIRE(json_contains(s_last_json, "\"count\":2"));
+    REQUIRE(json_contains(s_last_json, "\"error_count\":1"));
+    REQUIRE(json_contains(s_last_json, "\"events\":["));
+}
+
+TEST_CASE("D9 eval timing query omits the event ring for bounded polling",
+          "[contract][devtools]")
+{
+    dt::init(nullptr);
+    dt::eval_begin();
+    dt::eval_end(true);
+    s_last_json.clear();
+
+    const char* msg =
+        R"({"type":"debug","action":"query","channel":"eval","output":"timing","requestId":"q-eval-timing"})";
+    REQUIRE(dt::handle_debug_message(msg, strlen(msg), capture_write));
+    REQUIRE(json_contains(s_last_json, "\"last_us\":"));
+    REQUIRE(json_contains(s_last_json, "\"count\":1"));
+    REQUIRE_FALSE(json_contains(s_last_json, "\"events\":"));
 }

@@ -1,4 +1,5 @@
 #include "serial_protocol.h"
+#include "../devtools/devtools.h"
 #include "../signal_engine/executor.h"
 #include "../utils/json_builder.h"
 #include "../utils/serial_message.h"
@@ -19,6 +20,21 @@
 // Only extracts what the protocol layer needs; full parsing is not required.
 
 namespace {
+
+// Devtools uses a small transport-neutral callback so its serializers remain
+// independent of the firmware protocol object. Keep this bridge identical to
+// SerialProtocol::write_json(): debug responses are ordinary JSONL messages.
+void write_debug_json(const char* payload, size_t len)
+{
+#ifdef ARDUINO
+    Serial.write(reinterpret_cast<const uint8_t*>(payload), len);
+    Serial.write('\n');
+#else
+    fwrite(payload, 1, len, stdout);
+    putchar('\n');
+    fflush(stdout);
+#endif
+}
 
 // Find the value region after "key": in a JSON buffer.
 // Returns pointer to first non-whitespace char after the colon, or nullptr.
@@ -399,6 +415,14 @@ bool SerialProtocol::dispatch_message(const char* payload, size_t len,
     if (strcmp(type_buf, "set-failure-mode") == 0)
     {
         handle_set_failure_mode(payload, len);
+        return false;
+    }
+    if (strcmp(type_buf, "debug") == 0)
+    {
+        // Release builds compile this call to an unhandled no-op. Observation
+        // builds route the request to the fixed-capacity telemetry subsystem.
+        // In neither case may a debug envelope fall through to eval parsing.
+        dt::handle_debug_message(payload, len, write_debug_json);
         return false;
     }
 

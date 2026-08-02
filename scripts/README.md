@@ -41,6 +41,36 @@ runs optimized and ASan/UBSan endurance checks, links `musicthing` and
 under `build/rp2040-profile/<revision>/`. Native timing remains comparative;
 simulator and physical-device observations have separate result grades.
 
+### `run_wokwi_rp2040.py`
+
+Builds or reuses `musicthing-observe`, lints `wokwi/diagram.json`, generates a
+bounded automation scenario from the moderate and combined-high firmware
+corpora, runs the exact ELF, and evaluates the serial log and logic-analyzer
+VCD against `rp2040_budget.json`.
+
+```bash
+python3 scripts/run_wokwi_rp2040.py
+```
+
+The command requires the official `wokwi-cli` and `WOKWI_CLI_TOKEN`. The token
+is read only from the environment and is never written to evidence. Use
+`--generate-only` to validate scenario generation without a token or hosted
+simulation quota.
+
+### `run_rp2040_goal_gate.py`
+
+Runs one complete optimization candidate through `run_rp2040_profile.py` and
+then Wokwi, reusing the exact observation ELF. Each invocation creates a new
+directory under `build/rp2040-goal/`; an existing label is never overwritten.
+
+```bash
+python3 scripts/run_rp2040_goal_gate.py
+```
+
+The combined summary links the two subordinate summaries by SHA-256. Run
+candidate comparisons with the same toolchain and Wokwi CLI version, and
+retain only candidates for which the complete gate passes.
+
 ### `serve.py`
 Simple Python web server for testing the WASM build locally.
 

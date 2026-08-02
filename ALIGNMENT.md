@@ -16,21 +16,25 @@ profile states only the behavior it implements and measures.
 
 **What.** The production `musicthing` image uses 151,068 bytes of static RAM
 and leaves a 110,880-byte linked main-RAM heap span; `musicthing-observe`
-uses 152,300 bytes and leaves 109,648 bytes. The native constrained-profile
-runner now exercises declared combined and near-boundary workloads, but no
-target heap low-water mark or stack watermark has been observed under them.
+uses 152,332 bytes and leaves 109,616 bytes. The native constrained-profile
+runner exercises declared combined and near-boundary workloads, and the Wokwi
+adapter now enforces the target telemetry contract. No hosted-simulator or
+physical-device run has yet recorded a heap low-water mark or stack watermark
+under those workloads.
 
 **Why it matters.** Static fit alone does not establish safe combined runtime
 headroom under deep compilation, protocol activity, and firmware execution.
 
-**Rough cost.** M: run the observation image through the serial simulator
-adapter and then the physical-device subset before claiming runtime headroom.
+**Rough cost.** S-M: provide the hosted-simulator token and run the composed
+candidate gate, then repeat the physical-device subset before claiming runtime
+headroom on silicon.
 
 ### 2. Clause-level evidence remains incomplete *(2026-08-02)*
 
 **What.** Aggregate native and generated suites pass, while parts of the
 prospective clause registry still lack a machine-readable clause-to-case-to-
-artifact join. The serial adapter and physical-target subset are not present.
+artifact join. The capacity/timing serial adapter is present; a full serial
+conformance adapter and the physical-target subset are not.
 
 **Why it matters.** Aggregate suite success cannot establish every normative
 clause or every target profile.

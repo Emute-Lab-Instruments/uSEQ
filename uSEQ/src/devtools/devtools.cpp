@@ -151,6 +151,14 @@ struct DevToolsState {
         uint32_t win_count = 0;
     } tick;
 
+    struct {
+        uint32_t start_us = 0;
+        uint32_t last_us = 0;
+        uint32_t max_us = 0;
+        uint32_t count = 0;
+        uint32_t error_count = 0;
+    } eval;
+
     struct Event {
         uint32_t ts_us = 0;
         const char* channel = nullptr;
@@ -290,6 +298,20 @@ void tick_end() {
         s.tick.win_sum = 0;
         s.tick.win_count = 0;
     }
+}
+
+void eval_begin() {
+    s.eval.start_us = dt_micros();
+    event("eval", "begin");
+}
+
+void eval_end(bool success) {
+    s.eval.last_us = dt_micros() - s.eval.start_us;
+    if (s.eval.last_us > s.eval.max_us) s.eval.max_us = s.eval.last_us;
+    s.eval.count++;
+    if (!success) s.eval.error_count++;
+    event("eval", success ? "done" : "error",
+          static_cast<int>(s.eval.last_us));
 }
 
 void event(const char* channel, const char* message, const char* detail) {
@@ -580,25 +602,46 @@ static String serialize_state() {
     return j.build();
 }
 
+static String serialize_eval_timing() {
+    JsonBuilder j;
+    j.object_begin()
+        .field("last_us", static_cast<int>(s.eval.last_us))
+        .field("max_us", static_cast<int>(s.eval.max_us))
+        .field("count", static_cast<int>(s.eval.count))
+        .field("error_count", static_cast<int>(s.eval.error_count))
+        .object_end();
+    return j.build();
+}
+
 static String serialize_eval() {
     JsonBuilder j;
-    j.array_begin_unkeyed();
-    uint8_t count = s.ev_count < 32 ? s.ev_count : 32;
-    for (uint8_t i = 0; i < count; ++i) {
-        uint8_t idx = (s.ev_head - 1 - i) & 31;
-        const auto& e = s.events[idx];
-        if (!e.channel) continue;
-        j.object_begin()
-            .field("ts_us", static_cast<int>(e.ts_us))
-            .field("channel", e.channel)
-            .field("message", e.message);
-        if (e.has_int)
-            j.field("detail", e.detail_int);
-        else if (e.detail_str)
-            j.field("detail", e.detail_str);
-        j.object_end();
+    j.object_begin()
+        .field("last_us", static_cast<int>(s.eval.last_us))
+        .field("max_us", static_cast<int>(s.eval.max_us))
+        .field("count", static_cast<int>(s.eval.count))
+        .field("error_count", static_cast<int>(s.eval.error_count));
+    {
+        JsonBuilder events;
+        events.array_begin_unkeyed();
+        uint8_t count = s.ev_count < 32 ? s.ev_count : 32;
+        for (uint8_t i = 0; i < count; ++i) {
+            uint8_t idx = (s.ev_head - 1 - i) & 31;
+            const auto& e = s.events[idx];
+            if (!e.channel) continue;
+            events.object_begin()
+                .field("ts_us", static_cast<int>(e.ts_us))
+                .field("channel", e.channel)
+                .field("message", e.message);
+            if (e.has_int)
+                events.field("detail", e.detail_int);
+            else if (e.detail_str)
+                events.field("detail", e.detail_str);
+            events.object_end();
+        }
+        events.array_end();
+        j.field_raw("events", events.build());
     }
-    j.array_end();
+    j.object_end();
     return j.build();
 }
 
@@ -625,6 +668,13 @@ static String serialize_resources() {
             if (s.engine->cells.cells[i].kind != sig::CellKind::Empty)
                 cells_used++;
         }
+        uint16_t data_entries_used = 0;
+        if (s.engine->cells.data_table_count > 0) {
+            const uint16_t last = s.engine->cells.data_table_count - 1;
+            data_entries_used = static_cast<uint16_t>(
+                s.engine->cells.data_offsets[last] +
+                s.engine->cells.data_lengths[last]);
+        }
         auto ratio = [&j](const char* name, uint32_t used,
                           uint32_t capacity) {
             JsonBuilder value;
@@ -637,6 +687,7 @@ static String serialize_resources() {
         ratio("nodes", s.engine->pool.node_count, sig::MAX_TOTAL_NODES);
         ratio("arena", s.engine->arena.write_head, sig::SOURCE_ARENA_SIZE);
         ratio("cells", cells_used, sig::MAX_CELLS);
+        ratio("data_entries", data_entries_used, sig::MAX_DATA_ENTRIES);
         ratio("state_slots", s.engine->pool.state_slot_count,
               sig::MAX_STATE_SLOTS);
         ratio("live_slots", s.engine->pool.live_slot_count,
@@ -789,7 +840,10 @@ static void handle_query(const char* json, size_t len, WriteFn write_fn) {
         case CH_TICK:      data = serialize_tick(); break;
         case CH_GRAPH:     data = serialize_graph(output); break;
         case CH_STATE:     data = serialize_state(); break;
-        case CH_EVAL:      data = serialize_eval(); break;
+        case CH_EVAL:
+            data = strcmp(output, "timing") == 0
+                ? serialize_eval_timing() : serialize_eval();
+            break;
         case CH_RESOURCES: data = serialize_resources(); break;
         case CH_IO:        data = serialize_io(); break;
         case CH_PROTOCOL:  data = serialize_protocol(); break;

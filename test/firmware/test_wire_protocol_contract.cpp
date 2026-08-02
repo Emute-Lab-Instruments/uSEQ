@@ -808,3 +808,28 @@ TEST_CASE("F11 [state-sync §2] get-state without engine returns failure",
     REQUIRE(json.find("\"success\":false") != std::string::npos);
     REQUIRE(json.find("\"requestId\":\"req-3\"") != std::string::npos);
 }
+
+TEST_CASE("F14 [§5.16] debug requests reach devtools through serial dispatch",
+          "[contract][wire-protocol][devtools]")
+{
+    firmware::SerialProtocol sp;
+    sp.init();
+
+    StdoutCapture cap;
+    char buf[256] = {};
+    const char* msg =
+        R"({"type":"debug","action":"query","channel":"resources","requestId":"sim-resources"})";
+    bool is_eval = sp.dispatch_message(msg, strlen(msg), buf, sizeof(buf));
+
+    auto out = cap.drain();
+    auto json = extract_last_json(out);
+    REQUIRE_FALSE(is_eval);
+    REQUIRE(buf[0] == '\0');
+    REQUIRE_FALSE(json.empty());
+    REQUIRE(json.find("\"type\":\"response\"") != std::string::npos);
+    REQUIRE(json.find("\"requestId\":\"sim-resources\"") !=
+            std::string::npos);
+    REQUIRE(json.find("\"success\":true") != std::string::npos);
+    REQUIRE(json.find("\"channel\":\"resources\"") != std::string::npos);
+    REQUIRE(json.find("\"heap_min_free\":") != std::string::npos);
+}

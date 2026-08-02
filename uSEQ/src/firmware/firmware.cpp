@@ -114,7 +114,9 @@ void Firmware::tick()
                 len++;
             }
 
+            dt::eval_begin();
             sig::EvalResult result = sig::eval_cold(code_buffer, len, engine);
+            dt::eval_end(result.kind != sig::EvalResult::Error);
             serial.send_eval_response(result);
 
             // A transport command may have changed the wall-to-logical-time

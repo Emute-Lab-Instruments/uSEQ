@@ -19,15 +19,19 @@ compiler/control runtime. The canonical language entry point is
   health, synth, and builtin suites.
 - `test/firmware/` and `test/hardware/` — host-composed firmware and wire
   contract tests; these are not physical-device observations.
+- `test/scripts/` — structural contracts for acceptance runners and evidence
+  evaluation without consuming hosted simulator quota.
 - `test/conformance/` — data-driven language corpus shared by native and
   generated-WASM adapters.
 - `bench/firmware-corpus/` — declared moderate, combined-high, and focused
   near-boundary workloads for the native RP2040 capacity profile;
   `manifest.json` makes the intended utilization bands executable.
+- `wokwi/` — linted Music Thing RP2040 simulation circuit: two active-low
+  gate inputs and a logic-analyzer view of `d1`, `d2`, `a4`, and `a3`.
 - `scripts/` — native/WASM builds, conformance adapters, manifest generation,
   NodeDef inspection, benchmarks, PlatformIO helpers, and RP2040 acceptance
-  orchestration (`run_rp2040_profile.py`, `rp2040_memory_report.py`,
-  `rp2040_budget.json`).
+  orchestration (`run_rp2040_profile.py`, `run_wokwi_rp2040.py`,
+  `run_rp2040_goal_gate.py`, `rp2040_memory_report.py`, `rp2040_budget.json`).
 - `docs/specs/` — canonical language, runtime, firmware, diagnostics, state,
   synth, and protocol specifications; `docs/SEMANTICS.md` is a compatibility
   pointer only.

@@ -32,6 +32,19 @@ The full local grades run with:
 python3 scripts/run_rp2040_profile.py
 ```
 
+The hosted simulator grade runs with:
+
+```bash
+python3 scripts/run_wokwi_rp2040.py
+```
+
+For an optimization candidate, run all non-physical grades through the
+non-overwriting composition command:
+
+```bash
+python3 scripts/run_rp2040_goal_gate.py
+```
+
 ## Current budgets
 
 Static gates are encoded in `scripts/rp2040_budget.json`:
@@ -80,10 +93,39 @@ The Wokwi lane is therefore bounded to serial/GPIO functional checks and
 repeatable workload automation; endurance and target timing remain mandatory
 on a physical card before release-level hardware claims.
 
-The CLI requires a token and consumes hosted simulation quota. The sustained
-optimization loop should run native and exact-link grades on every candidate,
-use short Wokwi runs only after those pass, and schedule the physical subset
-for retained candidates.
+The tracked `wokwi/diagram.json` models the two active-low gate inputs and
+captures direct outputs `d1`, `d2`, `a4`, and `a3` with an external logic
+analyzer. The generated scenario uses the production JSONL protocol to run two
+cycles each of the moderate and combined-high corpora, polls target-side
+compiler durations, samples streamed tick durations, verifies every required
+response, exercises one controlled invalid replacement, checks retained
+resources and output health, and validates both scenario pin assertions and
+VCD transitions.
+
+The CLI requires a token and consumes hosted simulation quota. On the VPS,
+install the official CLI in the account PATH and load `WOKWI_CLI_TOKEN` from
+the server secret environment; never place it in the repository, shell
+history, logs, or evidence. The sustained optimization loop runs native and
+exact-link grades before Wokwi for every candidate and schedules the physical
+subset only for retained candidates. Candidate comparisons use the same
+compiler toolchain and Wokwi CLI version.
+
+## Goal-loop contract
+
+The goal loop optimizes one named resource cause per candidate. It may change
+representation, layout, algorithms, and target-specific lowering, but it may
+not reduce a public language or workload capacity, weaken a conformance case,
+remove a failure/recovery assertion, or raise a budget merely to admit a
+candidate. Each candidate is retained only when the complete goal gate passes
+and its before/after evidence improves a named flash, static-RAM, runtime-
+headroom, compilation, or tick metric without a material regression elsewhere.
+
+The loop stops when the production image and observation image satisfy their
+static gates, the moderate and combined-high target workloads satisfy every
+runtime gate, and further changes do not yield a reproducible improvement.
+This stopping condition is a comfortable-fit criterion, not merely successful
+linking. Physical-device evidence remains required before timing or endurance
+is attributed to the program card itself.
 
 ## Optimization discipline
 

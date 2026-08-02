@@ -529,17 +529,25 @@ Node fields:
 
 #### `eval`
 
-Returns the event ring buffer contents (most recent first).
+Returns target-side eval timing counters and the event ring buffer contents
+(most recent first). `last_us` measures only `eval_cold`; serial parsing and
+response emission are outside the interval. The simulator runner polls this
+channel after each workload form and computes its workload percentiles from
+the individual `last_us` samples. A query with `"output":"timing"` returns
+only `last_us`, `max_us`, `count`, and `error_count`; this bounded polling
+shape avoids retransmitting the event ring after every form.
 
 ```json
 {
   "type": "response", "requestId": "req-15", "success": true,
   "channel": "eval",
   "data": {
+    "last_us": 202,
+    "max_us": 202,
+    "count": 1,
+    "error_count": 0,
     "events": [
-      {"ts_us": 12849201, "channel": "recompile", "message": "done", "detail": 3},
-      {"ts_us": 12849180, "channel": "recompile", "message": "begin"},
-      {"ts_us": 12849102, "channel": "eval", "message": "done"},
+      {"ts_us": 12849102, "channel": "eval", "message": "done", "detail": 202},
       {"ts_us": 12848900, "channel": "eval", "message": "begin"}
     ]
   }
@@ -560,6 +568,7 @@ Returns the event ring buffer contents (most recent first).
     "nodes":             {"used": 47, "capacity": 1024},
     "arena":             {"used": 1280, "capacity": 16384},
     "cells":             {"used": 12, "capacity": 512},
+    "data_entries":      {"used": 256, "capacity": 512},
     "state_slots":       {"used": 3, "capacity": 256},
     "live_slots":        {"used": 2, "capacity": 32},
     "synth_declarations": {"used": 4, "capacity": 64},
