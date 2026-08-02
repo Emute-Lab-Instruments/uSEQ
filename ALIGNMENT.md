@@ -12,15 +12,18 @@ profile states only the behavior it implements and measures.
 
 ## Top defects
 
-### 1. Target runtime headroom is incompletely measured *(2026-08-02)*
+### 1. Target runtime headroom is incompletely measured *(2026-08-03)*
 
-**What.** The pinned-toolchain VPS baseline at revision `4dfd43e` records
-150,236 bytes of PlatformIO static RAM and a 111,712-byte linked main-RAM heap
-span for `musicthing`; `musicthing-observe` records 151,500 and 110,448 bytes,
-respectively. The native constrained-profile runner exercises declared
-combined and near-boundary workloads, and the Wokwi adapter enforces the
-target telemetry contract. No hosted-simulator or physical-device run has yet
-recorded a heap low-water mark or stack watermark under those workloads.
+**What.** The pinned-toolchain VPS grade for source revision `ae7a069` records
+135,580 bytes of PlatformIO static RAM and a 126,368-byte linked main-RAM heap
+span for `musicthing`; `musicthing-observe` records 136,844 and 125,104 bytes,
+respectively. Compact retained cell-dependency indices recovered 14,656 bytes
+in both images relative to the `4dfd43e` baseline without changing declared
+capacity or endurance checksums. The native constrained-profile runner
+exercises declared combined and near-boundary workloads, and the Wokwi adapter
+enforces the target telemetry contract. No hosted-simulator or physical-device
+run has yet recorded a heap low-water mark or stack watermark under those
+workloads.
 
 **Why it matters.** Static fit alone does not establish safe combined runtime
 headroom under deep compilation, protocol activity, and firmware execution.
