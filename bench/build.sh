@@ -17,6 +17,8 @@ SRCS=(bench/bench_probe.cpp
       uSEQ/src/signal_engine/graph_builder.cpp
       uSEQ/src/signal_engine/cold_eval.cpp
       uSEQ/src/signal_engine/state_registry.cpp
+      uSEQ/src/signal_engine/synth_graph.cpp
+      uSEQ/src/signal_engine/synth_registry.cpp
       uSEQ/src/utils/string.cpp
       uSEQ/src/utils/common.cpp
       uSEQ/src/utils/itoa.cpp

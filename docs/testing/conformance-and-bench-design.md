@@ -1,7 +1,8 @@
 # Conformance & Benchmark Suite Design
 
-Status: native and generated-WASM fixture adapters implemented; serial adapter,
-cross-adapter diff reporting, fuzzing, and benchmark rollout remain proposed.
+Status: native and generated-WASM fixture adapters and the native benchmark are
+implemented; the serial adapter, cross-adapter diff reporting, fuzzing, and
+WASM/RP2040 benchmark lanes remain proposed.
 Companion to `docs/specs/MAIN.md`.
 
 ## Part 1 — Implementation-independent conformance suite
