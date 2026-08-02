@@ -298,6 +298,35 @@ def build_manifest(postprocess: str) -> dict[str, Any]:
         raise ManifestError("build claims wasm-opt post-processing but wasm-opt is absent")
     return {
         "schema": "useq.compiler-capabilities/v1",
+        "profile_ownership": {
+            "profile": "compiler-interpreter",
+            "owns": [
+                "source_identity",
+                "compiler_build_profile",
+                "compiler_capabilities",
+                "interpreter_exports",
+                "interpreter_artifacts",
+                "interpreter_smoke_gates",
+            ],
+            "field_dispositions": {
+                "node_def_descriptors": {
+                    "status": "not-applicable",
+                    "owner_profile": "application-served-bundle",
+                },
+                "sample_rate_and_render_quantum": {
+                    "status": "not-applicable",
+                    "owner_profile": "application-served-bundle",
+                },
+                "audio_activation_and_worklet": {
+                    "status": "not-applicable",
+                    "owner_profile": "application-served-bundle",
+                },
+                "target_firmware_artifacts_and_resources": {
+                    "status": "not-applicable",
+                    "owner_profile": "firmware-build",
+                },
+            },
+        },
         "source": git_source_state(profile),
         "build": {
             "profile": profile["profile"],

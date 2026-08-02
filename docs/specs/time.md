@@ -14,7 +14,8 @@
 - `uSEQ/src/signal_engine/cell_store.h` / `cell_store.cpp` — `init_timing_defaults()` populates `bpm`, `beats-per-bar`, `bars-per-phrase`, `phrases-per-section` cells.
 - `uSEQ/src/signal_engine/executor.cpp` — `ExecutionContext::t` and `ExecutionContext::dt`; `RawTimeLoad` returns `ctx.t`.
 - `uSEQ/src/firmware/firmware.cpp` — sets `ctx.t` from the hardware clock before each tick.
-- `wasm/wasm_wrapper.cpp` — `g_current_time`; `useq_update_time()`.
+- `wasm/wasm_wrapper.cpp` — `g_current_time`; `useq_update_time()`; the shared
+  authoritative frontier for generated-runtime live-tick entry points.
 - `uSEQ/src/dsp/tempoEstimator.h` / `tempoEstimator.cpp` — external tempo estimation from clock inputs.
 - `test/signal_engine/test_signal_engine_golden.cpp` — "beat phasor", "bar phasor", "phrase phasor", "section phasor", "beat-num", "bar-num", "beat-dur" golden tests.
 
@@ -34,6 +35,17 @@ clear definitions, graphs, state resources, or their current values. The
 transport-origin correction is separate from the user-visible
 `useq-set-time-offset` value, so transport operations do not silently rewrite
 that setting.
+
+1.1.4 In the generated runtime, `useq_tick_synth_controls` and the
+state-advancing mode of `useq_tick_and_project` share one adapter-owned wall
+frontier. The first accepted tick may use any finite wall time; later accepted
+ticks must strictly increase it. Observational sampling does not acquire or
+advance the frontier. The firmware has one device-clock-owned live loop and
+assumes that clock is finite and monotonic; the compiler core does not impose a
+cross-adapter wall-time rejection rule. A successful `useq-clear` restores the
+compiler timing state and the generated-runtime frontier/time origin. The
+physical device clock remains an external input, while the first post-clear
+core tick receives `dt = 0`. (`TIME-C-001`, `CLEAR-001`)
 
 1.2 **Phasors** are signals that ramp `0 → 1` and (typically) wrap. The standard phasors are derived from `t` and timing cells:
 - `beat = fmod(t · (bpm / 60), 1)`

@@ -348,4 +348,12 @@ TEST_CASE("WASM sampling is diagnostic-pure and invalid projection is atomic",
             std::string::npos);
     eval_ok("(useq-clear)");
     REQUIRE(active_diagnostics() == "[]");
+
+    // CLEAR-001: the generated-runtime adapter belongs to the session reset
+    // domain. Its former wall frontier and dt origin cannot reject or alter
+    // the first finite post-clear tick.
+    eval_ok("(defstate wrapper-clear-dt 0 (+ wrapper-clear-dt dt))");
+    REQUIRE(useq_tick_synth_controls(0.0, 0, 0) == 0);
+    REQUIRE(last_error().empty());
+    REQUIRE(take_owned(useq_eval("wrapper-clear-dt")) == "0");
 }

@@ -95,7 +95,10 @@ comments or strings. Delimiters are typed: `)` cannot close `[` and vice
 versa. Numeric literals whose binary64 conversion is non-finite, identifiers
 longer than the name limit, and submissions longer than the `uint16_t` source
 span capacity are errors; none is truncated or wrapped into an aliased token,
-span, or value. Lexical preflight completes before the first form publishes.
+span, or value. Numeric and symbol candidates are scanned only within the
+submitted length and converted from a bounded NUL-terminated copy; conversion
+cannot inspect adjacent caller bytes. Lexical preflight completes before the
+first form publishes. (`LEX-001`)
 
 1.16 **Published references are validated at both ends.** Capacity must be
 proved before a definition is installed, and consumers independently reject

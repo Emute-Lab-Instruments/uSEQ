@@ -15,6 +15,13 @@
     - eval: "(- 1 1.0)"
       expect_value: 0.0
 
+- name: numeric-literal-at-source-end
+  spec: values-types.md §1.3; LEX-001
+  tags: [smoke, values-types, audit-regression, lex-001]
+  steps:
+    - eval: "12"
+      expect_value: 12.0
+
 - name: comparison-returns-1-or-0
   spec: values-types.md §1.4
   tags: [smoke, values-types]

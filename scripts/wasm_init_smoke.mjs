@@ -34,6 +34,16 @@ if (
   throw new Error("generated WASM health query did not distinguish idle/invalid");
 }
 
+const exactBoundaryNumber = mod.ccall(
+  "useq_eval",
+  "string",
+  ["string"],
+  ["12"],
+);
+if (exactBoundaryNumber !== "12") {
+  throw new Error("generated WASM did not parse a numeric token at source end");
+}
+
 const healthProgram = mod.ccall(
   "useq_eval",
   "string",
@@ -224,6 +234,19 @@ try {
   evalOk("(useq-clear)");
   if (activeDiagnostics().length !== 0) {
     throw new Error("generated WASM did not clear synth diagnostic subjects");
+  }
+  evalOk("(defstate wasm-clear-dt 0 (+ wasm-clear-dt dt))");
+  if (tickControls(0) !== 0) {
+    throw new Error("generated WASM retained its authoritative frontier after clear");
+  }
+  const postClearState = mod.ccall(
+    "useq_eval",
+    "string",
+    ["string"],
+    ["wasm-clear-dt"],
+  );
+  if (postClearState !== "0") {
+    throw new Error("generated WASM retained its dt origin after clear");
   }
 } finally {
   mod.ccall("free", null, ["number"], [controlPtr]);

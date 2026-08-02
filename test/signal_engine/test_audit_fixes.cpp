@@ -664,6 +664,33 @@ TEST_CASE("A15: tokenizer preflights ASCII, finite literals, and span capacity",
     REQUIRE(rejects("1e9999", 6));
     REQUIRE(rejects("+1e9999", 7));
 
+    // LEX-001: numeric conversion is bounded by the submitted slice rather
+    // than by an adjacent byte or an implicit C-string terminator.
+    const char adjacent_bytes[] = {'1', '2', 'x', '\0'};
+    uint8_t bounded_error_count = 0;
+    uint16_t bounded_count = TokenStream::tokenize(
+        adjacent_bytes, 1, tokens, 64, errors, &bounded_error_count);
+    REQUIRE(bounded_error_count == 0);
+    REQUIRE(bounded_count == 2);
+    REQUIRE(tokens[0].kind == TokenKind::Number);
+    REQUIRE(tokens[0].span_start == 0);
+    REQUIRE(tokens[0].span_len == 1);
+    REQUIRE(tokens[0].number == Approx(1.0));
+
+    // Under the instrumented build, the one-byte allocation also provides a
+    // memory-boundary witness: conversion may not read a terminator beyond it.
+    char* exact_allocation = new char[1];
+    exact_allocation[0] = '7';
+    bounded_error_count = 0;
+    bounded_count = TokenStream::tokenize(
+        exact_allocation, 1, tokens, 64, errors, &bounded_error_count);
+    delete[] exact_allocation;
+    REQUIRE(bounded_error_count == 0);
+    REQUIRE(bounded_count == 2);
+    REQUIRE(tokens[0].kind == TokenKind::Number);
+    REQUIRE(tokens[0].span_len == 1);
+    REQUIRE(tokens[0].number == Approx(7.0));
+
     std::string oversized((size_t)UINT16_MAX + 1, ' ');
     REQUIRE(rejects(oversized.data(), (uint32_t)oversized.size()));
 

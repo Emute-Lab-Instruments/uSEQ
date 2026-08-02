@@ -87,11 +87,15 @@ struct ProjectionFork {
 
 static ProjectionFork g_projection_fork = {};
 
-static void reset_host_session_caches() {
+static void reset_host_session_state() {
     for (ProbeSlot& slot : g_probe_slots) slot = ProbeSlot{};
     if (g_probe_pool) g_probe_pool->reset();
     g_probe_dirty = false;
     g_projection_fork = ProjectionFork{};
+    g_current_time = 0.0;
+    g_prev_tick_time = 0.0;
+    g_authoritative_wall_frontier = 0.0;
+    g_has_authoritative_wall_frontier = false;
     g_cell_revision++;
 }
 
@@ -702,7 +706,7 @@ extern "C"
             sig::EvalResult result = sig::eval_cold(input, length, *g_engine);
 
             if (g_engine->session_generation != generation_before)
-                reset_host_session_caches();
+                reset_host_session_state();
 
             // User eval may have changed cell definitions — invalidate
             // probe compilation cache so probes pick up the new state.

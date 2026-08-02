@@ -228,48 +228,10 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
             continue;
         }
 
-        // Number (including negative numbers)
-        if (is_digit(c) || (c == '-' && i + 1 < length && is_digit(source[i + 1])) ||
-            (c == '.' && i + 1 < length && is_digit(source[i + 1]))) {
-            uint32_t start = i;
-            char* end_ptr = nullptr;
-            double val = strtod(source + i, &end_ptr);
-            if (end_ptr > source + i) {
-                uint32_t num_end = (uint32_t)(end_ptr - source);
-                // A14: the character after the number must not be a symbol
-                // char ("2x" must tokenize as the symbol 2x, not number 2
-                // followed by symbol x), and the literal itself must be plain
-                // decimal (no 0x/inf/nan strtod forms). Otherwise fall
-                // through to the symbol path.
-                bool clean_tail = num_end >= length ||
-                                  !is_symbol_char(source[num_end]);
-                if (clean_tail &&
-                    is_plain_number_text(source + start, num_end - start)) {
-                    if (!std::isfinite(val)) {
-                        emit_error(start, (uint16_t)(num_end - start),
-                                   "Numeric literal is outside the finite binary64 range",
-                                   "Use a smaller finite decimal literal");
-                        Token t;
-                        t.kind = TokenKind::Error;
-                        t.span_start = (uint16_t)start;
-                        t.span_len = (uint16_t)(num_end - start);
-                        emit(t);
-                        i = num_end;
-                        continue;
-                    }
-                    Token t;
-                    t.kind = TokenKind::Number;
-                    t.span_start = (uint16_t)start;
-                    t.span_len = (uint16_t)(num_end - start);
-                    t.number = val;
-                    emit(t);
-                    i = num_end;
-                    continue;
-                }
-            }
-        }
-
-        // Symbol
+        // Numbers and symbols share one bounded token path. Scan only within
+        // the submitted slice, then convert the NUL-terminated copy below;
+        // strtod must never receive the caller's potentially unterminated
+        // source buffer directly.
         if (is_symbol_char(c)) {
             uint32_t start = i;
             while (i < length && is_symbol_char(source[i])) i++;
