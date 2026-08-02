@@ -4,7 +4,10 @@ This directory contains build and utility scripts for the uSEQ project.
 
 Run the acceptance commands below inside `nix-shell`, or use
 `nix-shell --run '<command>'` on an unattended host. The tracked environment
-includes PyYAML as well as the native, WASM, and PlatformIO toolchains.
+includes PyYAML as well as the native and WASM toolchains.
+On the VPS, the preparation script supplies pinned PlatformIO 6.1.18 from a
+goal-local virtual environment because the Nix FHS wrapper cannot enter its
+bubblewrap namespace on that host.
 
 ## Scripts
 

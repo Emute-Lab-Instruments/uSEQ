@@ -46,10 +46,23 @@ nix-shell --run 'python3 scripts/run_rp2040_goal_gate.py'
 ```
 
 The tracked Nix shell includes PyYAML for the shared conformance runner and
-the tool classes used by the composed gate: native C++, Meson, PlatformIO,
-Emscripten, Binaryen, WABT, and Node.js. Candidate comparisons must use one
-unchanged Nixpkgs revision or channel state; entering a newly updated channel
-is a toolchain change and requires a new baseline.
+the native C++, Meson, Emscripten, Binaryen, WABT, and Node.js tool classes
+used by the composed gate. Candidate comparisons must use one unchanged
+Nixpkgs revision or channel state; entering a newly updated channel is a
+toolchain change and requires a new baseline.
+
+Each local summary records the resolved executable path and first version line
+for C++, Meson, Ninja, PlatformIO, Emscripten, Binaryen, WABT, Node.js, and
+Python. The composed candidate summary carries this snapshot together with
+the Wokwi version/model record, making a comparison-series environment change
+visible in the same evidence used for retention.
+
+On the VPS, PlatformIO 6.1.18 is installed in the isolated
+`~/.cache/useq-rp2040-goal/platformio-6.1.18` virtual environment. The Nixpkgs
+PlatformIO wrapper requires bubblewrap user namespaces, which the production
+VPS denies. `shell.nix` adds the isolated binary when present while retaining
+Nix ownership of the remaining toolchain. This exception can be removed when
+the host supports the Nix wrapper or an unwrapped Nix package is adopted.
 
 ## Current budgets
 

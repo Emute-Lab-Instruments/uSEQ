@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -21,9 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def git_output(*args: str) -> str:
-    return subprocess.check_output(
-        ["git", *args], cwd=ROOT, text=True
-    ).strip()
+    return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
 
 
 def run_logged(
@@ -48,8 +47,7 @@ def run_logged(
         print(result.stdout, end="")
     if result.returncode != 0:
         raise SystemExit(
-            f"{name} failed with exit status {result.returncode}; "
-            f"see {log_path}"
+            f"{name} failed with exit status {result.returncode}; see {log_path}"
         )
     return result
 
@@ -76,6 +74,44 @@ def parse_last_json_line(output: str, name: str) -> dict[str, Any]:
     raise SystemExit(f"{name} did not emit a JSON result")
 
 
+def toolchain_snapshot(environment: dict[str, str]) -> dict[str, Any]:
+    commands = {
+        "cxx": ["c++", "--version"],
+        "meson": ["meson", "--version"],
+        "ninja": ["ninja", "--version"],
+        "platformio": ["pio", "--version"],
+        "emscripten": ["emcc", "--version"],
+        "binaryen": ["wasm-opt", "--version"],
+        "wabt": ["wasm2wat", "--version"],
+        "node": ["node", "--version"],
+        "python": [sys.executable, "--version"],
+    }
+    snapshot: dict[str, Any] = {}
+    for name, command in commands.items():
+        executable = shutil.which(command[0], path=environment.get("PATH"))
+        if not executable:
+            raise SystemExit(f"required tool is absent from PATH: {command[0]}")
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=True,
+        )
+        version_lines = [
+            line.strip() for line in result.stdout.splitlines() if line.strip()
+        ]
+        if not version_lines:
+            raise SystemExit(f"tool emitted no version text: {command[0]}")
+        snapshot[name] = {
+            "executable": str(Path(executable).resolve()),
+            "version": version_lines[0],
+        }
+    return snapshot
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -84,15 +120,20 @@ def main() -> None:
         help="evidence directory (default: build/rp2040-profile/<revision>)",
     )
     parser.add_argument(
-        "--endurance-cycles", type=int, default=2000,
+        "--endurance-cycles",
+        type=int,
+        default=2000,
         help="replacement cycles for each endurance binary (default: 2000)",
     )
     parser.add_argument(
-        "--ticks-per-cycle", type=int, default=32,
+        "--ticks-per-cycle",
+        type=int,
+        default=32,
         help="execution ticks per endurance cycle (default: 32)",
     )
     parser.add_argument(
-        "--skip-target-build", action="store_true",
+        "--skip-target-build",
+        action="store_true",
         help="skip PlatformIO and exact ELF gates; result is not full local acceptance",
     )
     args = parser.parse_args()
@@ -100,9 +141,7 @@ def main() -> None:
         parser.error("endurance counts must be positive")
 
     revision = git_output("rev-parse", "--short=12", "HEAD")
-    output_dir = args.output_dir or (
-        ROOT / "build" / "rp2040-profile" / revision
-    )
+    output_dir = args.output_dir or (ROOT / "build" / "rp2040-profile" / revision)
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -110,6 +149,7 @@ def main() -> None:
     em_cache = output_dir / "em-cache"
     em_cache.mkdir(exist_ok=True)
     environment["EM_CACHE"] = str(em_cache)
+    toolchain = toolchain_snapshot(environment)
 
     run_logged(
         "nodedef-artifact",
@@ -123,8 +163,10 @@ def main() -> None:
         meson_setup = ["meson", "setup", "build"]
     run_logged("meson-setup", meson_setup, output_dir, env=environment)
     run_logged(
-        "meson-compile", ["meson", "compile", "-C", "build"],
-        output_dir, env=environment,
+        "meson-compile",
+        ["meson", "compile", "-C", "build"],
+        output_dir,
+        env=environment,
     )
     run_logged(
         "meson-test",
@@ -147,8 +189,10 @@ def main() -> None:
     )
 
     run_logged(
-        "firmware-harness-build", ["bash", "bench/build.sh", "all"],
-        output_dir, env=environment,
+        "firmware-harness-build",
+        ["bash", "bench/build.sh", "all"],
+        output_dir,
+        env=environment,
     )
     run_logged(
         "firmware-conformance",
@@ -195,9 +239,7 @@ def main() -> None:
     )
     sanitizer_environment = environment.copy()
     sanitizer_environment["ASAN_OPTIONS"] = "detect_leaks=1:halt_on_error=1"
-    sanitizer_environment["UBSAN_OPTIONS"] = (
-        "halt_on_error=1:print_stacktrace=1"
-    )
+    sanitizer_environment["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
     sanitizer_result = run_logged(
         "firmware-endurance-sanitized",
         ["bench/firmware_profile_endurance_asan", *endurance_arguments],
@@ -248,6 +290,7 @@ def main() -> None:
             "revision": git_output("rev-parse", "HEAD"),
             "dirty": bool(git_output("status", "--porcelain")),
         },
+        "toolchain": toolchain,
         "pass": True,
         "full_local_acceptance": not args.skip_target_build,
         "target_memory": target_reports,

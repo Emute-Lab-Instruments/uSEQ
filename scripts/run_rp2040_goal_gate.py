@@ -112,6 +112,8 @@ def main() -> int:
 
     local_summary = local_dir / "summary.json"
     simulator_summary = simulator_dir / "summary.json"
+    local_data = json.loads(local_summary.read_text())
+    simulator_data = json.loads(simulator_summary.read_text())
     local = evidence_ref(local_summary)
     simulator = evidence_ref(simulator_summary)
     summary = {
@@ -122,6 +124,8 @@ def main() -> int:
             "revision": revision,
             "dirty": bool(git_output("status", "--porcelain")),
         },
+        "toolchain": local_data.get("toolchain"),
+        "simulator_environment": simulator_data.get("simulator"),
         "local": local,
         "simulator": simulator,
         "pass": local["pass"] and simulator["pass"],
