@@ -120,8 +120,7 @@ struct SynthConnection {
 // The compiler and app share a 64-node ceiling. Current osc/sine has one
 // audio input, so one edge per declaration covers the shipped registry.
 constexpr uint16_t MAX_SYNTH_DECLARATIONS = SYNTH_MAX_NODES;
-constexpr uint16_t MAX_SYNTH_CONTROLS =
-    static_cast<uint16_t>(MAX_SYNTH_CONTROL_ROOTS);
+constexpr uint16_t MAX_SYNTH_CONTROLS = MAX_SYNTH_CONTROL_ROOTS;
 constexpr uint16_t MAX_SYNTH_CONNECTIONS = MAX_SYNTH_DECLARATIONS;
 #if !defined(ARDUINO) && !defined(USEQ_FIRMWARE_PROFILE)
 static_assert(MAX_SYNTH_CONTROLS ==

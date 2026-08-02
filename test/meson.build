@@ -426,6 +426,10 @@ test('osc_sine_wasm_smoke', node_bin,
 # ===== RP2040 Wokwi acceptance-runner contract =============================
 
 python3 = find_program('python3')
+wasm_manifest_contract = find_program('scripts/test_wasm_manifest.py')
+test('wasm_manifest_contract', python3,
+     args : [wasm_manifest_contract.full_path()], timeout: 30)
+
 wokwi_runner_contract = find_program('scripts/test_run_wokwi_rp2040.py')
 test('rp2040_wokwi_runner_contract', python3,
      args : [wokwi_runner_contract.full_path()], timeout: 30)

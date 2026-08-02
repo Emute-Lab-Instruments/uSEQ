@@ -165,7 +165,8 @@ def cpp_limits() -> dict[str, int]:
         "MAX_NODEDEF_PARAMS", "MAX_NODEDEF_AUDIO_INPUTS", "SYNTH_MAX_NODES",
         "MAX_NODEDEF_ENTRIES", "MAX_NODEDEF_NAME", "MAX_SYNTH_IDENTITY",
         "MAX_SYNTH_DECLARATIONS", "MAX_SYNTH_CONTROLS",
-        "MAX_SYNTH_CONNECTIONS", "MAX_SYNTH_NESTING",
+        "MAX_SYNTH_CONNECTIONS", "MAX_SYNTH_CONTROL_ROOTS",
+        "MAX_SYNTH_NESTING",
         "SYNTH_ARTIFACT_JSON_CAP", "SYNTH_ARTIFACT_ABI_VERSION",
     }
     expressions: dict[str, str] = {}
@@ -198,7 +199,11 @@ def cpp_limits() -> dict[str, int]:
     missing = wanted - values.keys()
     if missing:
         raise ManifestError("missing compiler limit(s): " + ", ".join(sorted(missing)))
-    limits = {name.lower(): values[name] for name in sorted(wanted)}
+    limits = {
+        name.lower(): values[name]
+        for name in sorted(wanted)
+        if name != "MAX_SYNTH_CONTROL_ROOTS"
+    }
     # Token spans are uint16_t and the accepted source length is checked
     # against UINT16_MAX before tokenization. Public CV/output names are the
     # 24 a/d/s channels; MAX_OUTPUTS also includes internal execution slots.
