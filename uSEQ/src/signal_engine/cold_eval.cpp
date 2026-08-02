@@ -1366,10 +1366,13 @@ static EvalResult validate_synth_patch_graph(const SynthGraph& graph,
 
 static const SynthControlChannel* find_synth_control(
     const SynthGraph& graph, const char* identity, const char* param_name) {
-    for (uint16_t i = 0; i < graph.control_count(); i++) {
+    const SynthDeclaration* declaration = graph.find(identity);
+    if (!declaration) return nullptr;
+    const uint16_t end = static_cast<uint16_t>(
+        declaration->first_control_index + declaration->control_count);
+    for (uint16_t i = declaration->first_control_index; i < end; i++) {
         const SynthControlChannel& control = graph.controls[i];
-        if (std::strcmp(control.identity, identity) == 0 &&
-            std::strcmp(control.param_name, param_name) == 0)
+        if (std::strcmp(control.param_name, param_name) == 0)
             return &control;
     }
     return nullptr;
@@ -1383,13 +1386,19 @@ static uint16_t allocate_synth_owner_context(
         find_synth_control(old_graph, identity, param_name);
     if (old) return old->owner_context;
 
+    const SynthDeclaration* old_declaration = old_graph.find(identity);
+
     for (uint16_t offset = 0; offset < MAX_SYNTH_CONTROLS; offset++) {
         uint16_t context = (uint16_t)(base + offset);
         bool used = false;
         for (uint16_t i = 0; i < old_graph.control_count(); i++) {
             const SynthControlChannel& c = old_graph.controls[i];
-            if (std::strcmp(c.identity, identity) != 0 &&
-                c.owner_context == context) {
+            const bool same_declaration = old_declaration &&
+                i >= old_declaration->first_control_index &&
+                static_cast<uint32_t>(i) <
+                    static_cast<uint32_t>(old_declaration->first_control_index) +
+                        old_declaration->control_count;
+            if (!same_declaration && c.owner_context == context) {
                 used = true;
                 break;
             }
@@ -1739,10 +1748,16 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     // Existing control contexts are stable per (identity,param). Mark only
     // this declaration's old contexts unseen; successful replacement retires
     // removed parameters, while rollback restores the registry snapshot.
-    for (uint16_t i = 0; i < synth_snapshot.control_count(); i++) {
-        const SynthControlChannel& old = synth_snapshot.controls[i];
-        if (std::strcmp(old.identity, identity_buf) == 0)
+    const SynthDeclaration* old_declaration = synth_snapshot.find(identity_buf);
+    if (old_declaration) {
+        const uint16_t old_end = static_cast<uint16_t>(
+            old_declaration->first_control_index +
+            old_declaration->control_count);
+        for (uint16_t i = old_declaration->first_control_index;
+             i < old_end; i++) {
+            const SynthControlChannel& old = synth_snapshot.controls[i];
             engine.registry.begin_context(old.owner_context);
+        }
     }
 
     // ── Commit declaration + controls to synth_graph ───────────────────
@@ -2002,7 +2017,6 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
                 "Synth control table is full",
                 "Use (useq-clear) to free earlier synths"));
         }
-        std::strncpy(ctl->identity, identity_buf, MAX_SYNTH_IDENTITY - 1);
         std::strncpy(ctl->param_name, b.desc->name, MAX_NODEDEF_NAME - 1);
         ctl->rate_class = b.desc->rate_class;
         ctl->smoothing_class = b.desc->smoothing_class;
@@ -2068,9 +2082,13 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
 
     // Retire state resources for removed controls, and publish the state
     // writers for controls that survived or were added.
-    for (uint16_t i = 0; i < synth_snapshot.control_count(); i++) {
-        const SynthControlChannel& old = synth_snapshot.controls[i];
-        if (std::strcmp(old.identity, identity_buf) == 0) {
+    if (old_declaration) {
+        const uint16_t old_end = static_cast<uint16_t>(
+            old_declaration->first_control_index +
+            old_declaration->control_count);
+        for (uint16_t i = old_declaration->first_control_index;
+             i < old_end; i++) {
+            const SynthControlChannel& old = synth_snapshot.controls[i];
             engine.registry.commit_context(
                 old.owner_context, engine.pool.state_update_roots,
                 engine.pool.state_owner_context);

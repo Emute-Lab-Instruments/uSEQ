@@ -45,9 +45,10 @@ struct SynthDeclaration {
 // One row per bound (declaration, param [, voice]) triple. The host reads
 // the param expression's compiled root_node out of the live NodePool each
 // control block. The root_node value is internal and must NOT appear in
-// the serialised public artefact (VAL-COMP-012).
+// the serialised public artefact (VAL-COMP-012). Ownership is represented by
+// the declaration's dense first_control_index/control_count range, avoiding
+// one repeated identity string per row.
 struct SynthControlChannel {
-    char    identity[MAX_SYNTH_IDENTITY] = {};   // owning declaration identity
     char    param_name[MAX_NODEDEF_NAME] = {};   // e.g. "freq", "amp"
     SynthRateClass rate_class           = SynthRateClass::Block;
     SynthSmoothingClass smoothing_class = SynthSmoothingClass::Step;
@@ -152,6 +153,22 @@ struct SynthGraph {
     uint16_t declaration_count() const { return declaration_count_value; }
     uint16_t control_count()     const { return control_count_value; }
     uint16_t connection_count()  const { return connection_count_value; }
+
+    const SynthDeclaration* declaration_for_control(
+            uint16_t control_index) const {
+        if (control_index >= control_count_value) return nullptr;
+        for (uint16_t i = 0; i < declaration_count_value; i++) {
+            const SynthDeclaration& declaration = declarations[i];
+            const uint16_t first = declaration.first_control_index;
+            const uint16_t count = declaration.control_count;
+            if (control_index >= first &&
+                static_cast<uint32_t>(control_index) <
+                    static_cast<uint32_t>(first) + count) {
+                return &declaration;
+            }
+        }
+        return nullptr;
+    }
 
     // Reset to empty. Used by (useq-clear) and at startup. Does NOT advance
     // the revision: an empty graph is a valid committed state, so callers

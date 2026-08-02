@@ -313,19 +313,29 @@ TEST_CASE("Synth-control reactive slots retain LKG and follow artifact lifecycle
         REQUIRE(control.compile_diagnostic.triggered_by == cause);
         REQUIRE(control.compile_diagnostic.message != nullptr);
     }
-    REQUIRE(std::string(h.engine.synth_graph.controls[0].identity) == "diag-a");
+    const SynthDeclaration* first_owner =
+        h.engine.synth_graph.declaration_for_control(0);
+    REQUIRE(first_owner != nullptr);
+    REQUIRE(std::string(first_owner->identity) == "diag-a");
     REQUIRE(std::string(h.engine.synth_graph.controls[0].param_name) == "freq");
     REQUIRE(std::string(h.engine.synth_graph.controls[1].param_name) == "amp");
-    REQUIRE(std::string(h.engine.synth_graph.controls[2].identity) == "diag-b");
+    const SynthDeclaration* third_owner =
+        h.engine.synth_graph.declaration_for_control(2);
+    REQUIRE(third_owner != nullptr);
+    REQUIRE(std::string(third_owner->identity) == "diag-b");
 
     // Direct replacement clears only that declaration's subjects. Dense
     // artifact order moves the surviving failed declaration ahead of it.
     h.eval_ok("(synth \"osc/sine\" :name \"diag-a\" :freq 220 :amp 0.2)");
     REQUIRE(h.engine.synth_graph.control_count() == 4);
-    REQUIRE(std::string(h.engine.synth_graph.controls[0].identity) == "diag-b");
+    first_owner = h.engine.synth_graph.declaration_for_control(0);
+    REQUIRE(first_owner != nullptr);
+    REQUIRE(std::string(first_owner->identity) == "diag-b");
     REQUIRE(h.engine.synth_graph.controls[0].compile_diagnostic.active());
     REQUIRE(h.engine.synth_graph.controls[1].compile_diagnostic.active());
-    REQUIRE(std::string(h.engine.synth_graph.controls[2].identity) == "diag-a");
+    third_owner = h.engine.synth_graph.declaration_for_control(2);
+    REQUIRE(third_owner != nullptr);
+    REQUIRE(std::string(third_owner->identity) == "diag-a");
     REQUIRE_FALSE(h.engine.synth_graph.controls[2].compile_diagnostic.active());
     REQUIRE_FALSE(h.engine.synth_graph.controls[3].compile_diagnostic.active());
 

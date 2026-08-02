@@ -87,9 +87,12 @@ bool synth_graph_render_json(const SynthGraph& graph, char* out, uint32_t cap) {
     if (!emit("],\"controls\":[")) return false;
     for (uint16_t i = 0; i < graph.control_count(); i++) {
         const SynthControlChannel& c = graph.controls[i];
+        const SynthDeclaration* declaration =
+            graph.declaration_for_control(i);
+        if (!declaration) return false;
         if (i > 0 && !emit(",")) return false;
         if (!emit("{\"identity\":")) return false;
-        if (!emit_quoted(c.identity)) return false;
+        if (!emit_quoted(declaration->identity)) return false;
         if (!emit(",\"param\":")) return false;
         if (!emit_quoted(c.param_name)) return false;
         if (!emit(",\"rate\":")) return false;

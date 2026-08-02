@@ -1003,11 +1003,26 @@ extern "C"
         for (uint16_t i = 0; i < g_engine->synth_graph.control_count(); i++) {
             const sig::SynthControlChannel& control =
                 g_engine->synth_graph.controls[i];
+            const sig::SynthDeclaration* declaration =
+                g_engine->synth_graph.declaration_for_control(i);
             const auto& active = control.compile_diagnostic;
             if (!active.active()) continue;
+            if (!declaration) {
+                json.object_begin();
+                json.field("subject", "synth-control");
+                json.field("identity", "");
+                json.field("control", control.param_name);
+                json.field("severity", "error");
+                json.field("category", "runtime");
+                json.field("status", "error");
+                json.field("message",
+                           "Synth control ownership metadata is inconsistent");
+                json.object_end();
+                continue;
+            }
             json.object_begin();
             json.field("subject", "synth-control");
-            json.field("identity", control.identity);
+            json.field("identity", declaration->identity);
             json.field("control", control.param_name);
             json.field("severity", sig::severity_to_cstr(active.severity));
             json.field("category", sig::category_to_cstr(active.category));
