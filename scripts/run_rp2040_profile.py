@@ -9,6 +9,7 @@ physical-device measurements are separate evidence profiles.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -58,6 +59,10 @@ def read_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise SystemExit(f"expected a JSON object in {path}")
     return value
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def parse_last_json_line(output: str, name: str) -> dict[str, Any]:
@@ -256,6 +261,7 @@ def main() -> None:
         raise SystemExit("sanitized and optimized endurance checksums differ")
 
     target_reports: dict[str, Any] = {}
+    target_package_report: dict[str, Any] | None = None
     if not args.skip_target_build:
         run_logged(
             "platformio",
@@ -283,6 +289,22 @@ def main() -> None:
             target_reports[profile] = read_json(report_path)
             if not target_reports[profile].get("pass"):
                 raise SystemExit(f"{profile} exact memory gate did not pass")
+        package_result = run_logged(
+            "platformio-packages",
+            ["pio", "pkg", "list", "-e", "musicthing"],
+            output_dir,
+            env=environment,
+        )
+        package_log = output_dir / "platformio-packages.log"
+        target_package_report = {
+            "path": str(package_log),
+            "sha256": sha256(package_log),
+            "lines": [
+                line.strip()
+                for line in package_result.stdout.splitlines()
+                if line.strip()
+            ],
+        }
 
     summary = {
         "schema_version": 1,
@@ -294,6 +316,7 @@ def main() -> None:
         "pass": True,
         "full_local_acceptance": not args.skip_target_build,
         "target_memory": target_reports,
+        "target_packages": target_package_report,
         "firmware_capacity": benchmark["capacity_gate"],
         "endurance": endurance,
         "endurance_sanitized": endurance_sanitized,

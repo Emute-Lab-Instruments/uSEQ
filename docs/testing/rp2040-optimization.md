@@ -57,6 +57,12 @@ Python. The composed candidate summary carries this snapshot together with
 the Wokwi version/model record, making a comparison-series environment change
 visible in the same evidence used for retention.
 
+`platformio.ini` pins the RP2040 platform repository to commit
+`aa70b802be8851668053d4f09734e4089fe41932`. After each exact target link, the
+local summary includes the resolved PlatformIO framework and tool package
+report plus its SHA-256. Measurements from another platform revision are a
+different baseline even when the firmware source revision is unchanged.
+
 On the VPS, PlatformIO 6.1.18 is installed in the isolated
 `~/.cache/useq-rp2040-goal/platformio-6.1.18` virtual environment. The Nixpkgs
 PlatformIO wrapper requires bubblewrap user namespaces, which the production
