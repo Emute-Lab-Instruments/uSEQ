@@ -309,6 +309,7 @@ void eval_end(bool success) {
     s.eval.last_us = dt_micros() - s.eval.start_us;
     if (s.eval.last_us > s.eval.max_us) s.eval.max_us = s.eval.last_us;
     s.eval.count++;
+    count("eval_count");
     if (!success) s.eval.error_count++;
     event("eval", success ? "done" : "error",
           static_cast<int>(s.eval.last_us));
@@ -339,7 +340,7 @@ void event(const char* channel, const char* message, int detail) {
 
 void count(const char* name) {
     for (uint8_t i = 0; i < s.counter_count; ++i) {
-        if (s.counters[i].name == name) {
+        if (std::strcmp(s.counters[i].name, name) == 0) {
             s.counters[i].value++;
             return;
         }
@@ -352,7 +353,7 @@ void count(const char* name) {
 
 void gauge(const char* name, uint32_t value) {
     for (uint8_t i = 0; i < s.gauge_count; ++i) {
-        if (s.gauges[i].name == name) {
+        if (std::strcmp(s.gauges[i].name, name) == 0) {
             s.gauges[i].value = value;
             return;
         }
@@ -365,7 +366,7 @@ void gauge(const char* name, uint32_t value) {
 
 void gauge(const char* name, uint32_t value, uint32_t capacity) {
     for (uint8_t i = 0; i < s.gauge_count; ++i) {
-        if (s.gauges[i].name == name) {
+        if (std::strcmp(s.gauges[i].name, name) == 0) {
             s.gauges[i].value = value;
             s.gauges[i].capacity = capacity;
             return;
@@ -657,6 +658,7 @@ static String serialize_resources() {
     {
         JsonBuilder stack;
         stack.object_begin()
+            .field("initialized", s.memory.core0_stack_initialized)
             .field("used", static_cast<int>(s.memory.core0_stack_high_water))
             .field("capacity", static_cast<int>(s.memory.core0_stack_capacity))
             .object_end();

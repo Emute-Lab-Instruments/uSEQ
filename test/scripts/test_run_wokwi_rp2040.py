@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import copy
 from pathlib import Path
 import tempfile
 
@@ -22,7 +23,7 @@ def resource_data() -> dict[str, object]:
         "heap_free": 70000,
         "heap_min_free": 60000,
         "core0_stack_margin_intact": True,
-        "core0_stack": {"used": 900, "capacity": 2048},
+        "core0_stack": {"initialized": True, "used": 900, "capacity": 2048},
         "nodes": {"used": 512, "capacity": 1024},
         "arena": {"used": 8192, "capacity": 16384},
         "cells": {"used": 12, "capacity": 64},
@@ -36,7 +37,7 @@ def resource_data() -> dict[str, object]:
 
 
 def main() -> None:
-    scenario = runner.generate_scenario(1, 1000)
+    scenario = runner.generate_scenario(1, 30000)
     assert scenario.steps
     assert scenario.steps[0] == {"wait-serial": '"type":"ready"'}
     assert runner.parse_forms(ROOT / "bench/firmware-corpus/high-combined.useq")
@@ -72,16 +73,26 @@ def main() -> None:
                 "count": 50,
                 "error_count": 1,
             }
+        elif request_id == "protocol-final":
+            response["data"] = {
+                "msg_in": scenario.protocol_snapshot_request_count,
+                "msg_out": scenario.protocol_snapshot_request_count + 1,
+                "stream_drop": 0,
+                "rx_overflow": 0,
+            }
         else:
             response["data"] = {}
         messages.append(response)
 
-    for index in range(25):
+    for index in range(320):
         messages.append(
             {
                 "type": "debug",
                 "channel": "tick",
-                "data": {"last_total_us": 100 + index},
+                "data": {
+                    "last_total_us": 100 + index,
+                    "tick_count": 1000 + index * 100,
+                },
             }
         )
 
@@ -111,6 +122,40 @@ def main() -> None:
         "a4": [0, 1],
         "a3": [0, 1],
     }
+    assert observations["tick"]["throughput_hz"] >= 1000
+    assert observations["tick"]["observation_ms"] == 30000
+    assert observations["resource_high_water"]["nodes"] == {
+        "used": 512,
+        "capacity": 1024,
+    }
+    assert observations["protocol"]["rx_overflow"] == 0
+
+    def results_for(candidate: list[dict[str, object]]) -> dict[str, bool]:
+        candidate_checks, _ = runner.evaluate(
+            candidate, scenario, budget, manifest, activity
+        )
+        return {check["name"]: check["pass"] for check in candidate_checks}
+
+    missing_stack_canary = copy.deepcopy(messages)
+    for message in missing_stack_canary:
+        request_id = message.get("requestId")
+        if isinstance(request_id, str) and request_id.startswith("resources-"):
+            message["data"]["core0_stack"]["initialized"] = False
+    assert not results_for(missing_stack_canary)["stack-watermark-initialized"]
+
+    stalled_ticks = copy.deepcopy(messages)
+    for message in stalled_ticks:
+        if message.get("type") == "debug" and message.get("channel") == "tick":
+            message["data"]["tick_count"] = 1000
+    stalled_results = results_for(stalled_ticks)
+    assert not stalled_results["tick-counter-monotonic"]
+    assert not stalled_results["tick-throughput"]
+
+    overflowed_protocol = copy.deepcopy(messages)
+    for message in overflowed_protocol:
+        if message.get("requestId") == "protocol-final":
+            message["data"]["rx_overflow"] = 1
+    assert not results_for(overflowed_protocol)["protocol-rx-overflow"]
 
 
 if __name__ == "__main__":

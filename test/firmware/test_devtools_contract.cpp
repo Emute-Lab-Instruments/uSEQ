@@ -248,6 +248,7 @@ TEST_CASE("D7 resources response exposes memory and capacity telemetry",
     REQUIRE(json_contains(s_last_json,
                           "\"core0_stack_margin_intact\":true"));
     REQUIRE(json_contains(s_last_json, "\"core0_stack\":{"));
+    REQUIRE(json_contains(s_last_json, "\"initialized\":false"));
     REQUIRE(json_contains(s_last_json, "\"nodes\":{"));
     REQUIRE(json_contains(s_last_json, "\"arena\":{"));
     REQUIRE(json_contains(s_last_json, "\"cells\":{"));

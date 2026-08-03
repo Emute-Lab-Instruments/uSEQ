@@ -89,12 +89,16 @@ survive 200 same-session recompiles.
 The initial target-runtime acceptance thresholds are:
 
 - `heap_min_free >= 49152` bytes during the complete combined workload;
-- `core0_stack_margin_intact == true` and at least 512 bytes of the linked
-  2048-byte core-0 stack reserve remain outside the observed high-water mark;
+- the core-0 watermark is initialized over the expected 2048-byte linked
+  reserve, `core0_stack_margin_intact == true`, and at least 512 bytes remain
+  outside the observed high-water mark;
 - no allocation failure, protocol overflow affecting required responses,
   non-finite output, watchdog reboot, or unexpected reset;
 - combined-high tick p99 below 1 ms, consistent with the current approximately
-  1 kHz control-rate contract;
+  1 kHz control-rate contract, and at least 1,000 completed ticks per simulated
+  second during a minimum 30-second sustained observation;
+- at least 300 target tick samples are delivered at a requested 20 Hz during
+  that observation, with a strictly increasing target tick counter;
 - every individual compilation below the 200 ms watchdog interval, with
   moderate-workload compile p99 below 10 ms and combined/high compile p99
   below 100 ms.
@@ -123,10 +127,12 @@ The tracked `wokwi/diagram.json` models the two active-low gate inputs and
 captures direct outputs `d1`, `d2`, `a4`, and `a3` with an external logic
 analyzer. The generated scenario uses the production JSONL protocol to run two
 cycles each of the moderate and combined-high corpora, polls target-side
-compiler durations, samples streamed tick durations, verifies every required
-response, exercises one controlled invalid replacement, checks retained
-resources and output health, and validates both scenario pin assertions and
-VCD transitions.
+compiler durations, then sustains the combined workload for at least 30
+simulated seconds while sampling tick duration and target tick-count progress.
+It verifies every required response and transport counter, rejects receive
+overflow, exercises one controlled invalid replacement, records fixed-resource
+high-water values, checks retained resources and output health, and validates
+both scenario pin assertions and VCD transitions.
 
 The CLI requires a token and consumes hosted simulation quota. On the VPS,
 install the official CLI in the account PATH and load `WOKWI_CLI_TOKEN` from

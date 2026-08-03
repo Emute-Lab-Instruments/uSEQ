@@ -26,6 +26,7 @@ namespace {
 // SerialProtocol::write_json(): debug responses are ordinary JSONL messages.
 void write_debug_json(const char* payload, size_t len)
 {
+    dt::count("msg_out");
 #ifdef ARDUINO
     Serial.write(reinterpret_cast<const uint8_t*>(payload), len);
     Serial.write('\n');
@@ -326,6 +327,8 @@ bool SerialProtocol::try_extract_message()
         // "line too long" diagnostic so the editor knows its send was dropped.
         if (m_rx_len == RX_BUF_SIZE)
         {
+            dt::count("rx_overflow");
+            dt::event("protocol", "rx_overflow");
             size_t drop = 1; // skip the current (overflowed) message start
             while (drop < m_rx_len)
             {
@@ -378,6 +381,8 @@ bool SerialProtocol::has_incoming()
 bool SerialProtocol::dispatch_message(const char* payload, size_t len,
                                       char* buf, size_t buf_size)
 {
+    dt::count("msg_in");
+
     // Parse the JSON message to determine type
     char type_buf[32] = {};
     extract_string(payload, len, "type", type_buf, sizeof(type_buf));
@@ -624,7 +629,10 @@ void SerialProtocol::send_stream_data(const double* output_values, size_t output
 
         if (sc.on_change_only && val == sc.last_sent) continue;
 
-        if (Serial.availableForWrite() < static_cast<int>(FRAME_SIZE)) return;
+        if (Serial.availableForWrite() < static_cast<int>(FRAME_SIZE)) {
+            dt::count("stream_drop");
+            return;
+        }
 
         Serial.write(SerialMsg::message_begin_marker);
         Serial.write(static_cast<uint8_t>(SerialMsg::serial_message_types::STREAM));
@@ -1090,6 +1098,7 @@ bool SerialProtocol::can_write()
 
 void SerialProtocol::write_json(const char* payload, size_t len)
 {
+    dt::count("msg_out");
 #ifdef ARDUINO
     // Spec §3.3: JSON messages are bare `{...}\n` — no 0x1F/type-byte prefix.
     Serial.write(reinterpret_cast<const uint8_t*>(payload), len);

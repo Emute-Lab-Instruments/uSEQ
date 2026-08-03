@@ -27,6 +27,8 @@ DEFAULT_BUDGET = ROOT / "scripts/rp2040_budget.json"
 WORKLOADS = ("moderate-mixed", "high-combined")
 GPIO_SIGNALS = ("d1", "d2", "a4", "a3")
 GPIO_CHANNELS = {"D0": "d1", "D1": "d2", "D2": "a4", "D3": "a3"}
+TICK_STREAM_RATE_HZ = 20
+DEFAULT_TICK_OBSERVATION_MS = 30_000
 
 
 def git_output(*args: str) -> str:
@@ -101,10 +103,12 @@ def request_bytes(payload: dict[str, Any]) -> list[int]:
 
 
 class Scenario:
-    def __init__(self) -> None:
+    def __init__(self, tick_observation_ms: int) -> None:
         self.steps: list[dict[str, Any]] = []
         self.expected_success: dict[str, bool] = {}
         self.timing_workload: dict[str, str] = {}
+        self.tick_observation_ms = tick_observation_ms
+        self.protocol_snapshot_request_count = 0
 
     def wait_ready(self) -> None:
         self.steps.append({"wait-serial": '"type":"ready"'})
@@ -167,7 +171,7 @@ class Scenario:
 
 
 def generate_scenario(cycles: int, tick_observation_ms: int) -> Scenario:
-    scenario = Scenario()
+    scenario = Scenario(tick_observation_ms)
     scenario.wait_ready()
     scenario.request(
         {
@@ -236,7 +240,7 @@ def generate_scenario(cycles: int, tick_observation_ms: int) -> Scenario:
             "type": "debug",
             "action": "configure",
             "tick": "stream",
-            "streamRateHz": 100,
+            "streamRateHz": TICK_STREAM_RATE_HZ,
             "requestId": "tick-stream-start",
         }
     )
@@ -291,6 +295,7 @@ def generate_scenario(cycles: int, tick_observation_ms: int) -> Scenario:
             "requestId": "eval-final",
         }
     )
+    scenario.request({"type": "ping", "requestId": "recovery-ping"})
     scenario.request(
         {
             "type": "debug",
@@ -299,7 +304,7 @@ def generate_scenario(cycles: int, tick_observation_ms: int) -> Scenario:
             "requestId": "protocol-final",
         }
     )
-    scenario.request({"type": "ping", "requestId": "recovery-ping"})
+    scenario.protocol_snapshot_request_count = len(scenario.expected_success)
     return scenario
 
 
@@ -482,17 +487,29 @@ def evaluate(
         f"<{compile_max_limit}",
     )
 
-    tick_samples = [
-        int(message["data"]["last_total_us"])
+    tick_records = [
+        message["data"]
         for message in messages
         if message.get("type") == "debug"
         and message.get("channel") == "tick"
         and isinstance(message.get("data"), dict)
         and isinstance(message["data"].get("last_total_us"), int)
+        and isinstance(message["data"].get("tick_count"), int)
     ]
+    tick_samples = [int(data["last_total_us"]) for data in tick_records]
+    tick_counts = [int(data["tick_count"]) for data in tick_records]
     tick_p99 = percentile(tick_samples, 0.99) if tick_samples else None
     minimum_tick_samples = int(runtime_budget["min_tick_samples"])
     maximum_tick_p99 = int(runtime_budget["max_tick_p99_us"])
+    minimum_observation_ms = int(
+        runtime_budget["min_sustained_observation_ms"]
+    )
+    record(
+        "sustained-observation-duration",
+        scenario.tick_observation_ms >= minimum_observation_ms,
+        scenario.tick_observation_ms,
+        f">={minimum_observation_ms}",
+    )
     record(
         "tick-samples",
         len(tick_samples) >= minimum_tick_samples,
@@ -505,6 +522,30 @@ def evaluate(
         tick_p99,
         f"<{maximum_tick_p99}",
     )
+    tick_counts_monotonic = bool(tick_counts) and all(
+        later > earlier for earlier, later in zip(tick_counts, tick_counts[1:])
+    )
+    tick_count_delta = (
+        tick_counts[-1] - tick_counts[0] if len(tick_counts) >= 2 else None
+    )
+    tick_rate_hz = (
+        tick_count_delta * 1000.0 / scenario.tick_observation_ms
+        if tick_count_delta is not None
+        else None
+    )
+    minimum_tick_rate_hz = int(runtime_budget["min_tick_rate_hz"])
+    record(
+        "tick-counter-monotonic",
+        tick_counts_monotonic,
+        tick_counts[-2:] if tick_counts else [],
+        "strictly increasing",
+    )
+    record(
+        "tick-throughput",
+        tick_rate_hz is not None and tick_rate_hz >= minimum_tick_rate_hz,
+        tick_rate_hz,
+        f">={minimum_tick_rate_hz}",
+    )
 
     resource_messages: dict[str, dict[str, Any]] = {}
     for request_id, matching in responses.items():
@@ -513,6 +554,51 @@ def evaluate(
         data = matching[0].get("data")
         if isinstance(data, dict):
             resource_messages[request_id] = data
+    resource_keys = (
+        "nodes",
+        "arena",
+        "cells",
+        "data_entries",
+        "state_slots",
+        "live_slots",
+        "synth_declarations",
+        "synth_controls",
+    )
+    resource_high_water: dict[str, dict[str, int]] = {}
+    for resource in resource_keys:
+        samples = [
+            data[resource]
+            for data in resource_messages.values()
+            if isinstance(data.get(resource), dict)
+        ]
+        used_values = [
+            value.get("used") for value in samples
+            if isinstance(value.get("used"), int)
+        ]
+        capacities = {
+            value.get("capacity") for value in samples
+            if isinstance(value.get("capacity"), int)
+        }
+        capacity = next(iter(capacities)) if len(capacities) == 1 else None
+        used = max(used_values) if used_values else None
+        record(
+            f"resource-capacity-consistent:{resource}",
+            capacity is not None and len(samples) == len(resource_messages),
+            sorted(capacities),
+            "one positive capacity in every resource sample",
+        )
+        record(
+            f"resource-bounds:{resource}",
+            used is not None and capacity is not None
+            and capacity > 0 and all(0 <= value <= capacity for value in used_values),
+            {"used_high_water": used, "capacity": capacity},
+            "0 <= every used value <= capacity",
+        )
+        if used is not None and capacity is not None:
+            resource_high_water[resource] = {
+                "used": used,
+                "capacity": capacity,
+            }
     heap_values = [
         int(data["heap_min_free"])
         for data in resource_messages.values()
@@ -530,13 +616,30 @@ def evaluate(
     final_resources = resource_messages.get("resources-before-invalid", {})
     stack = final_resources.get("core0_stack")
     stack_remaining = None
+    stack_initialized = None
+    stack_capacity = None
     if isinstance(stack, dict):
         used = stack.get("used")
         capacity = stack.get("capacity")
+        stack_initialized = stack.get("initialized")
         if isinstance(used, int) and isinstance(capacity, int):
             stack_remaining = capacity - used
+            stack_capacity = capacity
     min_stack = int(runtime_budget["min_core0_stack_remaining_bytes"])
+    expected_stack_capacity = int(runtime_budget["core0_stack_capacity_bytes"])
     margin_intact = final_resources.get("core0_stack_margin_intact")
+    record(
+        "stack-watermark-initialized",
+        stack_initialized is True,
+        stack_initialized,
+        True,
+    )
+    record(
+        "stack-capacity",
+        stack_capacity == expected_stack_capacity,
+        stack_capacity,
+        expected_stack_capacity,
+    )
     record("stack-margin-intact", margin_intact is True, margin_intact, True)
     record(
         "stack-remaining",
@@ -583,16 +686,6 @@ def evaluate(
 
     before = resource_messages.get("resources-before-invalid", {})
     after = resource_messages.get("resources-after-invalid", {})
-    resource_keys = (
-        "nodes",
-        "arena",
-        "cells",
-        "data_entries",
-        "state_slots",
-        "live_slots",
-        "synth_declarations",
-        "synth_controls",
-    )
     retained_before = {key: before.get(key) for key in resource_keys}
     retained_after = {key: after.get(key) for key in resource_keys}
     record(
@@ -623,6 +716,27 @@ def evaluate(
     )
     record("controlled-eval-errors", error_count == 1, error_count, 1)
 
+    protocol = responses.get("protocol-final", [{}])[0].get("data", {})
+    if not isinstance(protocol, dict):
+        protocol = {}
+    msg_in = protocol.get("msg_in")
+    msg_out = protocol.get("msg_out")
+    rx_overflow = protocol.get("rx_overflow", 0)
+    record(
+        "protocol-input-count",
+        msg_in == scenario.protocol_snapshot_request_count,
+        msg_in,
+        scenario.protocol_snapshot_request_count,
+    )
+    record(
+        "protocol-output-count",
+        isinstance(msg_out, int)
+        and msg_out >= scenario.protocol_snapshot_request_count,
+        msg_out,
+        f">={scenario.protocol_snapshot_request_count}",
+    )
+    record("protocol-rx-overflow", rx_overflow == 0, rx_overflow, 0)
+
     for signal, levels in vcd_activity.items():
         record(f"vcd-activity:{signal}", levels == [0, 1], levels, [0, 1])
 
@@ -633,10 +747,15 @@ def evaluate(
             "samples": len(tick_samples),
             "p99_us": tick_p99,
             "max_us": max(tick_samples) if tick_samples else None,
+            "counter_delta": tick_count_delta,
+            "throughput_hz": tick_rate_hz,
+            "observation_ms": scenario.tick_observation_ms,
         },
         "heap_min_free_bytes": min_heap,
         "core0_stack_remaining_bytes": stack_remaining,
         "resources": resource_ratios(final_resources),
+        "resource_high_water": resource_high_water,
+        "protocol": protocol,
         "vcd_activity": vcd_activity,
         "ready_count": ready_count,
     }
@@ -650,7 +769,11 @@ def main() -> int:
     parser.add_argument("--wokwi-cli", default=os.environ.get("WOKWI_CLI", "wokwi-cli"))
     parser.add_argument("--elf", type=Path, default=DEFAULT_ELF)
     parser.add_argument("--workload-cycles", type=int, default=2)
-    parser.add_argument("--tick-observation-ms", type=int, default=1000)
+    parser.add_argument(
+        "--tick-observation-ms",
+        type=int,
+        default=DEFAULT_TICK_OBSERVATION_MS,
+    )
     parser.add_argument("--simulation-timeout-ms", type=int, default=120000)
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument(
@@ -663,6 +786,22 @@ def main() -> int:
         parser.error("--workload-cycles must be positive")
     if args.tick_observation_ms <= 0 or args.simulation_timeout_ms <= 0:
         parser.error("simulation durations must be positive")
+    budget = json.loads(args.budget.read_text())
+    runtime_budget = budget["runtime"]
+    minimum_observation_ms = int(
+        runtime_budget["min_sustained_observation_ms"]
+    )
+    if args.tick_observation_ms < minimum_observation_ms:
+        parser.error(
+            "--tick-observation-ms may not be shorter than the runtime budget "
+            f"({minimum_observation_ms} ms)"
+        )
+    configured_rate = int(runtime_budget["tick_stream_rate_hz"])
+    if configured_rate != TICK_STREAM_RATE_HZ:
+        parser.error(
+            "runtime budget tick_stream_rate_hz does not match the scenario "
+            f"rate ({TICK_STREAM_RATE_HZ})"
+        )
 
     revision = git_output("rev-parse", "--short=12", "HEAD")
     output_dir = (args.output_dir or ROOT / "build/rp2040-wokwi" / revision).resolve()
@@ -760,7 +899,6 @@ def main() -> int:
 
     messages = read_serial_messages(serial_path)
     vcd_activity = parse_vcd_activity(vcd_path)
-    budget = json.loads(args.budget.read_text())
     manifest = json.loads((ROOT / "bench/firmware-corpus/manifest.json").read_text())
     checks, observations = evaluate(messages, scenario, budget, manifest, vcd_activity)
     failures = [check for check in checks if not check["pass"]]

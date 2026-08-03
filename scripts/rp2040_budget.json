@@ -6,12 +6,16 @@
   "runtime": {
     "min_heap_free_bytes": 49152,
     "min_core0_stack_remaining_bytes": 512,
+    "core0_stack_capacity_bytes": 2048,
     "max_compile_us": 200000,
     "compile_p99_us": {
       "moderate-mixed": 10000,
       "high-combined": 100000
     },
     "max_tick_p99_us": 1000,
-    "min_tick_samples": 20
+    "min_tick_samples": 300,
+    "min_tick_rate_hz": 1000,
+    "min_sustained_observation_ms": 30000,
+    "tick_stream_rate_hz": 20
   }
 }

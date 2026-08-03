@@ -62,7 +62,8 @@ for the dated mission-level gaps.
   [docs/testing/rp2040-optimization.md](docs/testing/rp2040-optimization.md).
 - `python3 scripts/run_wokwi_rp2040.py` boots that exact observation ELF in
   Wokwi and gates serial responses, target compile and tick timing, runtime
-  heap/stack headroom, reset state, retained workload capacity, transactional
+  heap/stack headroom, resource high-water, sustained tick throughput,
+  protocol integrity, reset state, retained workload capacity, transactional
   rejection, and externally captured GPIO. It requires `wokwi-cli` and an
   unprinted `WOKWI_CLI_TOKEN`.
 - `python3 scripts/run_rp2040_goal_gate.py` composes the complete native,

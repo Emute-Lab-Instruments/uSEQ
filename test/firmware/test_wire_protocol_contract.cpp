@@ -22,6 +22,7 @@
 #include "../catch.hpp"
 
 #include "../../uSEQ/src/firmware/serial_protocol.h"
+#include "../../uSEQ/src/devtools/devtools.h"
 #include "../../uSEQ/src/signal_engine/cold_eval.h"
 #include "../../uSEQ/src/signal_engine/graph_builder.h"
 
@@ -702,6 +703,7 @@ TEST_CASE("F12 [§7] oversized no-newline line resyncs; parser survives",
 {
     firmware::SerialProtocol sp;
     sp.init();
+    dt::init(nullptr);
 
     // Feed a >2048-byte JSON-looking line with NO newline. This starts with
     // '{' (a valid message start) so it isn't skipped as garbage; it simply
@@ -738,6 +740,19 @@ TEST_CASE("F12 [§7] oversized no-newline line resyncs; parser survives",
         REQUIRE_FALSE(json.empty());
         REQUIRE(json.find("\"type\":\"response\"") != std::string::npos);
         REQUIRE(json.find("\"requestId\":\"after-huge\"") != std::string::npos);
+    }
+
+    {
+        StdoutCapture cap;
+        char buf[256] = {};
+        const char* query =
+            R"({"type":"debug","action":"query","channel":"protocol","requestId":"after-overflow"})";
+        REQUIRE_FALSE(sp.dispatch_message(
+            query, strlen(query), buf, sizeof(buf)));
+        auto json = extract_last_json(cap.drain());
+        REQUIRE(json.find("\"requestId\":\"after-overflow\"") !=
+                std::string::npos);
+        REQUIRE(json.find("\"rx_overflow\":1") != std::string::npos);
     }
 }
 
@@ -832,4 +847,29 @@ TEST_CASE("F14 [§5.16] debug requests reach devtools through serial dispatch",
     REQUIRE(json.find("\"success\":true") != std::string::npos);
     REQUIRE(json.find("\"channel\":\"resources\"") != std::string::npos);
     REQUIRE(json.find("\"heap_min_free\":") != std::string::npos);
+}
+
+TEST_CASE("F15 protocol telemetry counts complete requests and JSON responses",
+          "[contract][wire-protocol][devtools]")
+{
+    firmware::SerialProtocol sp;
+    sp.init();
+    dt::init(nullptr);
+
+    StdoutCapture cap;
+    char buf[256] = {};
+    const char* ping = R"({"type":"ping","requestId":"count-ping"})";
+    REQUIRE_FALSE(sp.dispatch_message(ping, strlen(ping), buf, sizeof(buf)));
+    cap.drain();
+
+    const char* query =
+        R"({"type":"debug","action":"query","channel":"protocol","requestId":"count-protocol"})";
+    REQUIRE_FALSE(sp.dispatch_message(
+        query, strlen(query), buf, sizeof(buf)));
+    auto json = extract_last_json(cap.drain());
+    REQUIRE(json.find("\"requestId\":\"count-protocol\"") !=
+            std::string::npos);
+    REQUIRE(json.find("\"msg_in\":2") != std::string::npos);
+    REQUIRE(json.find("\"msg_out\":1") != std::string::npos);
+    REQUIRE(json.find("rx_overflow") == std::string::npos);
 }

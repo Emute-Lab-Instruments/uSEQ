@@ -204,6 +204,7 @@ Increment a named counter. Counters are monotonic and never reset
 | `"msg_in"` | `serial_protocol.cpp` — message received |
 | `"msg_out"` | `serial_protocol.cpp` — response sent |
 | `"stream_drop"` | `serial_protocol.cpp` — stream frame dropped (TX full) |
+| `"rx_overflow"` | `serial_protocol.cpp` — oversized JSON line rejected and RX resynchronised |
 | `"eval_count"` | `cold_eval.cpp` — eval_cold called |
 
 ### 3.4 Gauges
@@ -564,7 +565,7 @@ shape avoids retransmitting the event ring after every form.
     "heap_free": 42800,
     "heap_min_free": 39120,
     "core0_stack_margin_intact": true,
-    "core0_stack":       {"used": 912, "capacity": 2048},
+    "core0_stack":       {"initialized": true, "used": 912, "capacity": 2048},
     "nodes":             {"used": 47, "capacity": 1024},
     "arena":             {"used": 1280, "capacity": 16384},
     "cells":             {"used": 12, "capacity": 512},
@@ -585,10 +586,13 @@ separate failure mode.
 
 The core-0 stack watermark is initialized after firmware construction and is
 a conservative upper bound: the unpainted initialization margin is counted as
-used. `core0_stack_margin_intact` becomes false when execution reaches the
-lowest sampled byte above the SDK's 32-byte guard region. The current DSP
-engine does not execute work on core 1, so core-1 runtime stack usage is not
-reported. The linked core-1 reserve remains part of the ELF memory report.
+used. `initialized` is false if the linked bounds or current stack pointer did
+not permit painting; acceptance must reject that state rather than interpret a
+zero high-water value as evidence. `core0_stack_margin_intact` becomes false
+when execution reaches the lowest sampled byte above the SDK's 32-byte guard
+region. The current DSP engine does not execute work on core 1, so core-1
+runtime stack usage is not reported. The linked core-1 reserve remains part of
+the ELF memory report.
 
 #### `io`
 

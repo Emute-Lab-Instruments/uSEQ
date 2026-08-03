@@ -50,7 +50,7 @@ def main() -> int:
     parser.add_argument("--endurance-cycles", type=int, default=2000)
     parser.add_argument("--ticks-per-cycle", type=int, default=32)
     parser.add_argument("--workload-cycles", type=int, default=2)
-    parser.add_argument("--tick-observation-ms", type=int, default=1000)
+    parser.add_argument("--tick-observation-ms", type=int, default=30000)
     args = parser.parse_args()
 
     cli = shutil.which(args.wokwi_cli)
