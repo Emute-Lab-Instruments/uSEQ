@@ -66,6 +66,9 @@ void Firmware::init()
 #endif
 #ifdef ARDUINO
     dt::gauge("watchdog_reboot", watchdog_caused_reboot() ? 1u : 0u);
+#if USEQ_DEVTOOLS
+    dt::gauge("cpu_hz", static_cast<uint32_t>(rp2040.f_cpu()));
+#endif
 #endif
 
     // 9. LED → green (ready)

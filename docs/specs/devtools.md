@@ -574,7 +574,8 @@ shape avoids retransmitting the event ring after every form.
     "live_slots":        {"used": 2, "capacity": 32},
     "synth_declarations": {"used": 4, "capacity": 64},
     "synth_controls":    {"used": 8, "capacity": 128},
-    "watchdog_reboot": 0
+    "watchdog_reboot": 0,
+    "cpu_hz": 250000000
   }
 }
 ```

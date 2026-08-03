@@ -99,6 +99,9 @@ The initial target-runtime acceptance thresholds are:
   second during a minimum 30-second sustained observation;
 - at least 300 target tick samples are delivered at a requested 20 Hz during
   that observation, with a strictly increasing target tick counter;
+- every resource sample reports the configured 250 MHz target clock, so timing
+  evidence cannot silently come from a simulator or image running another
+  clock configuration;
 - every individual compilation below the 200 ms watchdog interval, with
   moderate-workload compile p99 below 10 ms and combined/high compile p99
   below 100 ms.

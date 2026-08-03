@@ -33,6 +33,7 @@ def resource_data() -> dict[str, object]:
         "synth_declarations": {"used": 16, "capacity": 64},
         "synth_controls": {"used": 32, "capacity": 128},
         "watchdog_reboot": 0,
+        "cpu_hz": 250000000,
     }
 
 
@@ -129,6 +130,7 @@ def main() -> None:
         "capacity": 1024,
     }
     assert observations["protocol"]["rx_overflow"] == 0
+    assert observations["cpu_hz"] == 250000000
 
     def results_for(candidate: list[dict[str, object]]) -> dict[str, bool]:
         candidate_checks, _ = runner.evaluate(
@@ -156,6 +158,13 @@ def main() -> None:
         if message.get("requestId") == "protocol-final":
             message["data"]["rx_overflow"] = 1
     assert not results_for(overflowed_protocol)["protocol-rx-overflow"]
+
+    wrong_clock = copy.deepcopy(messages)
+    for message in wrong_clock:
+        request_id = message.get("requestId")
+        if isinstance(request_id, str) and request_id.startswith("resources-"):
+            message["data"]["cpu_hz"] = 133000000
+    assert not results_for(wrong_clock)["target-clock"]
 
 
 if __name__ == "__main__":

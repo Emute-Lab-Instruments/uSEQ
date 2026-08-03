@@ -657,6 +657,15 @@ def evaluate(
         watchdog_values,
         "all zero",
     )
+    cpu_hz_values = [data.get("cpu_hz") for data in resource_messages.values()]
+    expected_cpu_hz = int(runtime_budget["expected_cpu_hz"])
+    record(
+        "target-clock",
+        bool(cpu_hz_values)
+        and all(value == expected_cpu_hz for value in cpu_hz_values),
+        cpu_hz_values,
+        f"all {expected_cpu_hz}",
+    )
 
     for workload in WORKLOADS:
         resource_ids = sorted(
@@ -756,6 +765,7 @@ def evaluate(
         "resources": resource_ratios(final_resources),
         "resource_high_water": resource_high_water,
         "protocol": protocol,
+        "cpu_hz": cpu_hz_values[-1] if cpu_hz_values else None,
         "vcd_activity": vcd_activity,
         "ready_count": ready_count,
     }
