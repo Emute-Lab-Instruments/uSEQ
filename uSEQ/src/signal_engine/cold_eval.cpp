@@ -1389,25 +1389,32 @@ static uint16_t allocate_synth_owner_context(
 
     const SynthDeclaration* old_declaration = old_graph.find(identity);
 
+    // Mark the bounded owner-context namespace once. The previous search
+    // rescanned both graphs for every candidate context, making allocation
+    // quadratic in the number of controls for a fresh dense synth graph.
+    bool used[MAX_SYNTH_CONTROLS] = {};
+    for (uint16_t i = 0; i < old_graph.control_count(); i++) {
+        const SynthControlChannel& c = old_graph.controls[i];
+        const bool same_declaration = old_declaration &&
+            i >= old_declaration->first_control_index &&
+            static_cast<uint32_t>(i) <
+                static_cast<uint32_t>(old_declaration->first_control_index) +
+                    old_declaration->control_count;
+        if (!same_declaration && c.owner_context >= base) {
+            const uint16_t offset = static_cast<uint16_t>(c.owner_context - base);
+            if (offset < MAX_SYNTH_CONTROLS) used[offset] = true;
+        }
+    }
+    for (uint16_t i = 0; i < candidate.control_count(); i++) {
+        const uint16_t context = candidate.controls[i].owner_context;
+        if (context >= base) {
+            const uint16_t offset = static_cast<uint16_t>(context - base);
+            if (offset < MAX_SYNTH_CONTROLS) used[offset] = true;
+        }
+    }
+
     for (uint16_t offset = 0; offset < MAX_SYNTH_CONTROLS; offset++) {
-        uint16_t context = (uint16_t)(base + offset);
-        bool used = false;
-        for (uint16_t i = 0; i < old_graph.control_count(); i++) {
-            const SynthControlChannel& c = old_graph.controls[i];
-            const bool same_declaration = old_declaration &&
-                i >= old_declaration->first_control_index &&
-                static_cast<uint32_t>(i) <
-                    static_cast<uint32_t>(old_declaration->first_control_index) +
-                        old_declaration->control_count;
-            if (!same_declaration && c.owner_context == context) {
-                used = true;
-                break;
-            }
-        }
-        for (uint16_t i = 0; !used && i < candidate.control_count(); i++) {
-            if (candidate.controls[i].owner_context == context) used = true;
-        }
-        if (!used) return context;
+        if (!used[offset]) return static_cast<uint16_t>(base + offset);
     }
     return ANON_STATE_CONTEXT_NONE;
 }

@@ -161,13 +161,23 @@ struct SynthGraph {
     const SynthDeclaration* declaration_for_control(
             uint16_t control_index) const {
         if (control_index >= control_count_value) return nullptr;
-        for (uint16_t i = 0; i < declaration_count_value; i++) {
-            const SynthDeclaration& declaration = declarations[i];
-            const uint16_t first = declaration.first_control_index;
-            const uint16_t count = declaration.control_count;
-            if (control_index >= first &&
-                static_cast<uint32_t>(control_index) <
-                    static_cast<uint32_t>(first) + count) {
+        // Declaration control slices are appended in declaration order and
+        // remain dense after replacement/removal compaction. Search those
+        // ordered ranges logarithmically; this is used by every synth-control
+        // lookup during compilation and artifact inspection.
+        uint16_t first_decl = 0;
+        uint16_t past_last_decl = declaration_count_value;
+        while (first_decl < past_last_decl) {
+            const uint16_t middle = static_cast<uint16_t>(
+                first_decl + (past_last_decl - first_decl) / 2);
+            const SynthDeclaration& declaration = declarations[middle];
+            const uint32_t first = declaration.first_control_index;
+            const uint32_t past_last = first + declaration.control_count;
+            if (control_index < first) {
+                past_last_decl = middle;
+            } else if (control_index >= past_last) {
+                first_decl = static_cast<uint16_t>(middle + 1);
+            } else {
                 return &declaration;
             }
         }
