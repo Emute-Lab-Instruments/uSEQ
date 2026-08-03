@@ -14,12 +14,13 @@ profile states only the behavior it implements and measures.
 
 ### 1. Target runtime headroom is incompletely measured *(2026-08-03)*
 
-**What.** The pinned-toolchain VPS grade for source revision `ae7a069` records
-135,580 bytes of PlatformIO static RAM and a 126,368-byte linked main-RAM heap
-span for `musicthing`; `musicthing-observe` records 136,844 and 125,104 bytes,
-respectively. Compact retained cell-dependency indices recovered 14,656 bytes
-in both images relative to the `4dfd43e` baseline without changing declared
-capacity or endurance checksums. The native constrained-profile runner
+**What.** The pinned-toolchain VPS grade for source revision `98bf48a` records
+127,388 bytes of PlatformIO static RAM and a 134,560-byte linked main-RAM heap
+span for `musicthing`; `musicthing-observe` records 128,652 and 133,296 bytes,
+respectively. Bounded retained cell indices and registry-derived synth-control
+ownership and parameter metadata recover 22,848 bytes in both images relative
+to the `4dfd43e` baseline without changing declared capacity, conformance
+results, or endurance checksums. The native constrained-profile runner
 exercises declared combined and near-boundary workloads, and the Wokwi adapter
 enforces the target telemetry contract. No hosted-simulator or physical-device
 run has yet recorded a heap low-water mark or stack watermark under those
