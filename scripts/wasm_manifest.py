@@ -276,8 +276,14 @@ def validate_artifacts(profile: dict[str, Any]) -> None:
             f"useq.wasm is {WASM_PATH.stat().st_size} bytes; "
             f"limit is {profile['max_wasm_bytes']}"
         )
+    js_text = JS_PATH.read_text(encoding="utf-8")
+    if ".toResizableBuffer(" in js_text:
+        raise ManifestError(
+            "generated JS enables growable ArrayBuffer-backed WASM memory; "
+            "this is incompatible with TextDecoder in supported Chromium releases"
+        )
     expected = sorted(profile["public_function_exports"])
-    observed = public_js_exports(JS_PATH.read_text(encoding="utf-8"))
+    observed = public_js_exports(js_text)
     if observed != expected:
         missing = sorted(set(expected) - set(observed))
         unexpected = sorted(set(observed) - set(expected))
@@ -341,6 +347,7 @@ def build_manifest(postprocess: str) -> dict[str, Any]:
             "postprocess": postprocess,
             "stack_bytes": profile["stack_bytes"],
             "memory_growth": profile["memory_growth"],
+            "growable_arraybuffers": profile["growable_arraybuffers"],
             "environment": profile["environment"],
             "modularize": profile["modularize"],
             "module_factory": profile["module_factory"],

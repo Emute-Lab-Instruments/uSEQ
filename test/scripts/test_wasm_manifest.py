@@ -16,6 +16,9 @@ SPEC.loader.exec_module(manifest)
 
 
 def main() -> None:
+    profile = manifest.load_profile()
+    assert profile["growable_arraybuffers"] is False
+    assert "-sGROWABLE_ARRAYBUFFERS=0" in profile["compile_flags"]
     limits = manifest.cpp_limits()
     assert limits["max_external_roots"] == 512
     assert limits["max_synth_controls"] == 512

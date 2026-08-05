@@ -66,8 +66,10 @@ compiler/control runtime. The canonical language entry point is
   firmware-capacity native process, simulator run, browser execution, and
   physical-device observation are separate evidence profiles.
 - `scripts/build_wasm.sh` generates the interpreter and its compiler-owned
-  capability record. NodeDef, application-served, and firmware-build fields
-  belong to separate records.
+  capability record. Its tracked profile permits WASM memory growth but keeps
+  fixed-length ArrayBuffer heap views because growable views are rejected by
+  `TextDecoder` in supported Chromium releases. NodeDef, application-served,
+  and firmware-build fields belong to separate records.
 - Generated records are deterministic and unsigned. They support exact-byte
   identity and drift detection, not publisher authentication.
 - The `useq-perform` superproject owns the authoritative application pin and

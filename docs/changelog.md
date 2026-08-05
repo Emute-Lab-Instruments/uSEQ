@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Fixed browser-local evaluation on Chromium releases that expose
+  `WebAssembly.Memory.toResizableBuffer()`. The WASM build now keeps classic
+  fixed-length heap views across memory growth, and artifact verification
+  rejects generated glue that re-enables growable ArrayBuffer views.
+
 ## 1.2.0-beta.1
 
 - Firmware identity now uses canonical SemVer prereleases and one build-info

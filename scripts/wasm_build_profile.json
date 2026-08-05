@@ -30,7 +30,8 @@
     "-DWASM_BUILD",
     "-std=c++17",
     "-Oz",
-    "-flto"
+    "-flto",
+    "-sGROWABLE_ARRAYBUFFERS=0"
   ],
   "public_function_exports": [
     "useq_init",
@@ -64,6 +65,7 @@
   "stack_bytes": 2097152,
   "max_wasm_bytes": 368640,
   "memory_growth": true,
+  "growable_arraybuffers": false,
   "environment": "web",
   "modularize": true,
   "module_factory": "createModule"
