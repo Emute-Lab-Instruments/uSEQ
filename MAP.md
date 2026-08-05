@@ -9,16 +9,19 @@ compiler/control runtime. The canonical language entry point is
 - `uSEQ/src/signal_engine/` — tokenizer, cold evaluator, graph builder, node
   pool, executor, diagnostics, state/resource ownership, and builtin table.
 - `uSEQ/src/firmware/` — RP2040/RP2350 composition root, live tick loop,
-  hardware I/O, storage, and serial protocol.
-- `uSEQ/src/ports/` — platform interfaces and test doubles.
+  hardware I/O, storage, serial protocol, and I2C host/expander runtime; see
+  `docs/specs/i2c-expander.md` for the output-expander wire contract.
+- `uSEQ/src/ports/` — platform interfaces and test doubles, including the
+  fixed-capacity fake I2C bus used by native host/expander simulation.
 - `wasm/` — generated-runtime ABI wrapper and built interpreter artifacts;
   `useq-capabilities.json` is the compiler/interpreter profile record.
 - `nodedef/` — separately built `osc/sine` NodeDef implementation and module
   descriptor.
 - `test/signal_engine/` — native compiler/runtime, resource, projection,
   health, synth, and builtin suites.
-- `test/firmware/` and `test/hardware/` — host-composed firmware and wire
-  contract tests; these are not physical-device observations.
+- `test/firmware/` and `test/hardware/` — host-composed firmware, wire
+  contract, and fake-bus output-expander tests; these are not physical-device
+  observations.
 - `test/scripts/` — structural contracts for acceptance runners and evidence
   evaluation without consuming hosted simulator quota.
 - `test/conformance/` — data-driven language corpus shared by native and

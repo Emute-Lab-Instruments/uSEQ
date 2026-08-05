@@ -37,7 +37,9 @@ Firmware composition:
 - `uSEQ/src/firmware/hardware_io.{h,cpp}` — `HardwareIO`, pin access, input sampling, output writing, LED states
 - `uSEQ/src/firmware/flash_storage.{h,cpp}` — `FlashStorage`, binary save/load, CRC32 checksum
 - `uSEQ/src/firmware/dsp_engine.{h,cpp}` — `DSPEngine`, core 1 audio-rate DSP (optional)
-- `uSEQ/src/firmware/i2c_network.{h,cpp}` — `I2CNetwork`, multi-module I2C communication (optional)
+- `uSEQ/src/firmware/i2c_network.{h,cpp}` — `I2CNetwork`, host discovery and
+  synth-free output-expander transport (optional; see
+  [i2c-expander.md](i2c-expander.md))
 
 WASM build:
 
@@ -47,6 +49,8 @@ Port abstractions:
 
 - `uSEQ/src/ports/IStorage.h` — testable storage interface for flash persistence
 - `uSEQ/src/ports/mocks/MockStorage.h` — in-memory storage for desktop tests
+- `uSEQ/src/ports/II2CTransport.h` — host/client bus seam
+- `uSEQ/src/ports/mocks/MockI2CBus.h` — native host-to-expander simulation bus
 
 Tests:
 
@@ -54,6 +58,7 @@ Tests:
 - `test/signal_engine/test_signal_engine_golden.cpp` — golden semantic tests at the language boundary
 - `test/firmware/test_firmware_e2e.cpp` — full tick-loop end-to-end tests
 - `test/firmware/test_wire_protocol_contract.cpp` — wire protocol contract tests
+- `test/firmware/test_i2c_expander.cpp` — I2C expander codec and fake-bus integration tests
 
 ---
 

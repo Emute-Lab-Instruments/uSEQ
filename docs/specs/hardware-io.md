@@ -113,8 +113,11 @@ Counts: 4 continuous, 2 binary.  Outputs **inverted** (`INVERT_ANALOG = true`, `
 |---|---|
 | Continuous out 1–8 | 13, 14, 10, 11, 8, 7, 5, 3 |
 | LED 1–8 | 15, 20, 17, 12, 9, 6, 2, 0 |
+| I2C SDA / SCL | 4 / 1 |
 
-8 continuous, 0 binary, 0 inputs.  No inversion.  I2C client only.
+8 continuous, 0 binary, 0 inputs. No inversion. I2C client only; GPIO0
+remains LED 8 and must not be used as the generic SDA default. See
+[i2c-expander.md](i2c-expander.md).
 
 ---
 

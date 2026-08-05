@@ -7,44 +7,68 @@
 
 #ifdef ENABLE_I2C_NETWORKING
 
-#include <cstdint>
+#include "../ports/II2CTransport.h"
+
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 
-namespace firmware {
+namespace firmware
+{
 
-// Maximum size of a single I2C message payload (bytes).
-static constexpr size_t I2C_MAX_MSG_SIZE = 500;
+// Maximum size of one Wire transaction. Larger writes are chunked by the
+// host; the output-expander frame is at most 71 bytes.
+static constexpr size_t I2C_MAX_MSG_SIZE           = 250;
+static constexpr uint8_t I2C_EXPANDER_OUTPUT_COUNT = 8;
+static constexpr size_t I2C_VALUES_HEADER_SIZE     = 7;
+static constexpr size_t I2C_VALUES_MAX_SIZE =
+    I2C_VALUES_HEADER_SIZE + I2C_EXPANDER_OUTPUT_COUNT * sizeof(double);
 
 // Simple ring buffer for incoming I2C messages.
-struct I2CIncoming {
-    static constexpr size_t CAPACITY = 4;
-    struct Slot {
+struct I2CIncoming
+{
+    static constexpr size_t CAPACITY     = 4;
+    static constexpr size_t STORAGE_SIZE = CAPACITY + 1;
+    struct Slot
+    {
         uint8_t data[I2C_MAX_MSG_SIZE] = {};
-        size_t  length                 = 0;
-        bool    occupied               = false;
+        size_t length                  = 0;
     };
-    Slot    slots[CAPACITY] = {};
-    uint8_t head            = 0;
-    uint8_t tail            = 0;
+    Slot slots[STORAGE_SIZE] = {};
+    std::atomic<uint8_t> head{ 0 };
+    std::atomic<uint8_t> tail{ 0 };
 
     bool push(const uint8_t* buf, size_t len);
     bool pop(uint8_t* buf, size_t buf_size, size_t& bytes_read);
     bool any() const;
 };
 
-struct I2CNetwork {
+struct I2CNetwork
+{
     // ── State ─────────────────────────────────────────────────────────────
     bool host_mode   = false;
     bool client_mode = false;
     I2CIncoming incoming;
+    II2CTransport* transport = nullptr;
+    uint8_t client_address   = 0;
+    std::atomic<bool> type_response_pending{ false };
+    std::atomic<uint32_t> applied_value_packets{ 0 };
+    std::atomic<uint32_t> rejected_packets{ 0 };
+
+    // Fixed scratch keeps packet processing allocation-free in Firmware::tick.
+    uint8_t read_buffer[I2C_MAX_MSG_SIZE]            = {};
+    uint8_t write_buffer[I2C_VALUES_MAX_SIZE]        = {};
+    double decoded_values[I2C_EXPANDER_OUTPUT_COUNT] = {};
 
     // Discovered expander addresses (max 5)
     static constexpr uint8_t MAX_EXPANDERS = 5;
-    uint8_t expander_addrs[MAX_EXPANDERS] = {};
-    uint8_t expander_count = 0;
+    uint8_t expander_addrs[MAX_EXPANDERS]  = {};
+    uint8_t expander_count                 = 0;
 
     // ── Methods ───────────────────────────────────────────────────────────
-    void init();
+    void set_transport(II2CTransport* value);
+    bool init();
+    bool init_client(uint8_t address);
     bool send_to(uint8_t address, const uint8_t* data, size_t len);
     bool has_incoming();
     bool read_incoming(uint8_t* buf, size_t buf_size, size_t& bytes_read);
@@ -55,9 +79,27 @@ struct I2CNetwork {
     void broadcast_tempo(double bpm, double beat_phase);
     void broadcast_output_values(const double* values, uint8_t count);
 
+    // Client-mode: consume complete packets queued by the Wire callback and
+    // atomically publish valid output vectors to the caller-owned buffer.
+    size_t process_incoming(double* outputs, size_t output_capacity);
+
+    // Pure protocol helpers, also used by native simulation tests.
+    static size_t encode_output_values(const double* values, uint8_t count,
+                                       uint8_t* buffer, size_t capacity);
+    static bool decode_output_values(const uint8_t* buffer, size_t length,
+                                     double* values, uint8_t& count);
+
     // Host-mode helpers
-    void init_host();
+    bool init_host();
     void scan_for_expanders();
+
+    // Transport callbacks. They only copy bytes or produce a fixed response;
+    // decoding and hardware writes stay in the main loop.
+    void receive_from_transport(const uint8_t* data, size_t length);
+    size_t respond_to_transport(uint8_t* data, size_t capacity);
+
+    static void receive_callback(void* context, const uint8_t* data, size_t length);
+    static size_t request_callback(void* context, uint8_t* data, size_t capacity);
 };
 
 } // namespace firmware

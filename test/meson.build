@@ -127,6 +127,31 @@ firmware_fuzz_test_exe = executable(
 
 test('firmware_fuzz_test', firmware_fuzz_test_exe, timeout: 120)
 
+# ===== I2C Output Expander Simulation =====
+# Compiles the production I2C network directly with the expander profile and
+# connects host/client instances through a native fixed-capacity fake bus.
+i2c_expander_test_args = test_args + [
+  '-UENABLE_SIGNAL_ENGINE',
+  '-DENABLE_I2C_NETWORKING',
+  '-DENABLE_I2C_HOST',
+  '-DENABLE_I2C_CLIENT',
+  '-DUSEQHARDWARE_EXPANDER_OUT_0_1',
+]
+
+i2c_expander_test_exe = executable(
+  'test_i2c_expander',
+  sources : [
+    'firmware/test_i2c_expander.cpp',
+    '../uSEQ/src/firmware/i2c_network.cpp',
+  ],
+  include_directories : test_inc,
+  cpp_args : i2c_expander_test_args,
+  cpp_pch : test_pch_file,
+  dependencies : math_dep,
+)
+
+test('i2c_expander_test', i2c_expander_test_exe, timeout: 30)
+
 # ===== Wire Protocol Contract Tests =====
 # Encodes the contract from docs/specs/wire-protocol.md. Most cases are
 # tagged [.][!shouldfail] so they don't gate CI; implementing agents

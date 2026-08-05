@@ -146,6 +146,15 @@ void Firmware::tick()
     }
 #endif
 
+    // ── 3b. I2C client intake ─────────────────────────────────────────────
+    // Wire callbacks only enqueue complete packets. Decode and publish them
+    // here so output state is never mutated from interrupt/callback context.
+#ifdef ENABLE_I2C_NETWORKING
+    if (i2c.client_mode) {
+        i2c.process_incoming(output_values, 8);
+    }
+#endif
+
     // ── 4. Execute signal graph ────────────────────────────────────────────
     dt::mark("execute");
 #ifdef ENABLE_SIGNAL_ENGINE
@@ -182,6 +191,15 @@ void Firmware::tick()
 #endif
     // When paused (or no engine): output_values retain their last-known-good
     // values, which get written to hardware below.
+
+    // The primary module computes a1-a8; every discovered output expander
+    // mirrors those eight logical continuous-output slots.
+#if defined(ENABLE_I2C_NETWORKING) && defined(ENABLE_I2C_HOST)
+    if (i2c.host_mode) {
+        i2c.broadcast_output_values(output_values,
+                                    I2C_EXPANDER_OUTPUT_COUNT);
+    }
+#endif
 
     // ── 5. Write outputs and update LEDs ───────────────────────────────────
     // io.outputs mirrors engine output_values directly (engine layout:

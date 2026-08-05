@@ -14,6 +14,17 @@ Maps `docs/specs/` sections to C++ test coverage. Updated alongside code changes
 - **e2e** = `test/firmware/test_firmware_e2e.cpp` / `test_firmware_e2e_part2.cpp` — firmware E2E
 - **fuzz** = `test/firmware/test_firmware_fuzz.cpp` — fuzz tests
 - **audit** = `test/signal_engine/test_audit_fixes.cpp` — adversarial regression tests
+- **i2c-expander** = `test/firmware/test_i2c_expander.cpp` — native host/client fake-bus simulation
+
+## i2c-expander.md
+
+| Section | Feature | Status | Test File | Test Name |
+|---------|---------|--------|-----------|-----------|
+| 1.1-1.3 | Client selection, expander pins, synth-free value sink | Strict | i2c-expander + target ELF gate | "expander build selects client mode and the PCB bus pins" |
+| 2.1-2.2 | `$gettype` discovery and `aout08` response | Strict | i2c-expander | "fake bus discovers an expander and delivers all eight outputs" |
+| 3.1-3.3 | `$vals` binary64-LE framing, validation, clamping | Strict | i2c-expander | codec, validation, and integration cases |
+| 4.1-4.3 | Bounded callback queue, LKG on NACK, recovery | Strict | i2c-expander | queue and recovery cases |
+| 5.2 | Physical electrical behavior | None | -- | Requires expander PCB or wired Pico surrogate |
 
 ---
 
