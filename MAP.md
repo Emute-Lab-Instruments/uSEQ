@@ -15,6 +15,9 @@ compiler/control runtime. The canonical language entry point is
   `docs/specs/i2c-expander.md` for the output-expander wire contract.
 - `uSEQ/src/ports/` — platform interfaces and test doubles, including the
   fixed-capacity fake I2C bus used by native host/expander simulation.
+- `uSEQ/src/utils/json_cursor.h` — allocation-free bounded JSON field/object/
+  array cursor shared by firmware serial commands, devtools, and WASM ABI
+  readers; malformed-input and byte-fuzz coverage lives in `test/firmware/`.
 - `wasm/` — generated-runtime ABI wrapper and built interpreter artifacts;
   `useq-capabilities.json` is the compiler/interpreter profile record.
 - `nodedef/` — separately built `osc/sine` NodeDef implementation and module

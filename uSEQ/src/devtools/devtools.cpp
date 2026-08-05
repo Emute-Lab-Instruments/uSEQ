@@ -4,6 +4,7 @@
 
 #include "../signal_engine/signal_engine.h"
 #include "../utils/json_builder.h"
+#include "../utils/json_cursor.h"
 #include "../utils/log.h"
 #include <cstring>
 #include <climits>
@@ -406,45 +407,23 @@ static Mode parse_mode(const char* str) {
 
 static size_t extract_str(const char* json, size_t len,
                           const char* key, char* out, size_t out_sz) {
-    size_t klen = strlen(key);
-    for (size_t i = 0; i + klen + 3 < len; ++i) {
-        if (json[i] == '"' && memcmp(json + i + 1, key, klen) == 0 &&
-            json[i + 1 + klen] == '"') {
-            size_t vs = i + klen + 2;
-            while (vs < len && (json[vs] == ':' || json[vs] == ' ')) vs++;
-            if (vs < len && json[vs] == '"') {
-                vs++;
-                size_t ve = vs;
-                while (ve < len && json[ve] != '"') ve++;
-                size_t copy = (ve - vs < out_sz - 1) ? ve - vs : out_sz - 1;
-                memcpy(out, json + vs, copy);
-                out[copy] = '\0';
-                return copy;
-            }
-        }
-    }
+    if (!out || out_sz == 0) return 0;
     out[0] = '\0';
-    return 0;
+    useq::json::ObjectCursor object(json, len);
+    useq::json::Value value;
+    return object.find(key, value) &&
+           useq::json::copy_string(value, out, out_sz)
+        ? strlen(out)
+        : 0;
 }
 
 static int extract_int(const char* json, size_t len, const char* key, int def) {
-    size_t klen = strlen(key);
-    for (size_t i = 0; i + klen + 3 < len; ++i) {
-        if (json[i] == '"' && memcmp(json + i + 1, key, klen) == 0 &&
-            json[i + 1 + klen] == '"') {
-            size_t vs = i + klen + 2;
-            while (vs < len && (json[vs] == ':' || json[vs] == ' ')) vs++;
-            if (vs < len && json[vs] >= '0' && json[vs] <= '9') {
-                int val = 0;
-                while (vs < len && json[vs] >= '0' && json[vs] <= '9') {
-                    val = val * 10 + (json[vs] - '0');
-                    vs++;
-                }
-                return val;
-            }
-        }
-    }
-    return def;
+    useq::json::ObjectCursor object(json, len);
+    useq::json::Value value;
+    int parsed = def;
+    return object.find(key, value) && useq::json::integer(value, parsed)
+        ? parsed
+        : def;
 }
 
 // ══════════════════════════════════════════════════════════════════════════

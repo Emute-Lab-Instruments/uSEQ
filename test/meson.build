@@ -112,6 +112,17 @@ firmware_e2e_test_exe = executable(
 
 test('firmware_e2e_test', firmware_e2e_test_exe, timeout: 60)
 
+json_cursor_test_exe = executable(
+  'test_json_cursor',
+  sources : ['firmware/test_json_cursor.cpp'],
+  include_directories : test_inc,
+  cpp_args : firmware_test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [math_dep]
+)
+
+test('json_cursor_test', json_cursor_test_exe)
+
 firmware_e2e2_test_exe = executable(
   'test_firmware_e2e_part2',
   sources : ['firmware/test_firmware_e2e_part2.cpp'],

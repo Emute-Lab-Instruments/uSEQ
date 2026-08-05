@@ -15,6 +15,7 @@
 
 #include "../uSEQ/src/signal_engine/signal_engine.h"
 #include "../uSEQ/src/utils/json_builder.h"
+#include "../uSEQ/src/utils/json_cursor.h"
 #include "../uSEQ/src/modulisp/lisp/symbol_intern.h"
 #include <cstdlib>
 #include <cstring>
@@ -140,23 +141,20 @@ static char* alloc_string(const String& s) {
 
 // Parse a JSON array of output names (e.g. ["a1","a2","d1"])
 static bool parse_output_names(const char* json, std::vector<String>& out) {
-    String json_str(json);
-    int start_pos = json_str.indexOf('[');
-    int end_pos   = json_str.indexOf(']');
-    if (start_pos < 0 || end_pos < 0 || end_pos <= start_pos)
-        return false;
-
-    String contents = json_str.substring(start_pos + 1, end_pos);
-    int pos = 0;
-    while (pos < (int)contents.length()) {
-        int quote1 = contents.indexOf('"', pos);
-        if (quote1 < 0) break;
-        int quote2 = contents.indexOf('"', quote1 + 1);
-        if (quote2 < 0) break;
-        out.push_back(contents.substring(quote1 + 1, quote2));
-        pos = quote2 + 1;
+    if (!json) return false;
+    useq::json::Value array{
+        json,
+        strlen(json),
+        useq::json::Kind::Array,
+    };
+    useq::json::ArrayCursor entries(array);
+    useq::json::Value entry;
+    char name[16];
+    while (entries.next(entry)) {
+        if (!useq::json::copy_string(entry, name, sizeof(name))) return false;
+        out.push_back(String(name));
     }
-    return true;
+    return entries.valid() && entries.finished();
 }
 
 // Resolve an output name (e.g. "a1") to its index in the pool.
@@ -1145,51 +1143,21 @@ extern "C"
         if (!g_engine || !json_str) return 0;
 
         int applied = 0;
-        String json(json_str);
-        int len = (int)json.length();
-
-        // Walk the JSON object: find key-value pairs
-        // Skip leading whitespace and opening brace
-        int pos = 0;
-        while (pos < len && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r')) pos++;
-        if (pos >= len || json[pos] != '{') return 0;
-        pos++; // skip '{'
-
-        while (pos < len) {
-            // Skip whitespace and commas
-            while (pos < len && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == ',')) pos++;
-            if (pos >= len || json[pos] == '}') break;
-
-            // Expect a quoted key
-            if (json[pos] != '"') break;
-            pos++; // skip opening quote
-            int key_start = pos;
-            while (pos < len && json[pos] != '"') pos++;
-            if (pos >= len) break;
-            String key = json.substring(key_start, pos);
-            pos++; // skip closing quote
-
-            // Skip whitespace and colon
-            while (pos < len && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r')) pos++;
-            if (pos >= len || json[pos] != ':') break;
-            pos++; // skip colon
-            while (pos < len && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r')) pos++;
-
-            // Parse number value (including negative and decimal)
-            int val_start = pos;
-            if (pos < len && (json[pos] == '-' || json[pos] == '+')) pos++;
-            while (pos < len && ((json[pos] >= '0' && json[pos] <= '9') || json[pos] == '.' || json[pos] == 'e' || json[pos] == 'E' || json[pos] == '+' || json[pos] == '-')) {
-                // Only allow +/- after e/E
-                if ((json[pos] == '+' || json[pos] == '-') && pos > val_start && json[pos-1] != 'e' && json[pos-1] != 'E') break;
-                pos++;
+        useq::json::ObjectCursor inputs(json_str, strlen(json_str));
+        useq::json::Value key;
+        useq::json::Value encoded;
+        while (inputs.next(key, encoded)) {
+            char id[sig::MAX_LIVE_SLOT_ID] = {};
+            double value = 0.0;
+            if (!useq::json::copy_string(key, id, sizeof(id)) ||
+                !useq::json::number(encoded, value) || !std::isfinite(value)) {
+                continue;
             }
-            if (pos == val_start) break; // no number found
-
-            String val_str = json.substring(val_start, pos);
-            double value = atof(val_str.c_str());
-
-            g_engine->pool.set_live_slot_value(key.c_str(), value);
-            applied++;
+            const int16_t slot_index = g_engine->pool.find_live_slot(id);
+            if (slot_index < 0) continue;
+            g_engine->pool.set_live_slot_value_by_index(
+                static_cast<uint16_t>(slot_index), value);
+            ++applied;
         }
 
         return applied;

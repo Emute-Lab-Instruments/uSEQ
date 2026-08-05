@@ -4,6 +4,7 @@
 #include "../devtools/devtools.h"
 #include "../signal_engine/executor.h"
 #include "../utils/json_builder.h"
+#include "../utils/json_cursor.h"
 #include "../utils/serial_message.h"
 #include "../modulisp/lisp/symbol_intern.h"
 
@@ -39,42 +40,6 @@ void write_debug_json(const char* payload, size_t len)
 #endif
 }
 
-// Find the value region after "key": in a JSON buffer.
-// Returns pointer to first non-whitespace char after the colon, or nullptr.
-const char* find_field_value(const char* json, size_t json_len,
-                             const char* field_name)
-{
-    const size_t field_len = strlen(field_name);
-
-    // Build the search key: "field_name"
-    char key[80];
-    if (field_len + 3 > sizeof(key)) return nullptr;
-    key[0] = '"';
-    memcpy(key + 1, field_name, field_len);
-    key[field_len + 1] = '"';
-    key[field_len + 2] = '\0';
-    const size_t key_len = field_len + 2;
-
-    // Linear scan for the key
-    for (size_t i = 0; i + key_len < json_len; ++i)
-    {
-        if (memcmp(json + i, key, key_len) == 0)
-        {
-            // Found key — skip to colon
-            size_t j = i + key_len;
-            while (j < json_len && json[j] != ':') ++j;
-            if (j >= json_len) return nullptr;
-            ++j; // skip colon
-            while (j < json_len && (json[j] == ' ' || json[j] == '\t' ||
-                                    json[j] == '\r' || json[j] == '\n'))
-                ++j;
-            if (j >= json_len) return nullptr;
-            return json + j;
-        }
-    }
-    return nullptr;
-}
-
 // Extract a string value (without quotes) into dst. Returns length or 0.
 // If `truncated` is non-null, it is set true when the value did not fit in dst
 // (so callers can emit a diagnostic instead of silently truncating).
@@ -83,52 +48,25 @@ size_t extract_string(const char* json, size_t json_len,
                       char* dst, size_t dst_size,
                       bool* truncated = nullptr)
 {
-    if (truncated) *truncated = false;
-    const char* v = find_field_value(json, json_len, field_name);
-    if (!v || *v != '"') return 0;
-    ++v; // skip opening quote
-
-    size_t out = 0;
-    bool escape = false;
-    const char* end = json + json_len;
-    while (v < end && out + 1 < dst_size)
-    {
-        char c = *v++;
-        if (escape)
-        {
-            switch (c) {
-                case '"':  dst[out++] = '"';  break;
-                case '\\': dst[out++] = '\\'; break;
-                case 'n':  dst[out++] = '\n'; break;
-                case 'r':  dst[out++] = '\r'; break;
-                case 't':  dst[out++] = '\t'; break;
-                default:   dst[out++] = c;    break;
-            }
-            escape = false;
-            continue;
-        }
-        if (c == '\\') { escape = true; continue; }
-        if (c == '"')  break;
-        dst[out++] = c;
+    useq::json::ObjectCursor object(json, json_len);
+    useq::json::Value value;
+    if (!object.find(field_name, value) ||
+        !useq::json::copy_string(value, dst, dst_size, truncated)) {
+        return 0;
     }
-    dst[out] = '\0';
-    // If we stopped because the destination filled up but the JSON value had
-    // not yet reached its closing quote, the value was truncated.
-    if (truncated && out + 1 >= dst_size && v < end && *v != '"')
-        *truncated = true;
-    return out;
+    return strlen(dst);
 }
 
 // Extract an integer value. Returns the value or default_val if not found.
 int extract_int(const char* json, size_t json_len,
                 const char* field_name, int default_val = 0)
 {
-    const char* v = find_field_value(json, json_len, field_name);
-    if (!v) return default_val;
-
-    // Must start with digit or minus
-    if (*v != '-' && (*v < '0' || *v > '9')) return default_val;
-    return atoi(v);
+    useq::json::ObjectCursor object(json, json_len);
+    useq::json::Value value;
+    int parsed = default_val;
+    return object.find(field_name, value) && useq::json::integer(value, parsed)
+        ? parsed
+        : default_val;
 }
 
 } // anonymous namespace
@@ -866,77 +804,45 @@ void SerialProtocol::handle_stream_config(const char* payload, size_t len)
     stream_channels[0].source = StreamSource::Time;
     num_stream_channels = 1;
 
-    // Parse channels array
-    const char* channels_start = find_field_value(payload, len, "channels");
-    if (channels_start && *channels_start == '[')
-    {
-        const char* end = payload + len;
-        const char* p = channels_start + 1;
-        int depth = 0;
-        const char* obj_start = nullptr;
-
-        while (p < end)
-        {
-            if (*p == '{')
-            {
-                if (depth == 0) obj_start = p;
-                ++depth;
+    useq::json::ObjectCursor request(payload, len);
+    useq::json::Value channels;
+    if (request.find("channels", channels) &&
+        channels.kind == useq::json::Kind::Array) {
+        useq::json::ArrayCursor entries(channels);
+        useq::json::Value entry;
+        while (entries.next(entry) && num_stream_channels < MAX_STREAM_CHANNELS) {
+            if (entry.kind != useq::json::Kind::Object) continue;
+            useq::json::ObjectCursor channel(entry);
+            useq::json::Value field;
+            bool enabled = true;
+            if (channel.find("enabled", field)) {
+                useq::json::boolean(field, enabled);
             }
-            else if (*p == '}')
-            {
-                --depth;
-                if (depth == 0 && obj_start)
-                {
-                    size_t obj_len = static_cast<size_t>(p - obj_start + 1);
+            if (!enabled) continue;
 
-                    // Check enabled
-                    const char* ev = find_field_value(obj_start, obj_len, "enabled");
-                    bool enabled = true;
-                    if (ev && strncmp(ev, "false", 5) == 0) enabled = false;
+            char name[16] = {};
+            char direction[8] = {};
+            if (channel.find("name", field))
+                useq::json::copy_string(field, name, sizeof(name));
+            if (channel.find("direction", field))
+                useq::json::copy_string(field, direction, sizeof(direction));
+            if (strcmp(name, "time") == 0) continue;
 
-                    if (enabled && num_stream_channels < MAX_STREAM_CHANNELS)
-                    {
-                        // Parse name to determine source
-                        char name[16] = {};
-                        extract_string(obj_start, obj_len, "name", name, sizeof(name));
-
-                        // Parse direction
-                        char dir[8] = {};
-                        extract_string(obj_start, obj_len, "direction", dir, sizeof(dir));
-
-                        StreamChannel& sc = stream_channels[num_stream_channels];
-                        sc.enabled = true;
-
-                        if (strcmp(name, "time") == 0) {
-                            // Time already at channel 0, skip duplicate
-                            continue;
-                        } else if (strncmp(dir, "input", 5) == 0) {
-                            // Input channels: ssin1→AI1(idx 8), ssin2→AI2(idx 9)
-                            sc.source = StreamSource::Input;
-                            if (strcmp(name, "ssin1") == 0) sc.source_idx = 8;
-                            else if (strcmp(name, "ssin2") == 0) sc.source_idx = 9;
-                            else sc.source_idx = 0;
-                            sc.on_change_only = true;
-                        } else {
-                            // Output channels: s1-s8 → output indices 16-23
-                            sc.source = StreamSource::Output;
-                            if (name[0] == 's' && name[1] >= '1' && name[1] <= '8' && name[2] == '\0') {
-                                sc.source_idx = 16 + (name[1] - '1');
-                            } else {
-                                sc.source_idx = 0;
-                            }
-                        }
-
-                        num_stream_channels++;
-                    }
-                    obj_start = nullptr;
+            StreamChannel& stream = stream_channels[num_stream_channels];
+            stream.enabled = true;
+            if (strncmp(direction, "input", 5) == 0) {
+                stream.source = StreamSource::Input;
+                if (strcmp(name, "ssin1") == 0) stream.source_idx = 8;
+                else if (strcmp(name, "ssin2") == 0) stream.source_idx = 9;
+                stream.on_change_only = true;
+            } else {
+                stream.source = StreamSource::Output;
+                if (name[0] == 's' && name[1] >= '1' && name[1] <= '8' &&
+                    name[2] == '\0') {
+                    stream.source_idx = 16 + (name[1] - '1');
                 }
             }
-            else if (*p == ']' && depth == 0)
-            {
-                break;
-            }
-            ++p;
+            ++num_stream_channels;
         }
     }
 
@@ -985,169 +891,53 @@ void SerialProtocol::handle_set_failure_mode(const char* payload, size_t len)
 
 void SerialProtocol::handle_set_live_inputs(const char* payload, size_t len)
 {
-    // §5.8: write one or more live-edit slot values.
-    //
-    // The `slots` field is a JSON object mapping slot-id (string) → value.
-    // Walk the object entries, parse each key → value pair, resolve the slot
-    // by ID, validate the value, and write via set_live_slot_value().
-
     int applied = 0;
-
-    const char* slots_val = find_field_value(payload, len, "slots");
-    if (slots_val && *slots_val == '{' && engine)
-    {
-        const char* end = payload + len;
-        const char* p = slots_val + 1; // skip opening '{'
-
-        while (p < end)
-        {
-            // Skip whitespace
-            while (p < end && (*p == ' ' || *p == '\t' ||
-                               *p == '\r' || *p == '\n')) ++p;
-            if (p >= end) break;
-
-            if (*p == '}') break; // end of slots object
-
-            if (*p == '"')
-            {
-                // Extract key string into id_buf
-                char id_buf[sig::MAX_LIVE_SLOT_ID] = {};
-                size_t id_len = 0;
-                ++p; // skip opening quote
-                while (p < end && *p != '"')
-                {
-                    if (*p == '\\') {
-                        ++p; // skip backslash
-                        if (p >= end) break;
-                    }
-                    if (id_len < sig::MAX_LIVE_SLOT_ID - 1)
-                        id_buf[id_len++] = *p;
-                    ++p;
-                }
-                id_buf[id_len] = '\0';
-                if (p < end) ++p; // skip closing quote
-
-                // Skip whitespace and colon
-                while (p < end && (*p == ' ' || *p == '\t' || *p == ':')) ++p;
-                if (p >= end) break;
-
-                // Parse the value
-                bool value_valid = false;
-                double value = 0.0;
-
-                if (*p == '"')
-                {
-                    // String value — resolve keyword slot option to index
-                    char str_buf[sig::MAX_LIVE_SLOT_OPTION_LEN] = {};
-                    size_t str_len = 0;
-                    ++p; // skip opening quote
-                    while (p < end && *p != '"')
-                    {
-                        if (*p == '\\') {
-                            ++p;
-                            if (p >= end) break;
-                        }
-                        if (str_len < sig::MAX_LIVE_SLOT_OPTION_LEN - 1)
-                            str_buf[str_len++] = *p;
-                        ++p;
-                    }
-                    str_buf[str_len] = '\0';
-                    if (p < end) ++p; // skip closing quote
-
-                    // Look up slot and resolve keyword to option index
-                    int16_t str_slot_idx = engine->pool.find_live_slot(id_buf);
-                    if (str_slot_idx >= 0 &&
-                        engine->pool.live_slots[str_slot_idx].variant ==
-                            sig::NodePool::SlotVariant::Keyword) {
-                        auto& slot = engine->pool.live_slots[str_slot_idx];
-                        for (uint8_t oi = 0; oi < slot.options_count; oi++) {
-                            if (strncmp(slot.options[oi], str_buf,
-                                        sig::MAX_LIVE_SLOT_OPTION_LEN) == 0) {
-                                value = (double)oi;
-                                value_valid = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                else if (*p == '{' || *p == '[')
-                {
-                    // Nested object/array — skip
-                    char open = *p, close = (*p == '{') ? '}' : ']';
-                    int nest = 0;
-                    while (p < end)
-                    {
-                        if (*p == open)  ++nest;
-                        if (*p == close) { --nest; ++p; if (nest == 0) break; continue; }
-                        ++p;
-                    }
-                }
-                else if (*p == 't' || *p == 'f')
-                {
-                    // Boolean: true → 1.0, false → 0.0
-                    if (p + 4 <= end && memcmp(p, "true", 4) == 0) {
-                        value = 1.0;
-                        value_valid = true;
-                        p += 4;
-                    } else if (p + 5 <= end && memcmp(p, "false", 5) == 0) {
-                        value = 0.0;
-                        value_valid = true;
-                        p += 5;
-                    } else {
-                        while (p < end && *p != ',' && *p != '}') ++p;
-                    }
-                }
-                else if (*p == 'n')
-                {
-                    // null — skip
-                    while (p < end && *p != ',' && *p != '}') ++p;
-                }
-                else
-                {
-                    // Numeric value — parse
-                    const char* val_start = p;
-                    if (*p == '-' || *p == '+') ++p;
-                    while (p < end && ((*p >= '0' && *p <= '9') || *p == '.' ||
-                                       *p == 'e' || *p == 'E' || *p == '+' || *p == '-'))
-                    {
-                        // Only allow +/- after e/E
-                        if ((*p == '+' || *p == '-') && p > val_start &&
-                            *(p-1) != 'e' && *(p-1) != 'E') break;
-                        ++p;
-                    }
-                    if (p > val_start) {
-                        char num_buf[64] = {};
-                        size_t num_len = (size_t)(p - val_start);
-                        if (num_len >= sizeof(num_buf)) num_len = sizeof(num_buf) - 1;
-                        memcpy(num_buf, val_start, num_len);
-                        num_buf[num_len] = '\0';
-                        value = atof(num_buf);
-                        // Reject NaN and Inf
-                        if (std::isfinite(value))
-                            value_valid = true;
-                    }
-                }
-
-                // Write to slot if value is valid and slot exists
-                if (value_valid && id_len > 0)
-                {
-                    int16_t slot_idx = engine->pool.find_live_slot(id_buf);
-                    if (slot_idx >= 0) {
-                        engine->pool.set_live_slot_value(id_buf, value);
-                        ++applied;
-                    }
-                    // Unknown slot IDs are silently dropped per spec
-                }
-
-                // Skip optional comma
-                while (p < end && (*p == ' ' || *p == '\t' ||
-                                   *p == '\r' || *p == '\n')) ++p;
-                if (p < end && *p == ',') ++p;
+    useq::json::ObjectCursor request(payload, len);
+    useq::json::Value slots_value;
+    if (engine && request.find("slots", slots_value) &&
+        slots_value.kind == useq::json::Kind::Object) {
+        useq::json::ObjectCursor slots(slots_value);
+        useq::json::Value key;
+        useq::json::Value encoded;
+        while (slots.next(key, encoded)) {
+            char id[sig::MAX_LIVE_SLOT_ID] = {};
+            bool id_truncated = false;
+            if (!useq::json::copy_string(
+                    key, id, sizeof(id), &id_truncated) || id_truncated) {
+                continue;
             }
-            else
-            {
-                // Unexpected char — bail out
-                break;
+            const int16_t slot_index = engine->pool.find_live_slot(id);
+            if (slot_index < 0) continue; // Unknown IDs are dropped per §5.8.
+
+            double value = 0.0;
+            bool value_valid = false;
+            if (encoded.kind == useq::json::Kind::Number) {
+                value_valid = useq::json::number(encoded, value) &&
+                              std::isfinite(value);
+            } else if (encoded.kind == useq::json::Kind::Boolean) {
+                bool flag = false;
+                value_valid = useq::json::boolean(encoded, flag);
+                value = flag ? 1.0 : 0.0;
+            } else if (encoded.kind == useq::json::Kind::String &&
+                       engine->pool.live_slots[slot_index].variant ==
+                           sig::NodePool::SlotVariant::Keyword) {
+                char option[sig::MAX_LIVE_SLOT_OPTION_LEN] = {};
+                if (useq::json::copy_string(encoded, option, sizeof(option))) {
+                    const auto& slot = engine->pool.live_slots[slot_index];
+                    for (uint8_t index = 0; index < slot.options_count; ++index) {
+                        if (strncmp(slot.options[index], option,
+                                    sig::MAX_LIVE_SLOT_OPTION_LEN) == 0) {
+                            value = static_cast<double>(index);
+                            value_valid = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (value_valid) {
+                engine->pool.set_live_slot_value_by_index(
+                    static_cast<uint16_t>(slot_index), value);
+                ++applied;
             }
         }
     }
