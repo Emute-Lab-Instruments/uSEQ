@@ -9,7 +9,8 @@ compiler/control runtime. The canonical language entry point is
 - `uSEQ/src/signal_engine/` — tokenizer, cold evaluator, graph builder, node
   pool, executor, diagnostics, state/resource ownership, and builtin table.
 - `uSEQ/src/firmware/` — RP2040/RP2350 composition root, live tick loop,
-  hardware I/O, storage, serial protocol, and I2C host/expander runtime; see
+  hardware I/O, storage, serial protocol, build identity/capabilities
+  (`build_info.h`), and I2C host/expander runtime; see
   `docs/specs/i2c-expander.md` for the output-expander wire contract.
 - `uSEQ/src/ports/` — platform interfaces and test doubles, including the
   fixed-capacity fake I2C bus used by native host/expander simulation.

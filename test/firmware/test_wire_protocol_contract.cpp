@@ -126,6 +126,10 @@ TEST_CASE("F1 [§5.5] ready frame uses \"version\" field, not \"fw\"",
 
     // Spec §5.5 — field name is "version" (matching firmware.md §3.1.6).
     REQUIRE(json.find("\"version\"") != std::string::npos);
+    REQUIRE(json.find("\"version\":\"1.2.0-beta.1\"") != std::string::npos);
+    REQUIRE(json.find("\"protocol\":1") != std::string::npos);
+    REQUIRE(json.find("\"target\":\"unknown\"") != std::string::npos);
+    REQUIRE(json.find("\"capabilities\"") != std::string::npos);
     REQUIRE(json.find("\"type\":\"ready\"") != std::string::npos);
     // Must NOT use the legacy "fw" field name on the ready frame.
     REQUIRE(json.find("\"fw\"") == std::string::npos);
@@ -263,6 +267,10 @@ TEST_CASE("F5 [§5.2] hello response has type:\"response\", mode, fw, config",
     REQUIRE(json.find("\"success\":true") != std::string::npos);
     REQUIRE(json.find("\"mode\":\"json\"") != std::string::npos);
     REQUIRE(json.find("\"fw\"") != std::string::npos);
+    REQUIRE(json.find("\"fw\":\"1.2.0-beta.1\"") != std::string::npos);
+    REQUIRE(json.find("\"protocol\":1") != std::string::npos);
+    REQUIRE(json.find("\"target\":\"unknown\"") != std::string::npos);
+    REQUIRE(json.find("\"capabilities\"") != std::string::npos);
     REQUIRE(json.find("\"config\"") != std::string::npos);
     REQUIRE(json.find("\"outputs\"") != std::string::npos);
     REQUIRE(json.find("\"time\"") != std::string::npos);

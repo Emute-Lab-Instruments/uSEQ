@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0-beta.1
+
+- Firmware identity now uses canonical SemVer prereleases and one build-info
+  source rather than hard-coded protocol strings.
+- `hello` and `ready` advertise independent protocol version, exact hardware
+  target, and additive capability names so an editor can select safe behavior
+  and the correct UF2 without inferring from firmware semver.
+
 ## 1.2.0 (Protocol Enhancements)
 
 ### Additions

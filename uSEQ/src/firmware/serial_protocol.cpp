@@ -1,4 +1,5 @@
 #include "serial_protocol.h"
+#include "build_info.h"
 #include "../devtools/devtools.h"
 #include "../signal_engine/executor.h"
 #include "../utils/json_builder.h"
@@ -667,7 +668,10 @@ void SerialProtocol::send_ready()
     JsonBuilder b;
     b.object_begin()
         .field("type", "ready")
-        .field("version", "1.2.0")
+        .field("version", build_info::VERSION)
+        .field("protocol", build_info::PROTOCOL_VERSION)
+        .field("target", build_info::HARDWARE_TARGET)
+        .field_raw("capabilities", build_info::CAPABILITIES_JSON)
         .object_end();
 
     write_json_str(b.build().c_str());
@@ -739,7 +743,10 @@ void SerialProtocol::handle_hello(const char* /*payload*/, size_t /*len*/)
         .field("type", "response")
         .field("success", true)
         .field("mode", "json")
-        .field("fw", "1.2.0")
+        .field("fw", build_info::VERSION)
+        .field("protocol", build_info::PROTOCOL_VERSION)
+        .field("target", build_info::HARDWARE_TARGET)
+        .field_raw("capabilities", build_info::CAPABILITIES_JSON)
         .field_raw("config", config.build())
         .field("requestId", m_request_id)
         .object_end();

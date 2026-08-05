@@ -54,11 +54,11 @@ The host (the *editor*, in app terminology) initiates all conversations
 because Web Serial only enumerates host-side: the device has no signal
 that a host is now listening.
 
-1.2 The protocol is **versioned with the firmware**. The minimum supported
-firmware version is the floor declared in `useq-perform/docs/specs/bootstrap.md`
-and `useq-perform/docs/specs/MAIN.md` §4 (currently `1.2.0`).
-Firmware below that floor is not supported by current editors; bringing it
-in-spec requires a new firmware build, not a protocol fallback.
+1.2 The wire protocol has an independent integer version advertised by
+`hello` and `ready`; protocol v1 first ships in firmware `1.2.0-beta.1`.
+This firmware implementation remains JSON-only. A host may carry an isolated
+adapter for pre-1.2 firmware, but legacy framing is not part of protocol v1
+and does not enter this firmware's receive path.
 
 1.3 The protocol is **symmetric** in framing: editor → device and device →
 editor share the same on-wire shape. Reserved/forward-compatible binary
@@ -225,7 +225,10 @@ Sent by the editor immediately on port open. Retried per §4.2. (See `uSEQ/src/f
   "requestId": "req-1",
   "success": true,
   "mode": "json",
-  "fw": "1.2.0",
+  "fw": "1.2.0-beta.1",
+  "protocol": 1,
+  "target": "hardware_v1_0",
+  "capabilities": ["json-v1", "stream-v1", "diagnostics-v1"],
   "config": {
     "inputs":  [{"index": 1, "name": "ssin1"}, ...],
     "outputs": [{"index": 1, "name": "time"},
@@ -241,6 +244,9 @@ Sent by the editor immediately on port open. Retried per §4.2. (See `uSEQ/src/f
 | `success` | bool | yes | Always `true` if a hello response is sent at all. (Failure mode is "no response"; editor times out and retries.) |
 | `mode` | string | yes | Always `"json"`. Reserved field; future protocol variants might use other values. |
 | `fw` | string | yes | Device firmware version. Used by the editor for upgrade checks. |
+| `protocol` | integer | yes | Independent wire-protocol version; `1` for this contract. |
+| `target` | string | yes | Exact build target (`musicthing`, `hardware_v0_2`, or `hardware_v1_0`; native tests report `unknown`). |
+| `capabilities` | string[] | yes | Additive feature identifiers. Editors ignore unknown names and gate optional requests on advertised names. |
 | `config` | object | yes | I/O configuration; see below. |
 
 **`config.inputs`** is an array of `{index, name}` describing externally
@@ -256,7 +262,7 @@ canonical time channel; other names follow the s-output convention
 byte.
 
 The hello response is the **single source of truth** for the firmware
-version and the I/O configuration, replacing all prior probing
+version, protocol, build target, capabilities, and I/O configuration, replacing all prior probing
 mechanisms.
 
 ### 5.3 `stream-config` (editor → device, request)
@@ -314,13 +320,16 @@ Sent **once** by the device on boot completion (post-flash-load,
 post-watchdog-arm). Advisory only — see §4.1.
 
 ```json
-{"type":"ready","version":"1.2.0"}
+{"type":"ready","version":"1.2.0-beta.1","protocol":1,"target":"hardware_v1_0","capabilities":["json-v1","stream-v1"]}
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `type` | string | yes | Always `"ready"`. |
 | `version` | string | yes | Device firmware version (matches the `fw` field of the hello response). |
+| `protocol` | integer | yes | Independent wire-protocol version. |
+| `target` | string | yes | Exact hardware build target. |
+| `capabilities` | string[] | yes | Additive feature identifiers. |
 
 The field name on this frame is `"version"` — not `"fw"` — matching the
 historical naming in [firmware.md §3.1.6](firmware.md). The hello
@@ -869,14 +878,15 @@ dropped. Serial input remains live for subsequent messages.
 ```
 device boots:
   → 0x1F 0x65 ... NO. Device emits:
-    {"type":"ready","version":"1.2.0"}\n
+    {"type":"ready","version":"1.2.0-beta.1","protocol":1,"target":"hardware_v1_0","capabilities":[...]}\n
 
 editor opens port:
   ← {"type":"hello","client":"editor","version":"1.2.0","requestId":"req-1"}\n
 
 device replies:
   → {"type":"response","requestId":"req-1","success":true,"mode":"json",
-     "fw":"1.2.0","config":{"inputs":[...],"outputs":[...]}}\n
+     "fw":"1.2.0-beta.1","protocol":1,"target":"hardware_v1_0",
+     "capabilities":[...],"config":{"inputs":[...],"outputs":[...]}}\n
 
 editor sends stream-config:
   ← {"type":"stream-config","maxRateHz":30,"channels":[...],"requestId":"req-2"}\n
@@ -900,7 +910,7 @@ editor opens port (device still booting):
  the tick loop yet)
 
 device finishes boot:
-  → {"type":"ready","version":"1.2.0"}\n
+  → {"type":"ready","version":"1.2.0-beta.1","protocol":1,"target":"hardware_v1_0","capabilities":[...]}\n
 
 editor sees ready, retries hello immediately:
   ← {"type":"hello","client":"editor","version":"1.2.0","requestId":"req-2"}\n
@@ -1149,10 +1159,10 @@ when a real use case appears.
 revision could add a structured `errorCode` enum for programmatic
 handling.
 
-11.4 **Wire-protocol version separate from firmware version.** Currently
-the protocol version is implicit in the firmware semver. If the wire
-shape needs to evolve independently, add a `protocol` field to the
-`hello` response and `ready` frame.
+11.4 **Capability granularity.** Protocol v1 advertises named capabilities,
+but the initial set is coarse. Split a capability only when a real build can
+implement one half without the other; do not infer optional support from
+firmware semver.
 
 (11.5 was the open `(at-next-bar …)` question — resolved in v1 by the
 `quant: true` eval-request flag (§5.7) plus the `(set-quant-phasor expr)`
