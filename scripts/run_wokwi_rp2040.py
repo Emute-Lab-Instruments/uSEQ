@@ -400,8 +400,6 @@ def resource_ratios(data: dict[str, Any]) -> dict[str, float]:
         "data_entries",
         "state_slots",
         "live_slots",
-        "synth_declarations",
-        "synth_controls",
     ):
         value = data.get(name)
         if not isinstance(value, dict):
@@ -561,8 +559,6 @@ def evaluate(
         "data_entries",
         "state_slots",
         "live_slots",
-        "synth_declarations",
-        "synth_controls",
     )
     resource_high_water: dict[str, dict[str, int]] = {}
     for resource in resource_keys:

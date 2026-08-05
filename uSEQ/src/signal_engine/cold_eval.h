@@ -5,7 +5,9 @@
 #include "cell_store.h"
 #include "node_pool.h"
 #include "state_registry.h"
+#if USEQ_HAS_SYNTH_ENGINE
 #include "synth_graph.h"
+#endif
 #include "diagnostics.h"
 
 namespace sig {
@@ -139,7 +141,8 @@ struct SignalEngine {
     NodePool scratch_pool;
     char eval_text_buf[512] = {};
 
-    // ── Synth compiler domain (synth-nodes.md) ──────────────────────────
+#if USEQ_HAS_SYNTH_ENGINE
+    // ── Host synth compiler domain (synth-nodes.md) ─────────────────────
     // Published synth artefacts: identity-keyed declarations + control
     // channel table, sharing one compiler revision. Each top-level synth form
     // advances atomically; earlier forms survive a later sibling's failure.
@@ -159,6 +162,7 @@ struct SignalEngine {
     // "::anon-<ordinal>" so recompiling the same program reuses its
     // identity instead of leaking one per eval (state-identity.md §2.5).
     uint16_t eval_anon_synth_ordinal = 0;
+#endif
 
     // Increments on each user-visible full-session clear. Wrappers with
     // compiler caches use this to discard references outside SignalEngine.
@@ -172,7 +176,7 @@ struct SignalEngine {
     void reset_session_storage(double bpm = 120.0, int beats_per_bar = 4,
                                int bars_per_phrase = 4,
                                int phrases_per_section = 4,
-                               bool publish_synth_clear = true);
+                               bool publish_session_clear = true);
 };
 
 // ── Cold-Path Evaluation ────────────────────────────────────────────────────
@@ -203,7 +207,8 @@ void recompile_all_outputs(SignalEngine& engine);
 
 void on_cell_changed(SymbolID cell_id, SignalEngine& engine);
 
-// ── Synth GC integration ────────────────────────────────────────────────────
+#if USEQ_HAS_SYNTH_ENGINE
+// ── Host synth GC integration ───────────────────────────────────────────────
 // Register every committed synth control root with the NodePool's external
 // roots array so the next GC pass keeps them reachable and remaps their
 // indices. Callers that invoke pool.gc_unreachable_nodes() directly must
@@ -216,6 +221,7 @@ void register_synth_external_roots(SignalEngine& engine);
 // synth_graph.controls[] table. Pairs with register_synth_external_roots().
 
 void commit_synth_external_roots(SignalEngine& engine);
+#endif
 
 } // namespace sig
 

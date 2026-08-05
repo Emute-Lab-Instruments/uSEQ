@@ -44,7 +44,8 @@ python3 scripts/run_rp2040_profile.py
 It runs the native suite and conformance corpus, rebuilds native probes with
 the exact firmware capacities, enforces the declared firmware workload bands,
 runs optimized and ASan/UBSan endurance checks, links `musicthing` and
-`musicthing-observe`, and applies exact ELF memory gates. Evidence is written
+`musicthing-observe`, proves that neither ELF contains host/WASM synth-engine
+objects, symbols, or text, and applies exact ELF memory gates. Evidence is written
 under `build/rp2040-profile/<revision>/`. Native timing remains comparative;
 simulator and physical-device observations have separate result grades.
 

@@ -47,10 +47,11 @@ signals, and *describe routing* between them.
 mix `(synth ...)` forms with `(a1 ...)`, `(d1 ...)`, etc., and share
 sub-expressions between them. Neither surface depends on the other.
 
-1.4 Synth nodes require an audio-capable host with a running WASM executor
-(see §6). On hosts without audio capability the forms compile (all
-diagnostics still apply) but produce no sound, and a single capability
-diagnostic (severity `info`) is emitted.
+1.4 Synth nodes require the host/WASM compiler profile (see §6). Within that
+profile, an audio-incapable host still compiles and diagnoses the forms but
+produces no sound. RP2040 firmware excludes the synth compiler, registry, and
+artefact graph entirely; submitting `synth` to firmware is an unknown-name
+error.
 
 ---
 
@@ -196,8 +197,7 @@ position, declaring an anonymous node patched inline:
 Nested forms are sugar: semantically identical to a top-level `synth` with
 a derived identity (§5.2) referenced by the parent. A routing chain contains
 at most 16 nested synth forms; deeper input is an `Overflow` compile error.
-This explicit language limit bounds cold-path stack use on WASM and embedded
-targets.
+This explicit language limit bounds cold-path stack use in the WASM executor.
 
 4.4 Cycles through audio inputs are an error in v1 (feedback requires an
 explicit delay def; relaxing this is deferred, §8).
@@ -380,19 +380,17 @@ instance acting as compiler/control-producer alongside the hardware
 connection (see `synthesis.md` §6). Firmware hosts do not implement
 `synth`.
 
-6.2 On an audio-incapable host, `synth` forms are compiled and checked but
-inert; a single capability diagnostic (severity `info`) reports that audio
-output is unavailable in the current mode. (This spec owns that
-diagnostic's severity; the app spec cites it.)
+6.2 On an audio-incapable host using the host/WASM profile, `synth` forms are
+compiled and checked but inert; a single capability diagnostic (severity
+`info`) reports that audio output is unavailable in the current mode. (This
+spec owns that diagnostic's severity; the app spec cites it.) This rule does
+not apply to firmware, where the form is absent per §1.4.
 
-6.3 **Profile-specific retained capacity.** The RP2040 profile retains all 64
-declarations supported by the shipped NodeDef registry. Because every shipped
-descriptor has at most two control parameters, it reserves 128 persistent
-control rows. Native and generated-WASM profiles retain the wider 512-row
-descriptor ceiling. A registry contract test rejects any firmware build whose
-shipped descriptors can exceed the RP2040 row bound; reaching the declared
-bound remains a transactional `Overflow` diagnostic rather than partial
-publication.
+6.3 **Retained capacity.** Generated-WASM and its native verification profile
+retain the 512-row descriptor ceiling and up to 64 declarations. Reaching a
+declared host-profile bound remains a transactional `Overflow` diagnostic
+rather than partial publication. Firmware retains zero synth declarations or
+control rows because it does not implement this capability.
 
 ---
 

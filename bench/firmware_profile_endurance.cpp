@@ -108,8 +108,6 @@ struct Resources {
     uint16_t live_slots;
     uint32_t arena;
     uint16_t data_tables;
-    uint16_t synth_declarations;
-    uint16_t synth_controls;
     uint16_t a1_root;
     uint32_t a1_source_offset;
     uint32_t a1_source_length;
@@ -122,8 +120,6 @@ static Resources resources() {
         engine.pool.live_slot_count,
         engine.arena.write_head,
         engine.cells.data_table_count,
-        engine.synth_graph.declaration_count(),
-        engine.synth_graph.control_count(),
         engine.pool.outputs[0].root_node,
         engine.output_sources[0].arena_offset,
         engine.output_sources[0].arena_length,
@@ -136,8 +132,6 @@ static bool same_resources(const Resources& left, const Resources& right) {
            left.live_slots == right.live_slots &&
            left.arena == right.arena &&
            left.data_tables == right.data_tables &&
-           left.synth_declarations == right.synth_declarations &&
-           left.synth_controls == right.synth_controls &&
            left.a1_root == right.a1_root &&
            left.a1_source_offset == right.a1_source_offset &&
            left.a1_source_length == right.a1_source_length;
@@ -149,10 +143,6 @@ static void update_max(Resources& maximum, const Resources& current) {
     maximum.live_slots = std::max(maximum.live_slots, current.live_slots);
     maximum.arena = std::max(maximum.arena, current.arena);
     maximum.data_tables = std::max(maximum.data_tables, current.data_tables);
-    maximum.synth_declarations = std::max(
-        maximum.synth_declarations, current.synth_declarations);
-    maximum.synth_controls = std::max(maximum.synth_controls,
-                                      current.synth_controls);
 }
 
 int main(int argc, char** argv) {
@@ -301,13 +291,11 @@ int main(int argc, char** argv) {
         "\"tick_p99_ns\":%.6f,\"max_nodes\":%u,"
         "\"max_state_slots\":%u,\"max_live_slots\":%u,"
         "\"max_arena_bytes\":%u,\"max_data_tables\":%u,"
-        "\"max_synth_declarations\":%u,\"max_synth_controls\":%u,"
         "\"checksum\":\"%016llx\"}\n",
         cycles, static_cast<unsigned long long>(tick_count),
         invalid_rejections, reloads, percentile(compile_us, 0.99),
         percentile(tick_ns, 0.99), maximum.nodes, maximum.state_slots,
         maximum.live_slots, maximum.arena, maximum.data_tables,
-        maximum.synth_declarations, maximum.synth_controls,
         static_cast<unsigned long long>(checksum));
     return 0;
 }

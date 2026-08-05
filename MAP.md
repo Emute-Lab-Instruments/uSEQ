@@ -31,7 +31,8 @@ compiler/control runtime. The canonical language entry point is
 - `scripts/` — native/WASM builds, conformance adapters, manifest generation,
   NodeDef inspection, benchmarks, PlatformIO helpers, and RP2040 acceptance
   orchestration (`run_rp2040_profile.py`, `run_wokwi_rp2040.py`,
-  `run_rp2040_goal_gate.py`, `rp2040_memory_report.py`, `rp2040_budget.json`).
+  `run_rp2040_goal_gate.py`, `rp2040_memory_report.py`,
+  `verify_firmware_no_synth.py`, `rp2040_budget.json`).
 - `docs/specs/` — canonical language, runtime, firmware, diagnostics, state,
   synth, and protocol specifications; `docs/SEMANTICS.md` is a compatibility
   pointer only.
@@ -51,9 +52,10 @@ compiler/control runtime. The canonical language entry point is
 
 - Fixed capacities reject before publication; a rejected form must not alter
   live behavior or consume bounded resources.
-- The RP2040 profile retains 64 synth declarations and 128 control rows, which
-  covers every parameter combination in the shipped registry; host profiles
-  retain the 512-row descriptor ceiling.
+- The synth compiler, NodeDef registry, and published synth artefact graph are
+  host/WASM capabilities. Arduino and native firmware-profile builds exclude
+  their translation units, state, symbols, and source strings; the linked ELF
+  boundary is executable via `verify_firmware_no_synth.py`.
 - Native and generated-WASM conformance use the same fixtures. A target build,
   firmware-capacity native process, simulator run, browser execution, and
   physical-device observation are separate evidence profiles.

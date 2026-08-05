@@ -12,27 +12,26 @@ profile states only the behavior it implements and measures.
 
 ## Top defects
 
-### 1. Target runtime headroom is incompletely measured *(2026-08-03)*
+### 1. Target runtime headroom is incompletely measured *(2026-08-05)*
 
-**What.** The pinned-toolchain VPS grade for source revision `1e553be` records
-127,388 bytes of PlatformIO static RAM and a 134,560-byte linked main-RAM heap
-span for `musicthing`; `musicthing-observe` records 128,652 and 133,296 bytes,
-respectively. Bounded retained cell indices and registry-derived synth-control
-ownership and parameter metadata recover 22,848 bytes in both images relative
-to the `4dfd43e` baseline; the implementation changes are retained at
-`98bf48a`. The later evidence revisions do not change declared capacity,
-conformance results, or endurance checksums. The native constrained-profile runner
-exercises declared combined and near-boundary workloads, and the Wokwi adapter
-enforces the target telemetry, protocol, sustained-tick, and configured-clock
-contracts. No hosted-simulator or physical-device run has yet recorded a heap
-low-water mark or stack watermark under those workloads.
+**What.** The local pinned-toolchain `musicthing` build after removing the
+host/WASM synth compiler from the firmware profile records 101,076 bytes of
+PlatformIO static RAM, a 160,872-byte linked main-RAM heap span, and a
+334,140-byte flash image. The exact ELF contains no synth objects, symbols, or
+text. Firmware-profile and generated-WASM conformance each pass 85/85, and
+optimized/sanitized 2,000-cycle endurance runs share checksum
+`3efedf962013216e`. A Pico physical smoke verified flash, `hello`, `ping`,
+synth-form rejection, and recovery, but did not record heap low-water or stack
+watermark under the declared workloads. The Wokwi adapter enforces target
+telemetry, protocol, sustained-tick, and configured-clock contracts; no hosted
+simulator run has yet exercised this revision.
 
 **Why it matters.** Static fit alone does not establish safe combined runtime
 headroom under deep compilation, protocol activity, and firmware execution.
 
 **Rough cost.** S-M: provide the hosted-simulator token and run the composed
-candidate gate, then repeat the physical-device subset before claiming runtime
-headroom on silicon.
+candidate gate, then run the instrumented physical workload subset before
+claiming runtime headroom on silicon.
 
 ### 2. Clause-level evidence remains incomplete *(2026-08-02)*
 

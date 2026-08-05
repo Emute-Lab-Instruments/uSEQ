@@ -572,13 +572,15 @@ shape avoids retransmitting the event ring after every form.
     "data_entries":      {"used": 256, "capacity": 512},
     "state_slots":       {"used": 3, "capacity": 256},
     "live_slots":        {"used": 2, "capacity": 32},
-    "synth_declarations": {"used": 4, "capacity": 64},
-    "synth_controls":    {"used": 8, "capacity": 128},
     "watchdog_reboot": 0,
     "cpu_hz": 250000000
   }
 }
 ```
+
+The firmware profile does not report synth declarations or controls. The
+synth compiler and its artefact graph are generated-WASM capabilities and are
+not linked into RP2040 firmware.
 
 `heap_free` and `heap_min_free` are bytes. The latter is the lowest value
 observed at firmware-tick and compiler sampling points. It measures aggregate

@@ -4,7 +4,9 @@
 #include "token.h"
 #include "graph_builder.h"
 #include "executor.h"
+#if USEQ_HAS_SYNTH_ENGINE
 #include "synth_registry.h"
+#endif
 #include "../devtools/devtools.h"
 #include "../modulisp/lisp/symbol_intern.h"
 #include <cstdio>
@@ -34,7 +36,7 @@ void SignalEngine::init_defaults(double bpm, int beats_per_bar,
 void SignalEngine::reset_session_storage(double bpm, int beats_per_bar,
                                          int bars_per_phrase,
                                          int phrases_per_section,
-                                         bool publish_synth_clear) {
+                                         bool publish_session_clear) {
     cells.reset(bpm, beats_per_bar, bars_per_phrase, phrases_per_section);
     arena.reset();
     pool.reset();
@@ -48,18 +50,22 @@ void SignalEngine::reset_session_storage(double bpm, int beats_per_bar,
         state_compile_diagnostics[i] = ActiveCompileDiagnostic{};
     }
     registry.clear();
-    if (publish_synth_clear) {
+#if USEQ_HAS_SYNTH_ENGINE
+    if (publish_session_clear) {
         SynthRevision next_revision = synth_graph.revision + 1;
         synth_graph = SynthGraph{};
         synth_graph.revision = next_revision;
-        session_generation++;
     } else {
         synth_graph = SynthGraph{};
     }
+#endif
+    if (publish_session_clear) session_generation++;
     memset(eval_text_buf, 0, sizeof(eval_text_buf));
+#if USEQ_HAS_SYNTH_ENGINE
     memset(pending_state_identity, 0, sizeof(pending_state_identity));
     has_pending_state_identity = false;
     eval_anon_synth_ordinal = 0;
+#endif
 }
 
 // ── Helper constructors ─────────────────────────────────────────────────────
@@ -126,25 +132,17 @@ static void publish_reactive_diagnostic(ActiveCompileDiagnostic& active,
     }
 }
 
+#if USEQ_HAS_SYNTH_ENGINE
 static void publish_synth_reactive_diagnostic(
         SynthControlChannel& control, SymbolID triggered_by,
         const Diagnostic& diagnostic) {
-#if !defined(ARDUINO) && !defined(USEQ_FIRMWARE_PROFILE)
     control.compile_diagnostic.publish(triggered_by, diagnostic);
-#else
-    (void)control;
-    (void)triggered_by;
-    (void)diagnostic;
-#endif
 }
 
 static void clear_synth_reactive_diagnostic(SynthControlChannel& control) {
-#if !defined(ARDUINO) && !defined(USEQ_FIRMWARE_PROFILE)
     control.compile_diagnostic.clear();
-#else
-    (void)control;
-#endif
 }
+#endif
 
 // Graph construction currently interns directly into the live NodePool. Keep
 // a bounded rollback image in the engine's already-allocated scratch pool so a
@@ -198,9 +196,13 @@ static void restore_graph_mutations(SignalEngine& engine,
     memcpy(engine.pool.live_slots, engine.scratch_pool.live_slots,
            sizeof(engine.pool.live_slots));
 
+#if USEQ_HAS_SYNTH_ENGINE
     register_synth_external_roots(engine);
+#endif
     engine.pool.gc_unreachable_nodes();
+#if USEQ_HAS_SYNTH_ENGINE
     commit_synth_external_roots(engine);
+#endif
     engine.pool.rebuild_execution_order();
     classify_outputs(engine.pool);
 }
@@ -265,8 +267,10 @@ static void compact_reachable_state_slots(SignalEngine& engine) {
     };
     for (uint16_t o = 0; o < MAX_OUTPUTS; o++)
         push(pool.outputs[o].root_node);
+#if USEQ_HAS_SYNTH_ENGINE
     for (uint16_t e = 0; e < pool.external_root_count; e++)
         push(pool.external_roots[e]);
+#endif
     for (uint32_t c = 0; c < MAX_CELLS; c++) {
         const Cell& cell = engine.cells.cells[c];
         if (cell.kind != CellKind::Number || cell.flags != 0x02) continue;
@@ -433,12 +437,16 @@ static void compact_reachable_live_slots(SignalEngine& engine) {
 }
 
 static void reclaim_unowned_resources(SignalEngine& engine) {
+#if USEQ_HAS_SYNTH_ENGINE
     register_synth_external_roots(engine);
+#endif
     compact_reachable_state_slots(engine);
     engine.pool.gc_unreachable_nodes();
     compact_reachable_live_slots(engine);
     engine.pool.gc_unreachable_nodes();
+#if USEQ_HAS_SYNTH_ENGINE
     commit_synth_external_roots(engine);
+#endif
 }
 
 // Compact every source region still owned by published compiler state.
@@ -476,11 +484,13 @@ static void compact_live_source_arena(SignalEngine& engine) {
             if (state.has_source && state.arena_length > 0)
                 visit(state.arena_offset, state.arena_length);
         }
+#if USEQ_HAS_SYNTH_ENGINE
         for (uint16_t i = 0; i < engine.synth_graph.control_count(); i++) {
             SynthControlChannel& control = engine.synth_graph.controls[i];
             if (control.source_length > 0)
                 visit(control.source_offset, control.source_length);
         }
+#endif
     };
 
     // Validate every reference before changing any offset. Published state
@@ -1148,7 +1158,8 @@ static EvalResult do_nudge_time(TokenStream& ts, EngineState& state) {
     return make_ok();
 }
 
-// ── Synth declaration (synth-nodes.md §3) ──────────────────────────────────
+#if USEQ_HAS_SYNTH_ENGINE
+// ── Host synth declaration (synth-nodes.md §3) ─────────────────────────────
 //
 // Top-level form that instantiates one NodeDef instance with bound ModuLisp
 // control expressions. The declaration is staged into the live synth_graph
@@ -2132,6 +2143,7 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     delete owned_snapshot;
     return make_ok();
 }
+#endif
 
 // ── Output assignment ───────────────────────────────────────────────────────
 
@@ -2790,6 +2802,7 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             return make_ok();
         }
 
+#if USEQ_HAS_SYNTH_ENGINE
         // synth — top-level NodeDef instantiation (synth-nodes.md §3)
         if (op == sym.synth) {
             EvalResult r = do_synth(ts, engine, source, source_length);
@@ -2850,6 +2863,7 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             ts.expect(TokenKind::RParen);
             return r;
         }
+#endif
 
         // zeros — create a vector of N zeros
         if (op == sym.zeros_) {
@@ -2977,7 +2991,8 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
     return make_error("Unexpected input", "Try: (define name value) or (a1 expression)");
 }
 
-// ── Synth GC integration ────────────────────────────────────────────────────
+#if USEQ_HAS_SYNTH_ENGINE
+// ── Host synth GC integration ───────────────────────────────────────────────
 //
 // Synth control channel expressions compile to real nodes in the live
 // NodePool (synth-nodes.md §7.2). The pool's GC pass must keep those roots
@@ -3009,6 +3024,7 @@ void commit_synth_external_roots(SignalEngine& engine) {
         }
     }
 }
+#endif
 
 // ── eval_cold entry point (SignalEngine version) ───────────────────────────
 
@@ -3038,12 +3054,14 @@ EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) 
     // Cross-output live-edit ID tracking — cleared per eval batch
     SharedLiveEditIDs shared_ids;
 
+#if USEQ_HAS_SYNTH_ENGINE
     // Reset the per-eval anonymous synth ordinal and defensively clear any
     // stale pending wrapper identity (state-identity.md §2.2/§2.5). Both
     // are eval-scoped: the ordinal keys the anonymous fallback identity,
     // and the pending id only lives inside a with-state-id wrapper.
     engine.eval_anon_synth_ordinal = 0;
     engine.has_pending_state_identity = false;
+#endif
 
     // Any cold eval may mutate cell values — bump the store revision so
     // per-tick snapshot consumers know to refresh (A12). Coarse but sound.
@@ -3280,6 +3298,7 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
         }
     }
 
+#if USEQ_HAS_SYNTH_ENGINE
     // Synth controls are persistent programs too. Recompile only channels
     // whose recorded cell dependency changed, preserving the prior root and
     // its state/resources when the candidate cannot be built.
@@ -3353,6 +3372,7 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
             engine.pool.state_owner_context);
         clear_synth_reactive_diagnostic(control);
     }
+#endif
 
     // Reclaim nodes orphaned by the recompiles above (F4). Every sibling
     // recompile path (eval_output, recompile_all_outputs, do_output_assign)

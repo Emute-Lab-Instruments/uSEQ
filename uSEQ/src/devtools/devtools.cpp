@@ -694,10 +694,12 @@ static String serialize_resources() {
               sig::MAX_STATE_SLOTS);
         ratio("live_slots", s.engine->pool.live_slot_count,
               sig::MAX_LIVE_SLOTS);
+#if USEQ_HAS_SYNTH_ENGINE
         ratio("synth_declarations", s.engine->synth_graph.declaration_count(),
               sig::MAX_SYNTH_DECLARATIONS);
         ratio("synth_controls", s.engine->synth_graph.control_count(),
               sig::MAX_SYNTH_CONTROLS);
+#endif
     }
     for (uint8_t i = 0; i < s.gauge_count; ++i) {
         if (s.gauges[i].capacity > 0) {

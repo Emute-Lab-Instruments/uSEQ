@@ -43,12 +43,6 @@
       "minimum_ratios": {
         "data_entries": 0.75
       }
-    },
-    "high-synth": {
-      "minimum_ratios": {
-        "synth_declarations": 0.75,
-        "synth_controls": 0.75
-      }
     }
   },
   "common_requirements": {

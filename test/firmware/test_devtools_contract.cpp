@@ -255,8 +255,6 @@ TEST_CASE("D7 resources response exposes memory and capacity telemetry",
     REQUIRE(json_contains(s_last_json, "\"data_entries\":{"));
     REQUIRE(json_contains(s_last_json, "\"state_slots\":{"));
     REQUIRE(json_contains(s_last_json, "\"live_slots\":{"));
-    REQUIRE(json_contains(s_last_json, "\"synth_declarations\":{"));
-    REQUIRE(json_contains(s_last_json, "\"synth_controls\":{"));
     REQUIRE(json_contains(s_last_json, "\"used\":"));
     REQUIRE(json_contains(s_last_json, "\"capacity\":"));
 }

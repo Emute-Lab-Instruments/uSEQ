@@ -169,7 +169,7 @@ def main() -> None:
     run_logged("meson-setup", meson_setup, output_dir, env=environment)
     run_logged(
         "meson-compile",
-        ["meson", "compile", "-C", "build"],
+        ["meson", "compile", "-C", "build", "-j", "4"],
         output_dir,
         env=environment,
     )
@@ -270,6 +270,17 @@ def main() -> None:
             env=environment,
         )
         for profile in ("musicthing", "musicthing-observe"):
+            run_logged(
+                f"{profile}-synth-boundary",
+                [
+                    sys.executable,
+                    "scripts/verify_firmware_no_synth.py",
+                    "--elf",
+                    f".pio/build/{profile}/firmware.elf",
+                ],
+                output_dir,
+                env=environment,
+            )
             report_path = output_dir / f"{profile}-memory.json"
             run_logged(
                 f"{profile}-memory",

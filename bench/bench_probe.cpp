@@ -201,6 +201,7 @@ int main(int argc, char* argv[]) {
     emit("capacity", "state_slots_capacity", MAX_STATE_SLOTS, "slots");
     emit("capacity", "live_slots_used", engine.pool.live_slot_count, "slots");
     emit("capacity", "live_slots_capacity", MAX_LIVE_SLOTS, "slots");
+#if USEQ_HAS_SYNTH_ENGINE
     emit("capacity", "synth_declarations_used",
          engine.synth_graph.declaration_count(), "declarations");
     emit("capacity", "synth_declarations_capacity", MAX_SYNTH_DECLARATIONS,
@@ -208,6 +209,7 @@ int main(int argc, char* argv[]) {
     emit("capacity", "synth_controls_used", engine.synth_graph.control_count(),
          "controls");
     emit("capacity", "synth_controls_capacity", MAX_SYNTH_CONTROLS, "controls");
+#endif
 
     // ── Execute: ns/tick, median over batches totalling >= 1e6 ticks ──────
     engine.pool.rebuild_execution_order();

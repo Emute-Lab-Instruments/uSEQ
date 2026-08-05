@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include "build_profile.h"
 #include "../modulisp/lisp/symbol_intern.h"
 
 namespace sig {
@@ -58,15 +59,7 @@ constexpr size_t MAX_LIVE_SLOT_OPTION_LEN = 32;
 constexpr size_t MAX_TOKENS         = 256;
 constexpr size_t BATCH_CHUNK_SIZE   = 256;
 
-// The shipped NodeDef registry currently exposes at most two control
-// parameters per declaration.  A firmware profile can therefore preserve
-// all 64 valid shipped-registry declarations with 128 persistent control
-// roots.  Native/WASM retain the wider descriptor ceiling so richer host-only
-// registries do not inherit the RP2040 storage constraint.
-constexpr size_t FIRMWARE_MAX_SYNTH_CONTROLS = 128;
-#if defined(ARDUINO) || defined(USEQ_FIRMWARE_PROFILE)
-constexpr size_t MAX_SYNTH_CONTROL_ROOTS = FIRMWARE_MAX_SYNTH_CONTROLS;
-#else
+#if USEQ_HAS_SYNTH_ENGINE
 constexpr size_t MAX_SYNTH_CONTROL_ROOTS = 512;
 #endif
 

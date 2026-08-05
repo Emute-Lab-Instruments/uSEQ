@@ -30,8 +30,6 @@ def resource_data() -> dict[str, object]:
         "data_entries": {"used": 256, "capacity": 512},
         "state_slots": {"used": 8, "capacity": 16},
         "live_slots": {"used": 16, "capacity": 32},
-        "synth_declarations": {"used": 16, "capacity": 64},
-        "synth_controls": {"used": 32, "capacity": 128},
         "watchdog_reboot": 0,
         "cpu_hz": 250000000,
     }

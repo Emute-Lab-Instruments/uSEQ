@@ -1,5 +1,5 @@
 ; moderate-mixed — representative simultaneous use of outputs, state, live
-; controls, data tables, and inert firmware synth declarations.
+; controls, and data tables.
 (define seq-a [0 0.25 0.5 0.75 1 0.75 0.5 0.25 0 0.2 0.4 0.6 0.8 1 0.8 0.4])
 (define seq-b [1 0 1 0 1 1 0 0 1 0 0 1 0 1 1 0])
 (a1 (slew (interp seq-a bar) 3))
@@ -10,7 +10,3 @@
 (d2 (euclid 5 16 (fast (live-edit 1 :id "m4" :min 0.25 :max 4) bar)))
 (s1 (+ (step seq-b beat) (live-edit 0.4 :id "m5" :min 0 :max 1)))
 (s2 (lerp (usin bar) (ucos beat) (live-edit 0.5 :id "m6" :min 0 :max 1)))
-(synth "osc/sine" :name "m-s0" :freq (+ 110 (* 10 beat)) :amp 0.1)
-(synth "osc/sine" :name "m-s1" :freq (+ 165 (* 12 beat)) :amp 0.1)
-(synth "osc/sine" :name "m-s2" :freq (+ 220 (* 14 beat)) :amp 0.1)
-(synth "osc/sine" :name "m-s3" :freq (+ 330 (* 16 beat)) :amp 0.1)

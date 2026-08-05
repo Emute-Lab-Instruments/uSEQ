@@ -378,10 +378,12 @@ static void mark_reachable_nodes(const NodePool& pool, bool* marked) {
         discover(pool.state_update_roots[s]);
     }
 
+#if USEQ_HAS_SYNTH_ENGINE
     // External roots are executable synth-control roots, not merely GC pins.
     for (uint16_t e = 0; e < pool.external_root_count; e++) {
         discover(pool.external_roots[e]);
     }
+#endif
 
     while (stack_top > 0) {
         uint16_t idx = stack[--stack_top];
@@ -444,11 +446,13 @@ void NodePool::gc_unreachable_nodes() {
             state_update_roots[s] = remap[state_update_roots[s]];
     }
 
-    // 4c. Update external roots (synth control roots, etc.)
+#if USEQ_HAS_SYNTH_ENGINE
+    // 4c. Update host synth control roots.
     for (uint16_t e = 0; e < external_root_count; e++) {
         if (external_roots[e] != NODE_NONE)
             external_roots[e] = remap[external_roots[e]];
     }
+#endif
 
     node_count = new_count;
 
@@ -494,8 +498,10 @@ void NodePool::reset() {
     for (uint16_t i = 0; i < MAX_LIVE_SLOTS; i++)
         live_slots[i] = LiveSlot{};
     live_slot_count = 0;
+#if USEQ_HAS_SYNTH_ENGINE
     memset(external_roots, 0, sizeof(external_roots));
     external_root_count = 0;
+#endif
 }
 
 void NodePool::allocate_batch_workspace() {

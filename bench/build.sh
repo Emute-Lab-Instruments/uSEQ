@@ -16,19 +16,30 @@ ENGINE_SRCS=(uSEQ/src/signal_engine/diagnostics.cpp
       uSEQ/src/signal_engine/graph_builder.cpp
       uSEQ/src/signal_engine/cold_eval.cpp
       uSEQ/src/signal_engine/state_registry.cpp
-      uSEQ/src/signal_engine/synth_graph.cpp
-      uSEQ/src/signal_engine/synth_registry.cpp
       uSEQ/src/utils/string.cpp
       uSEQ/src/utils/common.cpp
       uSEQ/src/utils/itoa.cpp
       uSEQ/src/utils/log.cpp)
 
+SYNTH_ENGINE_SRCS=(uSEQ/src/signal_engine/synth_graph.cpp
+      uSEQ/src/signal_engine/synth_registry.cpp)
+
 build_probe() {
     local output="$1"
     local main_source="$2"
     shift 2
+    local sources=("${ENGINE_SRCS[@]}")
+    local firmware_profile=false
+    for arg in "$@"; do
+        if [[ "$arg" == -DUSEQ_FIRMWARE_PROFILE=* ]]; then
+            firmware_profile=true
+        fi
+    done
+    if [[ "$firmware_profile" == false ]]; then
+        sources+=("${SYNTH_ENGINE_SRCS[@]}")
+    fi
     g++ -O2 -std=c++17 -IuSEQ -IuSEQ/src -IuSEQ/src/devtools \
-        "${DEFS[@]}" "$@" "$main_source" "${ENGINE_SRCS[@]}" -lm -o "$output"
+        "${DEFS[@]}" "$@" "$main_source" "${sources[@]}" -lm -o "$output"
     echo "built $output"
 }
 

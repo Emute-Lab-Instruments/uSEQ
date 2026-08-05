@@ -207,7 +207,8 @@ struct NodePool {
     std::unique_ptr<double[]> batch_workspace;
     uint16_t batch_chunk_size = BATCH_CHUNK_SIZE;
 
-    // ── External root registration (synth control roots, etc.) ──────────
+#if USEQ_HAS_SYNTH_ENGINE
+    // ── External root registration (host synth control roots) ───────────
     // Some compiled roots live outside the per-output table — notably
     // synth control channel expressions (synth-nodes.md §7.2). These roots
     // must participate in GC reachability and remap exactly like output
@@ -225,6 +226,7 @@ struct NodePool {
         external_roots[external_root_count++] = node_idx;
         return true;
     }
+#endif
 
     // ── Node construction (with CSE + constant folding) ─────────────────
 

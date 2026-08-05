@@ -195,6 +195,7 @@ SYM(live_edit,           "live-edit",            signal)
 SYM(input,               "input",                none)
 SYM(quote,               "quote",                none)
 
+#if USEQ_HAS_SYNTH_ENGINE
 // ── Synth form (top-level only, synth-nodes.md) ────────────────────────────
 // `synth` is a top-level declaration form, not a signal-context operator.
 // Inside a signal expression it is a Boundary-category error
@@ -206,6 +207,7 @@ SYM(kw_freq,             ":freq",                none)
 SYM(kw_amp,              ":amp",                 none)
 SYM(kw_name,             ":name",                none)
 SYM(kw_version,          ":version",             none)
+#endif
 // Live-edit-only metadata. These are explicit inventory entries even though
 // the generic symbol interner would otherwise create them on demand.
 SYM(kw_min,              ":min",                 none)
@@ -214,6 +216,7 @@ SYM(kw_options,          ":options",             none)
 SYM(kw_step,             ":step",                none)
 SYM(kw_precision,        ":precision",           none)
 
+#if USEQ_HAS_SYNTH_ENGINE
 // ── State-identity wrapper (state-identity.md §6.3) ────────────────────────
 // `(with-state-id "<id>" <form>)` is the hidden identity wrapper the editor
 // payload builder injects around anonymous stateful forms. The runtime
@@ -222,3 +225,4 @@ SYM(kw_precision,        ":precision",           none)
 // already been used by the editor to assign stable identity. Without this
 // passthrough every anonymous synth form would compile as "Unknown name".
 SYM(with_state_id,       "with-state-id",        control)
+#endif

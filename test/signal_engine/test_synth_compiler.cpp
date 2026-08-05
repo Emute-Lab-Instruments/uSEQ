@@ -609,21 +609,6 @@ TEST_CASE("synth: M2 declaration capacity fails transactionally",
             MAX_SYNTH_DECLARATIONS);
 }
 
-TEST_CASE("synth: firmware control storage covers the shipped registry",
-          "[synth][capacity][firmware]") {
-    uint16_t registry_count = 0;
-    const NodeDefDescriptor* registry =
-        synth_registry_table(registry_count);
-    uint16_t max_param_count = 0;
-    for (uint16_t i = 0; i < registry_count; ++i) {
-        if (registry[i].param_count > max_param_count)
-            max_param_count = registry[i].param_count;
-    }
-
-    REQUIRE(FIRMWARE_MAX_SYNTH_CONTROLS >=
-            static_cast<size_t>(SYNTH_MAX_NODES) * max_param_count);
-}
-
 TEST_CASE("synth: named FM routing publishes an ABI-2 connection",
           "[synth][routing][m2]") {
     SynthHarness h;
