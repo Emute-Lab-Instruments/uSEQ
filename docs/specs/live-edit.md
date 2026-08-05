@@ -6,14 +6,14 @@
 
 ## Source files
 
-**Note:** The `live-edit` feature is partially implemented. The wire-protocol dispatch and stub handler exist, but the compiler-side slot table, `SlotLoad`-based compilation, and WASM ABI export are not yet landed. The source files below reflect the current state.
-
-- `uSEQ/src/firmware/serial_protocol.cpp` — `handle_set_live_inputs()` dispatches `set-live-inputs` messages; currently a stub awaiting slot-table integration (see TODO at line ~611).
+- `uSEQ/src/firmware/serial_protocol.cpp` — `handle_set_live_inputs()` validates and applies JSON `set-live-inputs` writes; the compact `INPUT_SET` path applies indexed updates.
 - `uSEQ/src/firmware/serial_protocol.h` — declares `set-live-inputs` as a recognised message type.
-- `uSEQ/src/signal_engine/node_pool.h` — `NodeOp::SlotLoad` is the dedicated node type for live-edit slot reads (separate from `InputLoad` for hardware inputs — see spec section 3.1 for rationale).
-- `uSEQ/src/signal_engine/graph_builder.cpp` — future home of `live-edit` form recognition during builtin lowering.
-- `wasm/wasm_wrapper.cpp` — future home of `useq_set_live_inputs()` WASM ABI export (spec section 5.10).
-- `test/firmware/test_wire_protocol_contract.cpp` — F6/F6b tests for `set-live-inputs` protocol dispatch and ack shape.
+- `uSEQ/src/signal_engine/node_pool.{h,cpp}` — owns the fixed-capacity live-slot table and `NodeOp::SlotLoad` reads (separate from `InputLoad` for hardware inputs — see section 3.1).
+- `uSEQ/src/signal_engine/graph_builder.cpp` — recognises and validates `live-edit`, allocates slots transactionally, and lowers them to `SlotLoad` nodes.
+- `wasm/wasm_wrapper.cpp` — exports `useq_set_live_inputs()` and `useq_get_live_slots()` and preserves live-slot values across projection save/restore.
+- `test/signal_engine/test_live_edit.cpp` — compiler, allocation, validation, transactional rollback, and runtime-value coverage.
+- `test/firmware/test_wire_protocol_contract.cpp` — JSON and compact live-input protocol coverage.
+- `test/signal_engine/test_wasm_wrapper_projection.cpp` — WASM live-input and projection-state coverage.
 
 ---
 
