@@ -30,6 +30,10 @@
 
 namespace firmware {
 
+#ifdef ENABLE_I2C_NETWORKING
+struct I2CNetwork;
+#endif
+
 // ── Serial Protocol ───────────────────────────────────────────────────────
 
 struct SerialProtocol {
@@ -99,6 +103,9 @@ struct SerialProtocol {
 
     // Engine access (set by Firmware after construction)
     sig::SignalEngine* engine = nullptr;
+#ifdef ENABLE_I2C_NETWORKING
+    I2CNetwork* i2c_network = nullptr;
+#endif
 
 private:
     // ── Ring buffer for incoming bytes ──────────────────────────────────────
@@ -142,6 +149,10 @@ private:
     void handle_set_live_inputs(const char* payload, size_t len);
     void handle_set_failure_mode(const char* payload, size_t len);
     void handle_get_state(const char* payload, size_t len);
+#ifdef ENABLE_I2C_NETWORKING
+    void handle_rescan_modules(const char* payload, size_t len);
+    String build_modules_json() const;
+#endif
 };
 
 } // namespace firmware

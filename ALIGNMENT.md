@@ -71,7 +71,8 @@ operator-specific tolerance table.
 - Browser Worker/AudioWorklet scheduling belongs to the `useq-perform`
   application profile rather than this compiler repository.
 - The output-expander host/client protocol has strict native fake-bus coverage
-  and an exact RP2040 build gate, but its Wire timing and electrical output
+  and an exact RP2040 build gate, including CRC factory identity and inventory,
+  but manufacturing-sector readback, Wire timing, and electrical output
   behavior remain unverified until a spare Pico surrogate or expander PCB is
   connected.
 - Generated manifests are intentionally unsigned until a concrete publisher-

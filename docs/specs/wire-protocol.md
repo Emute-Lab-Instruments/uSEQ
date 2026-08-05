@@ -229,6 +229,15 @@ Sent by the editor immediately on port open. Retried per §4.2. (See `uSEQ/src/f
   "protocol": 1,
   "target": "hardware_v1_0",
   "capabilities": ["json-v1", "stream-v1", "diagnostics-v1"],
+  "modules": [{
+    "kind": "output-expander", "address": 42,
+    "identityStatus": "verified", "product": "useq-exp-aout08",
+    "target": "expander_aout08_v0_1", "firmware": "1.2.0-beta.1",
+    "hardwareRevision": "0.1", "batch": "PP-2026-01",
+    "serial": "EXP-0007", "mcu": "rp2040",
+    "connectedVia": "i2c", "updateTransport": "i2c-only",
+    "autoUpdateSafe": false
+  }],
   "config": {
     "inputs":  [{"index": 1, "name": "ssin1"}, ...],
     "outputs": [{"index": 1, "name": "time"},
@@ -247,6 +256,7 @@ Sent by the editor immediately on port open. Retried per §4.2. (See `uSEQ/src/f
 | `protocol` | integer | yes | Independent wire-protocol version; `1` for this contract. |
 | `target` | string | yes | Exact build target (`musicthing`, `hardware_v0_2`, or `hardware_v1_0`; native tests report `unknown`). |
 | `capabilities` | string[] | yes | Additive feature identifiers. Editors ignore unknown names and gate optional requests on advertised names. |
+| `modules` | object[] | yes when I2C networking is compiled | Startup-discovered subordinate modules. A missing/corrupt factory record uses `identityStatus:"unidentified-prototype"` and `autoUpdateSafe:false`; see [i2c-expander.md](i2c-expander.md). |
 | `config` | object | yes | I/O configuration; see below. |
 
 **`config.inputs`** is an array of `{index, name}` describing externally
@@ -262,7 +272,7 @@ canonical time channel; other names follow the s-output convention
 byte.
 
 The hello response is the **single source of truth** for the firmware
-version, protocol, build target, capabilities, and I/O configuration, replacing all prior probing
+version, protocol, build target, capabilities, module inventory, and I/O configuration, replacing all prior probing
 mechanisms.
 
 ### 5.3 `stream-config` (editor → device, request)
@@ -728,6 +738,24 @@ per-output), defaults to `"lkg"` at boot, and is not persisted — editors
 that expose the setting re-send it on connect. The WASM runtime
 equivalent is `useq_set_failure_mode(0|1)` (0 = lkg, 1 = zero), keeping
 both transports behind one editor setting.
+
+### 5.19 `rescan-modules` (editor → device, request)
+
+Repeats the bounded I2C discovery scan and returns a fresh `modules` array in a
+standard response envelope:
+
+```json
+{"type":"rescan-modules","requestId":"req-10"}
+```
+
+```json
+{"type":"response","success":true,"modules":[],"requestId":"req-10"}
+```
+
+The request is explicit rather than continuous hotplug polling. `success` is
+false when the build is not operating as an I2C host. Discovery does not imply
+an I2C firmware-update relay: a subordinate expander must use its own supported
+update transport.
 
 ---
 

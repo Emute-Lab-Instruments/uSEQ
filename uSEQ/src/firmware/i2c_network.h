@@ -8,6 +8,7 @@
 #ifdef ENABLE_I2C_NETWORKING
 
 #include "../ports/II2CTransport.h"
+#include "factory_identity.h"
 
 #include <atomic>
 #include <cstddef>
@@ -23,6 +24,18 @@ static constexpr uint8_t I2C_EXPANDER_OUTPUT_COUNT = 8;
 static constexpr size_t I2C_VALUES_HEADER_SIZE     = 7;
 static constexpr size_t I2C_VALUES_MAX_SIZE =
     I2C_VALUES_HEADER_SIZE + I2C_EXPANDER_OUTPUT_COUNT * sizeof(double);
+static constexpr size_t I2C_IDENTITY_RESPONSE_SIZE = 206;
+
+struct ExpanderDescriptor
+{
+    uint8_t address = 0;
+    bool factory_identity_valid = false;
+    FactoryIdentity factory_identity;
+    char firmware_version[32] = {};
+    char firmware_target[32] = {};
+    uint16_t protocol_version = 0;
+    uint32_t capabilities = 0;
+};
 
 // Simple ring buffer for incoming I2C messages.
 struct I2CIncoming
@@ -51,7 +64,8 @@ struct I2CNetwork
     I2CIncoming incoming;
     II2CTransport* transport = nullptr;
     uint8_t client_address   = 0;
-    std::atomic<bool> type_response_pending{ false };
+    // 0 = none, 1 = legacy type response, 2 = full identity response.
+    std::atomic<uint8_t> response_pending{ 0 };
     std::atomic<uint32_t> applied_value_packets{ 0 };
     std::atomic<uint32_t> rejected_packets{ 0 };
 
@@ -63,7 +77,10 @@ struct I2CNetwork
     // Discovered expander addresses (max 5)
     static constexpr uint8_t MAX_EXPANDERS = 5;
     uint8_t expander_addrs[MAX_EXPANDERS]  = {};
+    ExpanderDescriptor expanders[MAX_EXPANDERS] = {};
     uint8_t expander_count                 = 0;
+    FactoryIdentity local_factory_identity;
+    bool local_factory_identity_valid = false;
 
     // ── Methods ───────────────────────────────────────────────────────────
     void set_transport(II2CTransport* value);
@@ -88,6 +105,18 @@ struct I2CNetwork
                                        uint8_t* buffer, size_t capacity);
     static bool decode_output_values(const uint8_t* buffer, size_t length,
                                      double* values, uint8_t& count);
+    static size_t encode_identity_response(const FactoryIdentity& identity,
+                                           bool identity_valid,
+                                           const char* firmware_version,
+                                           const char* firmware_target,
+                                           uint16_t protocol_version,
+                                           uint32_t capabilities,
+                                           uint8_t* buffer, size_t capacity);
+    static bool decode_identity_response(const uint8_t* buffer, size_t length,
+                                         ExpanderDescriptor& descriptor);
+
+    // Manufacturing/test seam. Production init loads the reserved blob.
+    void set_local_factory_identity(const FactoryIdentity& identity, bool valid);
 
     // Host-mode helpers
     bool init_host();

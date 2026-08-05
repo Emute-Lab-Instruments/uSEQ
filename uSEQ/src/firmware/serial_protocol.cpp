@@ -1,5 +1,6 @@
 #include "serial_protocol.h"
 #include "build_info.h"
+#include "i2c_network.h"
 #include "../devtools/devtools.h"
 #include "../signal_engine/executor.h"
 #include "../utils/json_builder.h"
@@ -418,6 +419,13 @@ bool SerialProtocol::dispatch_message(const char* payload, size_t len,
         handle_get_state(payload, len);
         return false;
     }
+#ifdef ENABLE_I2C_NETWORKING
+    if (strcmp(type_buf, "rescan-modules") == 0)
+    {
+        handle_rescan_modules(payload, len);
+        return false;
+    }
+#endif
     if (strcmp(type_buf, "set-failure-mode") == 0)
     {
         handle_set_failure_mode(payload, len);
@@ -747,12 +755,81 @@ void SerialProtocol::handle_hello(const char* /*payload*/, size_t /*len*/)
         .field("protocol", build_info::PROTOCOL_VERSION)
         .field("target", build_info::HARDWARE_TARGET)
         .field_raw("capabilities", build_info::CAPABILITIES_JSON)
+#ifdef ENABLE_I2C_NETWORKING
+        .field_raw("modules", build_modules_json())
+#endif
         .field_raw("config", config.build())
         .field("requestId", m_request_id)
         .object_end();
 
     write_json_str(response.build().c_str());
 }
+
+#ifdef ENABLE_I2C_NETWORKING
+String SerialProtocol::build_modules_json() const
+{
+    JsonBuilder modules;
+    modules.array_begin_unkeyed();
+    if (i2c_network != nullptr && i2c_network->host_mode)
+    {
+        for (uint8_t index = 0; index < i2c_network->expander_count; ++index)
+        {
+            const ExpanderDescriptor& descriptor = i2c_network->expanders[index];
+            modules.object_begin()
+                .field("kind", "output-expander")
+                .field("address", static_cast<int>(descriptor.address))
+                .field("identityStatus", descriptor.factory_identity_valid
+                                             ? "verified"
+                                             : "unidentified-prototype")
+                .field("firmware", descriptor.firmware_version)
+                .field("target", descriptor.firmware_target)
+                .field("connectedVia", "i2c")
+                .field("protocol", static_cast<int>(descriptor.protocol_version));
+            if (descriptor.factory_identity_valid)
+            {
+                const FactoryIdentity& identity = descriptor.factory_identity;
+                modules.field("product", identity.product)
+                    .field("hardwareRevision", identity.hardware_revision)
+                    .field("assemblyVariant", identity.assembly_variant)
+                    .field("batch", identity.batch)
+                    .field("serial", identity.serial)
+                    .field("manufactured", identity.manufacture_date)
+                    .field("mcu", mcu_family_name(identity.mcu_family))
+                    .field("updateTransport",
+                           (identity.feature_bits & factory_feature::USB_UPDATE) != 0
+                               ? "usb"
+                               : "i2c-only")
+                    .field("autoUpdateSafe",
+                           (identity.feature_bits & factory_feature::USB_UPDATE) != 0);
+            }
+            else
+            {
+                modules.field("product", "unidentified-prototype")
+                    .field("updateTransport", "i2c-only")
+                    .field("autoUpdateSafe", false);
+            }
+            modules.object_end();
+        }
+    }
+    modules.array_end();
+    return modules.build();
+}
+
+void SerialProtocol::handle_rescan_modules(const char* /*payload*/, size_t /*len*/)
+{
+    if (i2c_network != nullptr && i2c_network->host_mode)
+        i2c_network->scan_for_expanders();
+
+    JsonBuilder response;
+    response.object_begin()
+        .field("type", "response")
+        .field("success", i2c_network != nullptr && i2c_network->host_mode)
+        .field_raw("modules", build_modules_json())
+        .field("requestId", m_request_id)
+        .object_end();
+    write_json_str(response.build().c_str());
+}
+#endif
 
 void SerialProtocol::handle_ping(const char* /*payload*/, size_t /*len*/)
 {

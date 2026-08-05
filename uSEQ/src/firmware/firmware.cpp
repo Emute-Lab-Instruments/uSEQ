@@ -27,6 +27,9 @@ void Firmware::init()
 #ifdef ENABLE_SIGNAL_ENGINE
     serial.engine = &engine;
 #endif
+#ifdef ENABLE_I2C_NETWORKING
+    serial.i2c_network = &i2c;
+#endif
     serial.num_serial_outs = io.num_serial_outs;
     serial.num_serial_ins  = 2; // ain1, ain2 — the only inputs the editor subscribes to
     serial.init();

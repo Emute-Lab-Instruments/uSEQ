@@ -1,4 +1,5 @@
 #include "i2c_network.h"
+#include "build_info.h"
 
 #ifdef ENABLE_I2C_NETWORKING
 
@@ -34,14 +35,53 @@ namespace
 
 static constexpr uint8_t GET_TYPE_COMMAND[]       = { '$', 'g', 'e', 't',
                                                       't', 'y', 'p', 'e' };
+static constexpr uint8_t GET_IDENTITY_COMMAND[]   = { '$', 'i', 'd', 'e', 'n',
+                                                      't', 'i', 'f', 'y' };
 static constexpr uint8_t EXPANDER_TYPE_RESPONSE[] = { 'a', 'o', 'u', 't',
                                                       '0', '8', '\0' };
 static constexpr uint8_t VALUES_PREFIX[] = { '$', 'v', 'a', 'l', 's', '\0' };
+static constexpr uint8_t IDENTITY_PREFIX[] = { 'U', 'I', 'D', '1' };
+static constexpr uint32_t EXPANDER_CAPABILITIES = 1u; // output-values-v1
 
 static bool is_get_type_command(const uint8_t* data, size_t length)
 {
     return data != nullptr && length == sizeof(GET_TYPE_COMMAND) &&
            std::memcmp(data, GET_TYPE_COMMAND, sizeof(GET_TYPE_COMMAND)) == 0;
+}
+
+static bool is_get_identity_command(const uint8_t* data, size_t length)
+{
+    return data != nullptr && length == sizeof(GET_IDENTITY_COMMAND) &&
+           std::memcmp(data, GET_IDENTITY_COMMAND,
+                       sizeof(GET_IDENTITY_COMMAND)) == 0;
+}
+
+static void write_u16_le(uint8_t* output, uint16_t value)
+{
+    output[0] = static_cast<uint8_t>(value);
+    output[1] = static_cast<uint8_t>(value >> 8);
+}
+
+static uint16_t read_u16_le(const uint8_t* input)
+{
+    return static_cast<uint16_t>(input[0]) |
+           static_cast<uint16_t>(static_cast<uint16_t>(input[1]) << 8);
+}
+
+static void write_u32_le(uint8_t* output, uint32_t value)
+{
+    output[0] = static_cast<uint8_t>(value);
+    output[1] = static_cast<uint8_t>(value >> 8);
+    output[2] = static_cast<uint8_t>(value >> 16);
+    output[3] = static_cast<uint8_t>(value >> 24);
+}
+
+static uint32_t read_u32_le(const uint8_t* input)
+{
+    return static_cast<uint32_t>(input[0]) |
+           (static_cast<uint32_t>(input[1]) << 8) |
+           (static_cast<uint32_t>(input[2]) << 16) |
+           (static_cast<uint32_t>(input[3]) << 24);
 }
 
 static void write_binary64_le(uint8_t* destination, double value)
@@ -287,9 +327,18 @@ bool I2CNetwork::init()
         transport = &default_transport();
 #endif
 
+#if defined(ENABLE_I2C_CLIENT)
+    if (!local_factory_identity_valid)
+        local_factory_identity_valid =
+            load_factory_identity(local_factory_identity);
+#endif
+
 #if defined(ENABLE_I2C_CLIENT) && defined(USEQHARDWARE_EXPANDER_OUT_0_1)
 #ifdef ARDUINO
-    return init_client(default_client_address());
+    return init_client(local_factory_identity_valid &&
+                               local_factory_identity.default_i2c_address != 0
+                           ? local_factory_identity.default_i2c_address
+                           : default_client_address());
 #else
     return init_client(0x30);
 #endif
@@ -297,7 +346,10 @@ bool I2CNetwork::init()
     return init_host();
 #elif defined(ENABLE_I2C_CLIENT)
 #ifdef ARDUINO
-    return init_client(default_client_address());
+    return init_client(local_factory_identity_valid &&
+                               local_factory_identity.default_i2c_address != 0
+                           ? local_factory_identity.default_i2c_address
+                           : default_client_address());
 #else
     return init_client(0x30);
 #endif
@@ -326,6 +378,9 @@ bool I2CNetwork::init_client(uint8_t address)
     host_mode      = false;
     client_mode    = true;
     client_address = address;
+    if (!local_factory_identity_valid)
+        local_factory_identity_valid =
+            load_factory_identity(local_factory_identity);
     if (transport == nullptr ||
         !transport->begin_client(address, USEQ_I2C_SDA_PIN, USEQ_I2C_SCL_PIN, this,
                                  receive_callback, request_callback))
@@ -340,6 +395,8 @@ bool I2CNetwork::init_client(uint8_t address)
 void I2CNetwork::scan_for_expanders()
 {
     expander_count = 0;
+    for (auto& expander : expanders)
+        expander = ExpanderDescriptor{};
     if (!host_mode || transport == nullptr)
         return;
 
@@ -356,6 +413,18 @@ void I2CNetwork::scan_for_expanders()
             transport->request(address, type_buffer, sizeof(type_buffer));
         if (length >= 4 && std::memcmp(type_buffer, "aout", 4) == 0)
         {
+            ExpanderDescriptor& descriptor = expanders[expander_count];
+            descriptor.address = address;
+            if (send_to(address, GET_IDENTITY_COMMAND,
+                        sizeof(GET_IDENTITY_COMMAND)))
+            {
+                uint8_t identity_buffer[I2C_IDENTITY_RESPONSE_SIZE] = {};
+                const size_t identity_length = transport->request(
+                    address, identity_buffer, sizeof(identity_buffer));
+                decode_identity_response(identity_buffer, identity_length,
+                                         descriptor);
+                descriptor.address = address;
+            }
             expander_addrs[expander_count++] = address;
         }
     }
@@ -488,6 +557,63 @@ bool I2CNetwork::decode_output_values(const uint8_t* buffer, size_t length,
     return true;
 }
 
+size_t I2CNetwork::encode_identity_response(const FactoryIdentity& identity,
+                                            bool identity_valid,
+                                            const char* firmware_version,
+                                            const char* firmware_target,
+                                            uint16_t protocol_version,
+                                            uint32_t capabilities,
+                                            uint8_t* buffer, size_t capacity)
+{
+    if (buffer == nullptr || capacity < I2C_IDENTITY_RESPONSE_SIZE)
+        return 0;
+    std::memset(buffer, 0, I2C_IDENTITY_RESPONSE_SIZE);
+    std::memcpy(buffer, IDENTITY_PREFIX, sizeof(IDENTITY_PREFIX));
+    buffer[4] = 1; // response schema
+    buffer[5] = identity_valid ? 1 : 0;
+    write_u16_le(buffer + 6, FACTORY_IDENTITY_RECORD_SIZE);
+    if (identity_valid &&
+        !encode_factory_identity(identity, buffer + 8,
+                                 FACTORY_IDENTITY_RECORD_SIZE))
+        return 0;
+    if (firmware_version != nullptr)
+        std::strncpy(reinterpret_cast<char*>(buffer + 136), firmware_version, 31);
+    if (firmware_target != nullptr)
+        std::strncpy(reinterpret_cast<char*>(buffer + 168), firmware_target, 31);
+    write_u16_le(buffer + 200, protocol_version);
+    write_u32_le(buffer + 202, capabilities);
+    return I2C_IDENTITY_RESPONSE_SIZE;
+}
+
+bool I2CNetwork::decode_identity_response(const uint8_t* buffer, size_t length,
+                                          ExpanderDescriptor& descriptor)
+{
+    if (buffer == nullptr || length != I2C_IDENTITY_RESPONSE_SIZE ||
+        std::memcmp(buffer, IDENTITY_PREFIX, sizeof(IDENTITY_PREFIX)) != 0 ||
+        buffer[4] != 1 || read_u16_le(buffer + 6) != FACTORY_IDENTITY_RECORD_SIZE)
+    {
+        return false;
+    }
+    descriptor.factory_identity_valid =
+        buffer[5] == 1 && decode_factory_identity(
+                              buffer + 8, FACTORY_IDENTITY_RECORD_SIZE,
+                              descriptor.factory_identity);
+    std::memcpy(descriptor.firmware_version, buffer + 136, 31);
+    descriptor.firmware_version[31] = '\0';
+    std::memcpy(descriptor.firmware_target, buffer + 168, 31);
+    descriptor.firmware_target[31] = '\0';
+    descriptor.protocol_version = read_u16_le(buffer + 200);
+    descriptor.capabilities     = read_u32_le(buffer + 202);
+    return true;
+}
+
+void I2CNetwork::set_local_factory_identity(const FactoryIdentity& identity,
+                                            bool valid)
+{
+    local_factory_identity       = identity;
+    local_factory_identity_valid = valid;
+}
+
 size_t I2CNetwork::process_incoming(double* outputs, size_t output_capacity)
 {
     if (!client_mode || outputs == nullptr || output_capacity == 0)
@@ -524,7 +650,12 @@ void I2CNetwork::receive_from_transport(const uint8_t* data, size_t length)
 {
     if (is_get_type_command(data, length))
     {
-        type_response_pending.store(true, std::memory_order_release);
+        response_pending.store(1, std::memory_order_release);
+        return;
+    }
+    if (is_get_identity_command(data, length))
+    {
+        response_pending.store(2, std::memory_order_release);
         return;
     }
     if (!incoming.push(data, length))
@@ -535,13 +666,23 @@ void I2CNetwork::receive_from_transport(const uint8_t* data, size_t length)
 
 size_t I2CNetwork::respond_to_transport(uint8_t* data, size_t capacity)
 {
-    if (data == nullptr || capacity < sizeof(EXPANDER_TYPE_RESPONSE) ||
-        !type_response_pending.exchange(false, std::memory_order_acq_rel))
-    {
+    if (data == nullptr)
         return 0;
+    const uint8_t response = response_pending.exchange(0, std::memory_order_acq_rel);
+    if (response == 1)
+    {
+        if (capacity < sizeof(EXPANDER_TYPE_RESPONSE))
+            return 0;
+        std::memcpy(data, EXPANDER_TYPE_RESPONSE, sizeof(EXPANDER_TYPE_RESPONSE));
+        return sizeof(EXPANDER_TYPE_RESPONSE);
     }
-    std::memcpy(data, EXPANDER_TYPE_RESPONSE, sizeof(EXPANDER_TYPE_RESPONSE));
-    return sizeof(EXPANDER_TYPE_RESPONSE);
+    if (response == 2)
+        return encode_identity_response(
+            local_factory_identity, local_factory_identity_valid,
+            build_info::VERSION, build_info::HARDWARE_TARGET,
+            build_info::PROTOCOL_VERSION,
+            EXPANDER_CAPABILITIES, data, capacity);
+    return 0;
 }
 
 void I2CNetwork::receive_callback(void* context, const uint8_t* data, size_t length)

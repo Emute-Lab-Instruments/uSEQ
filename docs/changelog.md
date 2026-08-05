@@ -7,6 +7,10 @@
 - `hello` and `ready` advertise independent protocol version, exact hardware
   target, and additive capability names so an editor can select safe behavior
   and the correct UF2 without inferring from firmware semver.
+- I2C output expanders advertise a CRC-protected factory identity, exact
+  firmware target/version, hardware revision, batch, and serial to the main
+  module. `hello.modules` exposes startup discovery and `rescan-modules`
+  repeats it explicitly without inventing an I2C firmware-relay path.
 
 ## 1.2.0 (Protocol Enhancements)
 

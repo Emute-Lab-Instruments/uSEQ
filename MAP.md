@@ -10,7 +10,8 @@ compiler/control runtime. The canonical language entry point is
   pool, executor, diagnostics, state/resource ownership, and builtin table.
 - `uSEQ/src/firmware/` — RP2040/RP2350 composition root, live tick loop,
   hardware I/O, storage, serial protocol, build identity/capabilities
-  (`build_info.h`), and I2C host/expander runtime; see
+  (`build_info.h`), CRC-protected manufacturing identity
+  (`factory_identity.{h,cpp}`), and I2C host/expander runtime; see
   `docs/specs/i2c-expander.md` for the output-expander wire contract.
 - `uSEQ/src/ports/` — platform interfaces and test doubles, including the
   fixed-capacity fake I2C bus used by native host/expander simulation.
@@ -36,7 +37,8 @@ compiler/control runtime. The canonical language entry point is
   NodeDef inspection, benchmarks, PlatformIO helpers, and RP2040 acceptance
   orchestration (`run_rp2040_profile.py`, `run_wokwi_rp2040.py`,
   `run_rp2040_goal_gate.py`, `rp2040_memory_report.py`,
-  `verify_firmware_no_synth.py`, `rp2040_budget.json`).
+  `verify_firmware_no_synth.py`, `prepare_factory_identity.py`,
+  `rp2040_budget.json`).
 - `docs/specs/` — canonical language, runtime, firmware, diagnostics, state,
   synth, and protocol specifications; `docs/SEMANTICS.md` is a compatibility
   pointer only.

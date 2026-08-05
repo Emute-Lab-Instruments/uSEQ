@@ -16,6 +16,15 @@ test_args = [
 
 # Firmware tests need flash storage + signal engine
 firmware_test_args = test_args + ['-DENABLE_FLASH_STORAGE']
+if get_option('enable_i2c')
+  # Firmware is a by-value member of the native harness. Keep the test TU's
+  # conditional struct layout identical to the linked firmware library.
+  firmware_test_args += [
+    '-DENABLE_I2C_NETWORKING',
+    '-DENABLE_I2C_HOST',
+    '-DENABLE_I2C_CLIENT',
+  ]
+endif
 
 # Include directories
 test_inc = include_directories('../uSEQ', '../uSEQ/src')
@@ -142,6 +151,7 @@ i2c_expander_test_exe = executable(
   'test_i2c_expander',
   sources : [
     'firmware/test_i2c_expander.cpp',
+    '../uSEQ/src/firmware/factory_identity.cpp',
     '../uSEQ/src/firmware/i2c_network.cpp',
   ],
   include_directories : test_inc,

@@ -22,6 +22,10 @@
 #include "../catch.hpp"
 
 #include "../../uSEQ/src/firmware/serial_protocol.h"
+#ifdef ENABLE_I2C_NETWORKING
+#include "../../uSEQ/src/firmware/i2c_network.h"
+#include "../../uSEQ/src/ports/mocks/MockI2CBus.h"
+#endif
 #include "../../uSEQ/src/devtools/devtools.h"
 #include "../../uSEQ/src/signal_engine/cold_eval.h"
 #include "../../uSEQ/src/signal_engine/graph_builder.h"
@@ -275,6 +279,50 @@ TEST_CASE("F5 [§5.2] hello response has type:\"response\", mode, fw, config",
     REQUIRE(json.find("\"outputs\"") != std::string::npos);
     REQUIRE(json.find("\"time\"") != std::string::npos);
 }
+
+#ifdef ENABLE_I2C_NETWORKING
+TEST_CASE("F5b [§5.2/§5.19] hello and rescan bubble verified expander identity",
+          "[contract][wire-protocol][i2c]")
+{
+    firmware::MockI2CBus bus;
+    firmware::MockI2CTransport client_transport(bus);
+    firmware::MockI2CTransport host_transport(bus);
+    firmware::I2CNetwork client;
+    firmware::FactoryIdentity identity;
+    std::strcpy(identity.product, "useq-exp-aout08");
+    std::strcpy(identity.hardware_revision, "0.1");
+    std::strcpy(identity.batch, "PP-2026-01");
+    std::strcpy(identity.serial, "EXP-0007");
+    identity.mcu_family = firmware::McuFamily::RP2040;
+    identity.feature_bits = firmware::factory_feature::I2C_OUTPUTS;
+    client.set_local_factory_identity(identity, true);
+    client.set_transport(&client_transport);
+    REQUIRE(client.init_client(0x2a));
+
+    firmware::I2CNetwork host;
+    host.set_transport(&host_transport);
+    REQUIRE(host.init_host());
+
+    StdoutCapture cap;
+    firmware::SerialProtocol sp;
+    sp.i2c_network = &host;
+    sp.init();
+    sp.handle_handshake();
+    auto hello = extract_last_json(cap.drain());
+    REQUIRE(hello.find("\"modules\":[{") != std::string::npos);
+    REQUIRE(hello.find("\"serial\":\"EXP-0007\"") != std::string::npos);
+    REQUIRE(hello.find("\"target\":") != std::string::npos);
+    REQUIRE(hello.find("\"autoUpdateSafe\":false") != std::string::npos);
+
+    const char* request = "{\"type\":\"rescan-modules\",\"requestId\":\"scan-1\"}";
+    char code[32] = {};
+    REQUIRE_FALSE(sp.dispatch_message(request, std::strlen(request), code, sizeof(code)));
+    auto response = extract_last_json(cap.drain());
+    REQUIRE(response.find("\"success\":true") != std::string::npos);
+    REQUIRE(response.find("\"requestId\":\"scan-1\"") != std::string::npos);
+    REQUIRE(response.find("\"modules\":[{") != std::string::npos);
+}
+#endif
 
 // ── F6 — set-live-inputs handler (§5.8) ─────────────────────────────────
 //

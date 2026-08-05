@@ -19,15 +19,24 @@ inline constexpr const char* HARDWARE_TARGET = "musicthing";
 inline constexpr const char* HARDWARE_TARGET = "hardware_v0_2";
 #elif defined(USEQHARDWARE_1_0)
 inline constexpr const char* HARDWARE_TARGET = "hardware_v1_0";
+#elif defined(USEQHARDWARE_EXPANDER_OUT_0_1)
+inline constexpr const char* HARDWARE_TARGET = "expander_aout08_v0_1";
 #else
 inline constexpr const char* HARDWARE_TARGET = "unknown";
 #endif
 
 // Kept as a JSON fragment to avoid allocating a second dynamic builder during
 // the boot handshake. Capability names are additive; editors ignore unknowns.
+#if defined(ENABLE_I2C_HOST)
+inline constexpr const char* CAPABILITIES_JSON =
+    "[\"json-v1\",\"stream-v1\",\"diagnostics-v1\","
+    "\"state-snapshot-v1\",\"live-inputs-v1\",\"calibration-v1\","
+    "\"module-inventory-v1\"]";
+#else
 inline constexpr const char* CAPABILITIES_JSON =
     "[\"json-v1\",\"stream-v1\",\"diagnostics-v1\","
     "\"state-snapshot-v1\",\"live-inputs-v1\",\"calibration-v1\"]";
+#endif
 
 } // namespace firmware::build_info
 

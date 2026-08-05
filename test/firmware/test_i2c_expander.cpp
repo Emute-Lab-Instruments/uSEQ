@@ -2,6 +2,7 @@
 #include "../catch.hpp"
 
 #include "../../uSEQ/src/firmware/i2c_network.h"
+#include "../../uSEQ/src/firmware/factory_identity.h"
 #include "../../uSEQ/src/ports/mocks/MockI2CBus.h"
 
 #include <array>
@@ -13,6 +14,41 @@ using firmware::I2CIncoming;
 using firmware::I2CNetwork;
 using firmware::MockI2CBus;
 using firmware::MockI2CTransport;
+
+static firmware::FactoryIdentity production_identity()
+{
+    firmware::FactoryIdentity identity;
+    std::strcpy(identity.product, "useq-exp-aout08");
+    std::strcpy(identity.hardware_revision, "0.1");
+    std::strcpy(identity.assembly_variant, "preprod");
+    std::strcpy(identity.batch, "PP-2026-01");
+    std::strcpy(identity.serial, "EXP-0007");
+    std::strcpy(identity.manufacture_date, "2026-08-05");
+    identity.mcu_family = firmware::McuFamily::RP2040;
+    identity.default_i2c_address = 0x2a;
+    identity.feature_bits = firmware::factory_feature::I2C_OUTPUTS;
+    identity.flash_size_bytes = 2u * 1024u * 1024u;
+    return identity;
+}
+
+TEST_CASE("factory identity codec validates the complete CRC-protected record",
+          "[firmware][i2c][expander][identity]")
+{
+    const auto identity = production_identity();
+    std::array<uint8_t, firmware::FACTORY_IDENTITY_RECORD_SIZE> record = {};
+    REQUIRE(firmware::encode_factory_identity(identity, record.data(), record.size()));
+
+    firmware::FactoryIdentity decoded;
+    REQUIRE(firmware::decode_factory_identity(record.data(), record.size(), decoded));
+    REQUIRE(std::strcmp(decoded.product, "useq-exp-aout08") == 0);
+    REQUIRE(std::strcmp(decoded.batch, "PP-2026-01") == 0);
+    REQUIRE(std::strcmp(decoded.serial, "EXP-0007") == 0);
+    REQUIRE(decoded.mcu_family == firmware::McuFamily::RP2040);
+    REQUIRE(decoded.flash_size_bytes == 2u * 1024u * 1024u);
+
+    record[72] ^= 0x01;
+    REQUIRE_FALSE(firmware::decode_factory_identity(record.data(), record.size(), decoded));
+}
 
 TEST_CASE("expander build selects client mode and the PCB bus pins",
           "[firmware][i2c][expander][init]")
@@ -128,6 +164,7 @@ TEST_CASE("fake bus discovers an expander and delivers all eight outputs",
     MockI2CTransport host_transport(bus);
 
     I2CNetwork client;
+    client.set_local_factory_identity(production_identity(), true);
     client.set_transport(&client_transport);
     REQUIRE(client.init_client(0x2a));
     REQUIRE(client.client_mode);
@@ -140,6 +177,13 @@ TEST_CASE("fake bus discovers an expander and delivers all eight outputs",
     REQUIRE(host.host_mode);
     REQUIRE(host.expander_count == 1);
     REQUIRE(host.expander_addrs[0] == 0x2a);
+    REQUIRE(host.expanders[0].factory_identity_valid);
+    REQUIRE(std::strcmp(host.expanders[0].factory_identity.batch, "PP-2026-01") == 0);
+    REQUIRE(std::strcmp(host.expanders[0].factory_identity.serial, "EXP-0007") == 0);
+    REQUIRE(std::strcmp(host.expanders[0].firmware_version, "1.2.0-beta.1") == 0);
+    REQUIRE(std::strcmp(host.expanders[0].firmware_target,
+                        "expander_aout08_v0_1") == 0);
+    REQUIRE(host.expanders[0].protocol_version == 1);
 
     const std::array<double, 8> sent = { 0.0, 0.125, 0.25, 0.375,
                                          0.5, 0.625, 0.75, 1.0 };
@@ -150,6 +194,24 @@ TEST_CASE("fake bus discovers an expander and delivers all eight outputs",
     REQUIRE(client.process_incoming(outputs.data(), outputs.size()) == 1);
     REQUIRE(outputs == sent);
     REQUIRE(client.applied_value_packets.load() == 1);
+}
+
+TEST_CASE("host keeps legacy expander discoverable when identity is absent",
+          "[firmware][i2c][expander][identity][compatibility]")
+{
+    MockI2CBus bus;
+    MockI2CTransport client_transport(bus);
+    MockI2CTransport host_transport(bus);
+    I2CNetwork client;
+    I2CNetwork host;
+    client.set_transport(&client_transport);
+    host.set_transport(&host_transport);
+    REQUIRE(client.init_client(0x2a));
+    REQUIRE(host.init_host());
+    REQUIRE(host.expander_count == 1);
+    REQUIRE(host.expanders[0].address == 0x2a);
+    REQUIRE_FALSE(host.expanders[0].factory_identity_valid);
+    REQUIRE(std::strcmp(host.expanders[0].firmware_version, "1.2.0-beta.1") == 0);
 }
 
 TEST_CASE("a disconnected expander retains its last-known output vector",
