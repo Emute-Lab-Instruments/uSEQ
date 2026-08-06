@@ -30,8 +30,9 @@ struct SharedLiveEditIDs {
 
     void add(const char* id) {
         if (count < MAX_LIVE_SLOTS) {
-            strncpy(ids[count], id, MAX_LIVE_SLOT_ID - 1);
-            ids[count][MAX_LIVE_SLOT_ID - 1] = '\0';
+            const size_t length = strnlen(id, MAX_LIVE_SLOT_ID - 1);
+            memcpy(ids[count], id, length);
+            ids[count][length] = '\0';
             count++;
         }
     }

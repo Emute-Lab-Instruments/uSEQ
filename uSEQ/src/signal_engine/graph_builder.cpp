@@ -1191,6 +1191,9 @@ uint16_t GraphBuilder::compile_while_gate(TokenStream& ts, Scope& scope, TimeCon
 }
 
 uint16_t GraphBuilder::compile_lambda(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    (void)ts;
+    (void)scope;
+    (void)ctx;
     // Lambda in signal context is not supported as a value
     // but if immediately applied, could work. For now, error.
     return report_error_at_cat(DiagnosticCategory::Boundary, 0, 0,
@@ -2465,6 +2468,8 @@ uint16_t GraphBuilder::compile_sah(TokenStream& ts, Scope& scope, TimeContext& c
 // ── UGen: noise ────────────────────────────────────────────────────────────
 
 uint16_t GraphBuilder::compile_noise(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    (void)scope;
+    (void)ctx;
     // (noise [:id <id>])
     // White noise source using deterministic hash of running counter.
     // Uses one state slot as a counter that increments each tick.
@@ -2667,421 +2672,489 @@ uint16_t GraphBuilder::compile_count(TokenStream& ts, Scope& scope, TimeContext&
 
 // -- Live-edit ---------------------------------------------------------------
 
-uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (live-edit <literal> :id <string> [:min <num> :max <num>]
-    //            [:name <str>] [:options [<keyword> ...]]
-    //            [:step <num>] [:precision <non-negative-int>])
-    uint16_t form_start = ts.peek().span_start > 0 ? ts.peek().span_start - 1 : 0;
+namespace {
 
-    // 0. Reject if in a context that forbids live-edit (defstate :initial, quote)
-    if (reject_live_edit) {
-        return report_error_at_cat(DiagnosticCategory::Boundary, form_start, 1,
-            "live-edit is not valid here",
-            "live-edit cannot appear inside defstate initial values or quoted forms");
-    }
-
-    // 1. Parse the literal seed and establish its wire representation.
-    // Numeric values remain doubles, booleans are 0/1, and keyword values are
-    // indices into the validated :options vector.
-    Token seed_tok = ts.peek();
-    if (seed_tok.kind == TokenKind::LParen) {
-        // Peek for nested live-edit
-        uint16_t saved_pos = ts.pos;
-        ts.consume(); // skip LParen
-        Token inner_head = ts.peek();
-        ts.rewind(saved_pos);
-        if (inner_head.kind == TokenKind::Symbol && inner_head.symbol == sym.live_edit) {
-            return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
-                "Can't use a nested live-edit as the seed of another live-edit",
-                "Each live-edit wraps a single literal value");
-        }
-        return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
-            "live-edit seed must be a literal, not an expression",
-            "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
-    }
-
+struct LiveEditSpec {
+    uint16_t form_start = 0;
     NodePool::SlotVariant variant = NodePool::SlotVariant::Numeric;
     double seed = 0.0;
     char seed_keyword[MAX_LIVE_SLOT_OPTION_LEN] = {};
-    if (seed_tok.kind == TokenKind::Number) {
-        if (!std::isfinite(seed_tok.number)) {
-            return report_error_at_cat(DiagnosticCategory::Type,
-                seed_tok.span_start, seed_tok.span_len,
-                "live-edit numeric seed must be finite",
-                "Use a finite numeric literal");
-        }
-        seed = seed_tok.number;
-    } else if (seed_tok.kind == TokenKind::Symbol) {
-        const String& name = getSymbolString(seed_tok.symbol);
-        if (name == "true" || name == "false") {
-            variant = NodePool::SlotVariant::Boolean;
-            seed = (name == "true") ? 1.0 : 0.0;
-        } else if (name.length() > 1 && name.c_str()[0] == ':') {
-            if (name.length() >= MAX_LIVE_SLOT_OPTION_LEN) {
-                return report_error_at_cat(DiagnosticCategory::Overflow,
-                    seed_tok.span_start, seed_tok.span_len,
-                    "live-edit keyword seed is too long",
-                    "Use a keyword shorter than 32 bytes");
-            }
-            variant = NodePool::SlotVariant::Keyword;
-            std::memcpy(seed_keyword, name.c_str(), name.length());
-            seed_keyword[name.length()] = '\0';
-        } else {
-            return report_error_at_cat(DiagnosticCategory::Type,
-                seed_tok.span_start, seed_tok.span_len,
-                "live-edit seed must be a number, boolean, or keyword literal",
-                "Try 0.5, true, false, or :up");
-        }
-    } else {
-        return report_error_at_cat(DiagnosticCategory::Type, seed_tok.span_start, seed_tok.span_len,
-            "live-edit seed must be a number, boolean, or keyword literal",
-            "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
-    }
-    ts.consume();
 
-    // 2. Parse keyword arguments
-    char id_buf[MAX_LIVE_SLOT_ID] = {};
-    bool has_id = false, has_min = false, has_max = false;
+    char id[MAX_LIVE_SLOT_ID] = {};
+    bool has_id = false;
+    bool has_min = false;
+    bool has_max = false;
     bool has_options = false;
-    double min_val = 0.0, max_val = 1.0;
+    double min_value = 0.0;
+    double max_value = 1.0;
     double step = 0.0;
     int precision = -1;
     char options[MAX_LIVE_SLOT_OPTIONS][MAX_LIVE_SLOT_OPTION_LEN] = {};
-    uint8_t options_count = 0;
+    uint8_t option_count = 0;
+};
+
+template <size_t Capacity>
+void copy_bounded(char (&destination)[Capacity], const char* source) {
+    const size_t length = strnlen(source, Capacity - 1);
+    std::memcpy(destination, source, length);
+    destination[length] = '\0';
+}
+
+bool parse_live_edit_seed(GraphBuilder& builder, TokenStream& ts,
+                          LiveEditSpec& spec) {
+    const Token seed_token = ts.peek();
+    if (seed_token.kind == TokenKind::LParen) {
+        const uint16_t saved_position = ts.pos;
+        ts.consume();
+        const Token inner_head = ts.peek();
+        ts.rewind(saved_position);
+        if (inner_head.kind == TokenKind::Symbol &&
+            inner_head.symbol == GraphBuilder::sym.live_edit) {
+            builder.report_error_at_cat(
+                DiagnosticCategory::Type, seed_token.span_start,
+                seed_token.span_len,
+                "Can't use a nested live-edit as the seed of another live-edit",
+                "Each live-edit wraps a single literal value");
+        } else {
+            builder.report_error_at_cat(
+                DiagnosticCategory::Type, seed_token.span_start,
+                seed_token.span_len,
+                "live-edit seed must be a literal, not an expression",
+                "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+        }
+        return false;
+    }
+
+    if (seed_token.kind == TokenKind::Number) {
+        if (!std::isfinite(seed_token.number)) {
+            builder.report_error_at_cat(
+                DiagnosticCategory::Type, seed_token.span_start,
+                seed_token.span_len,
+                "live-edit numeric seed must be finite",
+                "Use a finite numeric literal");
+            return false;
+        }
+        spec.seed = seed_token.number;
+    } else if (seed_token.kind == TokenKind::Symbol) {
+        const String& name = getSymbolString(seed_token.symbol);
+        if (name == "true" || name == "false") {
+            spec.variant = NodePool::SlotVariant::Boolean;
+            spec.seed = name == "true" ? 1.0 : 0.0;
+        } else if (name.length() > 1 && name.c_str()[0] == ':') {
+            if (name.length() >= MAX_LIVE_SLOT_OPTION_LEN) {
+                builder.report_error_at_cat(
+                    DiagnosticCategory::Overflow, seed_token.span_start,
+                    seed_token.span_len,
+                    "live-edit keyword seed is too long",
+                    "Use a keyword shorter than 32 bytes");
+                return false;
+            }
+            spec.variant = NodePool::SlotVariant::Keyword;
+            std::memcpy(spec.seed_keyword, name.c_str(), name.length());
+            spec.seed_keyword[name.length()] = '\0';
+        } else {
+            builder.report_error_at_cat(
+                DiagnosticCategory::Type, seed_token.span_start,
+                seed_token.span_len,
+                "live-edit seed must be a number, boolean, or keyword literal",
+                "Try 0.5, true, false, or :up");
+            return false;
+        }
+    } else {
+        builder.report_error_at_cat(
+            DiagnosticCategory::Type, seed_token.span_start,
+            seed_token.span_len,
+            "live-edit seed must be a number, boolean, or keyword literal",
+            "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+        return false;
+    }
+
+    ts.consume();
+    return true;
+}
+
+bool parse_live_edit_option_vector(GraphBuilder& builder, TokenStream& ts,
+                                   LiveEditSpec& spec, const Token& open) {
+    while (!ts.at_end() && ts.peek().kind != TokenKind::RBracket) {
+        const Token option = ts.consume();
+        if (option.kind != TokenKind::Symbol) {
+            builder.report_error_at_cat(
+                DiagnosticCategory::Type, option.span_start, option.span_len,
+                ":options entries must be keywords",
+                "Try: :options [:up :down]");
+            return false;
+        }
+        const String& option_name = getSymbolString(option.symbol);
+        if (option_name.length() <= 1 || option_name.c_str()[0] != ':') {
+            builder.report_error_at_cat(
+                DiagnosticCategory::Type, option.span_start, option.span_len,
+                ":options entries must be keywords",
+                "Try: :options [:up :down]");
+            return false;
+        }
+        if (option_name.length() >= MAX_LIVE_SLOT_OPTION_LEN) {
+            builder.report_error_at_cat(
+                DiagnosticCategory::Overflow, option.span_start,
+                option.span_len, "A live-edit option is too long",
+                "Use keywords shorter than 32 bytes");
+            return false;
+        }
+        if (spec.option_count >= MAX_LIVE_SLOT_OPTIONS) {
+            builder.report_error_at_cat(
+                DiagnosticCategory::Overflow, option.span_start,
+                option.span_len, "Too many live-edit options",
+                MAX_LIVE_SLOT_OPTIONS == 8
+                    ? "Use at most 8 options on firmware"
+                    : "Use at most 16 options");
+            return false;
+        }
+        for (uint8_t i = 0; i < spec.option_count; ++i) {
+            if (std::strncmp(spec.options[i], option_name.c_str(),
+                             MAX_LIVE_SLOT_OPTION_LEN) == 0) {
+                builder.report_error_at_cat(
+                    DiagnosticCategory::Arity, option.span_start,
+                    option.span_len,
+                    "A live-edit option may appear only once",
+                    "Remove the duplicate option");
+                return false;
+            }
+        }
+        std::memcpy(spec.options[spec.option_count], option_name.c_str(),
+                    option_name.length());
+        spec.options[spec.option_count][option_name.length()] = '\0';
+        ++spec.option_count;
+    }
+
+    if (ts.peek().kind != TokenKind::RBracket) {
+        builder.report_error_at_cat(
+            DiagnosticCategory::Syntax, open.span_start, open.span_len,
+            "Unclosed live-edit :options vector", "Add the closing ]");
+        return false;
+    }
+    ts.consume();
+    if (spec.option_count == 0) {
+        builder.report_error_at_cat(
+            DiagnosticCategory::Arity, open.span_start, open.span_len,
+            "live-edit :options cannot be empty",
+            "Include at least the seed keyword");
+        return false;
+    }
+    spec.has_options = true;
+    return true;
+}
+
+bool parse_live_edit_keywords(GraphBuilder& builder, TokenStream& ts,
+                              LiveEditSpec& spec) {
     SymbolID seen_keywords[7] = {};
     uint8_t seen_keyword_count = 0;
-
-    auto& si = SymbolIntern::getInstance();
+    auto& symbols = SymbolIntern::getInstance();
 
     while (ts.peek().kind == TokenKind::Symbol) {
-        Token kw_tok = ts.peek();
-        const String& kw = si.getString(kw_tok.symbol);
-        if (kw.length() == 0 || kw.c_str()[0] != ':') break;
+        const Token keyword_token = ts.peek();
+        const String& keyword = symbols.getString(keyword_token.symbol);
+        if (keyword.length() == 0 || keyword.c_str()[0] != ':') break;
+        ts.consume();
 
-        ts.consume(); // consume keyword
-
-        if (!remember_keyword_once(kw_tok.symbol, seen_keywords,
+        if (!remember_keyword_once(keyword_token.symbol, seen_keywords,
                                    seen_keyword_count)) {
-            return report_error_cat(DiagnosticCategory::Arity, kw_tok,
+            builder.report_error_cat(
+                DiagnosticCategory::Arity, keyword_token,
                 "A keyword may appear only once in a form",
                 "Remove the duplicate keyword and keep one value");
+            return false;
         }
 
-        if (kw == ":id") {
-            Token val = ts.consume();
-            if (val.kind != TokenKind::String) {
-                return report_error_at_cat(DiagnosticCategory::Type, val.span_start, val.span_len,
-                    ":id must be a string",
-                    "Try: :id \"myknob\"");
+        if (keyword == ":id") {
+            const Token value = ts.consume();
+            if (value.kind != TokenKind::String) {
+                builder.report_error_at_cat(
+                    DiagnosticCategory::Type, value.span_start, value.span_len,
+                    ":id must be a string", "Try: :id \"myknob\"");
+                return false;
             }
-            if (!source_base) {
-                return report_error_at(val.span_start, val.span_len,
-                    "Internal: source text unavailable for string resolution", nullptr);
+            if (!builder.source_base) {
+                builder.report_error_at(
+                    value.span_start, value.span_len,
+                    "Internal: source text unavailable for string resolution");
+                return false;
             }
-            uint16_t len = val.string.length;
-            if (len >= MAX_LIVE_SLOT_ID) len = MAX_LIVE_SLOT_ID - 1;
-            memcpy(id_buf, source_base + val.string.offset, len);
-            id_buf[len] = '\0';
-            has_id = true;
-        } else if (kw == ":min") {
-            Token val = ts.consume();
-            if (val.kind != TokenKind::Number || !std::isfinite(val.number)) {
-                return report_error_at_cat(DiagnosticCategory::Type, val.span_start, val.span_len,
-                    ":min must be a finite number",
-                    "Try: :min 0");
+            uint16_t length = value.string.length;
+            if (length >= MAX_LIVE_SLOT_ID) length = MAX_LIVE_SLOT_ID - 1;
+            std::memcpy(spec.id, builder.source_base + value.string.offset,
+                        length);
+            spec.id[length] = '\0';
+            spec.has_id = true;
+        } else if (keyword == ":min" || keyword == ":max") {
+            const Token value = ts.consume();
+            if (value.kind != TokenKind::Number ||
+                !std::isfinite(value.number)) {
+                builder.report_error_at_cat(
+                    DiagnosticCategory::Type, value.span_start, value.span_len,
+                    keyword == ":min" ? ":min must be a finite number"
+                                      : ":max must be a finite number",
+                    keyword == ":min" ? "Try: :min 0" : "Try: :max 1");
+                return false;
             }
-            min_val = val.number;
-            has_min = true;
-        } else if (kw == ":max") {
-            Token val = ts.consume();
-            if (val.kind != TokenKind::Number || !std::isfinite(val.number)) {
-                return report_error_at_cat(DiagnosticCategory::Type, val.span_start, val.span_len,
-                    ":max must be a finite number",
-                    "Try: :max 1");
+            if (keyword == ":min") {
+                spec.min_value = value.number;
+                spec.has_min = true;
+            } else {
+                spec.max_value = value.number;
+                spec.has_max = true;
             }
-            max_val = val.number;
-            has_max = true;
-        } else if (kw == ":name") {
-            Token val = ts.consume();
-            if (val.kind != TokenKind::String) {
-                return report_error_at_cat(DiagnosticCategory::Type,
-                    val.span_start, val.span_len,
-                    ":name must be a string",
-                    "Try: :name \"cutoff\"");
+        } else if (keyword == ":name") {
+            const Token value = ts.consume();
+            if (value.kind != TokenKind::String) {
+                builder.report_error_at_cat(
+                    DiagnosticCategory::Type, value.span_start, value.span_len,
+                    ":name must be a string", "Try: :name \"cutoff\"");
+                return false;
             }
             // The editor consumes the display name from source. It has no
             // effect on compiler/runtime slot identity.
-        } else if (kw == ":step") {
-            Token val = ts.consume();
-            if (val.kind != TokenKind::Number || !std::isfinite(val.number) ||
-                val.number <= 0.0) {
-                return report_error_at_cat(DiagnosticCategory::Type,
-                    val.span_start, val.span_len,
+        } else if (keyword == ":step") {
+            const Token value = ts.consume();
+            if (value.kind != TokenKind::Number ||
+                !std::isfinite(value.number) || value.number <= 0.0) {
+                builder.report_error_at_cat(
+                    DiagnosticCategory::Type, value.span_start, value.span_len,
                     ":step must be a positive finite number",
                     "Try: :step 0.01");
+                return false;
             }
-            step = val.number;
-        } else if (kw == ":precision") {
-            Token val = ts.consume();
-            if (val.kind != TokenKind::Number || !std::isfinite(val.number) ||
-                val.number < 0.0 || std::floor(val.number) != val.number ||
-                val.number > 2147483647.0) {
-                return report_error_at_cat(DiagnosticCategory::Type,
-                    val.span_start, val.span_len,
+            spec.step = value.number;
+        } else if (keyword == ":precision") {
+            const Token value = ts.consume();
+            if (value.kind != TokenKind::Number ||
+                !std::isfinite(value.number) || value.number < 0.0 ||
+                std::floor(value.number) != value.number ||
+                value.number > 2147483647.0) {
+                builder.report_error_at_cat(
+                    DiagnosticCategory::Type, value.span_start, value.span_len,
                     ":precision must be a non-negative whole number",
                     "Try: :precision 2");
+                return false;
             }
-            precision = (int)val.number;
-        } else if (kw == ":options") {
-            Token open = ts.consume();
+            spec.precision = static_cast<int>(value.number);
+        } else if (keyword == ":options") {
+            const Token open = ts.consume();
             if (open.kind != TokenKind::LBracket) {
-                return report_error_at_cat(DiagnosticCategory::Type,
-                    open.span_start, open.span_len,
+                builder.report_error_at_cat(
+                    DiagnosticCategory::Type, open.span_start, open.span_len,
                     ":options must be a vector of keywords",
                     "Try: :options [:up :down]");
+                return false;
             }
-            while (!ts.at_end() && ts.peek().kind != TokenKind::RBracket) {
-                Token option = ts.consume();
-                if (option.kind != TokenKind::Symbol) {
-                    return report_error_at_cat(DiagnosticCategory::Type,
-                        option.span_start, option.span_len,
-                        ":options entries must be keywords",
-                        "Try: :options [:up :down]");
-                }
-                const String& option_name = getSymbolString(option.symbol);
-                if (option_name.length() <= 1 || option_name.c_str()[0] != ':') {
-                    return report_error_at_cat(DiagnosticCategory::Type,
-                        option.span_start, option.span_len,
-                        ":options entries must be keywords",
-                        "Try: :options [:up :down]");
-                }
-                if (option_name.length() >= MAX_LIVE_SLOT_OPTION_LEN) {
-                    return report_error_at_cat(DiagnosticCategory::Overflow,
-                        option.span_start, option.span_len,
-                        "A live-edit option is too long",
-                        "Use keywords shorter than 32 bytes");
-                }
-                if (options_count >= MAX_LIVE_SLOT_OPTIONS) {
-                    return report_error_at_cat(DiagnosticCategory::Overflow,
-                        option.span_start, option.span_len,
-                        "Too many live-edit options",
-                        MAX_LIVE_SLOT_OPTIONS == 8
-                            ? "Use at most 8 options on firmware"
-                            : "Use at most 16 options");
-                }
-                for (uint8_t i = 0; i < options_count; ++i) {
-                    if (std::strncmp(options[i], option_name.c_str(),
-                                     MAX_LIVE_SLOT_OPTION_LEN) == 0) {
-                        return report_error_at_cat(DiagnosticCategory::Arity,
-                            option.span_start, option.span_len,
-                            "A live-edit option may appear only once",
-                            "Remove the duplicate option");
-                    }
-                }
-                std::memcpy(options[options_count], option_name.c_str(),
-                            option_name.length());
-                options[options_count][option_name.length()] = '\0';
-                ++options_count;
+            if (!parse_live_edit_option_vector(builder, ts, spec, open)) {
+                return false;
             }
-            if (ts.peek().kind != TokenKind::RBracket) {
-                return report_error_at_cat(DiagnosticCategory::Syntax,
-                    open.span_start, open.span_len,
-                    "Unclosed live-edit :options vector",
-                    "Add the closing ]");
-            }
-            ts.consume();
-            if (options_count == 0) {
-                return report_error_at_cat(DiagnosticCategory::Arity,
-                    open.span_start, open.span_len,
-                    "live-edit :options cannot be empty",
-                    "Include at least the seed keyword");
-            }
-            has_options = true;
         } else {
-            // Unknown keyword — reject instead of silently skipping (A9,
-            // values-types.md §2.3).
-            return report_unknown_ugen_keyword(kw_tok);
+            builder.report_unknown_ugen_keyword(keyword_token);
+            return false;
         }
     }
+    return true;
+}
 
-    // 3. Validate required args
-    if (!has_id) {
-        return report_error_at_cat(DiagnosticCategory::Arity, form_start, 1,
+bool validate_live_edit_spec(GraphBuilder& builder, LiveEditSpec& spec) {
+    if (!spec.has_id) {
+        builder.report_error_at_cat(
+            DiagnosticCategory::Arity, spec.form_start, 1,
             "live-edit requires :id",
             "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+        return false;
     }
-    if (variant == NodePool::SlotVariant::Numeric && !has_min) {
-        return report_error_at_cat(DiagnosticCategory::Arity, form_start, 1,
+    if (spec.variant == NodePool::SlotVariant::Numeric && !spec.has_min) {
+        builder.report_error_at_cat(
+            DiagnosticCategory::Arity, spec.form_start, 1,
             "live-edit requires :min",
             "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+        return false;
     }
-    if (variant == NodePool::SlotVariant::Numeric && !has_max) {
-        return report_error_at_cat(DiagnosticCategory::Arity, form_start, 1,
+    if (spec.variant == NodePool::SlotVariant::Numeric && !spec.has_max) {
+        builder.report_error_at_cat(
+            DiagnosticCategory::Arity, spec.form_start, 1,
             "live-edit requires :max",
             "Try: (live-edit 0.5 :id \"x\" :min 0 :max 1)");
+        return false;
     }
-    if (variant == NodePool::SlotVariant::Numeric && min_val >= max_val) {
-        return report_error_at_cat(DiagnosticCategory::Overflow, form_start, 1,
+    if (spec.variant == NodePool::SlotVariant::Numeric &&
+        spec.min_value >= spec.max_value) {
+        builder.report_error_at_cat(
+            DiagnosticCategory::Overflow, spec.form_start, 1,
             "live-edit :min must be less than :max",
             "Swap :min and :max values");
+        return false;
     }
-
-    if (variant != NodePool::SlotVariant::Keyword && has_options) {
-        return report_error_at_cat(DiagnosticCategory::Type, form_start, 1,
+    if (spec.variant != NodePool::SlotVariant::Keyword && spec.has_options) {
+        builder.report_error_at_cat(
+            DiagnosticCategory::Type, spec.form_start, 1,
             "live-edit :options is valid only for a keyword seed",
             "Remove :options or use a keyword seed such as :up");
+        return false;
     }
-    if (variant == NodePool::SlotVariant::Keyword) {
-        if (!has_options) {
-            std::strncpy(options[0], seed_keyword,
-                         MAX_LIVE_SLOT_OPTION_LEN - 1);
-            options_count = 1;
-            report_warning(form_start, 1,
-                "Keyword live-edit omitted :options; using the seed only",
-                "Add :options with every allowed keyword");
+    if (spec.variant != NodePool::SlotVariant::Keyword) return true;
+
+    if (!spec.has_options) {
+        copy_bounded(spec.options[0], spec.seed_keyword);
+        spec.option_count = 1;
+        builder.report_warning(
+            spec.form_start, 1,
+            "Keyword live-edit omitted :options; using the seed only",
+            "Add :options with every allowed keyword");
+    }
+    for (uint8_t i = 0; i < spec.option_count; ++i) {
+        if (std::strncmp(spec.options[i], spec.seed_keyword,
+                         MAX_LIVE_SLOT_OPTION_LEN) == 0) {
+            spec.seed = static_cast<double>(i);
+            return true;
         }
-        int seed_index = -1;
-        for (uint8_t i = 0; i < options_count; ++i) {
-            if (std::strncmp(options[i], seed_keyword,
+    }
+    builder.report_error_at_cat(
+        DiagnosticCategory::Type, spec.form_start, 1,
+        "live-edit keyword seed must appear in :options",
+        "Add the seed keyword to the options vector");
+    return false;
+}
+
+bool live_edit_id_seen(const GraphBuilder& builder, const char* id) {
+    for (uint16_t i = 0; i < builder.live_edit_ids_count; ++i) {
+        if (std::strncmp(builder.live_edit_ids_seen[i], id,
+                         MAX_LIVE_SLOT_ID) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void record_live_edit_id(GraphBuilder& builder, const char* id) {
+    if (builder.live_edit_ids_count < GraphBuilder::MAX_IDS_PER_BUILD) {
+        copy_bounded(
+            builder.live_edit_ids_seen[builder.live_edit_ids_count], id);
+        ++builder.live_edit_ids_count;
+    }
+    if (builder.shared_live_edit_ids && builder.inline_depth == 0) {
+        builder.shared_live_edit_ids->add(id);
+    }
+}
+
+void copy_live_edit_options(NodePool::LiveSlot& slot,
+                            const LiveEditSpec& spec) {
+    slot.options_count = spec.option_count;
+    std::memset(slot.options, 0, sizeof(slot.options));
+    for (uint8_t i = 0; i < spec.option_count; ++i) {
+        copy_bounded(slot.options[i], spec.options[i]);
+    }
+}
+
+uint16_t update_existing_live_edit(GraphBuilder& builder, int16_t slot_index,
+                                   const LiveEditSpec& spec) {
+    builder.remember_live_slot(static_cast<uint16_t>(slot_index));
+    NodePool::LiveSlot& old_slot = builder.pool.live_slots[slot_index];
+    const NodePool::SlotVariant old_variant = old_slot.variant;
+    const double preserved_value = old_slot.value;
+    char preserved_keyword[MAX_LIVE_SLOT_OPTION_LEN] = {};
+    if (old_variant == NodePool::SlotVariant::Keyword) {
+        const int old_index = static_cast<int>(old_slot.value);
+        if (old_index >= 0 && old_index < old_slot.options_count) {
+            copy_bounded(preserved_keyword, old_slot.options[old_index]);
+        }
+    }
+
+    builder.pool.alloc_live_slot(
+        spec.id, spec.seed, spec.min_value, spec.max_value, spec.variant,
+        spec.step, spec.precision, builder.anon_state_context);
+    NodePool::LiveSlot& slot = builder.pool.live_slots[slot_index];
+    copy_live_edit_options(slot, spec);
+
+    if (old_variant != spec.variant) {
+        slot.value = spec.seed;
+    } else if (spec.variant == NodePool::SlotVariant::Keyword) {
+        slot.value = spec.seed;
+        for (uint8_t i = 0; i < spec.option_count; ++i) {
+            if (std::strncmp(spec.options[i], preserved_keyword,
                              MAX_LIVE_SLOT_OPTION_LEN) == 0) {
-                seed_index = i;
+                slot.value = static_cast<double>(i);
                 break;
             }
         }
-        if (seed_index < 0) {
-            return report_error_at_cat(DiagnosticCategory::Type, form_start, 1,
-                "live-edit keyword seed must appear in :options",
-                "Add the seed keyword to the options vector");
-        }
-        seed = (double)seed_index;
+    } else if (spec.variant == NodePool::SlotVariant::Numeric) {
+        slot.value = std::max(spec.min_value,
+                              std::min(preserved_value, spec.max_value));
+    } else {
+        slot.value = preserved_value != 0.0 ? 1.0 : 0.0;
+    }
+    return builder.pool.make_slot_load(static_cast<uint16_t>(slot_index));
+}
+
+uint16_t bind_live_edit(GraphBuilder& builder, const LiveEditSpec& spec) {
+    if (builder.shared_live_edit_ids && builder.inline_depth == 0 &&
+        builder.shared_live_edit_ids->contains(spec.id)) {
+        return builder.report_error_at_cat(
+            DiagnosticCategory::Boundary, spec.form_start, 1,
+            "duplicate live-edit :id in this document",
+            "Each live-edit must have a unique :id across all outputs");
     }
 
-    // 4. Check for duplicate id — within this build AND across outputs.
-    // If the slot already exists (from a prior build or earlier in this build
-    // via inline expansion), reuse it. Only error if two *literal* live-edit
-    // forms in non-inlined source declare the same id — detected by checking
-    // whether we're currently inside an inline expansion.
-
-    // 4a. Cross-output duplicate check (shared table spans all outputs in one eval batch)
-    if (shared_live_edit_ids && inline_depth == 0) {
-        if (shared_live_edit_ids->contains(id_buf)) {
-            // Already seen in a different output's compilation
-            return report_error_at_cat(DiagnosticCategory::Boundary, form_start, 1,
-                "duplicate live-edit :id in this document",
-                "Each live-edit must have a unique :id across all outputs");
-        }
-    }
-
-    int16_t pre_existing = pool.find_live_slot(id_buf);
-    if (pre_existing >= 0) {
-        if (pool.live_slots[pre_existing].owner_context != anon_state_context) {
-            return report_error_at_cat(DiagnosticCategory::Boundary, form_start, 1,
+    const int16_t existing_slot = builder.pool.find_live_slot(spec.id);
+    if (existing_slot >= 0) {
+        if (builder.pool.live_slots[existing_slot].owner_context !=
+            builder.anon_state_context) {
+            return builder.report_error_at_cat(
+                DiagnosticCategory::Boundary, spec.form_start, 1,
                 "duplicate live-edit :id is owned by another signal",
                 "Each output or state declaration must use distinct live-edit IDs");
         }
-        // Slot already allocated. If we're inside inline expansion, reuse is fine.
-        // If we're NOT in inline expansion and we already saw this id in this
-        // build, it's a true source-level duplicate.
-        bool seen_this_build = false;
-        for (uint8_t i = 0; i < live_edit_ids_count; i++) {
-            if (strncmp(live_edit_ids_seen[i], id_buf, MAX_LIVE_SLOT_ID) == 0) {
-                seen_this_build = true;
-                break;
-            }
-        }
-        if (seen_this_build && inline_depth == 0) {
-            return report_error_at_cat(DiagnosticCategory::Boundary, form_start, 1,
+        const bool seen_this_build = live_edit_id_seen(builder, spec.id);
+        if (seen_this_build && builder.inline_depth == 0) {
+            return builder.report_error_at_cat(
+                DiagnosticCategory::Boundary, spec.form_start, 1,
                 "duplicate live-edit :id in this document",
                 "Each live-edit must have a unique :id");
         }
-        // Reuse existing slot (inline expansion or re-eval)
-        if (!seen_this_build && live_edit_ids_count < MAX_IDS_PER_BUILD) {
-            strncpy(live_edit_ids_seen[live_edit_ids_count], id_buf, MAX_LIVE_SLOT_ID - 1);
-            live_edit_ids_seen[live_edit_ids_count][MAX_LIVE_SLOT_ID - 1] = '\0';
-            live_edit_ids_count++;
-        }
-        // Register in shared cross-output table
-        if (shared_live_edit_ids && inline_depth == 0) {
-            shared_live_edit_ids->add(id_buf);
-        }
-        // Update validated metadata while preserving the live value when the
-        // variant is unchanged. Keyword preservation is by option spelling,
-        // so reordering :options cannot silently change the selected value.
-        remember_live_slot((uint16_t)pre_existing);
-        NodePool::LiveSlot& old_slot = pool.live_slots[pre_existing];
-        const NodePool::SlotVariant old_variant = old_slot.variant;
-        double preserved_value = old_slot.value;
-        char preserved_keyword[MAX_LIVE_SLOT_OPTION_LEN] = {};
-        if (old_variant == NodePool::SlotVariant::Keyword) {
-            const int old_index = (int)old_slot.value;
-            if (old_index >= 0 && old_index < old_slot.options_count) {
-                std::strncpy(preserved_keyword, old_slot.options[old_index],
-                             MAX_LIVE_SLOT_OPTION_LEN - 1);
-            }
-        }
-        pool.alloc_live_slot(id_buf, seed, min_val, max_val, variant,
-                             step, precision, anon_state_context);
-        NodePool::LiveSlot& slot = pool.live_slots[pre_existing];
-        slot.options_count = options_count;
-        std::memset(slot.options, 0, sizeof(slot.options));
-        for (uint8_t i = 0; i < options_count; ++i) {
-            std::strncpy(slot.options[i], options[i],
-                         MAX_LIVE_SLOT_OPTION_LEN - 1);
-        }
-        if (old_variant != variant) {
-            slot.value = seed;
-        } else if (variant == NodePool::SlotVariant::Keyword) {
-            slot.value = seed;
-            for (uint8_t i = 0; i < options_count; ++i) {
-                if (std::strncmp(options[i], preserved_keyword,
-                                 MAX_LIVE_SLOT_OPTION_LEN) == 0) {
-                    slot.value = (double)i;
-                    break;
-                }
-            }
-        } else {
-            slot.value = preserved_value;
-            if (variant == NodePool::SlotVariant::Numeric) {
-                if (slot.value < min_val) slot.value = min_val;
-                if (slot.value > max_val) slot.value = max_val;
-            } else {
-                slot.value = slot.value != 0.0 ? 1.0 : 0.0;
-            }
-        }
-        return pool.make_slot_load((uint16_t)pre_existing);
+        if (!seen_this_build) record_live_edit_id(builder, spec.id);
+        return update_existing_live_edit(builder, existing_slot, spec);
     }
 
-    // First time seeing this id — record it in both local and shared tables
-    if (live_edit_ids_count < MAX_IDS_PER_BUILD) {
-        strncpy(live_edit_ids_seen[live_edit_ids_count], id_buf, MAX_LIVE_SLOT_ID - 1);
-        live_edit_ids_seen[live_edit_ids_count][MAX_LIVE_SLOT_ID - 1] = '\0';
-        live_edit_ids_count++;
-    }
-    if (shared_live_edit_ids && inline_depth == 0) {
-        shared_live_edit_ids->add(id_buf);
-    }
-
-    // 5. Allocate slot
-    int16_t slot_idx = pool.alloc_live_slot(
-        id_buf, seed, min_val, max_val, variant,
-        step, precision, anon_state_context);
-    if (slot_idx < 0) {
-        return report_error_at_cat(DiagnosticCategory::Overflow, form_start, 1,
+    record_live_edit_id(builder, spec.id);
+    const int16_t slot_index = builder.pool.alloc_live_slot(
+        spec.id, spec.seed, spec.min_value, spec.max_value, spec.variant,
+        spec.step, spec.precision, builder.anon_state_context);
+    if (slot_index < 0) {
+        return builder.report_error_at_cat(
+            DiagnosticCategory::Overflow, spec.form_start, 1,
             MAX_LIVE_SLOTS == 256
                 ? "too many live-edit slots (max 256)"
                 : "too many live-edit slots (max 32)",
             "Remove unused live-edit declarations");
     }
+    copy_live_edit_options(builder.pool.live_slots[slot_index], spec);
+    return builder.pool.make_slot_load(static_cast<uint16_t>(slot_index));
+}
 
-    NodePool::LiveSlot& slot = pool.live_slots[slot_idx];
-    slot.options_count = options_count;
-    for (uint8_t i = 0; i < options_count; ++i) {
-        std::strncpy(slot.options[i], options[i],
-                     MAX_LIVE_SLOT_OPTION_LEN - 1);
+} // namespace
+
+uint16_t GraphBuilder::compile_live_edit(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    // (live-edit <literal> :id <string> [:min <num> :max <num>]
+    //            [:name <str>] [:options [<keyword> ...]]
+    //            [:step <num>] [:precision <non-negative-int>])
+    (void)scope;
+    (void)ctx;
+    LiveEditSpec spec;
+    spec.form_start = ts.peek().span_start > 0 ? ts.peek().span_start - 1 : 0;
+
+    // 0. Reject if in a context that forbids live-edit (defstate :initial, quote)
+    if (reject_live_edit) {
+        return report_error_at_cat(DiagnosticCategory::Boundary, spec.form_start, 1,
+            "live-edit is not valid here",
+            "live-edit cannot appear inside defstate initial values or quoted forms");
     }
-
-    // 6. Return SlotLoad node
-    return pool.make_slot_load((uint16_t)slot_idx);
+    if (!parse_live_edit_seed(*this, ts, spec) ||
+        !parse_live_edit_keywords(*this, ts, spec) ||
+        !validate_live_edit_spec(*this, spec)) {
+        return NODE_NONE;
+    }
+    return bind_live_edit(*this, spec);
 }
 
 // -- Random / Hash -----------------------------------------------------------
