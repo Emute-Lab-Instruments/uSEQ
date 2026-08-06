@@ -3,6 +3,7 @@
 #include <cmath>
 #include "token.h"
 #include "graph_builder.h"
+#include "compiler_pipeline.h"
 #include "executor.h"
 #if USEQ_HAS_SYNTH_ENGINE
 #include "synth_registry.h"
@@ -144,79 +145,39 @@ static void clear_synth_reactive_diagnostic(SynthControlChannel& control) {
 }
 #endif
 
-// Graph construction currently interns directly into the live NodePool. Keep
-// a bounded rollback image in the engine's already-allocated scratch pool so a
-// rejected build cannot change state resources, live-edit metadata, or future
-// capacity. Newly interned graph nodes are discarded by reachability GC after
-// restoring the old roots. This avoids another full NodePool copy on firmware.
-struct GraphMutationSnapshot {
-    StateResourceRegistry registry;
-    uint8_t data_table_count = 0;
-    uint16_t state_slot_count = 0;
-    uint16_t live_slot_count = 0;
-    uint32_t arena_write_head = 0;
-};
-
-static GraphMutationSnapshot capture_graph_mutations(SignalEngine& engine) {
-    GraphMutationSnapshot saved;
-    saved.registry = engine.registry;
-    saved.data_table_count = engine.cells.data_table_count;
-    saved.state_slot_count = engine.pool.state_slot_count;
-    saved.live_slot_count = engine.pool.live_slot_count;
-    saved.arena_write_head = engine.arena.write_head;
-
-    memcpy(engine.scratch_pool.state_values, engine.pool.state_values,
-           sizeof(engine.pool.state_values));
-    memcpy(engine.scratch_pool.state_update_roots,
-           engine.pool.state_update_roots,
-           sizeof(engine.pool.state_update_roots));
-    memcpy(engine.scratch_pool.state_owner_context,
-           engine.pool.state_owner_context,
-           sizeof(engine.pool.state_owner_context));
-    memcpy(engine.scratch_pool.live_slots, engine.pool.live_slots,
-           sizeof(engine.pool.live_slots));
-    return saved;
+// Publication is deliberately separate from graph construction: the bounded
+// GraphBuildResult is a candidate IR until one of these functions installs its
+// root, dependencies, ownership, and health as one coherent state change.
+static void publish_output_graph_plan(SignalEngine& engine,
+                                      uint16_t output_index,
+                                      const GraphBuildResult& result) {
+    engine.pool.outputs[output_index].root_node = result.root_node;
+    engine.pool.outputs[output_index].valid = true;
+    engine.pool.runtime_fallback_mask &= ~((uint64_t)1 << output_index);
+    engine.output_compile_diagnostics[output_index] =
+        ActiveCompileDiagnostic{};
+    engine.pool.output_deps[output_index].clear();
+    for (uint8_t d = 0; d < result.dep_count; d++)
+        engine.pool.output_deps[output_index].add(result.dep_cells[d]);
+    engine.registry.commit_context(output_index,
+                                   engine.pool.state_update_roots,
+                                   engine.pool.state_owner_context);
 }
 
-static void restore_graph_mutations(SignalEngine& engine,
-                                    const GraphMutationSnapshot& saved) {
-    engine.registry = saved.registry;
-    engine.cells.data_table_count = saved.data_table_count;
-    engine.pool.state_slot_count = saved.state_slot_count;
-    engine.pool.live_slot_count = saved.live_slot_count;
-    engine.arena.write_head = saved.arena_write_head;
-    memcpy(engine.pool.state_values, engine.scratch_pool.state_values,
-           sizeof(engine.pool.state_values));
-    memcpy(engine.pool.state_update_roots,
-           engine.scratch_pool.state_update_roots,
-           sizeof(engine.pool.state_update_roots));
-    memcpy(engine.pool.state_owner_context,
-           engine.scratch_pool.state_owner_context,
-           sizeof(engine.pool.state_owner_context));
-    memcpy(engine.pool.live_slots, engine.scratch_pool.live_slots,
-           sizeof(engine.pool.live_slots));
-
-#if USEQ_HAS_SYNTH_ENGINE
-    register_synth_external_roots(engine);
-#endif
-    engine.pool.gc_unreachable_nodes();
-#if USEQ_HAS_SYNTH_ENGINE
-    commit_synth_external_roots(engine);
-#endif
-    engine.pool.rebuild_execution_order();
-    classify_outputs(engine.pool);
-}
-
-static bool source_slot_can_store(const SourceArena& arena,
-                                  uint32_t existing_offset,
-                                  uint32_t existing_length,
-                                  uint32_t new_length) {
-    bool existing_region_fits =
-        existing_offset <= SOURCE_ARENA_SIZE &&
-        existing_length <= SOURCE_ARENA_SIZE - existing_offset;
-    if (existing_region_fits && new_length <= existing_length) return true;
-    return arena.write_head <= SOURCE_ARENA_SIZE &&
-           new_length <= SOURCE_ARENA_SIZE - arena.write_head;
+static void publish_state_update_plan(SignalEngine& engine,
+                                      uint16_t state_slot,
+                                      const GraphBuildResult& result) {
+    engine.pool.state_update_roots[state_slot] = result.root_node;
+    engine.state_sources[state_slot].dep_count = result.dep_count;
+    for (uint8_t d = 0; d < result.dep_count; d++)
+        engine.state_sources[state_slot].dep_cells[d] = result.dep_cells[d];
+    const uint16_t owner_context =
+        static_cast<uint16_t>(MAX_OUTPUTS + state_slot);
+    engine.registry.commit_context(owner_context,
+                                   engine.pool.state_update_roots,
+                                   engine.pool.state_owner_context);
+    engine.state_compile_diagnostics[state_slot] =
+        ActiveCompileDiagnostic{};
 }
 
 // ── Cold-path form evaluation ───────────────────────────────────────────────
@@ -912,37 +873,34 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
     // by later dependency recompilation.
     uint16_t expr_start = ts.pos;
     uint32_t byte_start = span_begin(ts, expr_start);
-    uint32_t src_len = 0;
     uint32_t previous_offset = UINT32_MAX;
     uint32_t previous_length = 0;
-    bool has_update_source = false;
-    {
-        uint16_t saved = ts.pos;
-        GraphBuilder::skip_form(ts);
-        uint32_t byte_end = span_end_of(ts, ts.pos);
-        ts.rewind(saved);
-
-        if (source && byte_end > byte_start && byte_end <= source_length) {
-            src_len = byte_end - byte_start;
-            has_update_source = true;
-            if (state_slot != NODE_NONE &&
-                engine.state_sources[state_slot].has_source) {
-                previous_offset = engine.state_sources[state_slot].arena_offset;
-                previous_length = engine.state_sources[state_slot].arena_length;
-            }
-            if (!source_slot_can_store(engine.arena, previous_offset,
-                                       previous_length, src_len)) {
-                return make_error(
-                    "Program storage is full — defstate not applied",
-                    "Free space with (useq-clear) or shorten your program");
-            }
-        }
+    if (state_slot != NODE_NONE &&
+        engine.state_sources[state_slot].has_source) {
+        previous_offset = engine.state_sources[state_slot].arena_offset;
+        previous_length = engine.state_sources[state_slot].arena_length;
+    }
+    uint16_t saved = ts.pos;
+    GraphBuilder::skip_form(ts);
+    uint32_t byte_end = span_end_of(ts, ts.pos);
+    ts.rewind(saved);
+    SourceMutationPlan source_plan = SourceMutationPlan::prepare(
+        engine.arena, source, source_length, byte_start, byte_end,
+        previous_offset, previous_length);
+    if (source_plan.status == SourcePlanStatus::CapacityExceeded) {
+        return make_error(
+            "Program storage is full — defstate not applied",
+            "Free space with (useq-clear) or shorten your program");
+    }
+    if (source_plan.status == SourcePlanStatus::InvalidSpan) {
+        return make_error("defstate update has an invalid source span",
+                          "Resubmit the complete defstate form");
     }
 
     // Snapshot everything graph construction can mutate. The source bytes are
     // still untouched and are published only after a successful compile.
     Cell saved_cell = engine.cells.cells[sym];
-    GraphMutationSnapshot graph_snapshot = capture_graph_mutations(engine);
+    GraphMutationTransaction graph_transaction(engine);
 
     // Allocate a state slot (if this name already has a state slot, reuse it)
     if (state_slot == NODE_NONE) {
@@ -986,7 +944,6 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
         engine.cells.cells[sym] = saved_cell;
         engine.cells.cells[sym].revision++;
         engine.state_sources[state_slot] = saved_source;
-        restore_graph_mutations(engine, graph_snapshot);
         return make_error(
             result.has_error
                 ? "defstate update expression failed to compile"
@@ -998,35 +955,24 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
 
     // Compilation succeeded, so publishing the source cannot corrupt a
     // last-known-good definition. The preflight above guarantees capacity.
-    if (has_update_source) {
-        uint32_t src_offset = engine.arena.store_reuse(
-            previous_offset, previous_length,
-            source + byte_start, src_len);
+    if (source_plan.has_source()) {
+        uint32_t src_offset = source_plan.publish(engine.arena);
         if (src_offset == UINT32_MAX) {
             engine.cells.cells[sym] = saved_cell;
             engine.cells.cells[sym].revision++;
             engine.state_sources[state_slot] = saved_source;
-            restore_graph_mutations(engine, graph_snapshot);
             return make_error(
                 "Program storage is full — defstate not applied",
                 "Free space with (useq-clear) or shorten your program");
         }
         engine.state_sources[state_slot].arena_offset = src_offset;
-        engine.state_sources[state_slot].arena_length = src_len;
+        engine.state_sources[state_slot].arena_length = source_plan.length;
         engine.state_sources[state_slot].has_source = true;
     }
     engine.state_sources[state_slot].state_symbol = sym;
 
-    // Store the update root and dependencies
-    engine.pool.state_update_roots[state_slot] = result.root_node;
-    engine.state_sources[state_slot].dep_count = result.dep_count;
-    for (uint8_t d = 0; d < result.dep_count; d++) {
-        engine.state_sources[state_slot].dep_cells[d] = result.dep_cells[d];
-    }
-    engine.registry.commit_context(owner_context,
-                                   engine.pool.state_update_roots,
-                                   engine.pool.state_owner_context);
-    engine.state_compile_diagnostics[state_slot] = ActiveCompileDiagnostic{};
+    publish_state_update_plan(engine, state_slot, result);
+    graph_transaction.accept();
 
     // Reclaim nodes orphaned by the recompile (e.g. the previous update
     // graph of this state slot), then rebuild execution order to include
@@ -1755,11 +1701,11 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     // The outer synth transaction owns the graph rollback image. A nested
     // synth is part of that same transaction; taking another image in the
     // engine's single scratch pool would overwrite the outer pre-state.
-    GraphMutationSnapshot graph_snapshot;
-    if (!nested) graph_snapshot = capture_graph_mutations(engine);
+    GraphMutationTransaction graph_transaction;
+    if (!nested) graph_transaction.begin(engine);
     auto rollback_synth = [&](EvalResult error) {
         engine.synth_graph = synth_snapshot;
-        if (!nested) restore_graph_mutations(engine, graph_snapshot);
+        if (!nested) graph_transaction.rollback();
         delete owned_snapshot;
         return error;
     };
@@ -1855,8 +1801,8 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
         const SynthControlChannel* old = find_synth_control(
             synth_snapshot, identity_buf, b.desc->name);
         bool can_reuse = !nested && old &&
-            source_slot_can_store(engine.arena, old->source_offset,
-                                  old->source_length, expr_len) &&
+            source_region_can_store(engine.arena, old->source_offset,
+                                    old->source_length, expr_len) &&
             expr_len <= old->source_length;
         if (!can_reuse) {
             if (UINT32_MAX - required_source_bytes < expr_len) {
@@ -1992,30 +1938,24 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
         }
         engine.registry.begin_context(owner_context);
 
-        Diagnostic expr_parse_errors[8];
-        uint8_t expr_parse_err_count = 0;
         const char* expr_source = source + b.expr_byte_start;
-        TokenStream ets;
-        uint16_t expr_count = TokenStream::tokenize(
-            expr_source, expr_len, ets.tokens, MAX_TOKENS,
-            expr_parse_errors, &expr_parse_err_count);
-        if (expr_parse_err_count > 0) {
+        ParsedProgram control_program;
+        control_program.parse(expr_source, expr_len);
+        if (!control_program.ok()) {
             EvalResult r;
             r.kind = EvalResult::Error;
             for (uint8_t e = 0;
-                 e < expr_parse_err_count && r.diagnostic_count < 8; e++) {
-                Diagnostic d = expr_parse_errors[e];
+                 e < control_program.diagnostic_count &&
+                 r.diagnostic_count < 8; e++) {
+                Diagnostic d = control_program.diagnostics[e];
                 d.span_start = (uint16_t)(d.span_start + b.expr_byte_start);
                 r.diagnostics[r.diagnostic_count++] = d;
             }
             return rollback_synth(r);
         }
 
-        ets.count = expr_count;
-        ets.pos = 0;
-
         GraphBuildResult gbr = build_output_graph(
-            engine.pool, ets, engine.cells, engine.arena,
+            engine.pool, control_program.stream, engine.cells, engine.arena,
             expr_source, &engine.registry, nullptr, owner_context);
         if (gbr.has_error) {
             EvalResult r;
@@ -2140,6 +2080,7 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     reclaim_unowned_resources(engine);
     engine.pool.rebuild_execution_order();
     classify_outputs(engine.pool);
+    graph_transaction.accept();
     delete owned_snapshot;
     return make_ok();
 }
@@ -2200,33 +2141,27 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
     // when the replacement later fails.
     uint16_t expr_start_pos = ts.pos;
     uint32_t byte_start = span_begin(ts, expr_start_pos);
-    uint32_t expr_len = 0;
-    bool has_expr_source = false;
     const OutputSource previous_source = engine.output_sources[output_index];
-    {
-        uint16_t saved = ts.pos;
-        GraphBuilder::skip_form(ts);
-        uint32_t byte_end = span_end_of(ts, ts.pos);
-        ts.rewind(saved);
-
-        if (source && byte_end > byte_start && byte_end <= source_length) {
-            expr_len = byte_end - byte_start;
-            has_expr_source = true;
-            if (!source_slot_can_store(
-                    engine.arena,
-                    previous_source.has_source
-                        ? previous_source.arena_offset : UINT32_MAX,
-                    previous_source.has_source
-                        ? previous_source.arena_length : 0,
-                    expr_len)) {
-                return make_error(
-                    "Program storage is full — output not changed",
-                    "Free space with (useq-clear) or shorten your program");
-            }
-        }
+    uint16_t saved = ts.pos;
+    GraphBuilder::skip_form(ts);
+    uint32_t byte_end = span_end_of(ts, ts.pos);
+    ts.rewind(saved);
+    SourceMutationPlan source_plan = SourceMutationPlan::prepare(
+        engine.arena, source, source_length, byte_start, byte_end,
+        previous_source.has_source
+            ? previous_source.arena_offset : UINT32_MAX,
+        previous_source.has_source ? previous_source.arena_length : 0);
+    if (source_plan.status == SourcePlanStatus::CapacityExceeded) {
+        return make_error(
+            "Program storage is full — output not changed",
+            "Free space with (useq-clear) or shorten your program");
+    }
+    if (source_plan.status == SourcePlanStatus::InvalidSpan) {
+        return make_error("Output expression has an invalid source span",
+                          "Resubmit the complete output form");
     }
 
-    GraphMutationSnapshot graph_snapshot = capture_graph_mutations(engine);
+    GraphMutationTransaction graph_transaction(engine);
     engine.registry.begin_context(output_index);
     GraphBuildResult result = build_output_graph(engine.pool, ts,
                                                  engine.cells, engine.arena, source,
@@ -2234,7 +2169,6 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
                                                  output_index);
 
     if (result.has_error || ts.peek().kind != TokenKind::RParen) {
-        restore_graph_mutations(engine, graph_snapshot);
         // Per failure-model.md §2.6, a compile-time error leaves the active
         // program unchanged: do NOT demote `valid`. Demoting here was also the
         // root cause of A2 — sig::commit_outputs resurrects valid=true for any
@@ -2253,42 +2187,22 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
         return r;
     }
 
-    if (has_expr_source) {
-        uint32_t offset = engine.arena.store_reuse(
-            previous_source.has_source
-                ? previous_source.arena_offset : UINT32_MAX,
-            previous_source.has_source
-                ? previous_source.arena_length : 0,
-            source + byte_start, expr_len);
+    if (source_plan.has_source()) {
+        uint32_t offset = source_plan.publish(engine.arena);
         if (offset == UINT32_MAX) {
-            restore_graph_mutations(engine, graph_snapshot);
             return make_error(
                 "Program storage is full — output not changed",
                 "Free space with (useq-clear) or shorten your program");
         }
         engine.output_sources[output_index].arena_offset = offset;
-        engine.output_sources[output_index].arena_length = expr_len;
+        engine.output_sources[output_index].arena_length = source_plan.length;
         engine.output_sources[output_index].has_source = true;
     }
 
-    // Install the new graph root
-    engine.pool.outputs[output_index].root_node = result.root_node;
-    engine.pool.outputs[output_index].valid = true;
-    // The rejected sample belonged to the superseded program. Successful
-    // publication starts the replacement in Running state; it may retain the
-    // old finite LKG for safety, but it must not retain stale failure health.
-    engine.pool.runtime_fallback_mask &= ~((uint64_t)1 << output_index);
-    engine.output_compile_diagnostics[output_index] =
-        ActiveCompileDiagnostic{};
-
-    // Store cell dependencies for this output
-    engine.pool.output_deps[output_index].clear();
-    for (uint8_t d = 0; d < result.dep_count; d++) {
-        engine.pool.output_deps[output_index].add(result.dep_cells[d]);
-    }
-    engine.registry.commit_context(output_index,
-                                   engine.pool.state_update_roots,
-                                   engine.pool.state_owner_context);
+    // Publish the candidate root, dependencies, ownership, and health only
+    // after parsing, storage capacity, and graph construction all succeeded.
+    publish_output_graph_plan(engine, output_index, result);
+    graph_transaction.accept();
 
     // Reclaim nodes no longer reachable from any output root
     reclaim_unowned_resources(engine);
@@ -2304,26 +2218,18 @@ static EvalResult do_output_assign(SymbolID output_sym, TokenStream& ts,
 
 EvalResult eval_expression(const char* source, uint32_t length,
                            SignalEngine& engine) {
-    Token tokens[MAX_TOKENS];
-    Diagnostic parse_errors[8];
-    uint8_t parse_error_count = 0;
-
-    uint16_t count = TokenStream::tokenize(source, length, tokens, MAX_TOKENS,
-                                            parse_errors, &parse_error_count);
-    if (parse_error_count > 0) {
+    ParsedProgram program;
+    program.parse(source, length);
+    if (!program.ok()) {
         EvalResult r;
         r.kind = EvalResult::Error;
-        memcpy(r.diagnostics, parse_errors,
-               parse_error_count * sizeof(Diagnostic));
-        r.diagnostic_count = parse_error_count;
+        memcpy(r.diagnostics, program.diagnostics,
+               program.diagnostic_count * sizeof(Diagnostic));
+        r.diagnostic_count = program.diagnostic_count;
         return r;
     }
-    if (count == 0) return make_ok();
-
-    TokenStream ts;
-    memcpy(ts.tokens, tokens, count * sizeof(Token));
-    ts.count = count;
-    ts.pos = 0;
+    if (program.empty()) return make_ok();
+    TokenStream& ts = program.stream;
 
     // Save CellStore data table state (compilation may append vector literals)
     uint8_t saved_table_count = engine.cells.data_table_count;
@@ -3006,26 +2912,18 @@ void commit_synth_external_roots(SignalEngine& engine) {
 
 EvalResult eval_cold(const char* source, uint32_t length, SignalEngine& engine) {
     RuntimeMemorySampleScope memory_sample_scope;
-    Token tokens[MAX_TOKENS];
-    Diagnostic parse_errors[8];
-    uint8_t parse_error_count = 0;
+    ParsedProgram program;
+    program.parse(source, length);
 
-    uint16_t count = TokenStream::tokenize(source, length, tokens, MAX_TOKENS,
-                                            parse_errors, &parse_error_count);
-
-    if (parse_error_count > 0) {
+    if (!program.ok()) {
         EvalResult r;
         r.kind = EvalResult::Error;
-        memcpy(r.diagnostics, parse_errors,
-               parse_error_count * sizeof(Diagnostic));
-        r.diagnostic_count = parse_error_count;
+        memcpy(r.diagnostics, program.diagnostics,
+               program.diagnostic_count * sizeof(Diagnostic));
+        r.diagnostic_count = program.diagnostic_count;
         return r;
     }
-
-    TokenStream ts;
-    memcpy(ts.tokens, tokens, count * sizeof(Token));
-    ts.count = count;
-    ts.pos = 0;
+    TokenStream& ts = program.stream;
 
     // Cross-output live-edit ID tracking — cleared per eval batch
     SharedLiveEditIDs shared_ids;
@@ -3077,48 +2975,25 @@ void recompile_all_outputs(SignalEngine& engine) {
             engine.output_sources[i].arena_offset);
         if (!src) continue;
 
-        Token tokens[MAX_TOKENS];
-        uint8_t parse_errors = 0;
-        uint16_t count = TokenStream::tokenize(
-            src, engine.output_sources[i].arena_length,
-            tokens, MAX_TOKENS, nullptr, &parse_errors);
+        ParsedProgram program;
+        program.parse(src, engine.output_sources[i].arena_length);
 
-        if (parse_errors != 0) {
+        if (!program.ok()) {
             // Stored source can be corrupt (for example after loading an old
             // flash image), but recompilation is still a publication
             // transaction.  Keep any already-live graph intact.
             continue;
         }
 
-        TokenStream ts;
-        memcpy(ts.tokens, tokens, count * sizeof(Token));
-        ts.count = count;
-        ts.pos = 0;
-
-        GraphMutationSnapshot graph_snapshot =
-            capture_graph_mutations(engine);
+        GraphMutationTransaction graph_transaction(engine);
         engine.registry.begin_context(i);
         GraphBuildResult result = build_output_graph(
-            engine.pool, ts, engine.cells, engine.arena, src,
+            engine.pool, program.stream, engine.cells, engine.arena, src,
             &engine.registry, nullptr, i);
 
         if (!result.has_error) {
-            engine.pool.outputs[i].root_node = result.root_node;
-            engine.pool.outputs[i].valid = true;
-            engine.pool.runtime_fallback_mask &= ~((uint64_t)1 << i);
-            engine.output_compile_diagnostics[i] =
-                ActiveCompileDiagnostic{};
-
-            // Populate dependency tracking so on_cell_changed() works later
-            engine.pool.output_deps[i].clear();
-            for (uint8_t d = 0; d < result.dep_count; d++) {
-                engine.pool.output_deps[i].add(result.dep_cells[d]);
-            }
-            engine.registry.commit_context(i,
-                                           engine.pool.state_update_roots,
-                                           engine.pool.state_owner_context);
-        } else {
-            restore_graph_mutations(engine, graph_snapshot);
+            publish_output_graph_plan(engine, i, result);
+            graph_transaction.accept();
         }
     }
 
@@ -3140,51 +3015,24 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
             const char* src = engine.arena.read(
                 engine.output_sources[i].arena_offset);
             if (src) {
-                Token tokens[MAX_TOKENS];
-                uint8_t parse_errors = 0;
-                uint16_t count = TokenStream::tokenize(
-                    src, engine.output_sources[i].arena_length,
-                    tokens, MAX_TOKENS, nullptr, &parse_errors);
+                ParsedProgram program;
+                program.parse(src, engine.output_sources[i].arena_length);
 
-                if (parse_errors == 0) {
-                    TokenStream ts;
-                    memcpy(ts.tokens, tokens, count * sizeof(Token));
-                    ts.count = count;
-                    ts.pos = 0;
-
-                    GraphMutationSnapshot graph_snapshot =
-                        capture_graph_mutations(engine);
+                if (program.ok()) {
+                    GraphMutationTransaction graph_transaction(engine);
                     engine.registry.begin_context(i);
                     GraphBuildResult result = build_output_graph(
-                        engine.pool, ts, engine.cells, engine.arena, src,
+                        engine.pool, program.stream, engine.cells,
+                        engine.arena, src,
                         &engine.registry, nullptr, i);
                     if (!result.has_error) {
-                        engine.pool.outputs[i].root_node = result.root_node;
-                        engine.pool.outputs[i].valid = true;
-                        engine.pool.runtime_fallback_mask &=
-                            ~((uint64_t)1 << i);
-                        engine.output_compile_diagnostics[i] =
-                            ActiveCompileDiagnostic{};
-
-                        // Refresh the dependency list (F8) — the recompiled
-                        // graph may reference different cells (e.g. a cell
-                        // redefined from a number to an expression pulls in
-                        // the cells that expression reads). Every sibling
-                        // recompile path does this; skipping it here left
-                        // outputs permanently deaf to their new deps.
-                        engine.pool.output_deps[i].clear();
-                        for (uint8_t d = 0; d < result.dep_count; d++) {
-                            engine.pool.output_deps[i].add(result.dep_cells[d]);
-                        }
-                        engine.registry.commit_context(
-                            i, engine.pool.state_update_roots,
-                            engine.pool.state_owner_context);
+                        publish_output_graph_plan(engine, i, result);
+                        graph_transaction.accept();
                     } else {
                         // A reactive compile is a candidate publication just
                         // like a direct output assignment.  Retain the old
                         // root, validity, dependencies, state values, and
                         // capacity when the candidate is rejected.
-                        restore_graph_mutations(engine, graph_snapshot);
                         publish_reactive_diagnostic(
                             engine.output_compile_diagnostics[i], cell_id,
                             result);
@@ -3222,40 +3070,21 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
         const char* src = engine.arena.read(engine.state_sources[s].arena_offset);
         if (!src) continue;
 
-        Token tokens[MAX_TOKENS];
-        uint8_t parse_errors = 0;
-        uint16_t count = TokenStream::tokenize(
-            src, engine.state_sources[s].arena_length,
-            tokens, MAX_TOKENS, nullptr, &parse_errors);
+        ParsedProgram program;
+        program.parse(src, engine.state_sources[s].arena_length);
 
-        if (parse_errors == 0) {
-            TokenStream ts;
-            memcpy(ts.tokens, tokens, count * sizeof(Token));
-            ts.count = count;
-            ts.pos = 0;
-
-            GraphMutationSnapshot graph_snapshot =
-                capture_graph_mutations(engine);
+        if (program.ok()) {
+            GraphMutationTransaction graph_transaction(engine);
             uint16_t owner_context =
                 (uint16_t)(MAX_OUTPUTS + s);
             engine.registry.begin_context(owner_context);
             GraphBuildResult result = build_output_graph(
-                engine.pool, ts, engine.cells, engine.arena, src,
+                engine.pool, program.stream, engine.cells, engine.arena, src,
                 &engine.registry, nullptr, owner_context);
             if (!result.has_error) {
-                engine.pool.state_update_roots[s] = result.root_node;
-                engine.state_compile_diagnostics[s] =
-                    ActiveCompileDiagnostic{};
-                // Update dependencies
-                engine.state_sources[s].dep_count = result.dep_count;
-                for (uint8_t d = 0; d < result.dep_count; d++) {
-                    engine.state_sources[s].dep_cells[d] = result.dep_cells[d];
-                }
-                engine.registry.commit_context(
-                    owner_context, engine.pool.state_update_roots,
-                    engine.pool.state_owner_context);
+                publish_state_update_plan(engine, s, result);
+                graph_transaction.accept();
             } else {
-                restore_graph_mutations(engine, graph_snapshot);
                 publish_reactive_diagnostic(
                     engine.state_compile_diagnostics[s], cell_id, result);
             }
@@ -3300,30 +3129,20 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
             publish_synth_reactive_diagnostic(control, cell_id, diagnostic);
             continue;
         }
-        Token tokens[MAX_TOKENS];
-        Diagnostic parse_diagnostics[8];
-        uint8_t parse_error_count = 0;
-        uint16_t count = TokenStream::tokenize(
-            src, control.source_length, tokens, MAX_TOKENS,
-            parse_diagnostics, &parse_error_count);
-        if (parse_error_count != 0) {
+        ParsedProgram program;
+        program.parse(src, control.source_length);
+        if (!program.ok()) {
             publish_synth_reactive_diagnostic(
-                control, cell_id, parse_diagnostics[0]);
+                control, cell_id, program.diagnostics[0]);
             continue;
         }
 
-        TokenStream ts;
-        memcpy(ts.tokens, tokens, count * sizeof(Token));
-        ts.count = count;
-        ts.pos = 0;
-        GraphMutationSnapshot graph_snapshot =
-            capture_graph_mutations(engine);
+        GraphMutationTransaction graph_transaction(engine);
         engine.registry.begin_context(control.owner_context);
         GraphBuildResult result = build_output_graph(
-            engine.pool, ts, engine.cells, engine.arena, src,
+            engine.pool, program.stream, engine.cells, engine.arena, src,
             &engine.registry, nullptr, control.owner_context);
         if (result.has_error) {
-            restore_graph_mutations(engine, graph_snapshot);
             if (result.diagnostic_count > 0) {
                 publish_synth_reactive_diagnostic(
                     control, cell_id, result.diagnostics[0]);
@@ -3347,6 +3166,7 @@ void on_cell_changed(SymbolID cell_id, SignalEngine& engine) {
             control.owner_context, engine.pool.state_update_roots,
             engine.pool.state_owner_context);
         clear_synth_reactive_diagnostic(control);
+        graph_transaction.accept();
     }
 #endif
 

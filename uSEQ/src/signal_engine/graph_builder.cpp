@@ -1,4 +1,5 @@
 #include "graph_builder.h"
+#include "compiler_pipeline.h"
 #include "../modulisp/lisp/symbol_intern.h"
 #include <cstring>
 #include <cstdio>
@@ -733,12 +734,10 @@ uint16_t GraphBuilder::compile_inline_lambda_call(TokenStream& ts,
         }
     }
 
-    Token body_tokens[MAX_TOKENS];
     uint16_t body_count = body_end - body_start;
-    memcpy(body_tokens, ts.tokens + body_start, body_count * sizeof(Token));
-
     TokenStream body_ts;
-    memcpy(body_ts.tokens, body_tokens, body_count * sizeof(Token));
+    memcpy(body_ts.tokens, ts.tokens + body_start,
+           body_count * sizeof(Token));
     body_ts.count = body_count;
     body_ts.pos = 0;
     return compile_expr(body_ts, inner_scope, ctx);
@@ -859,20 +858,19 @@ uint16_t GraphBuilder::inline_expression_cell(SymbolID sym_id, const CallableInf
         return pool.make_const(0.0);
     }
 
-    Token body_tokens[MAX_TOKENS];
-    uint8_t parse_errors = 0;
-    uint16_t body_count = TokenStream::tokenize(body_src, info.source_length,
-                                                 body_tokens, MAX_TOKENS,
-                                                 nullptr, &parse_errors);
-
-    TokenStream body_ts;
-    memcpy(body_ts.tokens, body_tokens, body_count * sizeof(Token));
-    body_ts.count = body_count;
-    body_ts.pos = 0;
+    ParsedProgram body_program;
+    body_program.parse(body_src, info.source_length);
+    if (!body_program.ok()) {
+        pop_inline_stack();
+        return report_error_at_cat(
+            DiagnosticCategory::Syntax, 0, 0,
+            "Stored definition body could not be parsed",
+            "Redefine this name with valid source");
+    }
 
     const char* saved_base = source_base;
     source_base = body_src;
-    uint16_t result = compile_expr(body_ts, scope, ctx);
+    uint16_t result = compile_expr(body_program.stream, scope, ctx);
     source_base = saved_base;
     pop_inline_stack();
     return result;
@@ -1273,18 +1271,17 @@ uint16_t GraphBuilder::compile_call(SymbolID fn_sym, TokenStream& ts,
         return pool.make_const(0.0);
     }
 
-    Token body_tokens[MAX_TOKENS];
-    uint8_t parse_errors = 0;
-    uint16_t body_count = TokenStream::tokenize(body_src, info.source_length,
-                                                 body_tokens, MAX_TOKENS,
-                                                 nullptr, &parse_errors);
+    ParsedProgram body_program;
+    body_program.parse(body_src, info.source_length);
+    if (!body_program.ok()) {
+        pop_inline_stack();
+        return report_error_at_cat(
+            DiagnosticCategory::Syntax, op_tok.span_start, op_tok.span_len,
+            "Stored function body could not be parsed",
+            "Redefine this function with valid source");
+    }
 
-    TokenStream body_ts;
-    memcpy(body_ts.tokens, body_tokens, body_count * sizeof(Token));
-    body_ts.count = body_count;
-    body_ts.pos = 0;
-
-    uint16_t result = compile_expr(body_ts, inner_scope, ctx);
+    uint16_t result = compile_expr(body_program.stream, inner_scope, ctx);
     pop_inline_stack();
     return result;
 }

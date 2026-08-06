@@ -146,6 +146,7 @@ def cpp_limits() -> dict[str, int]:
     files = [
         ROOT / "uSEQ" / "src" / "signal_engine" / "types.h",
         ROOT / "uSEQ" / "src" / "signal_engine" / "graph_builder.h",
+        ROOT / "uSEQ" / "src" / "signal_engine" / "compiler_pipeline.h",
         ROOT / "uSEQ" / "src" / "signal_engine" / "node_pool.h",
         ROOT / "uSEQ" / "src" / "signal_engine" / "cold_eval.cpp",
         ROOT / "uSEQ" / "src" / "signal_engine" / "synth_registry.h",

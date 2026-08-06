@@ -14,6 +14,7 @@ ENGINE_SRCS=(uSEQ/src/signal_engine/diagnostics.cpp
       uSEQ/src/signal_engine/node_pool.cpp
       uSEQ/src/signal_engine/executor.cpp
       uSEQ/src/signal_engine/graph_builder.cpp
+      uSEQ/src/signal_engine/compiler_pipeline.cpp
       uSEQ/src/signal_engine/cold_eval.cpp
       uSEQ/src/signal_engine/state_registry.cpp
       uSEQ/src/utils/string.cpp

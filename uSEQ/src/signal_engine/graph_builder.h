@@ -61,8 +61,12 @@ struct TimeContext {
     uint16_t t_node; // node index representing "current t" (may be transformed)
 };
 
-// ── Graph Build Result ──────────────────────────────────────────────────────
+// ── Bounded graph candidate IR ─────────────────────────────────────────────
 
+// A successful build identifies a root and its complete retained dependency
+// set, but is not published by GraphBuilder. Callers keep it behind a
+// GraphMutationTransaction until source capacity and enclosing-form validation
+// succeed, then install it through the cold evaluator's publication stage.
 struct GraphBuildResult {
     uint16_t root_node = NODE_NONE;
     Diagnostic diagnostics[MAX_DIAGNOSTICS] = {};

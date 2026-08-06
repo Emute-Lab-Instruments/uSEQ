@@ -7,7 +7,9 @@ compiler/control runtime. The canonical language entry point is
 ## Repository layout
 
 - `uSEQ/src/signal_engine/` — tokenizer, cold evaluator, graph builder, node
-  pool, executor, diagnostics, state/resource ownership, and builtin table.
+  pool, executor, diagnostics, state/resource ownership, and builtin table;
+  `compiler_pipeline.{h,cpp}` owns the fixed-capacity parse IR, source-write
+  plans, and rollback transaction between graph construction and publication.
 - `uSEQ/src/firmware/` — RP2040/RP2350 composition root, live tick loop,
   hardware I/O, storage, and serial protocol partitioned into framing,
   schema-table dispatch, encoding, and handlers; the checked-in generated

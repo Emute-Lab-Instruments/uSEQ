@@ -12,6 +12,9 @@
 - `uSEQ/src/signal_engine/graph_builder.{h,cpp}` — `GraphBuilder`: compilation entry points, form dispatch table, constant folding, time-context propagation, CSE, dependency tracking, signal-context rejection, error reporting with fuzzy match
 - `uSEQ/src/signal_engine/node_pool.{h,cpp}` — `NodePool`, `Node` (the node-graph representation), `NodeOp` enum (all node operations), hash-cons CSE table, topological sort (`rebuild_execution_order`), state slots, constant-folding helpers (`eval_unary`, `eval_binop`, `eval_ternary`)
 - `uSEQ/src/signal_engine/token.{h,cpp}` — `TokenStream`: zero-allocation tokenizer, `Token` with source spans
+- `uSEQ/src/signal_engine/compiler_pipeline.{h,cpp}` — `ParsedProgram`,
+  `SourceMutationPlan`, and `GraphMutationTransaction`: fixed-capacity parse
+  IR, prevalidated source writes, and rollback ownership for candidate builds
 - `uSEQ/src/signal_engine/cold_eval.{h,cpp}` — `eval_cold()`: parse + compile + dispatch, `on_cell_changed()` for dependency-driven recompilation
 - `uSEQ/src/signal_engine/executor.{h,cpp}` — `execute_all_outputs()`: single-sample forward pass (the hot path), `commit_state()`
 - `uSEQ/src/signal_engine/types.h` — limits (`MAX_TOTAL_NODES`, `MAX_STATE_SLOTS`, `MAX_INLINE_DEPTH`, etc.)
@@ -79,6 +82,20 @@ slot, state registry/update root, synth declaration/control root, execution
 order, or classification. A rejected form is observationally equivalent to
 not submitting it.
 
+The implementation makes the boundary explicit as five bounded stages:
+
+1. `ParsedProgram` tokenizes directly into one fixed `TokenStream` and retains
+   at most eight parse diagnostics.
+2. The cold evaluator resolves the owning output/state/control and complete
+   source span.
+3. `SourceMutationPlan` proves source-arena capacity without writing bytes.
+4. `GraphBuilder` performs fixed-pool resolution, lowering, and allocation
+   behind a `GraphMutationTransaction`, yielding a bounded `GraphBuildResult`
+   candidate (root, dependencies, diagnostics).
+5. One publication function installs source, root, dependency, ownership, and
+   health metadata, then accepts the transaction. Every earlier return rolls
+   the graph mutation back.
+
 1.13 **Sequential submissions.** A submission containing multiple forms, and
 the children of `do`, is an ordered sequence of §1.12 transactions. Evaluation
 stops at the first rejected form. Earlier committed siblings remain; the
@@ -87,7 +104,10 @@ rejected form and all later siblings publish nothing.
 1.14 **Bounded rollback.** Candidate graph construction may intern directly
 into the fixed live pool, but it snapshots every structure the builder can
 mutate. Failure restores the snapshot and reachability-GCs candidate nodes.
-Repeating a rejected form therefore cannot consume bounded capacity.
+`GraphMutationTransaction` stores only bounded metadata directly and uses the
+engine's existing scratch pool for state/live-slot arrays; it does not allocate
+a second `NodePool`. Repeating a rejected form therefore cannot consume
+bounded capacity.
 
 1.15 **Exact syntax identity.** Source is an ASCII byte string: NUL and bytes
 `0x80..0xff` reject the complete submission, including when they occur inside

@@ -6,6 +6,7 @@
 #include "../catch.hpp"
 
 #include "src/signal_engine/signal_engine.h"
+#include "src/signal_engine/compiler_pipeline.h"
 #include "src/modulisp/lisp/symbol_intern.h"
 
 #include <cstdio>
@@ -711,6 +712,71 @@ TEST_CASE("A15: tokenizer preflights ASCII, finite literals, and span capacity",
         SymbolIntern::getInstance().intern(String("a15-atomic"));
     REQUIRE(symbol < MAX_CELLS);
     REQUIRE(engine.cells.cells[symbol].kind == CellKind::Empty);
+}
+
+TEST_CASE("Compiler pipeline keeps parsing, storage, and graph mutation bounded",
+          "[compiler][pipeline][transaction]") {
+    SECTION("ParsedProgram owns one fixed token stream and bounded diagnostics") {
+        ParsedProgram program;
+        program.parse("(+ 1 2)", 7);
+        REQUIRE(program.ok());
+        REQUIRE_FALSE(program.empty());
+        REQUIRE(program.stream.peek().kind == TokenKind::LParen);
+
+        program.parse("(+ 1", 4);
+        REQUIRE_FALSE(program.ok());
+        REQUIRE(program.diagnostic_count <=
+                ParsedProgram::MAX_PARSE_DIAGNOSTICS);
+    }
+
+    SECTION("source plans validate capacity before the single publication write") {
+        SourceArena arena;
+        REQUIRE(arena.store("old", 3) == 0);
+
+        const char replacement[] = "xy";
+        SourceMutationPlan reuse = SourceMutationPlan::prepare(
+            arena, replacement, 2, 0, 2, 0, 3);
+        REQUIRE(reuse.status == SourcePlanStatus::Ready);
+        REQUIRE(reuse.publish(arena) == 0);
+        REQUIRE(std::memcmp(arena.read(0), "xy", 2) == 0);
+
+        arena.write_head = SOURCE_ARENA_SIZE;
+        SourceMutationPlan full = SourceMutationPlan::prepare(
+            arena, "z", 1, 0, 1);
+        REQUIRE(full.status == SourcePlanStatus::CapacityExceeded);
+        REQUIRE(full.publish(arena) == UINT32_MAX);
+    }
+
+    SECTION("unaccepted graph mutations roll back while accepted ones persist") {
+        SignalEngine engine;
+        engine.init_defaults(120.0, 4);
+        engine.pool.state_slot_count = 1;
+        engine.pool.state_values[0] = 3.0;
+        engine.pool.live_slot_count = 1;
+        engine.pool.live_slots[0].value = 0.25;
+        const uint32_t original_head = engine.arena.write_head;
+
+        {
+            GraphMutationTransaction transaction(engine);
+            engine.pool.state_slot_count = 2;
+            engine.pool.state_values[0] = 99.0;
+            engine.pool.live_slot_count = 2;
+            engine.pool.live_slots[0].value = 0.75;
+            engine.arena.write_head = original_head + 10;
+        }
+        REQUIRE(engine.pool.state_slot_count == 1);
+        REQUIRE(engine.pool.state_values[0] == Approx(3.0));
+        REQUIRE(engine.pool.live_slot_count == 1);
+        REQUIRE(engine.pool.live_slots[0].value == Approx(0.25));
+        REQUIRE(engine.arena.write_head == original_head);
+
+        {
+            GraphMutationTransaction transaction(engine);
+            engine.pool.state_values[0] = 4.0;
+            transaction.accept();
+        }
+        REQUIRE(engine.pool.state_values[0] == Approx(4.0));
+    }
 }
 
 // NOTE: the A1 case floods the shared symbol interner past MAX_CELLS, which

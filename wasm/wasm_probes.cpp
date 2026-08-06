@@ -1,5 +1,6 @@
 
 #include "wasm_wrapper_internal.h"
+#include "../uSEQ/src/signal_engine/compiler_pipeline.h"
 
 // ── Probe expression slots (probes.md §1.6) ────────────────────────────
 //
@@ -46,21 +47,13 @@ static void recompile_probe_pool() {
 
         if (!slot.active || slot.code_len == 0) continue;
 
-        sig::Token tokens[sig::MAX_TOKENS];
-        sig::Diagnostic parse_errors[8];
-        uint8_t err_count = 0;
-        uint16_t count = sig::TokenStream::tokenize(
-            slot.code, slot.code_len, tokens, sig::MAX_TOKENS,
-            parse_errors, &err_count);
-        if (err_count > 0) continue;
-
-        sig::TokenStream ts;
-        memcpy(ts.tokens, tokens, count * sizeof(sig::Token));
-        ts.count = count;
-        ts.pos   = 0;
+        sig::ParsedProgram program;
+        program.parse(slot.code, slot.code_len);
+        if (!program.ok()) continue;
 
         sig::GraphBuildResult result = sig::build_output_graph(
-            *g_probe_pool, ts, g_engine->cells, g_engine->arena, slot.code);
+            *g_probe_pool, program.stream, g_engine->cells,
+            g_engine->arena, slot.code);
         if (result.has_error) continue;
 
         g_probe_pool->outputs[i].root_node = result.root_node;
