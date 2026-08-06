@@ -3299,119 +3299,113 @@ uint16_t GraphBuilder::compile_vector_literal(TokenStream& ts, Scope& scope, Tim
 // ── Collection Resolution ───────────────────────────────────────────────────
 
 GraphBuilder::Collection GraphBuilder::resolve_collection(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    Collection col;
-
-    Token tok = ts.peek();
-
-    // Literal vector [1 2 3]
-    if (tok.kind == TokenKind::LBracket) {
-        ts.consume(); // eat '['
-        while (ts.peek().kind != TokenKind::RBracket && !ts.at_end() && col.count < 64) {
-            uint16_t elem = compile_expr(ts, scope, ctx);
-            col.element_nodes[col.count++] = elem;
-        }
-        if (col.count == 64 && ts.peek().kind != TokenKind::RBracket &&
-            !ts.at_end()) {
-            Token excess = ts.peek();
-            report_oversized_vector(ts, excess);
-            col.ok = false;
-            return col;
-        }
-        ts.expect(TokenKind::RBracket);
-        col.ok = true;
-        return col;
+    switch (ts.peek().kind) {
+        case TokenKind::LBracket:
+            return resolve_literal_collection(ts, scope, ctx);
+        case TokenKind::Symbol:
+            return resolve_symbol_collection(ts);
+        case TokenKind::LParen:
+            return resolve_range_collection(ts, scope, ctx);
+        default:
+            return Collection{};
     }
+}
 
-    // Symbol reference — look up in cell table
-    if (tok.kind == TokenKind::Symbol) {
-        ts.consume();
-        SymbolID sym_id = tok.symbol;
-
-        if (sym_id < MAX_CELLS) {
-            const Cell& cell = cells.cells[sym_id];
-            if (cell.kind == CellKind::Data) {
-                add_dependency(sym_id);
-                uint16_t len;
-                const double* data = cells.get_data_table(cell.data_table_id, len);
-                if (data) {
-                    for (uint16_t i = 0; i < len && col.count < 64; i++) {
-                        col.element_nodes[col.count++] = pool.make_const(data[i]);
-                    }
-                    col.ok = true;
-                    return col;
-                }
-            }
-        }
-
-        col.ok = false;
-        return col;
+GraphBuilder::Collection GraphBuilder::resolve_literal_collection(
+        TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    Collection collection;
+    ts.consume();
+    while (ts.peek().kind != TokenKind::RBracket && !ts.at_end() &&
+           collection.count < 64) {
+        collection.element_nodes[collection.count++] =
+            compile_expr(ts, scope, ctx);
     }
+    if (collection.count == 64 && ts.peek().kind != TokenKind::RBracket &&
+        !ts.at_end()) {
+        report_oversized_vector(ts, ts.peek());
+        return collection;
+    }
+    ts.expect(TokenKind::RBracket);
+    collection.ok = true;
+    return collection;
+}
 
-    // Expression — compile it and check if it produced a range
-    if (tok.kind == TokenKind::LParen) {
-        // Check if it's a (range ...) call
-        uint16_t saved_pos = ts.pos;
-        ts.consume(); // eat '('
-        Token fn_tok = ts.peek();
-        if (fn_tok.kind == TokenKind::Symbol && fn_tok.symbol == sym.range) {
-            ts.consume(); // eat 'range'
+GraphBuilder::Collection GraphBuilder::resolve_symbol_collection(
+        TokenStream& ts) {
+    Collection collection;
+    const SymbolID symbol = ts.consume().symbol;
+    if (symbol >= MAX_CELLS) return collection;
 
-            // Parse range arguments
-            uint16_t arg1 = compile_expr(ts, scope, ctx);
-            double start = 0, end_val, step_val = 1;
+    const Cell& cell = cells.cells[symbol];
+    if (cell.kind != CellKind::Data) return collection;
+    add_dependency(symbol);
+    uint16_t length = 0;
+    const double* data = cells.get_data_table(cell.data_table_id, length);
+    if (!data) return collection;
 
-            if (ts.peek().kind == TokenKind::RParen) {
-                if (is_const(arg1)) {
-                    end_val = const_value(arg1);
-                    ts.expect(TokenKind::RParen);
-                    for (double v = start; step_val > 0 ? v < end_val : v > end_val; v += step_val) {
-                        if (col.count >= 64) break;
-                        col.element_nodes[col.count++] = pool.make_const(v);
-                    }
-                    col.ok = true;
-                    return col;
-                }
-            } else {
-                uint16_t arg2 = compile_expr(ts, scope, ctx);
-                if (ts.peek().kind == TokenKind::RParen) {
-                    if (is_const(arg1) && is_const(arg2)) {
-                        start = const_value(arg1);
-                        end_val = const_value(arg2);
-                        ts.expect(TokenKind::RParen);
-                        for (double v = start; step_val > 0 ? v < end_val : v > end_val; v += step_val) {
-                            if (col.count >= 64) break;
-                            col.element_nodes[col.count++] = pool.make_const(v);
-                        }
-                        col.ok = true;
-                        return col;
-                    }
-                } else {
-                    uint16_t arg3 = compile_expr(ts, scope, ctx);
-                    ts.expect(TokenKind::RParen);
-                    if (is_const(arg1) && is_const(arg2) && is_const(arg3)) {
-                        start = const_value(arg1);
-                        end_val = const_value(arg2);
-                        step_val = const_value(arg3);
-                        for (double v = start; step_val > 0 ? v < end_val : v > end_val; v += step_val) {
-                            if (col.count >= 64) break;
-                            col.element_nodes[col.count++] = pool.make_const(v);
-                        }
-                        col.ok = true;
-                        return col;
-                    }
-                }
-            }
-        }
+    for (uint16_t i = 0; i < length && collection.count < 64; ++i) {
+        collection.element_nodes[collection.count++] = pool.make_const(data[i]);
+    }
+    collection.ok = true;
+    return collection;
+}
 
-        // Not a range or couldn't resolve — rewind and fail
-        ts.rewind(saved_pos);
+void GraphBuilder::fill_range_collection(Collection& collection, double start,
+                                         double end, double step) {
+    for (double value = start;
+         collection.count < 64 && (step > 0 ? value < end : value > end);
+         value += step) {
+        collection.element_nodes[collection.count++] = pool.make_const(value);
+    }
+    collection.ok = true;
+}
+
+GraphBuilder::Collection GraphBuilder::resolve_range_collection(
+        TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    Collection collection;
+    const uint16_t form_start = ts.pos;
+    auto reject_form = [&]() {
+        ts.rewind(form_start);
         skip_form(ts);
-        col.ok = false;
-        return col;
+        return collection;
+    };
+    ts.consume();
+    const Token function = ts.peek();
+    if (function.kind != TokenKind::Symbol || function.symbol != sym.range) {
+        return reject_form();
     }
 
-    col.ok = false;
-    return col;
+    ts.consume();
+    const uint16_t first = compile_expr(ts, scope, ctx);
+    if (ts.peek().kind == TokenKind::RParen) {
+        if (is_const(first)) {
+            ts.consume();
+            fill_range_collection(collection, 0.0, const_value(first), 1.0);
+            return collection;
+        }
+        return reject_form();
+    }
+
+    const uint16_t second = compile_expr(ts, scope, ctx);
+    if (ts.peek().kind == TokenKind::RParen) {
+        if (is_const(first) && is_const(second)) {
+            ts.consume();
+            fill_range_collection(collection, const_value(first),
+                                  const_value(second), 1.0);
+            return collection;
+        }
+        return reject_form();
+    }
+
+    const uint16_t third = compile_expr(ts, scope, ctx);
+    if (ts.peek().kind == TokenKind::RParen && is_const(first) &&
+        is_const(second) && is_const(third)) {
+        ts.consume();
+        fill_range_collection(collection, const_value(first),
+                              const_value(second), const_value(third));
+        return collection;
+    }
+    return reject_form();
 }
 
 // ── Data Table Resolution ───────────────────────────────────────────────────

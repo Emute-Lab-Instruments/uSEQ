@@ -289,6 +289,13 @@ struct GraphBuilder {
         bool ok = false;
     };
     Collection resolve_collection(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    Collection resolve_literal_collection(TokenStream& ts, Scope& scope,
+                                          TimeContext& ctx);
+    Collection resolve_symbol_collection(TokenStream& ts);
+    Collection resolve_range_collection(TokenStream& ts, Scope& scope,
+                                        TimeContext& ctx);
+    void fill_range_collection(Collection& collection, double start,
+                               double end, double step);
 
     // ── Data table resolution ───────────────────────────────────────────
 

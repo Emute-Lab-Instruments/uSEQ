@@ -2562,6 +2562,170 @@ static EvalResult do_defs(TokenStream& ts, SignalEngine& engine,
 
 // ── Top-level eval ──────────────────────────────────────────────────────────
 
+struct EvalDispatchResult {
+    bool handled = false;
+    EvalResult result = {};
+};
+
+static EvalResult finish_parenthesized_form(TokenStream& ts,
+                                            EvalResult result) {
+    ts.expect(TokenKind::RParen);
+    return result;
+}
+
+static EvalDispatchResult eval_cell_mutation_form(
+        SymbolID op, TokenStream& ts, SignalEngine& engine,
+        const char* source, uint32_t source_length,
+        const GraphBuilder::Symbols& symbols) {
+    EvalResult result;
+    if (op == symbols.define || op == symbols.def) {
+        result = do_define(ts, engine, source, source_length);
+    } else if (op == symbols.defn || op == symbols.defun) {
+        result = do_defn(ts, engine, source, source_length);
+    } else if (op == symbols.defs) {
+        result = do_defs(ts, engine, source, source_length);
+    } else if (op == symbols.defstate) {
+        result = do_defstate(ts, engine, source, source_length);
+    } else if (op == symbols.set) {
+        result = do_set(ts, engine, source);
+    } else if (op == symbols.unassign) {
+        result = do_unassign(ts, engine);
+    } else {
+        return {};
+    }
+    return {true, finish_parenthesized_form(ts, result)};
+}
+
+static EvalDispatchResult reject_direct_live_edit_argument(
+        TokenStream& ts, const char* message) {
+    if (!next_is_live_edit(ts)) return {};
+    while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) ts.consume();
+    ts.expect(TokenKind::RParen);
+    return {true, make_error(
+        message,
+        "live-edit must be used inside an output expression like (a1 ...)")};
+}
+
+static EvalDispatchResult eval_transport_form(
+        SymbolID op, TokenStream& ts, SignalEngine& engine,
+        const GraphBuilder::Symbols& symbols) {
+    EvalDispatchResult rejected;
+    EvalResult result;
+    if (op == symbols.set_bpm) {
+        rejected = reject_direct_live_edit_argument(
+            ts, "live-edit is not allowed as a direct argument of set-bpm");
+        if (rejected.handled) return rejected;
+        result = do_set_bpm(ts, engine);
+    } else if (op == symbols.set_time_sig) {
+        rejected = reject_direct_live_edit_argument(
+            ts, "live-edit is not allowed as a direct argument of set-time-sig");
+        if (rejected.handled) return rejected;
+        result = do_set_time_sig(ts, engine);
+    } else if (op == symbols.set_time_offset) {
+        rejected = reject_direct_live_edit_argument(
+            ts, "live-edit is not allowed as a direct argument of set-time-offset");
+        if (rejected.handled) return rejected;
+        result = do_set_time_offset(ts, engine.state);
+    } else if (op == symbols.nudge_time) {
+        rejected = reject_direct_live_edit_argument(
+            ts, "live-edit is not allowed as a direct argument of nudge-time");
+        if (rejected.handled) return rejected;
+        result = do_nudge_time(ts, engine.state);
+    } else if (op == symbols.useq_clear) {
+        if (ts.peek().kind != TokenKind::RParen) {
+            return {true, make_error("useq-clear accepts no arguments",
+                                     "Try: (useq-clear)")};
+        }
+        result = do_useq_clear(engine);
+    } else if (op == symbols.useq_play || op == symbols.useq_pause ||
+               op == symbols.useq_stop || op == symbols.useq_rewind) {
+        if (ts.peek().kind != TokenKind::RParen) {
+            const char* suggestion = op == symbols.useq_play ? "Try: (useq-play)" :
+                                     op == symbols.useq_pause ? "Try: (useq-pause)" :
+                                     op == symbols.useq_stop ? "Try: (useq-stop)" :
+                                                              "Try: (useq-rewind)";
+            const char* message = op == symbols.useq_play
+                ? "useq-play accepts no arguments"
+                : op == symbols.useq_pause
+                    ? "useq-pause accepts no arguments"
+                    : op == symbols.useq_stop
+                        ? "useq-stop accepts no arguments"
+                        : "useq-rewind accepts no arguments";
+            return {true, make_error(message, suggestion)};
+        }
+        if (op == symbols.useq_play) engine.state.play();
+        else if (op == symbols.useq_pause) engine.state.pause();
+        else if (op == symbols.useq_stop) engine.state.stop();
+        else engine.state.rewind();
+        result = make_ok();
+    } else {
+        return {};
+    }
+    return {true, finish_parenthesized_form(ts, result)};
+}
+
+static EvalResult eval_top_level_vector(TokenStream& ts, SignalEngine& engine,
+                                        const char* source,
+                                        uint32_t source_length) {
+    ts.consume();
+    engine.scratch_pool.reset();
+    const uint8_t saved_table_count = engine.cells.data_table_count;
+
+    char* buffer = engine.eval_text_buf;
+    uint16_t buffer_position = 0;
+    buffer[buffer_position++] = '[';
+    bool first = true;
+    EvalResult error = {};
+
+    while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
+        const Token element_start = ts.peek();
+        if (element_start.kind == TokenKind::LParen ||
+            element_start.kind == TokenKind::LBracket) {
+            GraphBuilder::skip_form(ts);
+        } else {
+            ts.consume();
+        }
+
+        const uint32_t span_start = element_start.span_start;
+        const Token previous = ts.tokens[ts.pos > 0 ? ts.pos - 1 : 0];
+        const uint32_t span_end =
+            static_cast<uint32_t>(previous.span_start) + previous.span_len;
+        if (!source || span_end <= span_start || span_end > source_length) {
+            continue;
+        }
+
+        const EvalResult element = eval_expression(
+            source + span_start, span_end - span_start, engine);
+        if (element.kind == EvalResult::Error) {
+            error = element;
+            break;
+        }
+        constexpr uint16_t capacity = sizeof(engine.eval_text_buf);
+        if (!first && buffer_position < capacity - 20) {
+            buffer[buffer_position++] = ' ';
+        }
+        first = false;
+        const int written = snprintf(buffer + buffer_position,
+                                     capacity - buffer_position,
+                                     "%.15g", element.number);
+        if (written > 0) buffer_position += static_cast<uint16_t>(written);
+    }
+
+    while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) ts.consume();
+    ts.expect(TokenKind::RBracket);
+    engine.cells.data_table_count = saved_table_count;
+    if (error.kind == EvalResult::Error) return error;
+
+    constexpr uint16_t capacity = sizeof(engine.eval_text_buf);
+    if (buffer_position < capacity - 1) buffer[buffer_position++] = ']';
+    buffer[buffer_position] = '\0';
+    EvalResult result;
+    result.kind = EvalResult::Text;
+    result.text = buffer;
+    result.text_length = buffer_position;
+    return result;
+}
+
 static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
                             const char* source, uint32_t source_length,
                             SharedLiveEditIDs* shared_ids) {
@@ -2591,75 +2755,7 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
     }
 
     if (tok.kind == TokenKind::LBracket) {
-        ts.consume(); // eat '['
-
-        engine.scratch_pool.reset();
-        uint8_t saved_table_count = engine.cells.data_table_count;
-
-        char* vec_buf = engine.eval_text_buf;
-        uint16_t buf_pos = 0;
-        vec_buf[buf_pos++] = '[';
-        bool first = true;
-        bool any_error = false;
-        EvalResult last_error = {};
-
-        while (ts.peek().kind != TokenKind::RBracket && !ts.at_end()) {
-            Token elem_start = ts.peek();
-
-            // Skip the element form (handle both paren and bracket nesting)
-            if (elem_start.kind == TokenKind::LParen ||
-                elem_start.kind == TokenKind::LBracket) {
-                int depth = 0;
-                do {
-                    Token t = ts.consume();
-                    if (t.kind == TokenKind::LParen || t.kind == TokenKind::LBracket) depth++;
-                    else if (t.kind == TokenKind::RParen || t.kind == TokenKind::RBracket) depth--;
-                } while (depth > 0 && !ts.at_end());
-            } else {
-                ts.consume();
-            }
-
-            uint32_t elem_span_start = elem_start.span_start;
-            Token prev = ts.tokens[ts.pos > 0 ? ts.pos - 1 : 0];
-            uint32_t elem_span_end = (uint32_t)prev.span_start + prev.span_len;
-
-            if (source && elem_span_end > elem_span_start &&
-                elem_span_end <= source_length) {
-                EvalResult er = eval_expression(
-                    source + elem_span_start,
-                    elem_span_end - elem_span_start, engine);
-                if (er.kind == EvalResult::Error) {
-                    any_error = true;
-                    last_error = er;
-                    break;
-                }
-                constexpr uint16_t BUF_CAP = sizeof(engine.eval_text_buf);
-                if (!first && buf_pos < BUF_CAP - 20) vec_buf[buf_pos++] = ' ';
-                first = false;
-                int written = snprintf(vec_buf + buf_pos,
-                                       BUF_CAP - buf_pos,
-                                       "%.15g", er.number);
-                if (written > 0) buf_pos += (uint16_t)written;
-            }
-        }
-
-        while (ts.peek().kind != TokenKind::RBracket && !ts.at_end())
-            ts.consume();
-        ts.expect(TokenKind::RBracket);
-
-        engine.cells.data_table_count = saved_table_count;
-
-        if (any_error) return last_error;
-
-        constexpr uint16_t BUF_CAP2 = sizeof(engine.eval_text_buf);
-        if (buf_pos < BUF_CAP2 - 1) vec_buf[buf_pos++] = ']';
-        vec_buf[buf_pos] = '\0';
-
-        EvalResult r;
-        r.kind = EvalResult::Text;
-        r.text = vec_buf;
-        r.text_length = buf_pos;
-        return r;
+        return eval_top_level_vector(ts, engine, source, source_length);
     }
 
     if (tok.kind == TokenKind::LParen) {
@@ -2674,133 +2770,13 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
         GraphBuilder::init_symbols();
         auto& sym = GraphBuilder::sym;
 
-        // Cell mutations
-        if (op == sym.define || op == sym.def) {
-            EvalResult r = do_define(ts, engine, source, source_length);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
-        if (op == sym.defn || op == sym.defun) {
-            EvalResult r = do_defn(ts, engine, source, source_length);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
-        if (op == sym.defs) {
-            EvalResult r = do_defs(ts, engine, source, source_length);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
-        if (op == sym.defstate) {
-            EvalResult r = do_defstate(ts, engine, source, source_length);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
-        if (op == sym.set) {
-            EvalResult r = do_set(ts, engine, source);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
-        if (op == sym.unassign) {
-            EvalResult r = do_unassign(ts, engine);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
+        const EvalDispatchResult mutation = eval_cell_mutation_form(
+            op, ts, engine, source, source_length, sym);
+        if (mutation.handled) return mutation.result;
 
-        // Transport / time management
-        if (op == sym.set_bpm) {
-            if (next_is_live_edit(ts)) {
-                // Skip to closing paren
-                while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) ts.consume();
-                ts.expect(TokenKind::RParen);
-                return make_error(
-                    "live-edit is not allowed as a direct argument of set-bpm",
-                    "live-edit must be used inside an output expression like (a1 ...)");
-            }
-            EvalResult r = do_set_bpm(ts, engine);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
-        if (op == sym.set_time_sig) {
-            if (next_is_live_edit(ts)) {
-                while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) ts.consume();
-                ts.expect(TokenKind::RParen);
-                return make_error(
-                    "live-edit is not allowed as a direct argument of set-time-sig",
-                    "live-edit must be used inside an output expression like (a1 ...)");
-            }
-            EvalResult r = do_set_time_sig(ts, engine);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
-        if (op == sym.useq_clear) {
-            if (ts.peek().kind != TokenKind::RParen) {
-                return make_error("useq-clear accepts no arguments",
-                                  "Try: (useq-clear)");
-            }
-            EvalResult r = do_useq_clear(engine);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
-        if (op == sym.set_time_offset) {
-            if (next_is_live_edit(ts)) {
-                while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) ts.consume();
-                ts.expect(TokenKind::RParen);
-                return make_error(
-                    "live-edit is not allowed as a direct argument of set-time-offset",
-                    "live-edit must be used inside an output expression like (a1 ...)");
-            }
-            EvalResult r = do_set_time_offset(ts, engine.state);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
-        if (op == sym.nudge_time) {
-            if (next_is_live_edit(ts)) {
-                while (ts.peek().kind != TokenKind::RParen && !ts.at_end()) ts.consume();
-                ts.expect(TokenKind::RParen);
-                return make_error(
-                    "live-edit is not allowed as a direct argument of nudge-time",
-                    "live-edit must be used inside an output expression like (a1 ...)");
-            }
-            EvalResult r = do_nudge_time(ts, engine.state);
-            ts.expect(TokenKind::RParen);
-            return r;
-        }
-        if (op == sym.useq_play) {
-            if (ts.peek().kind != TokenKind::RParen) {
-                return make_error("useq-play accepts no arguments",
-                                  "Try: (useq-play)");
-            }
-            engine.state.play();
-            ts.expect(TokenKind::RParen);
-            return make_ok();
-        }
-        if (op == sym.useq_pause) {
-            if (ts.peek().kind != TokenKind::RParen) {
-                return make_error("useq-pause accepts no arguments",
-                                  "Try: (useq-pause)");
-            }
-            engine.state.pause();
-            ts.expect(TokenKind::RParen);
-            return make_ok();
-        }
-        if (op == sym.useq_stop) {
-            if (ts.peek().kind != TokenKind::RParen) {
-                return make_error("useq-stop accepts no arguments",
-                                  "Try: (useq-stop)");
-            }
-            engine.state.stop();
-            ts.expect(TokenKind::RParen);
-            return make_ok();
-        }
-        if (op == sym.useq_rewind) {
-            if (ts.peek().kind != TokenKind::RParen) {
-                return make_error("useq-rewind accepts no arguments",
-                                  "Try: (useq-rewind)");
-            }
-            engine.state.rewind();
-            ts.expect(TokenKind::RParen);
-            return make_ok();
-        }
+        const EvalDispatchResult transport =
+            eval_transport_form(op, ts, engine, sym);
+        if (transport.handled) return transport.result;
 
 #if USEQ_HAS_SYNTH_ENGINE
         // synth — top-level NodeDef instantiation (synth-nodes.md §3)
