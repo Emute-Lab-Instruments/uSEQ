@@ -22,6 +22,7 @@
 #include "../catch.hpp"
 
 #include "../../uSEQ/src/firmware/serial_protocol.h"
+#include "../../uSEQ/src/firmware/serial_protocol_json.h"
 #ifdef ENABLE_I2C_NETWORKING
 #include "../../uSEQ/src/firmware/i2c_network.h"
 #include "../../uSEQ/src/ports/mocks/MockI2CBus.h"
@@ -35,6 +36,27 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+
+TEST_CASE("schema-generated request fixtures validate identically in C++",
+          "[contract][wire-protocol][schema]")
+{
+    for (const auto& fixture : useq::protocol::kValidRequestFixtures) {
+        char error[128] = {};
+        INFO(fixture.name);
+        REQUIRE(firmware::serial_protocol_detail::validate_protocol_request(
+            fixture.payload, std::strlen(fixture.payload), error,
+            sizeof(error)) != nullptr);
+    }
+
+    for (const auto& fixture : useq::protocol::kInvalidRequestFixtures) {
+        char error[128] = {};
+        INFO(fixture.name);
+        REQUIRE(firmware::serial_protocol_detail::validate_protocol_request(
+            fixture.payload, std::strlen(fixture.payload), error,
+            sizeof(error)) == nullptr);
+        REQUIRE(std::string(error) == fixture.error);
+    }
+}
 
 // ── stdout capture helper ────────────────────────────────────────────────
 //
@@ -112,6 +134,59 @@ static std::string extract_last_json(const std::string& captured)
         search_end = line_start; // step back past this line
     }
     return {};
+}
+
+TEST_CASE("schema dispatch rejects unknown and unsupported requests before eval",
+          "[contract][wire-protocol][schema]")
+{
+    firmware::SerialProtocol sp;
+    sp.init();
+    char code[64] = {};
+
+    {
+        StdoutCapture cap;
+        const char* payload =
+            "{\"type\":\"wat\",\"code\":\"(a1 1)\",\"requestId\":\"bad-1\"}";
+        REQUIRE_FALSE(sp.dispatch_message(payload, std::strlen(payload),
+                                          code, sizeof(code)));
+        REQUIRE(code[0] == '\0');
+        const auto response = extract_last_json(cap.drain());
+        REQUIRE(response.find("\"success\":false") != std::string::npos);
+        REQUIRE(response.find("unknown request type 'wat'") != std::string::npos);
+    }
+
+    {
+        StdoutCapture cap;
+        const char* payload =
+            "{\"type\":\"calibrate-begin\",\"output\":\"a1\",\"requestId\":\"bad-2\"}";
+        REQUIRE_FALSE(sp.dispatch_message(payload, std::strlen(payload),
+                                          code, sizeof(code)));
+        const auto response = extract_last_json(cap.drain());
+        REQUIRE(response.find("\"success\":false") != std::string::npos);
+        REQUIRE(response.find("not supported by this firmware") != std::string::npos);
+    }
+}
+
+TEST_CASE("optional requestId does not reuse a previous request's correlation id",
+          "[contract][wire-protocol][schema]")
+{
+    firmware::SerialProtocol sp;
+    sp.init();
+    char code[64] = {};
+
+    {
+        StdoutCapture cap;
+        const char* ping = "{\"type\":\"ping\",\"requestId\":\"req-before\"}";
+        REQUIRE_FALSE(sp.dispatch_message(ping, std::strlen(ping), code, sizeof(code)));
+        REQUIRE(extract_last_json(cap.drain()).find("req-before") != std::string::npos);
+    }
+
+    {
+        StdoutCapture cap;
+        const char* live = "{\"type\":\"set-live-inputs\",\"slots\":{}}";
+        REQUIRE_FALSE(sp.dispatch_message(live, std::strlen(live), code, sizeof(code)));
+        REQUIRE(extract_last_json(cap.drain()).empty());
+    }
 }
 
 // ── F1 — ready frame uses "version" not "fw" (§5.5) ─────────────────────

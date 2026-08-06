@@ -11,12 +11,15 @@
 //   Binary frames: [0x1F][type_byte][payload]  — for stream data
 //
 // Message types (inbound):
+//   Canonical names/fields/routes: protocol/useq-json-v1.json via the
+//   generated useq_protocol_schema.generated.h table.
 //   hello           — protocol negotiation, returns hardware config
 //   ping            — keepalive heartbeat
 //   eval            — code string (handled by caller after read_command)
 //   stream-config   — configure output streaming rate/channels
 //   set-live-inputs — write one or more live-edit slot values (§5.8)
 //   get-state       — return full interpreter state snapshot (state-sync.md §2)
+//   calibrate-*     — reserved, rejected until the firmware backend lands
 //
 // Outbound:
 //   ready         — sent once after init

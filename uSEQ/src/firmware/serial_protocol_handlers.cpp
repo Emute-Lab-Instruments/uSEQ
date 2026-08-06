@@ -351,6 +351,7 @@ void SerialProtocol::handle_get_state(const char* /*payload*/, size_t /*len*/)
     {
         JsonBuilder b;
         b.object_begin()
+            .field("type", "response")
             .field("requestId", m_request_id)
             .field("success", false)
             .field("text", "no engine attached")

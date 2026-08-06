@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "useq.json-protocol/v1",
+  "wireProtocol": 1,
+  "legacyCompatibility": "Pre-1.2 framed text is intentionally outside this schema.",
+  "fieldKinds": ["string", "number", "integer", "boolean", "object", "array", "scalar"],
+  "requests": [
+    {
+      "type": "hello",
+      "route": "hello",
+      "requestId": "required",
+      "hardware": "supported",
+      "wasm": "supported",
+      "fields": [
+        { "name": "client", "kind": "string", "required": true },
+        { "name": "version", "kind": "string", "required": true }
+      ],
+      "example": { "type": "hello", "client": "editor", "version": "1.2.0", "requestId": "fixture-hello" }
+    },
+    {
+      "type": "ping",
+      "route": "ping",
+      "requestId": "required",
+      "hardware": "supported",
+      "wasm": "supported",
+      "fields": [],
+      "example": { "type": "ping", "requestId": "fixture-ping" }
+    },
+    {
+      "type": "stream-config",
+      "route": "stream_config",
+      "requestId": "required",
+      "hardware": "supported",
+      "wasm": "supported",
+      "fields": [
+        { "name": "maxRateHz", "kind": "number", "required": true },
+        { "name": "channels", "kind": "array", "required": true }
+      ],
+      "example": { "type": "stream-config", "maxRateHz": 100, "channels": [], "requestId": "fixture-stream" }
+    },
+    {
+      "type": "eval",
+      "route": "eval",
+      "requestId": "required",
+      "hardware": "supported",
+      "wasm": "supported",
+      "fields": [
+        { "name": "code", "kind": "string", "required": true },
+        { "name": "quant", "kind": "boolean", "required": false }
+      ],
+      "example": { "type": "eval", "code": "(a1 0.5)", "requestId": "fixture-eval" }
+    },
+    {
+      "type": "set-live-inputs",
+      "route": "set_live_inputs",
+      "requestId": "optional",
+      "hardware": "supported",
+      "wasm": "supported",
+      "fields": [
+        { "name": "slots", "kind": "object", "required": true }
+      ],
+      "example": { "type": "set-live-inputs", "slots": { "knob1": 0.5 }, "requestId": "fixture-live" }
+    },
+    {
+      "type": "get-state",
+      "route": "get_state",
+      "requestId": "required",
+      "hardware": "supported",
+      "wasm": "unsupported",
+      "fields": [],
+      "example": { "type": "get-state", "requestId": "fixture-state" }
+    },
+    {
+      "type": "set-failure-mode",
+      "route": "set_failure_mode",
+      "requestId": "optional",
+      "hardware": "supported",
+      "wasm": "unsupported",
+      "fields": [
+        { "name": "mode", "kind": "string", "required": true }
+      ],
+      "example": { "type": "set-failure-mode", "mode": "lkg", "requestId": "fixture-failure" }
+    },
+    {
+      "type": "rescan-modules",
+      "route": "rescan_modules",
+      "requestId": "required",
+      "hardware": "conditional",
+      "wasm": "unsupported",
+      "fields": [],
+      "example": { "type": "rescan-modules", "requestId": "fixture-rescan" }
+    },
+    {
+      "type": "debug",
+      "route": "debug",
+      "requestId": "required",
+      "hardware": "conditional",
+      "wasm": "unsupported",
+      "fields": [
+        { "name": "action", "kind": "string", "required": true }
+      ],
+      "example": { "type": "debug", "action": "status", "requestId": "fixture-debug" }
+    },
+    {
+      "type": "calibrate-begin",
+      "route": "unsupported",
+      "requestId": "required",
+      "hardware": "unsupported",
+      "wasm": "unsupported",
+      "fields": [
+        { "name": "output", "kind": "string", "required": true }
+      ],
+      "example": { "type": "calibrate-begin", "output": "a1", "requestId": "fixture-cal-begin" }
+    },
+    {
+      "type": "calibrate-set-target",
+      "route": "unsupported",
+      "requestId": "required",
+      "hardware": "unsupported",
+      "wasm": "unsupported",
+      "fields": [
+        { "name": "output", "kind": "string", "required": true },
+        { "name": "voltage", "kind": "number", "required": true }
+      ],
+      "example": { "type": "calibrate-set-target", "output": "a1", "voltage": 1, "requestId": "fixture-cal-target" }
+    },
+    {
+      "type": "calibrate-adjust",
+      "route": "unsupported",
+      "requestId": "required",
+      "hardware": "unsupported",
+      "wasm": "unsupported",
+      "fields": [
+        { "name": "output", "kind": "string", "required": true },
+        { "name": "delta", "kind": "number", "required": true }
+      ],
+      "example": { "type": "calibrate-adjust", "output": "a1", "delta": 0.5, "requestId": "fixture-cal-adjust" }
+    },
+    {
+      "type": "calibrate-save-point",
+      "route": "unsupported",
+      "requestId": "required",
+      "hardware": "unsupported",
+      "wasm": "unsupported",
+      "fields": [
+        { "name": "output", "kind": "string", "required": true },
+        { "name": "octave", "kind": "integer", "required": true }
+      ],
+      "example": { "type": "calibrate-save-point", "output": "a1", "octave": 2, "requestId": "fixture-cal-save" }
+    },
+    {
+      "type": "calibrate-end",
+      "route": "unsupported",
+      "requestId": "required",
+      "hardware": "unsupported",
+      "wasm": "unsupported",
+      "fields": [
+        { "name": "commit", "kind": "boolean", "required": true }
+      ],
+      "example": { "type": "calibrate-end", "commit": false, "requestId": "fixture-cal-end" }
+    }
+  ],
+  "responses": [
+    {
+      "type": "response",
+      "fields": [
+        { "name": "requestId", "kind": "string", "required": true },
+        { "name": "success", "kind": "boolean", "required": true }
+      ]
+    },
+    {
+      "type": "state-snapshot",
+      "fields": [
+        { "name": "requestId", "kind": "string", "required": true },
+        { "name": "success", "kind": "boolean", "required": true },
+        { "name": "state", "kind": "object", "required": true }
+      ]
+    }
+  ],
+  "unsolicited": [
+    { "type": "ready", "fields": [{ "name": "version", "kind": "string", "required": true }, { "name": "protocol", "kind": "integer", "required": true }, { "name": "target", "kind": "string", "required": true }, { "name": "capabilities", "kind": "array", "required": true }] },
+    { "type": "log", "fields": [{ "name": "level", "kind": "string", "required": true }, { "name": "text", "kind": "string", "required": true }] },
+    { "type": "diagnostics", "fields": [{ "name": "diagnostics", "kind": "array", "required": true }] },
+    { "type": "hw-input", "fields": [{ "name": "kind", "kind": "string", "required": true }, { "name": "id", "kind": "string", "required": true }, { "name": "state", "kind": "scalar", "required": true }] },
+    { "type": "meta", "fields": [{ "name": "meta", "kind": "object", "required": true }] }
+  ],
+  "invalidFixtures": [
+    { "name": "missing-type", "payload": { "requestId": "bad-1" }, "error": "missing string field 'type'" },
+    { "name": "unknown-type", "payload": { "type": "wat", "requestId": "bad-2" }, "error": "unknown request type 'wat'" },
+    { "name": "missing-request-id", "payload": { "type": "ping" }, "error": "ping requires string field 'requestId'" },
+    { "name": "wrong-field-kind", "payload": { "type": "eval", "code": 42, "requestId": "bad-4" }, "error": "eval field 'code' must be string" },
+    { "name": "missing-required-field", "payload": { "type": "stream-config", "maxRateHz": 30, "requestId": "bad-5" }, "error": "stream-config requires field 'channels'" }
+  ]
+}

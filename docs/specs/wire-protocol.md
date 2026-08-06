@@ -22,6 +22,16 @@
 > construction lives in `uSEQ/src/utils/json_builder.h`; output routing,
 > including serial stream frame emission, lives under `uSEQ/src/uSEQ/`.
 
+The machine-readable catalog for the current JSON protocol is
+`protocol/useq-json-v1.json`. It owns message names, top-level field kinds,
+request-id policy, runtime support metadata, and shared conformance fixtures.
+`scripts/generate_protocol_schema.mjs` generates the C++ catalog directly.
+The pinned `useq-perform` superproject invokes it with a TypeScript output to
+generate the editor catalog and
+`uSEQ/src/firmware/useq_protocol_schema.generated.h`; generated files must not
+be edited. This document remains authoritative for semantic detail and binary
+framing. The pre-1.2 framed-text adapter is deliberately outside JSON-v1.
+
 ### Source Files
 
 Firmware side:
@@ -31,6 +41,8 @@ Firmware side:
 - `uSEQ/src/firmware/serial_protocol_encoding.cpp` — response, diagnostics, stream, log, and ready encoding.
 - `uSEQ/src/firmware/serial_protocol_handlers.cpp` — hello, ping, stream configuration, live-input, failure-mode, module, and state-snapshot behavior.
 - `uSEQ/src/firmware/serial_protocol_json.h` — bounded JSON field helpers shared by dispatch and handlers.
+- `uSEQ/src/firmware/useq_protocol_schema.generated.h` — generated request routing/validation metadata and cross-language fixtures.
+- `protocol/useq-json-v1.json` — canonical machine-readable JSON-v1 catalog.
 - `uSEQ/src/devtools/devtools.{h,cpp}` — `debug` message handler: capability negotiation, channel configuration, query dispatch, streaming telemetry. Compile-gated behind `USEQ_DEVTOOLS`.
 - `uSEQ/src/firmware/firmware.{h,cpp}` — `Firmware::tick()` (drains serial, dispatches eval, emits stream frames)
 - `uSEQ/src/utils/serial_message.h` — wire-level constants: start marker (`0x1F`), message type bytes (`STREAM`, `INPUT_SET`), rate limits
@@ -540,6 +552,13 @@ firmware. Editors MUST ignore unknown kinds (logging at debug level is
 acceptable).
 
 ### 5.11 `calibrate-begin` (editor → device, request)
+
+**Implementation status:** the message family in §5.11–§5.15 is reserved by
+JSON-v1 and the editor-side flow exists, but the current pinned firmware has no
+calibration takeover backend. Its schema route is therefore `unsupported` and
+the firmware returns a correlated `success:false` response. These requests
+become hardware-supported only when the takeover/storage implementation lands;
+they must never fall through to eval or receive a false success ack.
 
 Enter calibration takeover mode for one analog output. The device freezes
 all other outputs at their current LKG values and takes exclusive control

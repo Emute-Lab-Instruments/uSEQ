@@ -10,7 +10,9 @@ compiler/control runtime. The canonical language entry point is
   pool, executor, diagnostics, state/resource ownership, and builtin table.
 - `uSEQ/src/firmware/` — RP2040/RP2350 composition root, live tick loop,
   hardware I/O, storage, and serial protocol partitioned into framing,
-  dispatch, encoding, and handlers; build identity/capabilities
+  schema-table dispatch, encoding, and handlers; the checked-in generated
+  protocol header comes from `protocol/useq-json-v1.json`; build identity and
+  capabilities
   (`build_info.h`), CRC-protected manufacturing identity
   (`factory_identity.{h,cpp}`), and I2C host/expander runtime; see
   `docs/specs/i2c-expander.md` for the output-expander wire contract.
@@ -33,6 +35,9 @@ compiler/control runtime. The canonical language entry point is
   evaluation without consuming hosted simulator quota.
 - `test/conformance/` — data-driven language corpus shared by native and
   generated-WASM adapters.
+- `protocol/useq-json-v1.json` — canonical current JSON-v1 request, response,
+  unsolicited-envelope, validation, support, and conformance-fixture catalog;
+  pre-1.2 framed text is intentionally outside it.
 - `bench/firmware-corpus/` — declared moderate, combined-high, and focused
   near-boundary workloads for the native RP2040 capacity profile;
   `manifest.json` makes the intended utilization bands executable.
