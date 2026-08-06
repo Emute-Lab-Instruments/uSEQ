@@ -3,6 +3,10 @@
   "profile": "wasm-release-size",
   "sources": [
     "wasm/wasm_wrapper.cpp",
+    "wasm/wasm_host_session.cpp",
+    "wasm/wasm_evaluation.cpp",
+    "wasm/wasm_projection.cpp",
+    "wasm/wasm_probes.cpp",
     "uSEQ/src/utils/string.cpp",
     "uSEQ/src/utils/common.cpp",
     "uSEQ/src/utils/itoa.cpp",

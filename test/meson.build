@@ -375,7 +375,11 @@ test('health_diagnostics_test', health_diagnostics_test_exe, timeout: 60)
 wasm_wrapper_projection_test_exe = executable(
   'test_wasm_wrapper_projection',
   sources : ['signal_engine/test_wasm_wrapper_projection.cpp',
-             '../wasm/wasm_wrapper.cpp'],
+             '../wasm/wasm_wrapper.cpp',
+             '../wasm/wasm_host_session.cpp',
+             '../wasm/wasm_evaluation.cpp',
+             '../wasm/wasm_projection.cpp',
+             '../wasm/wasm_probes.cpp'],
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,

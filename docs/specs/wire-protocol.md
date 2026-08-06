@@ -15,9 +15,10 @@
 > state machine, clock policy). Editor-side reference implementation:
 > `useq-perform/src/transport/`.
 >
-> Firmware implementation map (non-normative): request handling and dispatch
-> live in `uSEQ/src/firmware/serial_protocol.cpp`; protocol state and JSON
-> response/log helpers live in `uSEQ/src/utils/log.cpp`; lightweight JSON
+> Firmware implementation map (non-normative): byte framing lives in
+> `serial_protocol.cpp`, routing in `serial_protocol_dispatch.cpp`, response
+> encoding in `serial_protocol_encoding.cpp`, and request behavior in
+> `serial_protocol_handlers.cpp`; lightweight JSON
 > construction lives in `uSEQ/src/utils/json_builder.h`; output routing,
 > including serial stream frame emission, lives under `uSEQ/src/uSEQ/`.
 
@@ -25,7 +26,11 @@
 
 Firmware side:
 
-- `uSEQ/src/firmware/serial_protocol.{h,cpp}` — `SerialProtocol`: RX ring buffer, JSON message extraction, `dispatch_message()`, `handle_hello()`, `handle_ping()`, `handle_stream_config()`, `handle_set_live_inputs()`, `send_eval_response()`, `send_stream_data()`, `send_diagnostics()`, `send_log()`, `send_ready()`. Dispatches `debug` messages to the devtools subsystem.
+- `uSEQ/src/firmware/serial_protocol.{h,cpp}` — `SerialProtocol` public state and RX ring/framing implementation.
+- `uSEQ/src/firmware/serial_protocol_dispatch.cpp` — JSON command routing and devtools dispatch.
+- `uSEQ/src/firmware/serial_protocol_encoding.cpp` — response, diagnostics, stream, log, and ready encoding.
+- `uSEQ/src/firmware/serial_protocol_handlers.cpp` — hello, ping, stream configuration, live-input, failure-mode, module, and state-snapshot behavior.
+- `uSEQ/src/firmware/serial_protocol_json.h` — bounded JSON field helpers shared by dispatch and handlers.
 - `uSEQ/src/devtools/devtools.{h,cpp}` — `debug` message handler: capability negotiation, channel configuration, query dispatch, streaming telemetry. Compile-gated behind `USEQ_DEVTOOLS`.
 - `uSEQ/src/firmware/firmware.{h,cpp}` — `Firmware::tick()` (drains serial, dispatches eval, emits stream frames)
 - `uSEQ/src/utils/serial_message.h` — wire-level constants: start marker (`0x1F`), message type bytes (`STREAM`, `INPUT_SET`), rate limits
@@ -35,7 +40,7 @@ Firmware side:
 
 WASM parity:
 
-- `wasm/wasm_wrapper.cpp` — same JSON shapes as ABI calls (`useq_eval`, `useq_last_diagnostics`, etc.)
+- `wasm/wasm_wrapper.cpp` and `wasm/wasm_host_session.cpp` — same JSON shapes as ABI calls (`useq_eval`, `useq_last_diagnostics`, etc.) over the shared host session.
 
 Tests:
 

@@ -9,7 +9,8 @@ compiler/control runtime. The canonical language entry point is
 - `uSEQ/src/signal_engine/` — tokenizer, cold evaluator, graph builder, node
   pool, executor, diagnostics, state/resource ownership, and builtin table.
 - `uSEQ/src/firmware/` — RP2040/RP2350 composition root, live tick loop,
-  hardware I/O, storage, serial protocol, build identity/capabilities
+  hardware I/O, storage, and serial protocol partitioned into framing,
+  dispatch, encoding, and handlers; build identity/capabilities
   (`build_info.h`), CRC-protected manufacturing identity
   (`factory_identity.{h,cpp}`), and I2C host/expander runtime; see
   `docs/specs/i2c-expander.md` for the output-expander wire contract.
@@ -18,7 +19,8 @@ compiler/control runtime. The canonical language entry point is
 - `uSEQ/src/utils/json_cursor.h` — allocation-free bounded JSON field/object/
   array cursor shared by firmware serial commands, devtools, and WASM ABI
   readers; malformed-input and byte-fuzz coverage lives in `test/firmware/`.
-- `wasm/` — generated-runtime ABI wrapper and built interpreter artifacts;
+- `wasm/` — stable C ABI exports over one host-session owner and separate
+  evaluation, projection, and probe units, plus built interpreter artifacts;
   `useq-capabilities.json` is the compiler/interpreter profile record.
 - `nodedef/` — separately built `osc/sine` NodeDef implementation and module
   descriptor.

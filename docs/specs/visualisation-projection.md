@@ -8,12 +8,15 @@
 
 ## Source files
 
-- `wasm/wasm_wrapper.cpp` — primary implementation:
+- `wasm/wasm_projection.cpp` — projection owner:
   - `ProjectionFork` struct (declared state, previous outputs, output validity/LKG/fallback health, live-edit values, frozen cells/inputs, previous tick time, and projection metadata).
   - `reset_projection_fork()` — clones post-tick live state into the fork (spec section 3).
   - `project_from_fork()` — saves live state, installs fork state, runs sequential sample loop, saves fork advances, restores live state (spec section 4).
   - `useq_tick_and_project()` — combined ABI: phase 1 state-advancing tick, phase 2 projection (mode 0=none, 1=reset-fill, 2=extend-frontier) (spec section 7).
-  - `execute_batch_sequential()` — stateful batch evaluation with state save/restore.
+- `wasm/wasm_evaluation.cpp` — live tick ownership and
+  `execute_batch_sequential()` stateful evaluation with state save/restore.
+- `wasm/wasm_host_session.cpp` — authoritative engine, clock, diagnostic, and
+  revision state shared by the exported ABI units.
 - `uSEQ/src/signal_engine/executor.cpp` — `execute_all_outputs()`, `commit_state()`, `commit_outputs()` used by both live ticks and projection ticks.
 - `uSEQ/src/signal_engine/executor.h` — `ExecutionContext` struct (t, dt, cell_values, hw_inputs, prev_outputs, output_values, workspace).
 - `uSEQ/src/signal_engine/node_pool.h` — `NodePool` state arrays (state_values, prev_output_values, OutputSlot::lkg_value/has_lkg, output fallback and state-update failure masks) that the fork clones.
@@ -75,7 +78,7 @@ previous tick time.
 - the runtime fallback-health mask at the fork frontier;
 - frozen external input values captured at fork creation.
 
-(See `wasm_wrapper.cpp` `ProjectionFork` struct which implements all of these fields.)
+(See `wasm_projection.cpp` `ProjectionFork` struct which implements all of these fields.)
 
 2.5 The clone operation must be complete enough that stepping the projection
 fork produces the same values that live state would have produced if time had
@@ -111,7 +114,7 @@ live-edit value changed.
    `projection_end`.
 5. Store the newest projected sample time as `projectionFrontierTime`.
 
-(See `wasm_wrapper.cpp` `reset_projection_fork()` for steps 2-3 and `useq_tick_and_project()` projection_mode==1 for the full sequence.)
+(See `wasm_projection.cpp` `reset_projection_fork()` for steps 2-3 and `useq_tick_and_project()` projection_mode==1 for the full sequence.)
 
 3.3 The live tick owns the exact `tick_time` boundary value. Reset-fill does not
 advance state a second time at `tick_time`. If the editor needs a visual
@@ -213,7 +216,7 @@ The semantic operations are:
 - **read projection metadata** (`projectionStartTime`,
   `projectionFrontierTime`, replacement-vs-append mode).
 
-7.2 A combined call is preferred for the editor hot path (implemented in `wasm_wrapper.cpp` `useq_tick_and_project()`):
+7.2 A combined call is preferred for the editor hot path (implemented in `wasm_projection.cpp` `useq_tick_and_project()`):
 
 ```c
 int useq_tick_and_project(

@@ -71,6 +71,7 @@ def source_inputs(profile: dict[str, Any]) -> list[Path]:
         ROOT / "scripts" / "wasm_manifest.py",
         PROFILE_PATH,
         ROOT / "wasm" / "emscripten-post.js",
+        ROOT / "wasm" / "wasm_wrapper_internal.h",
     })
     for subtree in (ROOT / "uSEQ" / "src" / "signal_engine",
                     ROOT / "uSEQ" / "src" / "utils",
@@ -150,7 +151,7 @@ def cpp_limits() -> dict[str, int]:
         ROOT / "uSEQ" / "src" / "signal_engine" / "synth_registry.h",
         ROOT / "uSEQ" / "src" / "signal_engine" / "synth_graph.h",
         ROOT / "uSEQ" / "src" / "firmware" / "hardware_io.h",
-        ROOT / "wasm" / "wasm_wrapper.cpp",
+        ROOT / "wasm" / "wasm_probes.cpp",
     ]
     wanted = {
         "MAX_CELLS", "MAX_TOTAL_NODES", "MAX_DATA_ENTRIES",
