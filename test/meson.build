@@ -498,3 +498,13 @@ test('rp2040_wokwi_runner_contract', python3,
 conformance_runner_contract = find_program('scripts/test_run_conformance.py')
 test('conformance_runner_contract', python3,
      args : [conformance_runner_contract.full_path()], timeout: 30)
+
+# Generated-record and orientation-doc truth gates. Both are pure git/stdlib so
+# they run in the ordinary test environment, with no toolchain requirement.
+capability_provenance = find_program('scripts/test_capability_provenance.py')
+test('capability_provenance', python3,
+     args : [capability_provenance.full_path()], timeout: 30)
+
+doc_source_paths = find_program('scripts/test_doc_source_paths.py')
+test('doc_source_paths', python3,
+     args : [doc_source_paths.full_path()], timeout: 30)

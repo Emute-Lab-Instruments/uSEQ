@@ -33,7 +33,13 @@ common_warning_args = [
   '-Wall',           # Enable most warnings
   '-Wextra',         # Enable extra warnings
   '-Wpedantic',      # Pedantic warnings for ISO C++ compliance
-  '-Wno-conversion', # Disable type conversion warnings (embedded code needs flexibility)
+  # -Wno-conversion was removed 2026-08-07. It was inert: -Wconversion is not
+  # implied by -Wall/-Wextra/-Wpedantic, so the suppression disabled a warning
+  # that was never enabled, while its comment implied the codebase depended on
+  # it. Measured on a clean build with the flag deleted: zero new warnings.
+  # Enabling -Wconversion outright is a separate policy decision; it reports at
+  # least 11 sites (cold_eval, graph_builder, clock_sync,
+  # serial_protocol_handlers, test_firmware_fuzz).
   '-Wshadow',        # Warn about variable shadowing
   '-Wunused',        # Warn about unused variables/functions
   # -Wunused-parameter stays ON: measured 2026-08-07, the native build produces

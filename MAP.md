@@ -31,11 +31,12 @@ compiler/control runtime. The canonical language entry point is
   descriptor.
 - `test/signal_engine/` — native compiler/runtime, resource, projection,
   health, synth, and builtin suites.
-- `test/firmware/` and `test/hardware/` — host-composed firmware, wire
-  contract, and fake-bus output-expander tests; these are not physical-device
-  observations.
-- `test/scripts/` — structural contracts for acceptance runners and evidence
-  evaluation without consuming hosted simulator quota.
+- `test/firmware/` — host-composed firmware, wire contract, and fake-bus
+  output-expander tests; these are not physical-device observations.
+- `test/scripts/` — structural contracts for acceptance runners, generated
+  records, and evidence evaluation without consuming hosted simulator quota.
+- `test/COVERAGE_LEDGER.md` — spec-section to C++ test-case map with an
+  explicit Strict/WARN/None/N-A grade per clause.
 - `test/conformance/` — data-driven language corpus shared by native and
   generated-WASM adapters.
 - `protocol/useq-json-v1.json` — canonical current JSON-v1 request, response,
@@ -85,9 +86,13 @@ compiler/control runtime. The canonical language entry point is
   `--probe`. There is no candidate search, because a sibling build directory
   that shadowed `build/` would report conformance for stale source.
   `test/scripts/test_run_conformance.py` holds that contract.
-- The native warning set is enabled, not suppressed: `-Wunused-parameter` is on
-  and a clean `ninja -C build` is expected to emit zero warnings, so a warm
-  build directory cannot hide a new one.
+- The native warning set is enabled, not suppressed: there are no `-Wno-*`
+  flags, and a clean `ninja -C build` is expected to emit zero warnings, so a
+  warm build directory cannot hide a new one. Both former suppressions were
+  removed after measuring that each hid zero warnings —
+  `-Wno-unused-parameter` and `-Wno-conversion`, the latter inert because
+  `-Wconversion` is not implied by `-Wall`/`-Wextra`/`-Wpedantic`. Measure a
+  warning-policy change from scratch; a warm build dir proves nothing.
 - `scripts/build_wasm.sh` generates the interpreter and its compiler-owned
   capability record. Its tracked profile permits WASM memory growth but keeps
   fixed-length ArrayBuffer heap views because growable views are rejected by
@@ -95,6 +100,16 @@ compiler/control runtime. The canonical language entry point is
   and firmware-build fields belong to separate records.
 - Generated records are deterministic and unsigned. They support exact-byte
   identity and drift detection, not publisher authentication.
+  `wasm/useq-capabilities.json` is gitignored build output, so it is only ever
+  as current as the last `build_wasm.sh` run.
+  `test/scripts/test_capability_provenance.py` fails when a clean worktree
+  holds a record naming some other commit; the full toolchain-dependent check
+  is the `verify` subcommand of `scripts/wasm_manifest.py`.
+- `MAP.md`, `CLAUDE.md`, and `README.md` are the orientation docs, and every
+  repo path they cite must exist, enforced by
+  `test/scripts/test_doc_source_paths.py`. `docs/specs/` is deliberately
+  outside that gate: a spec may name a path that does not exist yet, and
+  checking those produces noise rather than drift signal.
 - The `useq-perform` superproject owns the authoritative application pin and
   served bundle. Promote compiler changes by advancing its `src-useq` gitlink
   and rebuilding assets.

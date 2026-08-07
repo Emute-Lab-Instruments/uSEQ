@@ -264,7 +264,11 @@ pio run -e musicthing  # Will recreate cache
 
 **Problem:** Type conversion warnings in embedded code
 
-**Solution:** These are expected and disabled with `-Wno-conversion` flag in platformio.ini
+**Not suppressed.** `platformio.ini` carries no `-Wno-*` flag, and neither does
+the native Meson build any more. `-Wconversion` is simply not implied by
+`-Wall`/`-Wextra`, so these warnings are off by default rather than disabled.
+Treat any warning the target build does emit as real; do not add a blanket
+suppression to silence it.
 
 ## File Locations
 

@@ -326,9 +326,15 @@ The firmware supports multiple hardware configurations:
 - Arduino: Hardware-specific defines for Pico
 
 ### Meson Configuration
-- Warning flags: `-Wall`, `-Wextra`, `-Wpedantic`, `-Wshadow`
-- Disabled: `-Wno-conversion`, `-Wno-unused-parameter`
-- Test builds: Located in `test_build/` directory
+- Warning flags: `-Wall`, `-Wextra`, `-Wpedantic`, `-Wshadow`, `-Wunused`,
+  `-Wuninitialized`, `-Wdouble-promotion`, `-Wformat=2`, `-Wnull-dereference`
+- No blanket suppressions. Both former ones were measured to hide zero
+  warnings and removed: `-Wno-unused-parameter` (2026-08-07) and
+  `-Wno-conversion` (2026-08-07, inert because `-Wconversion` is not implied
+  by `-Wall`/`-Wextra`/`-Wpedantic`). A clean `ninja -C build` must emit zero
+  warnings; measure policy changes from scratch, never in a warm build dir.
+- Test binaries build into `build/test/` and are registered in
+  `test/meson.build`; `meson test -C build --list` is the current inventory.
 
 ## Real-time Constraints
 
