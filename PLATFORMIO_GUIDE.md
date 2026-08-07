@@ -235,6 +235,25 @@ done
 
 ## Troubleshooting
 
+### `nix-shell platformio.nix --run '…'` silently builds nothing
+
+**Problem:** `platformio.nix` is a `buildFHSEnv` with `runScript = "bash"`, so
+`nix-shell`'s `--run` argument is **ignored**. The shell prints its banner,
+exits 0, and your build command never executes. Scripted use then reports a
+passing exit status while the ELF on disk is whatever the last real build left
+there — a false green that is indistinguishable from success unless you check
+the artifact timestamp.
+
+**Solution:** feed the command on stdin instead.
+
+```bash
+echo 'pio run -e musicthing' | nix-shell platformio.nix
+```
+
+Confirm a build actually ran before trusting it: the output must contain the
+`RAM:`/`Flash:` usage lines and `[SUCCESS]`. A run that only prints the
+environment banner did nothing.
+
 ### Build Fails: Platform Not Found
 
 **Problem:** First build fails because platform needs to be downloaded
