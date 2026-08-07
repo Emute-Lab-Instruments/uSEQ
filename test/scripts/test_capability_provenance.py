@@ -12,19 +12,31 @@ Emscripten/Binaryen toolchain and the built artifacts, so it cannot run in the
 ordinary `meson test` environment. The source-identity half needs nothing but
 git, and that is the half that actually rots.
 
-Three outcomes, all cheap:
-  * no record present (fresh clone, no WASM build yet) -- skip;
-  * worktree dirty -- inconclusive, because no clean claim is verifiable;
-  * worktree clean -- the record must name HEAD and declare itself clean.
+Two distinct failures, and the difference matters:
+
+  * STALE CONTENT -- the record's `input_tree_sha256` no longer matches the WASM
+    source inputs on disk, so the built artifacts do not correspond to this
+    source. Anything promoted on the strength of that record is mislabelled.
+  * STALE STAMP -- the inputs still hash equal, so the artifacts are correct,
+    but the record names an older commit. Only the provenance claim is wrong; a
+    rebuild restamps it.
+
+Both are reported as failures because both make the record untrue, but the
+message says which one it is so the reader knows whether the binaries are
+suspect or merely mislabelled.
+
+Recomputing the input digest needs only hashlib, so the check that matters most
+runs without the Emscripten/Binaryen toolchain.
 
 Observed 2026-08-07: at f5d502d the record still named 3f73fcc with 37 dirty
-entries. Everything else in it -- toolchain, flags, exports, limits, artifact
-digests, input_tree_sha256 -- matched, so only the stamp was wrong, which is
+entries while every other field -- toolchain, flags, exports, limits, artifact
+digests, input_tree_sha256 -- matched. That is the stale-stamp case, and it is
 exactly the failure that is easy to miss.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -32,6 +44,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "wasm/useq-capabilities.json"
+GENERATOR = ROOT / "scripts/wasm_manifest.py"
 
 # Must match scripts/wasm_manifest.py:git_source_state so the cheap gate and
 # the full verify agree on what "dirty" means.
@@ -42,6 +55,27 @@ def git(args: list[str]) -> str:
     return subprocess.run(
         args, cwd=ROOT, check=True, capture_output=True, text=True
     ).stdout.strip()
+
+
+def load_generator():
+    """Reuse the generator's own digest, so the gate cannot drift from it."""
+    spec = importlib.util.spec_from_file_location("wasm_manifest", GENERATOR)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def content_is_current(record: dict) -> bool | None:
+    """True/False if the recorded input digest still matches; None if unknown."""
+    recorded = record.get("source", {}).get("input_tree_sha256")
+    if not recorded:
+        return None
+    try:
+        generator = load_generator()
+        return generator.source_tree_digest(generator.load_profile()) == recorded
+    except Exception:  # noqa: BLE001 - a broken generator is a separate failure
+        return None
 
 
 def main() -> int:
@@ -60,23 +94,43 @@ def main() -> int:
             print(f"capability record is missing source.{field}")
             return 1
 
+    current = content_is_current(record)
+
     worktree_entries = [line for line in git(STATUS_ARGS).splitlines() if line]
     if worktree_entries:
+        state = {
+            True: "the record's WASM inputs still hash equal to the worktree",
+            False: "the record's WASM inputs no longer match the worktree, so "
+                   "the built artifacts are out of date",
+            None: "the record's input digest could not be recomputed",
+        }[current]
         print(
-            "inconclusive: worktree is dirty, so the committed record's source "
-            "identity cannot be checked here; "
-            "`python3 scripts/wasm_manifest.py verify` is the full gate"
+            f"inconclusive: worktree is dirty, so no clean-tree claim is "
+            f"verifiable ({state}). The full gate is the `verify` subcommand "
+            f"of scripts/wasm_manifest.py"
         )
         return 0
 
     head = git(["git", "rev-parse", "HEAD"])
     failures = []
 
-    if source["git_commit"] != head:
+    if current is False:
         failures.append(
-            f"source.git_commit is {source['git_commit']}, but HEAD is {head}; "
-            "the record was generated before the current commit and never "
-            "regenerated"
+            "STALE CONTENT: source.input_tree_sha256 does not match the WASM "
+            "source inputs on disk, so wasm/useq.wasm was built from different "
+            "source than this tree. Do not promote this record"
+        )
+
+    if source["git_commit"] != head:
+        detail = (
+            "the artifacts still hash equal, so only the provenance stamp is "
+            "wrong"
+            if current
+            else "and the inputs differ too"
+        )
+        failures.append(
+            f"STALE STAMP: source.git_commit is {source['git_commit']}, but "
+            f"HEAD is {head} ({detail})"
         )
     if source["git_dirty"] is not False:
         failures.append(
@@ -98,7 +152,13 @@ def main() -> int:
         )
         return 1
 
-    print(f"capability record source identity matches clean HEAD {head}")
+    digest_state = {
+        True: "inputs hash equal",
+        None: "input digest not recomputable",
+    }[current]
+    print(
+        f"capability record matches clean HEAD {head} ({digest_state})"
+    )
     return 0
 
 

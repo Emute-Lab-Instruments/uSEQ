@@ -102,9 +102,13 @@ compiler/control runtime. The canonical language entry point is
   identity and drift detection, not publisher authentication.
   `wasm/useq-capabilities.json` is gitignored build output, so it is only ever
   as current as the last `build_wasm.sh` run.
-  `test/scripts/test_capability_provenance.py` fails when a clean worktree
-  holds a record naming some other commit; the full toolchain-dependent check
-  is the `verify` subcommand of `scripts/wasm_manifest.py`.
+  `test/scripts/test_capability_provenance.py` separates the two ways it goes
+  wrong: stale *content* (the recorded input digest no longer matches the WASM
+  sources, so the artifacts were built from different source — never promote
+  that record) and a stale *stamp* (inputs still hash equal, so only the commit
+  identity is wrong and a rebuild restamps it). Recomputing the digest needs
+  only hashlib, so the check that matters most runs without the WASM toolchain;
+  the full check is the `verify` subcommand of `scripts/wasm_manifest.py`.
 - `MAP.md`, `CLAUDE.md`, and `README.md` are the orientation docs, and every
   repo path they cite must exist, enforced by
   `test/scripts/test_doc_source_paths.py`. `docs/specs/` is deliberately
