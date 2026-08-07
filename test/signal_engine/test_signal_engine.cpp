@@ -2026,18 +2026,18 @@ TEST_CASE("Dependency tracking: cell changes trigger recompilation", "[signal_en
         // (because the graph builder bakes Number cells as constants).
         // on_cell_changed SHOULD trigger recompilation, but only if
         // the output source was stored. Let's check both cases.
-        ExecutionContext ctx;
-        ctx.t = 0.0;
-        ctx.dt = 0.0;
-        ctx.cell_values = cell_vals;
-        ctx.hw_inputs = hw_inputs;
-        ctx.data_pool = engine.cells.data_pool;
-        ctx.data_offsets = engine.cells.data_offsets;
-        ctx.data_lengths = engine.cells.data_lengths;
-        ctx.prev_outputs = engine.pool.prev_output_values;
-        ctx.output_values = outputs;
-        ctx.workspace = workspace;
-        execute_all_outputs(engine.pool, ctx);
+        ExecutionContext recompiled_ctx;
+        recompiled_ctx.t = 0.0;
+        recompiled_ctx.dt = 0.0;
+        recompiled_ctx.cell_values = cell_vals;
+        recompiled_ctx.hw_inputs = hw_inputs;
+        recompiled_ctx.data_pool = engine.cells.data_pool;
+        recompiled_ctx.data_offsets = engine.cells.data_offsets;
+        recompiled_ctx.data_lengths = engine.cells.data_lengths;
+        recompiled_ctx.prev_outputs = engine.pool.prev_output_values;
+        recompiled_ctx.output_values = outputs;
+        recompiled_ctx.workspace = workspace;
+        execute_all_outputs(engine.pool, recompiled_ctx);
 
         // If dependency tracking + recompilation works: 880
         // If it doesn't (no stored output source): 440 (stale baked constant)
@@ -2122,8 +2122,6 @@ TEST_CASE("Multiple outputs share subgraph nodes via CSE", "[signal_engine][exec
     engine.cells.cells[si.intern("bars-per-phrase")] = { CellKind::Number, 0, 0, 1, 4.0 };
     engine.cells.cells[si.intern("phrases-per-section")] = { CellKind::Number, 0, 0, 1, 4.0 };
 
-    uint16_t initial_node_count = engine.pool.node_count;
-
     // Both outputs use beat — the beat subgraph should be shared
     EvalResult r1 = eval_cold("(a1 beat)", 9, engine);
     REQUIRE(r1.kind == EvalResult::Ok);
@@ -2136,7 +2134,6 @@ TEST_CASE("Multiple outputs share subgraph nodes via CSE", "[signal_engine][exec
     // a2 should add very few (or zero) new nodes since beat subgraph is shared
     // The beat subgraph has: CellLoad(bpm), Const(60), Div, Mul(t, rate), Const(1), Fmod
     // Plus t (RawTimeLoad). CSE should reuse all of these.
-    uint16_t nodes_added_by_a1 = after_a1 - initial_node_count;
     uint16_t nodes_added_by_a2 = after_a2 - after_a1;
 
     // a2 should add 0 new nodes (complete CSE sharing)
@@ -2456,9 +2453,10 @@ TEST_CASE("Cold eval: zeros creates zero vector", "[signal_engine][cold_eval][ze
 
     // Create a zero vector and define it
     const char* src = "(define pat (zeros 4))";
-    EvalResult r = eval_cold(src, (uint32_t)strlen(src), engine);
     // zeros returns DataRef which define should handle, but define currently
-    // stores it as expression. The zeros call itself should succeed at top level.
+    // stores it as expression. The zeros call itself should succeed at top level;
+    // this call is only here to set that state up, so its result is not asserted.
+    eval_cold(src, (uint32_t)strlen(src), engine);
 
     // Direct zeros call
     const char* src2 = "(zeros 8)";

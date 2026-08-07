@@ -41,10 +41,13 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FIXTURE_DIR = PROJECT_ROOT / "test" / "conformance"
-DEFAULT_PROBE_CANDIDATES = [
-    PROJECT_ROOT / "build-probe" / "test" / "signal_engine_probe",
-    PROJECT_ROOT / "build" / "test" / "signal_engine_probe",
-]
+# One canonical native probe. A candidate search here is not a convenience:
+# any build directory that shadows `build/` reports conformance for whatever
+# source it happened to be built from, so a stale sibling tree silently turns
+# this gate into a measurement of old code. Callers that build a probe
+# elsewhere (run_rp2040_profile.py builds a firmware-capacity probe under
+# bench/) must name it with --probe.
+DEFAULT_PROBE = PROJECT_ROOT / "build" / "test" / "signal_engine_probe"
 DEFAULT_WASM_PROBE = PROJECT_ROOT / "scripts" / "wasm_conformance_probe.mjs"
 
 VALID_STEP_OPS = {"eval", "tick", "sample", "clear", "health", "config"}
@@ -318,15 +321,14 @@ def resolve_probe(explicit: str | None, target: str) -> Path:
         if not p.is_file():
             raise SystemExit(f"Missing probe executable: {p}")
         return p
-    candidates = ([DEFAULT_WASM_PROBE] if target == "wasm"
-                  else DEFAULT_PROBE_CANDIDATES)
-    for c in candidates:
-        if c.is_file():
-            return c
+    default = DEFAULT_WASM_PROBE if target == "wasm" else DEFAULT_PROBE
+    if default.is_file():
+        return default
     if target == "wasm":
         raise SystemExit("Could not find scripts/wasm_conformance_probe.mjs.")
-    raise SystemExit("Could not find signal_engine_probe. Pass --probe or "
-                     "build it (meson setup build && ninja -C build -j4).")
+    raise SystemExit(f"Could not find {default.relative_to(PROJECT_ROOT)}. "
+                     "Pass --probe or build it "
+                     "(meson setup build && ninja -C build -j4).")
 
 
 def spec_area(fixture: Path) -> str:

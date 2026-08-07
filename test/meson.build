@@ -494,3 +494,7 @@ test('wasm_manifest_contract', python3,
 wokwi_runner_contract = find_program('scripts/test_run_wokwi_rp2040.py')
 test('rp2040_wokwi_runner_contract', python3,
      args : [wokwi_runner_contract.full_path()], timeout: 30)
+
+conformance_runner_contract = find_program('scripts/test_run_conformance.py')
+test('conformance_runner_contract', python3,
+     args : [conformance_runner_contract.full_path()], timeout: 30)

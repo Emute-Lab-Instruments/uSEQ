@@ -13,10 +13,11 @@ uSEQ is a **livecodeable eurorack module** - a hardware music sequencer that can
 This project uses **`ergo`** for task tracking. `ergo` is the coding-work CLI
 over the Holon EAV substrate and replaced Beads (`bd`) on 2026-06-15.
 
-The `ergo` CLI is installed at `/home/w1n5t0n/.local/bin/ergo`. The required
-environment (`HOLON_TOKEN`, `HOLON_CORE_URL`, optional `HOLON_PRINCIPAL`) is
-loaded for every shell by `~/.zshenv` sourcing `~/.secrets/env`. The
-authoritative workflow is `/home/w1n5t0n/agents/skills/ergo/SKILL.md`.
+`ergo` is on `PATH` for every shell. The required environment
+(`HOLON_TOKEN`, `HOLON_CORE_URL`, optional `HOLON_PRINCIPAL`) is set by
+`~/.zshenv`; where the secret comes from is per-machine (GNOME Keyring on the
+laptop, `~/.secrets/env` on servers) and is described by the host's `~/AGENTS.md`,
+not here. The authoritative workflow is `~/agents/skills/ergo/SKILL.md`.
 
 Use `ergo` for all task tracking. Do not create markdown TODO lists or track
 work outside `ergo`. Beads (`bd`) and Dolt are frozen read-only historical
@@ -171,26 +172,47 @@ python scripts/serve_wasm.py
 │   ├── cell_store.{h,cpp}     # Named cells and data tables
 │   ├── token.{h,cpp}          # Tokenizer
 │   ├── diagnostics.{h,cpp}    # Structured error reporting
+│   ├── compiler_pipeline.{h,cpp} # Parse IR, source-write plan, rollback txn
 │   ├── state_registry.{h,cpp} # State-identity resource registry
+│   ├── synth_registry.{h,cpp} # NodeDef registry (host/WASM only)
+│   ├── synth_graph.{h,cpp}    # Published synth artefact graph (host/WASM only)
 │   ├── signal_engine.h        # SignalEngine composition struct
 │   ├── types.h                # Shared types (Node, Cell, Output, etc.)
+│   ├── build_profile.h        # Compile-time capability profile
 │   └── symbols.def            # X-macro symbol definitions
 ├── firmware/                  # Hardware abstraction
 │   ├── firmware.{h,cpp}       # Composition root, init(), tick() loop
 │   ├── hardware_io.{h,cpp}    # All pin I/O, variant pin maps, LEDs
-│   ├── serial_protocol.{h,cpp}# JSON wire protocol dispatch
+│   ├── clock_sync.{h,cpp}     # External-gate tempo estimation, phase lock
+│   ├── serial_protocol.{h,cpp}          # JSON wire protocol framing
+│   ├── serial_protocol_dispatch.cpp     # Schema-table request dispatch
+│   ├── serial_protocol_encoding.cpp     # Response encoding
+│   ├── serial_protocol_handlers.cpp     # Per-request handlers
+│   ├── useq_protocol_schema.generated.h # Generated from protocol/useq-json-v1.json
 │   ├── flash_storage.{h,cpp}  # LittleFS persistence
+│   ├── factory_identity.{h,cpp} # CRC-protected manufacturing identity
+│   ├── build_info.h           # Build identity and capability advertisement
 │   ├── i2c_network.{h,cpp}    # Multi-module I2C communication
 │   ├── dsp_engine.{h,cpp}     # Core 1 stub (P3)
 │   └── utils/                 # piopwm.h, ResponsiveAnalogRead
-├── utils/                     # String, JSON builder, log, serial_message
+├── devtools/                  # Compile-time-gated telemetry instrumentation
+├── utils/                     # String, JSON builder/cursor, log, serial_message
 ├── modulisp/lisp/symbol_intern.h  # Symbol interning (shared)
-└── ports/                     # IStorage.h, MockStorage.h (testability)
+└── ports/                     # IStorage.h, II2CTransport.h + mocks/ (testability)
 
-/wasm/wasm_wrapper.cpp         # WASM bindings (15 exports)
-/test/                         # signal_engine/ and firmware/ test suites
+/wasm/                         # Stable C ABI over split units:
+                               #   wasm_host_session.cpp  — session ownership
+                               #   wasm_evaluation.cpp    — eval surface
+                               #   wasm_projection.cpp    — output projection
+                               #   wasm_probes.cpp        — probe sampling
+                               #   wasm_wrapper.cpp       — remaining ABI
+                               # Export inventory is generated, not hand-counted:
+                               # wasm/useq-capabilities.json → capabilities.
+                               #   public_function_exports
+/protocol/useq-json-v1.json    # Canonical JSON-v1 request/response catalog
+/test/                         # signal_engine/, firmware/, conformance/, scripts/
 /docs/specs/                   # Normative specs (MAIN.md is the index)
-/scripts/                      # Build, test, flash scripts
+/scripts/                      # Build, test, flash, conformance, RP2040 gates
 ```
 
 ### Key Components
@@ -318,8 +340,11 @@ The firmware supports multiple hardware configurations:
 
 ## Testing Strategy
 
-Test suites in `test/signal_engine/` and `test/firmware/`:
-- **signal_engine**: Core compiler + executor (136 test cases)
+`test/meson.build` is the registration list — `meson test -C build --list` is the
+current inventory; the sample below is not exhaustive and case counts are not
+tracked here.
+
+- **signal_engine**: Core compiler + executor
 - **signal_engine_golden**: Golden semantic tests (data-driven, 1000+ assertions)
 - **signal_engine_phase4**: Advanced features (robustness, edge cases)
 - **signal_engine_robustness**: Fuzz and stress tests
@@ -353,5 +378,9 @@ Run tests frequently during development to ensure stability.
 3. `uSEQ/src/signal_engine/executor.cpp` — the hot path (per-sample node evaluation)
 4. `uSEQ/src/signal_engine/cold_eval.cpp` — cold path (REPL eval, cell/output management)
 5. `uSEQ/src/firmware/firmware.cpp` — tick loop (the main runtime loop)
-6. `wasm/wasm_wrapper.cpp` — WASM bindings (15 exports for the web editor)
+6. `wasm/` — WASM bindings for the web editor, split across `wasm_host_session.cpp`,
+   `wasm_evaluation.cpp`, `wasm_projection.cpp`, `wasm_probes.cpp`, and
+   `wasm_wrapper.cpp`. The authoritative export list is generated into
+   `wasm/useq-capabilities.json` (`capabilities.public_function_exports`) — read it
+   rather than counting by hand.
 7. `test/signal_engine/test_signal_engine_golden.cpp` — golden semantic tests

@@ -104,28 +104,46 @@ public:
             input_waveforms_[channel] = wf;
     }
 
+    // Built field-by-field rather than with a braced aggregate so that the
+    // struct's own defaults for `phase` and `custom_fn` stay authoritative;
+    // a partial braced initializer would silently re-specify them.
+    static InputWaveform make_waveform(WaveformType type, double freq_hz,
+                                       double amplitude, double offset)
+    {
+        InputWaveform w;
+        w.type      = type;
+        w.frequency = freq_hz;
+        w.amplitude = amplitude;
+        w.offset    = offset;
+        return w;
+    }
+
     void set_input_sine(int channel, double freq_hz,
                         double amplitude = 0.5, double offset = 0.5)
     {
-        set_input_waveform(channel, {WaveformType::SINE, freq_hz, amplitude, offset});
+        set_input_waveform(channel,
+                           make_waveform(WaveformType::SINE, freq_hz, amplitude, offset));
     }
 
     void set_input_square(int channel, double freq_hz,
                           double amplitude = 0.5, double offset = 0.5)
     {
-        set_input_waveform(channel, {WaveformType::SQUARE, freq_hz, amplitude, offset});
+        set_input_waveform(channel,
+                           make_waveform(WaveformType::SQUARE, freq_hz, amplitude, offset));
     }
 
     void set_input_triangle(int channel, double freq_hz,
                             double amplitude = 0.5, double offset = 0.5)
     {
-        set_input_waveform(channel, {WaveformType::TRIANGLE, freq_hz, amplitude, offset});
+        set_input_waveform(channel,
+                           make_waveform(WaveformType::TRIANGLE, freq_hz, amplitude, offset));
     }
 
     void set_input_saw(int channel, double freq_hz,
                        double amplitude = 0.5, double offset = 0.5)
     {
-        set_input_waveform(channel, {WaveformType::SAW, freq_hz, amplitude, offset});
+        set_input_waveform(channel,
+                           make_waveform(WaveformType::SAW, freq_hz, amplitude, offset));
     }
 
     void set_input_value(int channel, double value)

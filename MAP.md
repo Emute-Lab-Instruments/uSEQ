@@ -54,7 +54,9 @@ compiler/control runtime. The canonical language entry point is
   `rp2040_budget.json`).
 - `docs/specs/` — canonical language, runtime, firmware, diagnostics, state,
   synth, and protocol specifications; `docs/SEMANTICS.md` is a compatibility
-  pointer only.
+  pointer only, and `docs/useq.md` is the non-normative pre-1.2 user document
+  retained solely because `docs/specs/MAIN.md` §4.3 cites it for the removed
+  `@`-prefix surface.
 - `docs/testing/` — conformance and benchmark methodology.
 - `hardware/`, `interfaces/`, `samples/` — hardware material, external
   interfaces, and example programs.
@@ -78,6 +80,14 @@ compiler/control runtime. The canonical language entry point is
 - Native and generated-WASM conformance use the same fixtures. A target build,
   firmware-capacity native process, simulator run, browser execution, and
   physical-device observation are separate evidence profiles.
+- `run_conformance.py` resolves exactly one native probe,
+  `build/test/signal_engine_probe`; any other probe must be named with
+  `--probe`. There is no candidate search, because a sibling build directory
+  that shadowed `build/` would report conformance for stale source.
+  `test/scripts/test_run_conformance.py` holds that contract.
+- The native warning set is enabled, not suppressed: `-Wunused-parameter` is on
+  and a clean `ninja -C build` is expected to emit zero warnings, so a warm
+  build directory cannot hide a new one.
 - `scripts/build_wasm.sh` generates the interpreter and its compiler-owned
   capability record. Its tracked profile permits WASM memory growth but keeps
   fixed-length ArrayBuffer heap views because growable views are rejected by

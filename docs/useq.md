@@ -1,3 +1,9 @@
+> **Historical.** This is the pre-1.2 user document, retained only because
+> `docs/specs/MAIN.md` §4.3 cites it as the record of the removed `@`-prefix
+> immediate-eval surface. It is not normative and parts of it no longer
+> describe the shipped runtime. The canonical language specification is
+> `docs/specs/MAIN.md` and the feature specs it indexes.
+
 # uSEQ timing system
 
 Most computer music systems run with a fixed quantum, but uSEQ is a bit different. It runs as fast as possible, a bit like a game will try to run at the fastest fps possible.  Timing functions take a *functional rendering* approach; they take the current time ```t``` as an argument, and react accordingly.  Much of the sequencing in uSEQ is done using *phasors*, ramps that rise from 0 to 1 in a fixed time period.

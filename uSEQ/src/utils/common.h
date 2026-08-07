@@ -92,7 +92,9 @@ extern "C"
 #ifndef HOST
     int atexit(void (*func)()) __attribute__((weak));
 #endif
-    int main() __attribute__((weak));
+    // The Arduino core's own `int main()` declaration is deliberately not
+    // mirrored here: nothing in this tree declares or calls main through this
+    // shim, and declaring ::main inside extern "C" is ill-formed.
 
 #ifdef EXTENDED_PIN_MODE
     // Platforms who want to declare more than 256 pins need to define

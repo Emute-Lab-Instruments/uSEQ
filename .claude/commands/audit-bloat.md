@@ -59,10 +59,15 @@ Spawn these in parallel:
 
 | Agent | Scope | Focus |
 |-------|-------|-------|
-| **interpreter** | `uSEQ/src/modulisp/` including `lisp/` | Interpreter bloat, unnecessary abstraction in parser/evaluator/environment, over-engineered value types or dispatch |
-| **signal-engine** | `uSEQ/src/signal_engine/` | Node pool complexity, compilation overhead, unnecessary abstraction in the bytecode VM |
-| **hardware-io** | `uSEQ/src/uSEQ/`, `uSEQ/src/io/`, `uSEQ/src/ports/`, `uSEQ/src/firmware/`, `uSEQ/src/dsp/` | Hardware abstraction bloat, unnecessary I/O layering, dead variant code, DSP over-engineering |
-| **cross-cutting** | Entire `uSEQ/src/`, `wasm/`, `test/` | Duplicate implementations across modules, concepts named differently in different places, data flowing through unnecessary intermediate representations, WASM wrapper bloat |
+| **compiler** | `uSEQ/src/signal_engine/` (`token`, `graph_builder`, `compiler_pipeline`, `cold_eval`) | Compilation overhead, unnecessary abstraction between parse IR, graph construction, and publication |
+| **runtime** | `uSEQ/src/signal_engine/` (`node_pool`, `executor`, `state_registry`, `cell_store`) | Node pool complexity, hot-path allocation, over-engineered resource ownership |
+| **hardware-io** | `uSEQ/src/firmware/`, `uSEQ/src/ports/`, `uSEQ/src/devtools/` | Hardware abstraction bloat, serial-protocol layering, dead variant code, telemetry over-engineering |
+| **cross-cutting** | Entire `uSEQ/src/`, `wasm/`, `test/` | Duplicate implementations across modules, concepts named differently in different places, data flowing through unnecessary intermediate representations, WASM ABI bloat |
+
+The pre-1.2 `modulisp/lisp/`, `uSEQ/src/uSEQ/`, `uSEQ/src/io/`, and `uSEQ/src/dsp/`
+trees no longer exist; the only survivor of that layout is
+`modulisp/lisp/symbol_intern.h`. The runtime is a graph executor, not a bytecode
+VM — see `docs/specs/compilation.md`.
 
 ### Thorough mode (6-8 agents)
 

@@ -36,7 +36,9 @@ common_warning_args = [
   '-Wno-conversion', # Disable type conversion warnings (embedded code needs flexibility)
   '-Wshadow',        # Warn about variable shadowing
   '-Wunused',        # Warn about unused variables/functions
-  '-Wno-unused-parameter', # Disable unused parameter warnings (common in embedded callbacks)
+  # -Wunused-parameter stays ON: measured 2026-08-07, the native build produces
+  # zero of them, so the old blanket suppression bought nothing and would have
+  # hidden real dead parameters as the compiler is refactored.
   '-Wuninitialized', # Warn about uninitialized variables
   '-Wdouble-promotion', # Warn about float to double promotions
   '-Wformat=2',      # Strict format string checking

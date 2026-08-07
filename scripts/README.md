@@ -79,20 +79,42 @@ The combined summary links the two subordinate summaries by SHA-256. Run
 candidate comparisons with the same toolchain and Wokwi CLI version, and
 retain only candidates for which the complete gate passes.
 
-### `serve.py`
+### `run_conformance.py`
+
+Runs the shared language corpus in `test/conformance/` against one adapter:
+
+```bash
+python3 scripts/run_conformance.py --target native
+python3 scripts/run_conformance.py --target wasm
+```
+
+The native probe resolves to exactly one path, `build/test/signal_engine_probe`.
+Any probe built elsewhere — for example the firmware-capacity probe that
+`run_rp2040_profile.py` puts under `bench/` — must be named with `--probe`.
+There is deliberately no candidate search: a stale sibling build directory that
+shadowed `build/` would report conformance for whatever source it was built
+from.
+
+### `serve_wasm.py`
 Simple Python web server for testing the WASM build locally.
 
 ```bash
-./scripts/serve.py
+./scripts/serve_wasm.py
 ```
 
 Serves files from the `wasm/` directory on http://localhost:8000/
 
 ### Other Scripts (existing)
 
-- `arduino_build.sh` - Build firmware for Arduino/Pico
 - `build.sh` - Build desktop version using Meson
-- `lisplibrary.py` - Convert LISP library to C++ header
+- `build_pio.sh` / `flash_pio.sh` / `pio.sh` - PlatformIO firmware build, flash,
+  and convenience wrapper
+- `build_arduino_cli.sh` / `flash_arduino_cli.sh` - legacy Arduino CLI path,
+  superseded by the PlatformIO scripts
+- `generate_protocol_schema.mjs` - regenerate the JSON-v1 dispatch schema from
+  `protocol/useq-json-v1.json`
+- `verify_firmware_no_synth.py` - assert a linked firmware ELF contains no
+  host/WASM synth-engine objects, symbols, or text
 
 ## Requirements
 

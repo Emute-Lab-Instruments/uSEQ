@@ -296,7 +296,6 @@ TEST_CASE("FlashStorage: operations without storage return false", "[flash]") {
 static void execute_tick(SignalEngine& engine, double t, double* out) {
     double cell_snap[MAX_CELLS] = {};
     double workspace[MAX_TOTAL_NODES] = {};
-    double prev[MAX_OUTPUTS] = {};
 
     engine.cells.snapshot_values(cell_snap, MAX_CELLS);
 
@@ -374,8 +373,6 @@ TEST_CASE("recompile_all_outputs is idempotent", "[flash]") {
     eval_cold(src, (uint32_t)strlen(src), engine);
 
     REQUIRE(engine.pool.outputs[0].valid == true);
-    uint16_t root_after_first = engine.pool.outputs[0].root_node;
-
     // ── First recompile ────────────────────────────────────────────────────
     recompile_all_outputs(engine);
     uint16_t node_count_1 = engine.pool.node_count;

@@ -29,7 +29,6 @@ extern "C"
 #endif
 
 // char *dtostrf(double val, signed char width, unsigned char prec, char *sout);
-#include "stdio.h"
 #include <cstdio>
 
     char* dtostrf(double val, signed char width, unsigned char prec, char* sout)
