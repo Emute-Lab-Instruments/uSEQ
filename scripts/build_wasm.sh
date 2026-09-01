@@ -33,7 +33,7 @@ EM_FLAGS=(
 )
 
 # Build command — output to wasm directory
-emcc "${SOURCES[@]}" "${FLAGS[@]}" ${EM_FLAGS[@]} -o wasm/useq.js
+em++ "${SOURCES[@]}" "${FLAGS[@]}" ${EM_FLAGS[@]} -o wasm/useq.js
 
 echo "emcc build successful."
 
