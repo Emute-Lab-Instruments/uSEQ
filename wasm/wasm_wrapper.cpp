@@ -156,12 +156,15 @@ extern "C" {
         // Save all mutable state — useq_eval_output is read-only and must
         // not corrupt live engine state (execute_at_time advances everything).
         double saved_state[sig::MAX_STATE_SLOTS];
+        bool saved_state_observed[sig::MAX_STATE_SLOTS];
         double saved_prev_outputs[sig::MAX_OUTPUTS];
         double saved_lkg[sig::MAX_OUTPUTS];
         bool saved_has_lkg[sig::MAX_OUTPUTS];
         uint16_t saved_slot_count = g_engine->pool.state_slot_count;
         sig::EngineState saved_engine_state = g_engine->state;
         memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
+        memcpy(saved_state_observed, g_engine->pool.state_observed,
+               sizeof(saved_state_observed));
         memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
             saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
@@ -176,6 +179,8 @@ extern "C" {
 
         // Restore all state
         memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
+        memcpy(g_engine->pool.state_observed, saved_state_observed,
+               sizeof(saved_state_observed));
         memcpy(g_engine->pool.prev_output_values, saved_prev_outputs, sizeof(saved_prev_outputs));
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
             g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
@@ -748,6 +753,7 @@ extern "C" {
                     double val = extract_json_number(s, len, vpos);
                     if (slot_idx < g_engine->pool.state_slot_count) {
                         g_engine->pool.state_values[slot_idx] = val;
+                        g_engine->pool.state_observed[slot_idx] = true;
                     }
                 }
                 p = obj_end;
@@ -801,6 +807,17 @@ extern "C" {
         if (!g_engine || output_index < 0 || output_index >= (int)sig::MAX_OUTPUTS)
             return 0;
         return g_engine->pool.output_input_mask[output_index];
+    }
+
+    // Conservative denotational dependency bits from ProgramEffect. This is
+    // separate from the legacy four-way visualization classification so proof
+    // tools can distinguish state, schedule, ground time, and environment.
+    uint32_t useq_output_semantic_effects(int output_index)
+    {
+        if (!g_engine || output_index < 0 ||
+            output_index >= (int)sig::MAX_OUTPUTS)
+            return 0;
+        return g_engine->pool.output_semantic_effects[output_index];
     }
 
 } // extern "C"

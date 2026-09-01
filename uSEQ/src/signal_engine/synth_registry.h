@@ -40,7 +40,7 @@ enum class SynthSmoothingClass : uint8_t {
 // ── Parameter contract per NodeDef ─────────────────────────────────────────
 struct NodeDefParam {
     const char* name;             // e.g. "freq", "amp"
-    double default_value;         // static default; omitted bindings take this
+    Sample default_value;         // static default; omitted bindings take this
     SynthRateClass rate_class;
     SynthSmoothingClass smoothing_class;
 };
@@ -74,8 +74,8 @@ struct NodeDefDescriptor {
     // Convenience accessors used by the compiler. freq_default and amp_default
     // are surfaced directly because the synth form grammar is hard-wired to
     // the freq/amp pair for M1.
-    double freq_default;          // registry-declared default for :freq
-    double amp_default;           // registry-declared default for :amp
+    Sample freq_default;          // registry-declared default for :freq
+    Sample amp_default;           // registry-declared default for :amp
 };
 
 // ── Static registry accessor ───────────────────────────────────────────────

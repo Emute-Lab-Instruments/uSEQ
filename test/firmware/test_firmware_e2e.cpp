@@ -468,7 +468,7 @@ TEST_CASE("F1: Define + set — frequency change via cell update", "[e2e][depend
     auto r1 = h.eval("(define freq 5)");
     REQUIRE(r1.kind != sig::EvalResult::Error);
 
-    auto r2 = h.eval("(a1 (usin (* beat freq)))");
+    auto r2 = h.eval("(a1 (sin (* beat freq)))");
     REQUIRE(r2.kind != sig::EvalResult::Error);
 
     h.start_capture();
@@ -502,10 +502,10 @@ TEST_CASE("F2: Multiple dependents — amplitude cell affects two outputs", "[e2
     auto r1 = h.eval("(define amp 0.5)");
     REQUIRE(r1.kind != sig::EvalResult::Error);
 
-    auto r2 = h.eval("(a1 (* amp (usin beat)))");
+    auto r2 = h.eval("(a1 (* amp (sin beat)))");
     REQUIRE(r2.kind != sig::EvalResult::Error);
 
-    auto r3 = h.eval("(a2 (* amp (ucos beat)))");
+    auto r3 = h.eval("(a2 (* amp (cos beat)))");
     REQUIRE(r3.kind != sig::EvalResult::Error);
 
     h.start_capture();

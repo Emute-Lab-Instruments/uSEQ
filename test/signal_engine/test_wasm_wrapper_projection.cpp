@@ -35,6 +35,7 @@ int useq_tick_and_project(
     int buffer_length);
 int useq_tick_synth_controls(double wall_time, int buffer_ptr, int buffer_length);
 int useq_set_live_inputs(const char* json_str);
+uint32_t useq_output_semantic_effects(int output_index);
 char* useq_last_error();
 }
 
@@ -187,6 +188,9 @@ TEST_CASE("WASM sampling is diagnostic-pure and invalid projection is atomic",
         "(a2 (+ (prev a2) 1))"
         "(a3 (integrate 1))"
         "(a4 (expt 1e154 (- t 20)))");
+    CHECK((useq_output_semantic_effects(0) & (1u << 4)) != 0);
+    CHECK((useq_output_semantic_effects(2) & (1u << 6)) != 0);
+    CHECK((useq_output_semantic_effects(2) & (1u << 7)) != 0);
     REQUIRE(useq_set_live_inputs("{\"rate\":1}") == 1);
 
     Wasm32Buffer buffer(8);
@@ -204,7 +208,7 @@ TEST_CASE("WASM sampling is diagnostic-pure and invalid projection is atomic",
     CHECK(buffer.data()[3] == Approx(1.0));
     CHECK(buffer.data()[4] == Approx(1.0));
     CHECK(buffer.data()[5] == Approx(2.0));
-    CHECK(buffer.data()[6] == Approx(9.0));
+    CHECK(buffer.data()[6] == Approx(1.0));
     CHECK(buffer.data()[7] == Approx(1e154));
 
     REQUIRE(useq_set_live_inputs("{\"rate\":7}") == 1);
@@ -214,16 +218,16 @@ TEST_CASE("WASM sampling is diagnostic-pure and invalid projection is atomic",
 
     CHECK(buffer.data()[0] == Approx(7.0));
     CHECK(buffer.data()[1] == Approx(2.0));
-    CHECK(buffer.data()[2] == Approx(9.0));
+    CHECK(buffer.data()[2] == Approx(2.0));
     CHECK(buffer.data()[3] == Approx(1e308));
     CHECK(buffer.data()[4] == Approx(1.0));
     CHECK(buffer.data()[5] == Approx(3.0));
-    CHECK(buffer.data()[6] == Approx(10.0));
+    CHECK(buffer.data()[6] == Approx(3.0));
     CHECK(buffer.data()[7] == Approx(1e154));
 
     REQUIRE(useq_eval_output("a1", 23.0) == Approx(7.0));
     REQUIRE(useq_eval_output("a2", 23.0) == Approx(3.0));
-    REQUIRE(useq_eval_output("a3", 23.0) == Approx(11.0));
+    REQUIRE(useq_eval_output("a3", 23.0) == Approx(3.0));
     REQUIRE(useq_eval_output("a4", 23.0) == Approx(1e308));
 
     // Background output recompilation keeps the previous graph and publishes

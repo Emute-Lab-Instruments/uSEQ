@@ -73,6 +73,28 @@ signal_engine_golden_test_exe = executable(
 
 test('signal_engine_golden_test', signal_engine_golden_test_exe)
 
+temporal_query_test_exe = executable(
+  'test_temporal_query',
+  sources : ['signal_engine/test_temporal_query.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('temporal_query_test', temporal_query_test_exe)
+
+program_semantics_test_exe = executable(
+  'test_program_semantics',
+  sources : ['signal_engine/test_program_semantics.cpp'],
+  include_directories : test_inc,
+  cpp_args : test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [signal_engine_dep, math_dep]
+)
+
+test('program_semantics_test', program_semantics_test_exe)
+
 # ===== Signal Engine Phase 4 Tests =====
 
 signal_engine_phase4_test_exe = executable(

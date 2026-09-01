@@ -500,7 +500,7 @@ TEST_CASE("A8: duplicate active :id rejected; cross-kind :id sharing allowed",
 
     // Two oscillators updating the same phase resource in one program —
     // ambiguous, must be rejected (state-identity.md §5.3).
-    EvalResult r = h.eval("(a1 (+ (saw 1 :id \"pA\") (saw 2 :id \"pA\")))");
+    EvalResult r = h.eval("(a1 (+ (lfo/saw 1 :id \"pA\") (lfo/saw 2 :id \"pA\")))");
     REQUIRE(r.kind == EvalResult::Error);
     REQUIRE(r.diagnostic_count >= 1);
     REQUIRE(r.diagnostics[0].category == DiagnosticCategory::Boundary);
@@ -511,8 +511,8 @@ TEST_CASE("A8: duplicate active :id rejected; cross-kind :id sharing allowed",
 
     // Recompiling the same program with the same :id stays fine (per-build
     // detection only).
-    h.eval_ok("(a3 (saw 1 :id \"pB\"))");
-    h.eval_ok("(a3 (saw 2 :id \"pB\"))");
+    h.eval_ok("(a3 (lfo/saw 1 :id \"pB\"))");
+    h.eval_ok("(a3 (lfo/saw 2 :id \"pB\"))");
 }
 
 // ── A9: unknown keywords on stateful primitives error out ──────────────────
@@ -527,12 +527,12 @@ TEST_CASE("A9: unknown keywords, :fresh, and non-constant :phase are errors",
         "(a1 (integrate 1 :bogus 3))",
         "(a1 (toggle (sqr beat) :bogus 3))",
         "(a1 (count (sqr beat) :bogus 3))",
-        "(a1 (slew (saw 1) 1 :bogus 3))",
+        "(a1 (slew (lfo/saw 1) 1 :bogus 3))",
         "(a1 (live-edit 0.5 :id \"k\" :bogus 3))",
         "(a1 (phasor 1 :fresh))",
         // Non-constant :phase must error, not be silently ignored.
-        "(a1 (phasor 1 :phase (saw 1)))",
-        "(a1 (lfo 1 :phase (saw 1)))",
+        "(a1 (phasor 1 :phase (lfo/saw 1)))",
+        "(a1 (lfo 1 :phase (lfo/saw 1)))",
     };
     for (const char* f : bad_forms) {
         INFO("form: " << f);
@@ -556,7 +556,7 @@ TEST_CASE("A10: (/ x x) evaluates per runtime semantics, not folded to 1",
     Harness h;
 
     // saw(1) is 0 at t=0 → 0/0 must be 0, not 1.
-    h.eval_ok("(a1 (/ (saw 1) (saw 1)))");
+    h.eval_ok("(a1 (/ (lfo/saw 1) (lfo/saw 1)))");
     REQUIRE(h.sample(0, 0.0) == Approx(0.0));
 
     // Non-zero point still gives 1.

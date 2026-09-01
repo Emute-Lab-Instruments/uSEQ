@@ -785,9 +785,9 @@ TEST_CASE("Graph builder: logic", "[signal_engine][graph_builder]") {
 // ── 7. Graph Builder — Math Functions ──────────────────────────────────────
 
 TEST_CASE("Graph builder: math functions", "[signal_engine][graph_builder]") {
-    SECTION("Trig") {
-        REQUIRE(eval_at("(sin 0)", 0.0) == Approx(0.0));
-        REQUIRE(eval_at("(cos 0)", 0.0) == Approx(1.0));
+    SECTION("Raw-radian trig") {
+        REQUIRE(eval_at("(r/sin 0)", 0.0) == Approx(0.0));
+        REQUIRE(eval_at("(r/cos 0)", 0.0) == Approx(1.0));
         REQUIRE(eval_at("(tan 0)", 0.0) == Approx(0.0));
     }
 
@@ -838,17 +838,18 @@ TEST_CASE("Graph builder: math functions", "[signal_engine][graph_builder]") {
 // ── 8. Graph Builder — Waveforms ───────────────────────────────────────────
 
 TEST_CASE("Graph builder: waveforms", "[signal_engine][graph_builder]") {
-    SECTION("usin") {
-        REQUIRE(eval_at("(usin 0)", 0.0) == Approx(0.5).margin(1e-9));
-        REQUIRE(eval_at("(usin 0.25)", 0.0) == Approx(1.0).margin(1e-9));
-        REQUIRE(eval_at("(usin 0.5)", 0.0) == Approx(0.5).margin(1e-9));
-        REQUIRE(eval_at("(usin 0.75)", 0.0) == Approx(0.0).margin(1e-9));
+    SECTION("sin is the unipolar normalized-phase default") {
+        REQUIRE(eval_at("(sin 0)", 0.0) == Approx(0.5).margin(1e-9));
+        REQUIRE(eval_at("(sin 0.25)", 0.0) == Approx(1.0).margin(1e-9));
+        REQUIRE(eval_at("(sin 0.5)", 0.0) == Approx(0.5).margin(1e-9));
+        REQUIRE(eval_at("(sin 0.75)", 0.0) == Approx(0.0).margin(1e-9));
     }
 
-    SECTION("ucos") {
-        REQUIRE(eval_at("(ucos 0)", 0.0) == Approx(1.0).margin(1e-9));
-        REQUIRE(eval_at("(ucos 0.25)", 0.0) == Approx(0.5).margin(1e-9));
-        REQUIRE(eval_at("(ucos 0.5)", 0.0) == Approx(0.0).margin(1e-9));
+    SECTION("bsin is the bipolar normalized-phase form") {
+        REQUIRE(eval_at("(bsin 0)", 0.0) == Approx(0.0).margin(1e-9));
+        REQUIRE(eval_at("(bsin 0.25)", 0.0) == Approx(1.0).margin(1e-9));
+        REQUIRE(eval_at("(bsin 0.5)", 0.0) == Approx(0.0).margin(1e-9));
+        REQUIRE(eval_at("(bsin 0.75)", 0.0) == Approx(-1.0).margin(1e-9));
     }
 
     SECTION("tri") {
@@ -864,8 +865,8 @@ TEST_CASE("Graph builder: waveforms", "[signal_engine][graph_builder]") {
     }
 
     SECTION("pulse") {
-        REQUIRE(eval_at("(pulse 0.3 0.5)", 0.0) == 1.0);
-        REQUIRE(eval_at("(pulse 0.7 0.5)", 0.0) == 0.0);
+        REQUIRE(eval_at("(pulse 0.5 0.3)", 0.0) == 1.0);
+        REQUIRE(eval_at("(pulse 0.5 0.7)", 0.0) == 0.0);
     }
 
     SECTION("bi-to-uni / b>u") {
@@ -880,6 +881,72 @@ TEST_CASE("Graph builder: waveforms", "[signal_engine][graph_builder]") {
         REQUIRE(eval_at("(u>b 0.5)", 0.0) == Approx(0.0));
         REQUIRE(eval_at("(u>b 1)", 0.0) == Approx(1.0));
         REQUIRE(eval_at("(uni-to-bi 0)", 0.0) == Approx(-1.0));
+    }
+}
+
+TEST_CASE("Graph builder: operator namespaces",
+          "[signal_engine][graph_builder][namespaces]") {
+    SECTION("domain and range adapters are mechanical") {
+        REQUIRE(eval_at("(n/sin 0.25)", 0.0) == Approx(1.0));
+        REQUIRE(eval_at("(r/sin 1.5707963267948966)", 0.0) == Approx(1.0));
+        REQUIRE(eval_at("(u/sin 0.75)", 0.0) == Approx(0.0));
+        REQUIRE(eval_at("(b/sin 0.25)", 0.0) ==
+                Approx(eval_at("(bsin 0.25)", 0.0)));
+        REQUIRE(eval_at("(b/tri 0.25)", 0.0) == Approx(0.0));
+    }
+
+    SECTION("long namespace spellings are accepted") {
+        REQUIRE(eval_at("(norm/sin 0.25)", 0.0) == Approx(1.0));
+        REQUIRE(eval_at("(rad/sin 1.5707963267948966)", 0.0) == Approx(1.0));
+        REQUIRE(eval_at("(uni/tri 0.5)", 0.0) == Approx(1.0));
+        REQUIRE(eval_at("(bi/tri 0.25)", 0.0) == Approx(0.0));
+    }
+
+    SECTION("free-running forms carry their polarity in the namespace") {
+        REQUIRE(eval_at("(lfo/sin 1)", 0.0) == Approx(0.5));
+        REQUIRE(eval_at("(blfo/sin 1)", 0.0) == Approx(0.0));
+        REQUIRE(eval_at("(lfo 1)", 0.0) == Approx(0.5));
+        REQUIRE(eval_at("(blfo 1)", 0.0) == Approx(0.0));
+        REQUIRE(eval_at("(lfo 1 :wave :cos)", 0.0) == Approx(1.0));
+    }
+
+    SECTION("cold forms fold once and reject live inputs") {
+        REQUIRE(eval_at("(k/+ 1 2 3)", 0.0) == Approx(6.0));
+        REQUIRE(eval_at("(once/sin 0.25)", 0.0) == Approx(1.0));
+        REQUIRE(eval_has_error("(k/sin beat)"));
+        const double random_value = eval_at("(k/random -2 3)", 0.0);
+        REQUIRE(random_value >= -2.0);
+        REQUIRE(random_value < 3.0);
+    }
+
+    SECTION("raw preserves engine-native forms") {
+        REQUIRE(eval_at("(raw/sin 1.5707963267948966)", 0.0) == Approx(1.0));
+        REQUIRE(eval_at("(raw/+ 1 2)", 0.0) == Approx(3.0));
+    }
+
+    SECTION("invalid namespace forms fail closed") {
+        REQUIRE(eval_has_error("(z/sin beat)"));
+        REQUIRE(eval_has_error("(n/u/sin beat)"));
+        REQUIRE(eval_has_error("(u/+ 1 2)"));
+        REQUIRE(eval_has_error("(n/not-a-builtin beat)"));
+    }
+
+    SECTION("v1.2 removes namespace-era legacy names") {
+        SignalEngine engine;
+        engine.init_defaults();
+        const char* source = "(a1 (usin beat))";
+        EvalResult result = eval_cold(
+            source, static_cast<uint32_t>(std::strlen(source)), engine);
+        REQUIRE(result.kind == EvalResult::Error);
+        REQUIRE(result.diagnostic_count > 0);
+        REQUIRE(std::string(result.diagnostics[0].message).find("use 'sin'") !=
+                std::string::npos);
+        REQUIRE(std::string(result.diagnostics[0].suggestion).find("(sin phasor)") !=
+                std::string::npos);
+        REQUIRE(eval_has_error("(ucos beat)"));
+        REQUIRE(eval_has_error("(osc 1)"));
+        REQUIRE(eval_has_error("(tri-osc 1)"));
+        REQUIRE(eval_has_error("(sqr-osc 1)"));
     }
 }
 
@@ -1833,11 +1900,11 @@ static double eval_with_setup(const char* setup, const char* output_expr, double
 // ── Euclid Tests ────────────────────────────────────────────────────────────
 
 TEST_CASE("Graph builder: euclid", "[signal_engine][graph_builder][euclid]") {
-    // euclid(total, active, phase) — matches old engine modular algorithm
+    // euclid(hits, total, [pulse-width], [rotation], phase)
     SECTION("euclid 3 of 8 full pattern") {
-        // Old engine pattern: [1,1,0,1,0,0,1,0]
+        // Modular pattern: [1,0,0,1,0,0,1,0]
         REQUIRE(eval_at("(euclid 3 8 0.0)", 0.0) == 1.0);
-        REQUIRE(eval_at("(euclid 3 8 0.125)", 0.0) == 1.0);
+        REQUIRE(eval_at("(euclid 3 8 0.125)", 0.0) == 0.0);
         REQUIRE(eval_at("(euclid 3 8 0.25)", 0.0) == 0.0);
         REQUIRE(eval_at("(euclid 3 8 0.375)", 0.0) == 1.0);
         REQUIRE(eval_at("(euclid 3 8 0.5)", 0.0) == 0.0);
@@ -1859,27 +1926,25 @@ TEST_CASE("Graph builder: euclid", "[signal_engine][graph_builder][euclid]") {
         REQUIRE(eval_at("(euclid 4 4 0.75)", 0.0) == 1.0);
     }
 
-    SECTION("euclid 1 of 4 — matches old engine") {
-        // (euclid 1 4 phase): n=1 total steps, k=4 active
-        // Only 1 step spanning [0,1), always a hit (0 < 4), gated by rem < 0.5
-        REQUIRE(eval_at("(euclid 1 4 0.0)", 0.0) == 1.0);     // rem=0.0 < 0.5
-        REQUIRE(eval_at("(euclid 1 4 0.25)", 0.0) == 1.0);    // rem=0.25 < 0.5
-        REQUIRE(eval_at("(euclid 1 4 0.5)", 0.0) == 0.0);     // rem=0.5, not < 0.5
-        REQUIRE(eval_at("(euclid 1 4 0.75)", 0.0) == 0.0);    // rem=0.75, not < 0.5
+    SECTION("euclid 1 of 4") {
+        REQUIRE(eval_at("(euclid 1 4 0.0)", 0.0) == 1.0);
+        REQUIRE(eval_at("(euclid 1 4 0.25)", 0.0) == 0.0);
+        REQUIRE(eval_at("(euclid 1 4 0.5)", 0.0) == 0.0);
+        REQUIRE(eval_at("(euclid 1 4 0.75)", 0.0) == 0.0);
     }
 
-    SECTION("euclid 4 1 — 1 hit out of 4 steps") {
-        // (euclid 4 1 phase): n=4 total, k=1 active
-        // Step 0: idx=(0*1)%4=0 < 1, hit. Steps 1-3: idx >= 1, miss.
-        REQUIRE(eval_at("(euclid 4 1 0.0)", 0.0) == 1.0);     // step 0, hit
-        REQUIRE(eval_at("(euclid 4 1 0.25)", 0.0) == 0.0);    // step 1, miss
-        REQUIRE(eval_at("(euclid 4 1 0.5)", 0.0) == 0.0);     // step 2, miss
-        REQUIRE(eval_at("(euclid 4 1 0.75)", 0.0) == 0.0);    // step 3, miss
+    SECTION("four-argument form is pulse width") {
+        REQUIRE(eval_at("(euclid 1 4 0.1 0.02)", 0.0) == 1.0);
+        REQUIRE(eval_at("(euclid 1 4 0.1 0.03)", 0.0) == 0.0);
     }
 
-    SECTION("euclid uses beat as default phase") {
-        // At t=0, beat=0 at 120bpm → first step
-        REQUIRE(eval_at("(euclid 3 8)", 0.0) == 1.0);
+    SECTION("five-argument form adds rotation before the phasor") {
+        REQUIRE(eval_at("(euclid 1 4 0.5 1 0.0)", 0.0) == 0.0);
+        REQUIRE(eval_at("(euclid 1 4 0.5 1 0.25)", 0.0) == 1.0);
+    }
+
+    SECTION("phasor is required") {
+        REQUIRE(eval_at("(euclid 3 8)", 0.0) == -99999.0);
     }
 }
 
@@ -3075,8 +3140,8 @@ TEST_CASE("Firmware integration: execute_all_outputs with ExecutionContext and c
     SignalEngine engine;
     engine.init_defaults(120.0);
 
-    // Define an output: a1 = sin(* t 440)
-    const char* code = "(a1 (sin (* t 440)))";
+    // Define an output using the explicit raw-radian form.
+    const char* code = "(a1 (r/sin (* t 440)))";
     EvalResult r = eval_cold(code, (uint32_t)strlen(code), engine);
     REQUIRE(r.kind != EvalResult::Error);
     engine.pool.rebuild_execution_order();
@@ -3839,24 +3904,24 @@ TEST_CASE("defn thorough function definition", "[signal_engine][cold_eval][defn]
 TEST_CASE("shift is alias for offset", "[signal_engine][time_warp][shift]") {
     // shift and offset should produce identical results
     SECTION("shift matches offset with sin beat") {
-        double offset_val = eval_at("(offset 0.1 (usin beat))", 0.0);
-        double shift_val  = eval_at("(shift 0.1 (usin beat))", 0.0);
+        double offset_val = eval_at("(offset 0.1 (sin beat))", 0.0);
+        double shift_val  = eval_at("(shift 0.1 (sin beat))", 0.0);
         REQUIRE(offset_val != -99999.0); // ensure no error
         REQUIRE(shift_val != -99999.0);
         REQUIRE(offset_val == Approx(shift_val));
     }
 
     SECTION("shift matches offset at different time") {
-        double offset_val = eval_at("(offset 0.25 (usin beat))", 0.3);
-        double shift_val  = eval_at("(shift 0.25 (usin beat))", 0.3);
+        double offset_val = eval_at("(offset 0.25 (sin beat))", 0.3);
+        double shift_val  = eval_at("(shift 0.25 (sin beat))", 0.3);
         REQUIRE(offset_val != -99999.0);
         REQUIRE(shift_val != -99999.0);
         REQUIRE(offset_val == Approx(shift_val));
     }
 
     SECTION("shift with zero offset is identity") {
-        double plain  = eval_at("(usin beat)", 0.2);
-        double shifted = eval_at("(shift 0 (usin beat))", 0.2);
+        double plain  = eval_at("(sin beat)", 0.2);
+        double shifted = eval_at("(shift 0 (sin beat))", 0.2);
         REQUIRE(plain != -99999.0);
         REQUIRE(shifted != -99999.0);
         REQUIRE(plain == Approx(shifted));

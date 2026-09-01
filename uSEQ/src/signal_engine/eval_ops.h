@@ -15,7 +15,7 @@
 
 namespace sig {
 
-static inline double eval_unary_op(NodeOp op, double a) {
+static inline Sample eval_unary_op(NodeOp op, Sample a) {
     switch (op) {
         case NodeOp::Neg:     return -a;
         case NodeOp::Abs:     return fabs(a);
@@ -38,13 +38,13 @@ static inline double eval_unary_op(NodeOp op, double a) {
             v = ((v >> 16) ^ v) * 0x45d9f3bu;
             v = ((v >> 16) ^ v) * 0x45d9f3bu;
             v = (v >> 16) ^ v;
-            return (double)(v & 0x7fffffffu) / (double)0x7fffffffu;
+            return (Sample)(v & 0x7fffffffu) / (Sample)0x7fffffffu;
         }
         default: return 0.0;
     }
 }
 
-static inline double eval_binary_op(NodeOp op, double a, double b) {
+static inline Sample eval_binary_op(NodeOp op, Sample a, Sample b) {
     switch (op) {
         case NodeOp::Add:   return a + b;
         case NodeOp::Sub:   return a - b;
@@ -76,7 +76,7 @@ static inline double eval_binary_op(NodeOp op, double a, double b) {
 //   (scale min max value) — value is last
 //   (lerp  a   b   t)    — interpolation parameter t is last
 //   (if    cond then else) — condition is first (Select)
-static inline double eval_ternary_op(NodeOp op, double a, double b, double c) {
+static inline Sample eval_ternary_op(NodeOp op, Sample a, Sample b, Sample c) {
     switch (op) {
         case NodeOp::Clamp:  return (c < a) ? a : (c > b) ? b : c; // (clamp lo hi value)
         case NodeOp::Lerp:   return a + (b - a) * c;

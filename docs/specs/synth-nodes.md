@@ -131,9 +131,22 @@ the distinction is curatorial.
 2.7 **Naming.** NodeDef names are namespaced strings (`"osc/saw"`,
 `"filt/svf"`, `"voice/fm"`) and must not collide with control-rate UGen
 names from [state.md](state.md) §6 — `(synth "osc/saw" ...)` and the UGen
-`(saw 1)` are different worlds and must not share a bare name. `name` and
+`(saw[lfo] 1)` are different worlds and must not share a bare name. `name` and
 `id` are reserved and illegal as param names (they occupy form-level
 keyword positions, §3.1).
+
+2.8 **Registered NodeDefs also have a qualified symbol spelling.** If a
+registered NodeDef is named `osc/<name>`, that exact qualified head is sugar
+for the string form:
+
+```lisp
+(osc/sine :freq 440) ≡ (synth "osc/sine" :freq 440)
+```
+
+The registry supplies the exact qualified callables; `osc` is not adapter
+policy and the names are not ordinary builtin aliases. This spelling changes no
+NodeDef semantics, identity, lifecycle, routing, capability, or failure
+behaviour. See [qualified-symbols.md](qualified-symbols.md) §2.3.
 
 ---
 
@@ -191,7 +204,7 @@ position, declaring an anonymous node patched inline:
 ```clojure
 (synth "filt/svf"
   :in     (synth "osc/saw" :freq (* 55 (pow 2 (floor (* 4 bar)))))
-  :cutoff (+ 1500 (* 1000 (sin (* 2 pi bar)))))
+  :cutoff (+ 1500 (* 1000 (sin bar))))
 ```
 
 Nested forms are sugar: semantically identical to a top-level `synth` with

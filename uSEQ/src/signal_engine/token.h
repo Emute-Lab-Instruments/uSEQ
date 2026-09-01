@@ -20,7 +20,7 @@ struct Token {
     uint16_t span_start = 0;
     uint16_t span_len   = 0;
     union {
-        double number;
+        Sample number;
         SymbolID symbol;
         struct { uint32_t offset; uint16_t length; } string;
     };

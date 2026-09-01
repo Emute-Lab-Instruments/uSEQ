@@ -45,6 +45,11 @@ the language surface.
 - `(schedule name body period)` / `(unschedule name)` — see open question below.
 - `(eval string)` — dynamic evaluation. Top-level only; rejected in signal context.
 - `(print value)`, `(perf)`, `(timeit expr)` — diagnostic side effects.
+- Host/WASM temporal queries: `(q/zeros [start end] target)`,
+  `(q/crossings level [start end] [:rising|:falling] target)`,
+  `(q/range [low high] [start end] target)`, and
+  `(q/explain [start end] target)`. The target is always final; see
+  [temporal-queries.md](temporal-queries.md).
 
 1.4.1 `(useq-clear)` is a full in-memory session reset. It removes user
 definitions and callables, callable/output/state source text, data tables,

@@ -67,7 +67,7 @@ struct SynthControlChannel {
     uint8_t dep_count                   = 0;
 
     // Root-level non-finite containment for the audio control producer.
-    double lkg_value                    = 0.0;
+    Sample lkg_value                    = 0.0;
     bool has_lkg                        = false;
 
     // One fixed reactive-compile diagnostic slot per published control on the

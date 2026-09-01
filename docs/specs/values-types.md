@@ -17,7 +17,7 @@
 
 1.3 **Numbers are doubles.** There is no separate integer type. `1` and `1.0` are the same value. Integer-valued doubles are produced by `floor`, `ceil`, indexing, etc. The compiler may **internally** specialise integer-valued node chains (counters, vector indices, `floor`/`ceil`/comparison/`mod` chains where it can prove integer-ness) to integer arithmetic on targets without an FPU; this is invisible to the user. Whether to expose user-visible integer literals or an `(int x)` coercion is open ([MAIN.md §5.7](MAIN.md)). (See `uSEQ/src/signal_engine/cell_store.h` — Cell.value is double; `uSEQ/src/signal_engine/node_pool.h` — Node.imm is double, all NodeOps operate on doubles.)
 
-1.4 **Truthiness in numeric context**: non-zero is true, `0.0` is false. Comparison and logic operators return `1.0` or `0.0`. To threshold a phasor to a gate, use the explicit operator (`sqr`, `pulse`, `(> phasor 0.5)`); truthiness is not redefined to "≥ 0.5", because that would silently invert the meaning of `(if x …)` for bipolar signals near zero (`sin`, audio).
+1.4 **Truthiness in numeric context**: non-zero is true, `0.0` is false. Comparison and logic operators return `1.0` or `0.0`. To threshold a phasor to a gate, use the explicit operator (`sqr`, `(pulse[:duty value] phasor)`, `(> phasor 0.5)`); truthiness is not redefined to "≥ 0.5", because that would silently invert the meaning of `(if x …)` for bipolar signals near zero (`sin[bi]`, audio).
 
 1.5 **Truthiness in non-numeric context**: `nil` and `0`/`0.0` are false; everything else is true. This is consistent with Clojure modulo the absence of a dedicated boolean type.
 

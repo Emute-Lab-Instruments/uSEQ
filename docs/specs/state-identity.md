@@ -112,10 +112,10 @@ resources it reads/updates and which roles those resources play.
 
 ```lisp
 (phasor 1 :id "phase-A")
-(saw 1 :id "phase-A")
-(tri-osc 1 :id "phase-A")
-(sqr-osc 1 :id "phase-A")
-(lfo 1 :wave :tri :id "phase-A")
+(saw[lfo] 1 :id "phase-A")
+(tri[lfo] 1 :id "phase-A")
+(sqr[lfo] 1 :id "phase-A")
+(tri[lfo bi] 1 :id "phase-A")
 ```
 
 Changing waveform or frequency continues the same phase unless the user resets
@@ -125,7 +125,7 @@ or forks the identity.
 matches:
 
 ```lisp
-(saw 1 :id "x")
+(saw[lfo] 1 :id "x")
 (count gate :id "x")
 ```
 
@@ -183,8 +183,8 @@ as pure reads of one separately declared state source.
 5.3 Ambiguous duplicate updates to the same resource are errors:
 
 ```lisp
-(a1 (+ (saw 1 :id "phase-A")
-       (tri-osc 2 :id "phase-A")))
+(a1 (+ (saw[lfo] 1 :id "phase-A")
+       (tri[lfo] 2 :id "phase-A")))
 ```
 
 Both forms would update the same oscillator phase with different rates. The
@@ -199,11 +199,10 @@ context is permitted and preserves matching state.
 
 ```lisp
 (a1 (let [p (phasor 1 :id "phase-A")]
-      (+ (saw-shape p) (tri-shape p))))
+      (+ (saw p) (tri p))))
 ```
 
-The shape function names are illustrative; the semantic requirement is one
-state source feeding multiple pure views.
+The semantic requirement is one state source feeding multiple pure views.
 
 5.5 Duplicate IDs with disjoint resource kinds may compile, but the compiler
 may warn if the relationship is likely accidental.

@@ -35,6 +35,7 @@ enum class ResourceKind : uint8_t {
     OnePole,
     EnvelopeFollower,
     NoiseCounter,
+    LocalClock,
 };
 
 struct StateResourceKey {
@@ -57,7 +58,7 @@ struct StateResourceEntry {
     // inhabit one namespace; ANON_STATE_CONTEXT_NONE is reserved for legacy
     // callers that do not publish a live graph.
     uint16_t owner_context;
-    double init_value;
+    Sample init_value;
     bool active;
 };
 
@@ -67,12 +68,13 @@ struct StateResourceRegistry {
     uint16_t free_slots[MAX_STATE_SLOTS];
     uint16_t free_slot_count = 0;
     bool last_owner_conflict = false;
+    bool last_resolve_created = false;
 
     // Resolve a key to a dense state slot index. If the key already exists,
     // returns its slot and preserves accumulated state. If new, allocates a
     // fresh slot and writes init_value. Returns NODE_NONE on overflow.
-    uint16_t resolve(const StateResourceKey& key, double init_value,
-                     double* state_values, uint16_t& state_slot_count,
+    uint16_t resolve(const StateResourceKey& key, Sample init_value,
+                     Sample* state_values, uint16_t& state_slot_count,
                      uint16_t owner_context = ANON_STATE_CONTEXT_NONE);
 
     // Begin/commit publication for one compiler context. Existing resources

@@ -58,7 +58,20 @@ struct Scope {
 // ── Time Context ────────────────────────────────────────────────────────────
 
 struct TimeContext {
-    uint16_t t_node; // node index representing "current t" (may be transformed)
+    // The distinguished local time seen by `t`. Pure substitution replaces
+    // only this node; `t0` and `ground-time` remain anchored.
+    uint16_t t_node = NODE_NONE;
+
+    // Delta used by state introduced inside this lexical context.
+    // `rate-as` scales it; `time-as` leaves it unchanged.
+    uint16_t dt_node = NODE_NONE;
+
+    // Unmodified transport-logical time and wall delta.
+    uint16_t base_t_node = NODE_NONE;
+    uint16_t wall_dt_node = NODE_NONE;
+
+    // Monotonic session time, unaffected by transport or local time changes.
+    uint16_t ground_t_node = NODE_NONE;
 };
 
 // ── Bounded graph candidate IR ─────────────────────────────────────────────
@@ -81,6 +94,67 @@ struct GraphBuildResult {
 // ── Graph Builder ───────────────────────────────────────────────────────────
 
 struct StateResourceRegistry;
+
+enum class SymbolCategory : uint8_t {
+    none,
+    arith,
+    cmp,
+    logic,
+    unary,
+    binary,
+    ternary,
+    time_warp,
+    control,
+    signal,
+    side_effect,
+    waveform
+};
+
+enum class OperatorInputDomain : uint8_t { None, Angle, Phase, Scalar };
+enum class OperatorOutputRange : uint8_t { None, Unipolar, Bipolar };
+enum class OperatorRegime : uint8_t { None, Pure, PureShaper, Stateful, TopLevel };
+enum class ColdEvaluable : uint8_t { No, Yes };
+enum class BareIdentity : uint8_t {
+    Native,
+    NormalizedUnipolar,
+    NormalizedBipolar,
+    UnipolarShaper,
+    LfoUnipolar,
+    LfoBipolar
+};
+
+enum class OperatorNamespace : uint8_t {
+    None,
+    Normalized,
+    Radians,
+    Unipolar,
+    Bipolar,
+    Lfo,
+    BipolarLfo,
+    Osc,
+    Cold,
+    Raw,
+    Unknown,
+    Malformed
+};
+
+struct OperatorDeclaration {
+    SymbolID symbol = SymbolIntern::INVALID_ID;
+    const char* spelling = nullptr;
+    SymbolCategory category = SymbolCategory::none;
+    OperatorInputDomain input_domain = OperatorInputDomain::None;
+    OperatorOutputRange output_range = OperatorOutputRange::None;
+    OperatorRegime regime = OperatorRegime::None;
+    ColdEvaluable cold_evaluable = ColdEvaluable::No;
+    BareIdentity bare_identity = BareIdentity::Native;
+};
+
+struct NamespacedOperator {
+    OperatorNamespace name_space = OperatorNamespace::None;
+    SymbolID base_symbol = SymbolIntern::INVALID_ID;
+    const OperatorDeclaration* declaration = nullptr;
+    uint16_t namespace_span_len = 0;
+};
 
 struct GraphBuilder {
     NodePool& pool;
@@ -118,10 +192,10 @@ struct GraphBuilder {
 
     struct LiveSlotUndo {
         uint16_t slot_index = 0;
-        double value = 0.0;
-        double min_val = 0.0;
-        double max_val = 1.0;
-        double seed = 0.0;
+        Sample value = 0.0;
+        Sample min_val = 0.0;
+        Sample max_val = 1.0;
+        Sample seed = 0.0;
     };
     static constexpr uint16_t MAX_LIVE_SLOT_UNDO =
         MAX_LIVE_SLOTS < MAX_IDS_PER_BUILD ? MAX_LIVE_SLOTS : MAX_IDS_PER_BUILD;
@@ -157,6 +231,14 @@ struct GraphBuilder {
     static void init_symbols();
     static bool symbols_initialized;
 
+    static constexpr uint16_t MAX_OPERATOR_DECLARATIONS = 192;
+    static OperatorDeclaration operator_declarations[MAX_OPERATOR_DECLARATIONS];
+    static uint16_t operator_declaration_count;
+    static const OperatorDeclaration* find_operator_declaration(SymbolID symbol);
+    static NamespacedOperator resolve_namespaced_operator(SymbolID symbol);
+    static bool namespace_applies(OperatorNamespace name_space,
+                                  const OperatorDeclaration& declaration);
+
     // ── Form dispatch table ─────────────────────────────────────────────
     struct FormEntry {
         SymbolID sym;
@@ -181,6 +263,9 @@ struct GraphBuilder {
                             uint16_t span_start, uint16_t span_len);
     uint16_t compile_form(SymbolID op, TokenStream& ts, Scope& scope,
                           TimeContext& ctx, Token op_tok);
+    uint16_t compile_namespaced_form(const NamespacedOperator& resolved,
+                                     TokenStream& ts, Scope& scope,
+                                     TimeContext& ctx, Token op_tok);
 
     // ── Form handlers ───────────────────────────────────────────────────
 
@@ -190,6 +275,7 @@ struct GraphBuilder {
     uint16_t compile_offset(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_loop_at(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_eval_at_time(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_rate_as(TokenStream& ts, Scope& scope, TimeContext& ctx);
 
     // Control flow
     uint16_t compile_if(TokenStream& ts, Scope& scope, TimeContext& ctx);
@@ -244,6 +330,7 @@ struct GraphBuilder {
     // UGens
     uint16_t compile_phasor(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx);
+    uint16_t compile_blfo(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_lfo_sin(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_lfo_tri(TokenStream& ts, Scope& scope, TimeContext& ctx);
     uint16_t compile_lfo_saw(TokenStream& ts, Scope& scope, TimeContext& ctx);
@@ -257,12 +344,21 @@ struct GraphBuilder {
     uint16_t compile_count(TokenStream& ts, Scope& scope, TimeContext& ctx);
 
     // UGen helpers
-    uint16_t alloc_state_slot(double init_value);
+    uint16_t alloc_state_slot(Sample init_value);
     uint16_t report_unknown_ugen_keyword(const Token& kw);
     uint16_t resolve_or_alloc(StateID state_id, ResourceKind kind, uint8_t role,
-                              double init_value);
+                              Sample init_value);
     uint16_t build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx, uint16_t default_wave);
     uint16_t build_osc_output(uint16_t state_load, uint16_t wave_type, uint16_t pw_node);
+    uint16_t compile_lfo_namespace(SymbolID waveform, bool bipolar,
+                                   TokenStream& ts, Scope& scope,
+                                   TimeContext& ctx, Token op_tok);
+    uint16_t compile_waveform(SymbolID waveform, OperatorNamespace name_space,
+                              TokenStream& ts, Scope& scope,
+                              TimeContext& ctx, Token op_tok);
+    uint16_t compile_cold_namespace(SymbolID op, TokenStream& ts,
+                                    Scope& scope, TimeContext& ctx,
+                                    Token op_tok);
 
     // Live-edit
     uint16_t compile_live_edit(TokenStream& ts, Scope& scope, TimeContext& ctx);
@@ -298,8 +394,8 @@ struct GraphBuilder {
     Collection resolve_symbol_collection(TokenStream& ts);
     Collection resolve_range_collection(TokenStream& ts, Scope& scope,
                                         TimeContext& ctx);
-    void fill_range_collection(Collection& collection, double start,
-                               double end, double step);
+    void fill_range_collection(Collection& collection, Sample start,
+                               Sample end, Sample step);
 
     // ── Data table resolution ───────────────────────────────────────────
 
@@ -347,7 +443,7 @@ struct GraphBuilder {
     // ── Helpers ─────────────────────────────────────────────────────────
 
     bool is_const(uint16_t node_idx) const;
-    double const_value(uint16_t node_idx) const;
+    Sample const_value(uint16_t node_idx) const;
     bool is_side_effect_form(SymbolID op) const;
     bool is_arithmetic_op(SymbolID op) const;
     bool is_comparison_op(SymbolID op) const;

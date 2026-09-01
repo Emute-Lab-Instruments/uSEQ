@@ -3,7 +3,7 @@
 > Spec: how ModuLisp expresses cross-sample state without abandoning the
 > stateless-by-default signal model. Covers the foundation form
 > (`define-state` / `defstate`), the canonical primitive (`integrate`),
-> the named UGen catalogue (`osc`/`phasor`/`slew`/...), the orthogonal
+> the named UGen catalogue (`wave[lfo]`/`phasor`/`slew`/...), the orthogonal
 > time-substitution form (`time-as`), the integrated-rate local-clock form
 > (`rate-as`), and how all of these interact with warps. Counterpart to
 > [MAIN.md](MAIN.md). Closely related to
@@ -24,11 +24,13 @@
 
 - `uSEQ/src/signal_engine/node_pool.h` — `NodeOp::LoadState` (read state slot), `NodeOp::LoadDt` (local dt leaf), `NodePool::state_values[]` (state slot storage), `state_update_roots[]` (per-slot update graph roots), `state_slot_count`, `make_state_load()`, `make_dt_load()`
 - `uSEQ/src/signal_engine/graph_builder.{h,cpp}` — `compile_integrate()` (allocates state slot, builds update graph), state-slot allocation during compilation
-- `uSEQ/src/signal_engine/executor.{h,cpp}` — `commit_state()` (post-tick state update from workspace), `LoadState`/`LoadDt` evaluation in the per-node dispatch
+- `uSEQ/src/signal_engine/executor.{h,cpp}` — `TickTransition`, `prepare_tick()`, and `commit_tick()` (authoritative state-first transition); `LoadState`/`LoadDt` evaluation in the per-node dispatch; legacy low-level `commit_state()`
 - `uSEQ/src/signal_engine/cold_eval.{h,cpp}` — `SignalEngine::state_sources[]` (`StateUpdateSource` for recompilation), state migration across recompilation in `on_cell_changed()`
 - `uSEQ/src/signal_engine/types.h` — `MAX_STATE_SLOTS` (32)
-- `wasm/wasm_wrapper.cpp` — state save/restore in `execute_batch_sequential()` (visualisation does not corrupt live state), projection fork state cloning in `reset_projection_fork()`/`project_from_fork()`
-- `test/signal_engine/test_signal_engine_phase4.cpp` — state-bearing construct tests
+- `wasm/wasm_evaluation.cpp` — sequential stateful batches and authoritative generated-runtime live ticks
+- `wasm/wasm_projection.cpp` — projection-fork state cloning and stateful projection ticks
+- `test/signal_engine/test_signal_engine_phase4.cpp` and `test/signal_engine/test_signal_engine_golden.cpp` — state-bearing construct and post-update observation tests
+- `test/signal_engine/test_program_semantics.cpp` — schedule-dependence and finite-DAG capability witnesses
 
 ---
 
@@ -51,7 +53,7 @@
 │   runs a local clock at an integrated rate.     │
 ├─────────────────────────────────────────────────┤
 │ Layer 2: Named UGen catalogue                   │
-│   osc, phasor, tri-osc, saw, sqr-osc,           │
+│   wave[lfo], wave[lfo bi], phasor, slew,        │
 │   slew, one-pole, envelope-follower, latch, ... │
 ├─────────────────────────────────────────────────┤
 │ Layer 1: Bare state primitives                  │
@@ -65,7 +67,7 @@
 └─────────────────────────────────────────────────┘
 ```
 
-1.5 The layers are not alternatives. They're entry points at different abstraction levels into the same machinery. A user who never touches `define-state` can still write `(osc freq)`. A user who wants something the catalogue doesn't provide can drop to `define-state` to invent it.
+1.5 The layers are not alternatives. They're entry points at different abstraction levels into the same machinery. A user who never touches `define-state` can still write `(sin[lfo] freq)`. A user who wants something the catalogue doesn't provide can drop to `define-state` to invent it.
 
 1.6 The mathematical-purity contract of `premap`, `time-as`, and `fast`/`slow`/`offset`/`shift` is **preserved** ([time-warps.md](time-warps.md)). Phase coherence is not a property of pure time substitution; it is a property of expressions the user has explicitly built using the constructs in this spec. Dynamic substitution may use dynamic `fast`/`slow`/`offset`; dynamic phase-coherent speed changes use `rate-as`, `integrate`, or UGens.
 
@@ -115,7 +117,7 @@
 
 &nbsp;&nbsp;&nbsp;&nbsp;2.9.alt **Alternative considered:** allowing `defstate` (or a variant) inside `let` / `defn` bodies, with per-call-site identity. The use cases are real but small (locally-scoped slew limiters, etc.). Deferred until first user need; locally-scoped state would be syntactically distinct from top-level `defstate` to avoid identity confusion.
 
-> *Implementation suggestion:* enforce the top-level-only rule at parse time, before signal-context analysis. The error message should point at the equivalent stateful primitive (`integrate`, `osc`, etc.) for the inline case the user probably wanted.
+> *Implementation suggestion:* enforce the top-level-only rule at parse time, before signal-context analysis. The error message should point at the equivalent stateful primitive (`integrate`, `wave[lfo]`, etc.) for the inline case the user probably wanted.
 
 2.10 **A stateful cell is observable from any signal expression** as if it were an ordinary cell. Outputs read it, other state cells read it, callables that get inlined into signal contexts read it. The reader gets the current-tick value (post-update for the current tick).
 
@@ -235,17 +237,18 @@ mutate the live state slots described in this section.
 
 ## 6. Stateful Unit Generators (UGens)
 
-6.1 The UGen catalogue is the user's everyday entry point. Each UGen is a named, self-contained state-bearing operation with a clear musical purpose. The user writes `(osc freq)`, not `(usin (* 2 π (integrate freq)))`, when they want a sine oscillator.
+6.1 The UGen catalogue is the user's everyday entry point. Each UGen is a named, self-contained state-bearing operation with a clear musical purpose. The user writes `(sin[lfo] freq)`, not `(sin (integrate freq))`, when they want a free-running sine oscillator.
 
-6.2 **Initial proposed catalogue.** The list is intentionally small. Additions require explicit decisions about scope, semantics, and naming.
+6.2 **Initial catalogue.** The list is intentionally small. Additions require explicit decisions about scope, semantics, and naming.
 
 | UGen | Purpose | Approximate semantics |
 |---|---|---|
 | `(phasor freq)` | Phase-coherent ramp `[0,1)` at frequency `freq` Hz | `(frac (integrate freq))` |
-| `(osc freq)` | Phase-coherent unipolar sine at `freq` Hz | `(usin (phasor freq))` |
-| `(tri-osc freq)` | Phase-coherent triangle wave | `(tri (phasor freq))` |
-| `(saw freq)` | Phase-coherent sawtooth `[0,1)` | `(phasor freq)` |
-| `(sqr-osc freq pulse-width)` | Phase-coherent square / pulse | `(if (< (phasor freq) pulse-width) 1 0)` |
+| `(sin[lfo] freq)` | Phase-coherent unipolar sine at `freq` Hz | `(sin (phasor freq))` |
+| `(sin[lfo bi] freq)` | Phase-coherent bipolar sine at `freq` Hz | `(sin[bi] (phasor freq))` |
+| `(tri[lfo] freq)` | Phase-coherent unipolar triangle wave | `(tri (phasor freq))` |
+| `(saw[lfo] freq)` | Phase-coherent sawtooth `[0,1)` | `(saw (phasor freq))` |
+| `(pulse[lfo :duty width] freq)` | Phase-coherent square / pulse | `(pulse[:duty width] (phasor freq))` |
 | `(slew target rate)` | Slew-limited tracker of `target`, max change `rate` per second | recursive update on `target - prev` |
 | `(one-pole input cutoff)` | First-order low-pass at `cutoff` Hz | recursive `α(input - prev)` |
 | `(envelope-follower input attack release)` | Asymmetric leaky integrator on `\|input\|` | branching one-pole |
@@ -256,18 +259,18 @@ mutate the live state slots described in this section.
 6.4 **Frequency unit convention.** UGens that take a frequency parameter use **Hz** (cycles per second) as the canonical unit. To express musical-relative frequencies, divide by `bar-dur` or `beat-dur`:
 
 ```lisp
-(osc 1)                ; 1 Hz
-(osc (/ 1 bar-dur))    ; 1 cycle per bar
-(osc (/ 4 bar-dur))    ; 4 cycles per bar
+(sin[lfo] 1)                ; 1 Hz
+(sin[lfo] (/ 1 bar-dur))    ; 1 cycle per bar
+(sin[lfo] (/ 4 bar-dur))    ; 4 cycles per bar
 ```
 
-&nbsp;&nbsp;&nbsp;&nbsp;6.4.alt **Alternative considered:** a parallel `osc-bar`/`osc-beat` family that takes cycles-per-bar / cycles-per-beat directly. Ergonomic for live-coding patterns but doubles the UGen surface. Deferred pending real-use evidence; if the divide-by-`bar-dur` idiom proves persistently awkward, reopen.
+&nbsp;&nbsp;&nbsp;&nbsp;6.4.alt **Alternative considered:** parallel musical-rate facets that take cycles-per-bar / cycles-per-beat directly. Ergonomic for live-coding patterns but expands the facet surface. Deferred pending real-use evidence; if the divide-by-`bar-dur` idiom proves persistently awkward, reopen.
 
-6.5 **UGens are primitives, not user-space sugar.** Each is a distinct compiler-known operation with optimisation opportunities (waveform tables, SIMD vectorisation, hardware-specific oscillator units on RP2350). A user *could* write `(usin (* 2 π (integrate freq)))` and get the same logical result, but the compiler may specialise `(osc freq)` more aggressively.
+6.5 **UGens are primitives, not user-space sugar.** Each fixed modified `OperatorSpec` is compiler-known and admits optimisation opportunities (waveform tables, SIMD vectorisation, hardware-specific oscillator units on RP2350). A user *could* write `(sin (integrate freq))` and get the same logical result, but the compiler may specialize `(sin[lfo] freq)` more aggressively.
 
-6.6 **CSE applies to UGens identically to other state-bearing nodes by default.** Two `(osc freq)` calls with referentially-equal arguments share one oscillator (one phase accumulator, one sine evaluation). This is FRP-correct: same operation, same inputs, same identity, same accumulator.
+6.6 **CSE applies to UGens identically to other state-bearing nodes by default.** Two `(sin[lfo] freq)` calls with referentially-equal arguments share one oscillator (one phase accumulator, one sine evaluation). This is FRP-correct: same operation, same inputs, same identity, same accumulator.
 
-6.7 **UGens compose with all other signal operators.** `(+ (osc 1) (osc 2))`, `(* (slew (ain1) 5) (osc 4))`, `(usin (* 2 π (phasor (* 2 (ain1)))))` are all well-formed.
+6.7 **UGens compose with all other signal operators.** `(+ (sin[lfo] 1) (sin[lfo] 2))`, `(* (slew (ain1) 5) (sin[lfo] 4))`, and `(sin (phasor (* 2 (ain1))))` are all well-formed.
 
 6.8 **Catalogue growth policy.** New UGens enter the catalogue by explicit design decision. Criteria:
 - The operation has a clear musical purpose with a recognised name in the modular-synth / DSL canon.
@@ -282,9 +285,9 @@ parser/type level ([values-types.md](values-types.md)), but primitive UGens
 interpret a small standard set at compile time:
 
 ```lisp
-(osc freq :phase 0.25)   ; initial phase / phase offset in cycles
-(osc freq :id :left)     ; stable user-supplied state identity
-(osc freq :fresh true)   ; force a distinct anonymous state slot
+(sin[lfo] freq :phase 0.25)   ; initial phase / phase offset in cycles
+(sin[lfo] freq :id :left)     ; stable user-supplied state identity
+(sin[lfo] freq :fresh true)   ; force a distinct anonymous state slot
 ```
 
 6.9.1 Keyword names are part of the UGen's signature. Unknown keywords or
@@ -295,8 +298,8 @@ on the UGen's precise entry. It is the preferred way to make two otherwise
 identical oscillators musically distinct:
 
 ```lisp
-(+ (osc freq :phase 0.00)
-   (osc freq :phase 0.25))
+(+ (sin[lfo] freq :phase 0.00)
+   (sin[lfo] freq :phase 0.25))
 ```
 
 6.9.3 `:id` participates in state-slot identity. Two structurally identical
@@ -354,22 +357,22 @@ rate is accumulated over time.
 ```lisp
 ;; Phase-coherent speed changes.
 (rate-as (step [1 2 4 8] bar)
-  (usin t))
+  (sin t))
 
 ;; Equivalent explicit spelling.
 (time-as (integrate (step [1 2 4 8] bar))
-  (usin t))
+  (sin t))
 ```
 
-7.4 `osc` and `phasor` are the everyday vocabulary for the common oscillator
-case. Prefer `(osc freq)` over `(rate-as freq (usin t))` unless the explicit
+7.4 `wave[lfo]` and `phasor` are the everyday vocabulary for the common oscillator
+case. Prefer `(sin[lfo] freq)` over `(rate-as freq (sin t))` unless the explicit
 local clock is part of the musical idea.
 
 7.5 The point of the split is vocabulary:
 
 - `time-as` means "choose a position in time"; it may jump.
 - `rate-as` means "choose the speed of a local clock"; it accumulates.
-- `osc`/`phasor` mean "use the standard phase-coherent oscillator machinery."
+- `wave[lfo]`/`phasor` mean "use the standard phase-coherent oscillator machinery."
 
 ---
 
@@ -392,8 +395,8 @@ rate, they should use `rate-as`.
 
 ```lisp
 (rate-as 2
-  (osc freq))
-;; Equivalent user intent: (osc (* 2 freq))
+  (sin[lfo] freq))
+;; Equivalent user intent: (sin[lfo] (* 2 freq))
 
 (rate-as (ain1)
   (slew target 4))
@@ -438,22 +441,22 @@ with a diagnostic.
 
 ```lisp
 ;; Layer 2 (UGen): everyday call.
-(a1 (osc (/ (from-list [1 2 3 4] (slow 4 bar)) bar-dur)))
+(a1 (sin[lfo] (/ (from-list [1 2 3 4] (slow 4 bar)) bar-dur)))
 
 ;; Layer 3 (time-as) + Layer 1 (integrate): explicit phase plumbing.
 (a1 (time-as (integrate (/ (from-list [1 2 3 4] (slow 4 bar)) bar-dur))
-      (usin (* 2 π t))))
+      (sin t)))
 
 ;; Layer 1 (integrate) directly:
-(a1 (usin (* 2 π (integrate (/ (from-list [1 2 3 4] (slow 4 bar)) bar-dur)))))
+(a1 (sin (integrate (/ (from-list [1 2 3 4] (slow 4 bar)) bar-dur))))
 
 ;; Layer 0 (defstate): the foundation.
 (defstate phase 0
   (+ phase (* (/ (from-list [1 2 3 4] (slow 4 bar)) bar-dur) dt)))
-(a1 (usin (* 2 π phase)))
+(a1 (sin phase))
 
 ;; Compare: bare arithmetic, *not* phase-coherent (intentionally).
-(a1 (usin (* 2 π bar (from-list [1 2 3 4] (slow 4 bar)))))
+(a1 (sin (* bar (from-list [1 2 3 4] (slow 4 bar)))))
 ```
 
 9.3 The first four produce identical output. The fifth produces something different and well-defined (frequency-stepped LFO with phase resets); the user wrote pointwise multiplication, the system delivered pointwise multiplication. No inference about intent.
@@ -464,7 +467,7 @@ with a diagnostic.
 
 10.1 **CSE applies uniformly.** Two referentially-equal state-bearing nodes (same operator, same input subgraph) hash-cons to one node and share state. This is FRP-correct: same input + same start time → same accumulator.
 
-10.2 **Constant folding has limited reach across state boundaries.** `(integrate 0)` folds to `0`. `(integrate const)` folds to `(* const t)` (because the integral of a constant is `const · t` and the initial state is 0). `(osc 0)` folds to a constant `0.5` (or whatever the unipolar sine evaluates to at phase 0). Beyond these, state-bearing nodes are opaque to constant folding — their state evolves over time and isn't resolvable at compile time.
+10.2 **Constant folding has limited reach across state boundaries.** `(integrate 0)` folds to `0`. `(integrate const)` folds to `(* const t)` (because the integral of a constant is `const · t` and the initial state is 0). `(sin[lfo] 0)` folds to a constant `0.5` (the unipolar sine at phase 0). Beyond these, state-bearing nodes are opaque to constant folding — their state evolves over time and isn't resolvable at compile time.
 
 10.3 **Time-substitution flattening is unaffected** because `fast`/`slow`/`offset`/`shift` and `premap` remain mathematically pure ([time-warps.md](time-warps.md)). Constant affine substitutions may flatten completely; dynamic substitutions remain graph expressions. Integrated local-clock behaviour is not inferred from substitution forms; it is explicit in `rate-as`, `integrate`, and UGens.
 
@@ -515,7 +518,7 @@ output independently follows the LKG/error rules in [failure-model.md].
 12.1 In Imperative mode ([dialects.md §2](dialects.md)), the FRP machinery is disabled. State-bearing constructs adapt:
 
 - `defstate` is permitted; the cell still has an `init` and an `update`. The `update` runs once per *manual eval* of the form (or via `schedule`, when implemented), not once per tick. The user is in control of when state advances.
-- `integrate`, `osc`, and other UGens behave as values evaluated at the moment of eval. They effectively freeze; without a tick loop, there is no `dt` to drive them. They produce their `init` value (or a sensible default) until the user invokes them in an explicit time-stepping context.
+- `integrate`, `wave[lfo]`, and other UGens behave as values evaluated at the moment of eval. They effectively freeze; without a tick loop, there is no `dt` to drive them. They produce their `init` value (or a sensible default) until the user invokes them in an explicit time-stepping context.
 - `time-as` is a pure substitution at the leaf level, unaffected by mode.
 - `rate-as` requires a ticking context to advance its integrated clock. Without one, it behaves like `time-as` over a clock that has not advanced.
 
@@ -525,7 +528,7 @@ output independently follows the LKG/error rules in [failure-model.md].
 
 ## 13. Open / Deferred
 
-13.1 **Frequency unit conventions for UGens.** Hz is the canonical unit (§6.4). Whether to add `osc-bar`/`osc-beat` variants for musical-relative frequencies is unresolved — they are ergonomic for live-coding patterns but expand the UGen surface. Pending evidence from real use.
+13.1 **Frequency unit conventions for UGens.** Hz is the canonical unit (§6.4). Whether to add musical-rate facets for cycles-per-bar / cycles-per-beat is unresolved — they are ergonomic for live-coding patterns but expand the modifier surface. Pending evidence from real use.
 
 13.2 **Explicit state reset.** The user occasionally wants to force a `defstate` to its `init` value (e.g. on a transport rewind, or as a deliberate "reset everything" gesture). Mechanism options: a `(reset! state-name)` form, a transport-tied automatic reset, or implicit reset on the cell's identity break (§4.3). Not yet decided.
 
@@ -541,13 +544,13 @@ output independently follows the LKG/error rules in [failure-model.md].
 
 &nbsp;&nbsp;&nbsp;&nbsp;13.5.alt3 **Possible future direction:** allow user-defined UGens via a `defugen` form that wraps `defstate` with anonymous, per-call-site identity. Most extensible; pushes complexity onto the user-facing surface.
 
-13.6 **CSE granularity for UGens with same-shaped but logically distinct inputs.** `(+ (osc freq) (osc freq))` shares one accumulator by default. If the user wants two distinct oscillators with the same frequency, they should use `:phase`, `:id`, or `:fresh`. The exact per-UGen keyword catalogue remains to be finalised.
+13.6 **CSE granularity for UGens with same-shaped but logically distinct inputs.** `(+ (sin[lfo] freq) (sin[lfo] freq))` shares one accumulator by default. If the user wants two distinct oscillators with the same frequency, they should use `:phase`, `:id`, or `:fresh`. The exact per-UGen keyword catalogue remains to be finalised.
 
 13.7 **State-cell debugging surface.** The user benefits from being able to inspect `defstate` cell values from the editor (visualisation panel, REPL probe, etc.). Whether this is part of the spec or a runtime concern is unclear. Probably runtime; `state.md` should at minimum specify that cell values are observable through the existing reactive read path.
 
 13.8 **Migration of state across cell-name changes.** A user renames `phase` to `lfo-phase` mid-session. State resets (§4.3) — they lose their accumulated value. Whether the editor / runtime can offer a "rename, preserve state" affordance is open. Not a language concern per se, but the spec should not preclude it.
 
-13.9 **Catalogue ordering.** The proposed UGens in §6.2 cover the obvious musical canon. A larger catalogue (FM operators, comb filters, sample-and-hold variants, feedback delays) might fall out of real use. Growth happens by explicit decision, not on demand.
+13.9 **Catalogue ordering.** The UGens in §6.2 cover the obvious musical canon. A larger catalogue (FM operators, comb filters, sample-and-hold variants, feedback delays) might fall out of real use. Growth happens by explicit decision, not on demand.
 
 13.10 **Derivative state cells for named `defstate` under `rate-as`.** V1 can support rate contexts for UGens and `integrate` first. Recompiling arbitrary named `defstate` cells under multiple local rates is coherent but implementation-heavy; defer until a concrete use case demands it.
 

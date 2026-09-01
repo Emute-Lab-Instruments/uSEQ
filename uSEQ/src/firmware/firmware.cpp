@@ -190,9 +190,11 @@ void Firmware::tick()
         ctx.prev_outputs   = engine.pool.prev_output_values;
         ctx.output_values  = output_values;
         ctx.workspace      = workspace;
+        ctx.ground_t       = wall_t;
+        ctx.advance_state  = !engine.state.reset_dt_on_next_tick;
 
-        sig::execute_all_outputs(engine.pool, ctx);
-        sig::commit_state(engine.pool, workspace);
+        sig::prepare_tick(engine.pool, ctx, tick_transition);
+        sig::commit_tick(engine.pool, ctx, tick_transition);
         engine.state.current_time = t;
         engine.state.current_dt = ctx.dt;
         engine.state.reset_dt_on_next_tick = false;
@@ -223,13 +225,8 @@ void Firmware::tick()
     io.update_leds();
 #endif
 
-    // ── 6. Commit outputs (LKG update for next tick) ───────────────────────
+    // ── 6. Output commit is part of the authoritative tick transition ─────
     dt::mark("lkg");
-#ifdef ENABLE_SIGNAL_ENGINE
-    if (engine.state.is_playing) {
-        sig::commit_outputs(engine.pool, output_values);
-    }
-#endif
 
     // ── 7. Opportunistic stream data for visualisation ─────────────────────
     dt::mark("stream");

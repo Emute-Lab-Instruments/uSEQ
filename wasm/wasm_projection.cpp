@@ -8,6 +8,7 @@
 
 struct ProjectionFork {
     double state_values[sig::MAX_STATE_SLOTS];
+    bool state_observed[sig::MAX_STATE_SLOTS];
     uint16_t state_slot_count;
     sig::StateResourceRegistry registry;
     double prev_output_values[sig::MAX_OUTPUTS];
@@ -19,6 +20,7 @@ struct ProjectionFork {
     double live_slot_values[sig::MAX_LIVE_SLOTS];
     uint16_t live_slot_count;
     double prev_tick_time;
+    double ground_time;
     double cell_values[sig::MAX_CELLS];
     double hw_inputs[32];
     double frontier_time;
@@ -41,6 +43,9 @@ void invalidate_projection()
 static void reset_projection_fork(double tick_time) {
     memcpy(g_projection_fork.state_values,
            g_engine->pool.state_values, sizeof(g_projection_fork.state_values));
+    memcpy(g_projection_fork.state_observed,
+           g_engine->pool.state_observed,
+           sizeof(g_projection_fork.state_observed));
     g_projection_fork.state_slot_count = g_engine->pool.state_slot_count;
     g_projection_fork.registry = g_engine->registry;
     memcpy(g_projection_fork.prev_output_values,
@@ -60,6 +65,7 @@ static void reset_projection_fork(double tick_time) {
         g_projection_fork.live_slot_values[i] =
             g_engine->pool.live_slots[i].value;
     g_projection_fork.prev_tick_time = tick_time;
+    g_projection_fork.ground_time = g_engine->state.current_wall_time;
     g_engine->cells.snapshot_values(g_projection_fork.cell_values, sig::MAX_CELLS);
     memcpy(g_projection_fork.hw_inputs, g_hw_inputs, sizeof(g_projection_fork.hw_inputs));
     g_projection_fork.frontier_time = tick_time;
@@ -79,6 +85,7 @@ static void project_from_fork(
 
     // Save live state
     double saved_state[sig::MAX_STATE_SLOTS];
+    bool saved_state_observed[sig::MAX_STATE_SLOTS];
     uint16_t saved_slot_count = g_engine->pool.state_slot_count;
     sig::StateResourceRegistry saved_registry = g_engine->registry;
     double saved_prev_outputs[sig::MAX_OUTPUTS];
@@ -89,6 +96,8 @@ static void project_from_fork(
     uint16_t saved_live_slot_count = g_engine->pool.live_slot_count;
     double saved_prev_t = g_prev_tick_time;
     memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
+    memcpy(saved_state_observed, g_engine->pool.state_observed,
+           sizeof(saved_state_observed));
     memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
@@ -115,6 +124,9 @@ static void project_from_fork(
     // Install fork state
     memcpy(g_engine->pool.state_values,
            g_projection_fork.state_values, sizeof(saved_state));
+    memcpy(g_engine->pool.state_observed,
+           g_projection_fork.state_observed,
+           sizeof(g_projection_fork.state_observed));
     g_engine->pool.state_slot_count = g_projection_fork.state_slot_count;
     g_engine->registry = g_projection_fork.registry;
     memcpy(g_engine->pool.prev_output_values,
@@ -153,10 +165,14 @@ static void project_from_fork(
         ctx.prev_outputs  = g_engine->pool.prev_output_values;
         ctx.output_values = output_values;
         ctx.workspace     = node_values;
-        sig::execute_all_outputs(g_engine->pool, ctx);
+        ctx.ground_t      = g_projection_fork.ground_time
+            + (t - g_prev_tick_time);
+        ctx.advance_state = t != g_prev_tick_time;
 
-        sig::commit_state(g_engine->pool, node_values);
-        sig::commit_outputs(g_engine->pool, output_values);
+        sig::TickTransition transition;
+        sig::prepare_tick(g_engine->pool, ctx, transition);
+        sig::commit_tick(g_engine->pool, ctx, transition);
+        g_projection_fork.ground_time = ctx.ground_t;
         g_prev_tick_time = t;
 
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
@@ -168,6 +184,9 @@ static void project_from_fork(
     // Save fork state (fork advances)
     memcpy(g_projection_fork.state_values,
            g_engine->pool.state_values, sizeof(saved_state));
+    memcpy(g_projection_fork.state_observed,
+           g_engine->pool.state_observed,
+           sizeof(g_projection_fork.state_observed));
     g_projection_fork.state_slot_count = g_engine->pool.state_slot_count;
     g_projection_fork.registry = g_engine->registry;
     memcpy(g_projection_fork.prev_output_values,
@@ -192,6 +211,8 @@ static void project_from_fork(
 
     // Restore live state
     memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
+    memcpy(g_engine->pool.state_observed, saved_state_observed,
+           sizeof(saved_state_observed));
     g_engine->pool.state_slot_count = saved_slot_count;
     g_engine->registry = saved_registry;
     memcpy(g_engine->pool.prev_output_values, saved_prev_outputs, sizeof(saved_prev_outputs));

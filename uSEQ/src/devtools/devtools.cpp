@@ -47,6 +47,7 @@ static const char* node_op_name(sig::NodeOp op) {
     switch (op) {
         case sig::NodeOp::Const:          return "Const";
         case sig::NodeOp::RawTimeLoad:    return "RawTimeLoad";
+        case sig::NodeOp::GroundTimeLoad: return "GroundTimeLoad";
         case sig::NodeOp::CellLoad:       return "CellLoad";
         case sig::NodeOp::InputLoad:      return "InputLoad";
         case sig::NodeOp::PrevOutputLoad: return "PrevOutputLoad";

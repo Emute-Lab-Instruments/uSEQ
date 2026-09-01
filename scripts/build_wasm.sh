@@ -41,9 +41,23 @@ echo "emcc build successful."
 POSTPROCESS="none"
 if command -v wasm-opt &> /dev/null; then
     echo "Running wasm-opt -Oz..."
-    wasm-opt -Oz --all-features wasm/useq.wasm -o wasm/useq.wasm
-    echo "wasm-opt complete."
-    POSTPROCESS="wasm-opt"
+    ORIGINAL_WASM="$(mktemp)"
+    OPTIMIZED_WASM="$(mktemp)"
+    cp -f wasm/useq.wasm "$ORIGINAL_WASM"
+    if wasm-opt -Oz --all-features wasm/useq.wasm -o "$OPTIMIZED_WASM"; then
+        cp -f "$OPTIMIZED_WASM" wasm/useq.wasm
+        if node scripts/wasm_init_smoke.mjs wasm >/dev/null 2>&1; then
+            echo "wasm-opt complete."
+            POSTPROCESS="wasm-opt"
+        else
+            echo "wasm-opt output is incompatible with this runtime; using emcc output."
+            cp -f "$ORIGINAL_WASM" wasm/useq.wasm
+        fi
+    else
+        echo "wasm-opt failed; using emcc output."
+        cp -f "$ORIGINAL_WASM" wasm/useq.wasm
+    fi
+    rm -f "$ORIGINAL_WASM" "$OPTIMIZED_WASM"
 else
     echo "wasm-opt not found — skipping post-processing (install binaryen for smaller/faster WASM)"
 fi

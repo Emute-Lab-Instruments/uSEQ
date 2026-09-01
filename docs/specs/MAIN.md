@@ -28,6 +28,8 @@ Core signal engine (shared by firmware and WASM):
 - `uSEQ/src/signal_engine/executor.{h,cpp}` — `execute_all_outputs`, `execute_batch`, `commit_outputs`, `commit_state`
 - `uSEQ/src/signal_engine/token.{h,cpp}` — tokenizer, `Token`, `TokenStream`
 - `uSEQ/src/signal_engine/diagnostics.{h,cpp}` — `Diagnostic`, severity/category enums, `find_fuzzy_match`
+- `uSEQ/src/signal_engine/program_semantics.{h,cpp}` — proof-facing DAG effect analysis, owning immutable program snapshot, and independent reference evaluator
+- `uSEQ/src/signal_engine/temporal_query.{h,cpp}` — host/WASM analytic temporal-condition queries
 - `uSEQ/src/signal_engine/symbols.def` — X-macro symbol table (builtins, keywords, output names)
 
 Firmware composition:
@@ -235,6 +237,14 @@ executable inventory rule.
 6.17 [visualisation-projection.md](visualisation-projection.md) — WASM/runtime support for editor visualisation projection: live-state ticks, projection forks, reset-fill, frontier extension, and the combined tick/project ABI semantics.
 
 6.18 [devtools.md](devtools.md) — compile-time-gated firmware instrumentation and runtime-controllable telemetry. `dt::` namespace API for tick profiling, events, counters, gauges. Wire protocol `debug` message type for agent-driven debugging.
+
+6.18.1 [operator-modifiers.md](operator-modifiers.md) — (evolving; approved contract, implementation in progress) attached `operator[...]` specialization over the canonical callable inventory: `norm`/`rad`, `uni`/`bi`, `lfo`, `raw`, callable options, fixed `OperatorSpec` resolution, validation before single lowering, and the no-dual-lowering cut. Editor counterpart: `../../../docs/specs/operator-modifier-ui.md` (in `useq-perform`).
+
+6.18.2 [qualified-symbols.md](qualified-symbols.md) — (evolving; approved contract, implementation in progress) `/` as exact qualified binding identity for user bindings and registry callables such as `osc/sine`; bare `/` remains division and qualification is orthogonal to operator modifiers.
+
+6.18.3 [temporal-queries.md](temporal-queries.md) — (evolving) host/WASM
+`q/zeros`, `q/crossings`, `q/range`, and `q/explain`: target-last forms that
+solve supported pure signal DAGs into Tidal-style whole/part events.
 
 6.19 [synth-nodes.md](synth-nodes.md) — (accepted v1) the `(synth ...)` top-level form: declarative instantiation of audio-rate NodeDefs with signal-controlled params, inline audio routing, auto identity with optional names, vector-valued params as the polyphony surface, declarative lifecycle with fades. Host/engine counterpart: `../../../docs/specs/synthesis.md` (in `useq-perform`).
 

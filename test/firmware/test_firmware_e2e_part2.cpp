@@ -23,7 +23,7 @@ TEST_CASE("Flash: save and reload produces identical outputs", "[e2e][flash]") {
     h1.firmware().flash.set_storage(&shared_storage);
 
     h1.eval("(define freq 440)");
-    h1.eval("(a1 (usin (* t freq)))");
+    h1.eval("(a1 (sin (* t freq)))");
     h1.eval("(d1 (euclid 3 8 beat))");
 
     h1.start_capture();
@@ -55,7 +55,7 @@ TEST_CASE("Flash: save and reload produces identical outputs", "[e2e][flash]") {
     REQUIRE(h2.engine().cells.cells[freq_sym].value == Approx(440.0));
 
     // Re-evaluate the output expressions (flash stores source, caller recompiles)
-    h2.eval("(a1 (usin (* t freq)))");
+    h2.eval("(a1 (sin (* t freq)))");
     h2.eval("(d1 (euclid 3 8 beat))");
 
     h2.start_capture();
@@ -113,7 +113,7 @@ TEST_CASE("LKG: bad code keeps output running", "[e2e][lkg][error]") {
     FirmwareTestHarness h;
     h.init();
 
-    h.eval("(a1 (usin beat))");
+    h.eval("(a1 (sin beat))");
     h.run_ticks(10);
 
     // Output should be oscillating (non-zero range)
@@ -148,7 +148,7 @@ TEST_CASE("LKG: parse error doesn't crash", "[e2e][lkg][error]") {
     FirmwareTestHarness h;
     h.init();
 
-    h.eval("(a1 (usin beat))");
+    h.eval("(a1 (sin beat))");
     h.run_ticks(10);
 
     // Unclosed paren — should fail gracefully
@@ -180,8 +180,8 @@ TEST_CASE("LKG: multiple outputs isolated", "[e2e][lkg][error]") {
     FirmwareTestHarness h;
     h.init();
 
-    h.eval("(a1 (usin beat))");
-    h.eval("(a2 (ucos beat))");
+    h.eval("(a1 (sin beat))");
+    h.eval("(a2 (cos beat))");
 
     h.start_capture();
     h.run_ticks(100);
@@ -262,7 +262,7 @@ TEST_CASE("Memory: node pool bounded after redefines", "[e2e][memory]") {
     // Do many reassignments and check pool doesn't grow unbounded
     for (int i = 0; i < 50; i++) {
         std::ostringstream ss;
-        ss << "(a1 (usin (* beat " << (i + 1) << ".0)))";
+        ss << "(a1 (sin (* beat " << (i + 1) << ".0)))";
         h.eval(ss.str());
         h.run_ticks(1);
     }
@@ -271,7 +271,7 @@ TEST_CASE("Memory: node pool bounded after redefines", "[e2e][memory]") {
 
     for (int i = 50; i < 200; i++) {
         std::ostringstream ss;
-        ss << "(a1 (usin (* beat " << (i + 1) << ".0)))";
+        ss << "(a1 (sin (* beat " << (i + 1) << ".0)))";
         h.eval(ss.str());
         h.run_ticks(1);
     }
@@ -293,8 +293,8 @@ TEST_CASE("Multi-output: six outputs simultaneously", "[e2e][multi_output]") {
     h.init();
 
     // Assign 4 analog + 2 digital outputs
-    h.eval("(a1 (usin beat))");              // sine
-    h.eval("(a2 (ucos beat))");              // cosine
+    h.eval("(a1 (sin beat))");              // sine
+    h.eval("(a2 (cos beat))");              // cosine
     h.eval("(a3 (* beat 0.5))");             // ramp-ish (beat is 0..1 phasor)
     h.eval("(a4 0.75)");                     // constant
     h.eval("(d1 (euclid 3 8 beat))");        // euclidean
@@ -369,8 +369,8 @@ TEST_CASE("Time warp: fast 2x doubles frequency", "[e2e][time_warp]") {
     FirmwareTestHarness h;
     h.init();
 
-    h.eval("(a1 (fast 2 (usin beat)))");
-    h.eval("(a2 (usin beat))");
+    h.eval("(a1 (fast 2 (sin beat)))");
+    h.eval("(a2 (sin beat))");
 
     h.start_capture();
     h.run_ticks(2000);  // 2 seconds at 1kHz — enough for frequency estimation
@@ -396,8 +396,8 @@ TEST_CASE("Time warp: slow 2x halves frequency", "[e2e][time_warp]") {
     FirmwareTestHarness h;
     h.init();
 
-    h.eval("(a1 (slow 2 (usin beat)))");
-    h.eval("(a2 (usin beat))");
+    h.eval("(a1 (slow 2 (sin beat)))");
+    h.eval("(a2 (sin beat))");
 
     h.start_capture();
     h.run_ticks(4000);  // 4 seconds — need more samples for slow signal
@@ -423,8 +423,8 @@ TEST_CASE("Time warp: nested warps compose", "[e2e][time_warp]") {
     h.init();
 
     // fast 3 of slow 2 = 3/2 = 1.5x speed
-    h.eval("(a1 (fast 3 (slow 2 (usin beat))))");
-    h.eval("(a2 (usin beat))");
+    h.eval("(a1 (fast 3 (slow 2 (sin beat))))");
+    h.eval("(a2 (sin beat))");
 
     h.start_capture();
     h.run_ticks(4000);
@@ -450,7 +450,7 @@ TEST_CASE("Time warp: offset produces valid output", "[e2e][time_warp]") {
     h.init();
 
     // offset shifts the temporal context — verify it compiles and produces output
-    h.eval("(a1 (offset 0.25 (usin beat)))");
+    h.eval("(a1 (offset 0.25 (sin beat)))");
 
     h.start_capture();
     h.run_ticks(1000);
@@ -469,7 +469,7 @@ TEST_CASE("Playback: pause freezes output", "[e2e][playback]") {
     FirmwareTestHarness h;
     h.init();
 
-    h.eval("(a1 (usin beat))");
+    h.eval("(a1 (sin beat))");
     h.run_ticks(100);
 
     // Verify output is oscillating before pause
@@ -497,7 +497,7 @@ TEST_CASE("Playback: play resumes after pause", "[e2e][playback]") {
     FirmwareTestHarness h;
     h.init();
 
-    h.eval("(a1 (usin beat))");
+    h.eval("(a1 (sin beat))");
     h.run_ticks(100);
 
     // Pause
@@ -584,7 +584,7 @@ TEST_CASE("Playback: clear resets everything", "[e2e][playback]") {
     FirmwareTestHarness h;
     h.init();
 
-    h.eval("(a1 (usin beat))");
+    h.eval("(a1 (sin beat))");
     h.run_ticks(10);
 
     // Verify non-trivial output before clear
@@ -615,9 +615,9 @@ TEST_CASE("Performance: tick time under 1ms for ~50 node expression", "[e2e][per
 
     // Build a moderately complex expression (~50 nodes)
     // Multiple operations chained together
-    h.eval("(a1 (+ (usin beat) (* 0.3 (ucos (* beat 2.0)))))");
-    h.eval("(a2 (+ (* 0.5 (usin (* beat 3.0))) (* 0.25 (ucos (* beat 5.0)))))");
-    h.eval("(a3 (fast 2 (usin (* beat 0.5))))");
+    h.eval("(a1 (+ (sin beat) (* 0.3 (cos (* beat 2.0)))))");
+    h.eval("(a2 (+ (* 0.5 (sin (* beat 3.0))) (* 0.25 (cos (* beat 5.0)))))");
+    h.eval("(a3 (fast 2 (sin (* beat 0.5))))");
     h.eval("(d1 (euclid 5 8 beat))");
 
     // Warm up
@@ -649,10 +649,10 @@ TEST_CASE("Performance: complex patch all outputs finite", "[e2e][performance]")
     // arithmetic, and input reads
     h.set_input_sine(2, 5.0);  // ain1 = 5Hz sine
 
-    h.eval("(a1 (fast 2 (usin beat)))");
-    h.eval("(a2 (slow 2 (ucos (* beat 3.0))))");
-    h.eval("(a3 (+ (* 0.5 (usin beat)) (* 0.5 (ucos beat))))");
-    h.eval("(a4 (offset 0.25 (usin (* beat 2.0))))");
+    h.eval("(a1 (fast 2 (sin beat)))");
+    h.eval("(a2 (slow 2 (cos (* beat 3.0))))");
+    h.eval("(a3 (+ (* 0.5 (sin beat)) (* 0.5 (cos beat))))");
+    h.eval("(a4 (offset 0.25 (sin (* beat 2.0))))");
     h.eval("(d1 (euclid 3 8 beat))");
     h.eval("(d2 (euclid 5 16 beat))");
 

@@ -11,7 +11,8 @@
 - `uSEQ/src/signal_engine/graph_builder.cpp` — `compile_fast()`, `compile_slow()`, `compile_offset()`, `compile_loop_at()`, `compile_eval_at_time()`; `shift` is aliased to `compile_offset()`.
 - `uSEQ/src/signal_engine/graph_builder.h` — `TimeContext` struct (carries the current local time node through nested compilation); declaration of all time-warp compile methods.
 - `uSEQ/src/signal_engine/node_pool.h` — `NodeOp::Mul`, `NodeOp::Div`, `NodeOp::Add` (the arithmetic nodes that substitution sugars emit); `NodeOp::Fmod` (for `loop-at` wrapping).
-- `test/signal_engine/test_signal_engine_golden.cpp` — "fast doubles local time", "slow halves local time", "fast/slow compose and flatten", "dynamic fast is pointwise substitution", "offset uses seconds", "shift aliases offset", "musical offset can use beat-dur" golden tests.
+- `test/signal_engine/test_signal_engine_golden.cpp` — local-time substitution and composition golden tests.
+- `test/signal_engine/test_program_semantics.cpp` — `premap` identity/composition and function-profunctor law witnesses against the independent reference evaluator.
 
 ---
 
@@ -61,7 +62,7 @@ continuity of the supplied `time-signal`.
 ```lisp
 ;; Reads the body at twice the current time.
 (time-as (* 2 t)
-  (usin t))
+  (sin t))
 
 ;; Scrubs a gesture by knob position. Moving the knob jumps around in time.
 (time-as (ain1)
@@ -77,7 +78,7 @@ well-defined and intentionally jumpy when the selected factor changes:
 
 ```lisp
 (time-as (* (step [1 2 4 8] bar) t)
-  (usin t))
+  (sin t))
 ```
 
 The phase is computed from the current pointwise time expression, not from an
@@ -96,7 +97,7 @@ substitution:
 - `(offset k expr)` means `(time-as (+ t k) expr)`. `k` is in seconds.
 - `(shift k expr)` is an alias of `offset`.
 
-(See `graph_builder.cpp`: `compile_fast()` compiles `k`, then sets `ctx.time_node = pool.make_binop(Mul, k_node, ctx.time_node)` and compiles the body. `compile_slow()` uses `Div`, `compile_offset()` uses `Add`. The `shift` symbol is registered as an alias of `compile_offset()` in the dispatch table.)
+(See `graph_builder.cpp`: `compile_fast()` compiles `k`, then sets `inner.t_node = pool.make_binop(Mul, ctx.t_node, k_node)` and compiles the body. `compile_slow()` uses `Div`, `compile_offset()` uses `Add`. The `shift` symbol is registered as an alias of `compile_offset()` in the dispatch table.)
 
 3.2 Dynamic arguments are allowed, but they are always stateless substitution.
 If `k` is a signal, `(fast k expr)` means `expr` sees `t' = k(t) * t` at each
@@ -134,15 +135,15 @@ constructs:
 
 ```lisp
 ;; Everyday oscillator vocabulary.
-(osc (step [1 2 4 8] bar))
+(sin[lfo] (step [1 2 4 8] bar))
 
 ;; Explicit local clock.
 (time-as (integrate (step [1 2 4 8] bar))
-  (usin t))
+  (sin t))
 
-;; Proposed user-facing sugar.
+;; Explicit local-rate spelling.
 (rate-as (step [1 2 4 8] bar)
-  (usin t))
+  (sin t))
 ```
 
 4.2 `rate-as` is specified in [state.md](state.md) because it introduces an
@@ -153,7 +154,7 @@ runtime failure semantics.
 oscillator phase, write phase arithmetic explicitly:
 
 ```lisp
-(usin (+ (phasor 2) 0.25))
+(sin (+ (phasor 2) 0.25))
 ```
 
 ---

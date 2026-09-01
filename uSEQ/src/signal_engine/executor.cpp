@@ -1,5 +1,6 @@
 #include "executor.h"
 #include "eval_ops.h"
+#include "program_semantics.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -36,23 +37,25 @@ const char* output_health_to_cstr(OutputHealth health) {
 // Load ops and data ops need runtime context and are handled here directly.
 // Pure-math ops delegate to the shared eval_ops.h functions.
 
-static inline double eval_node(
+static inline Sample eval_node(
     const Node& n,
-    double a, double b, double c,
-    double t,
-    double dt,
-    const double* cell_values,
-    const double* hw_inputs,
-    const double* data_pool,
+    Sample a, Sample b, Sample c,
+    Sample t,
+    Sample dt,
+    Sample ground_t,
+    const Sample* cell_values,
+    const Sample* hw_inputs,
+    const Sample* data_pool,
     const uint16_t* data_offsets,
     const uint16_t* data_lengths,
-    const double* prev_output_values,
-    const double* state_values
+    const Sample* prev_output_values,
+    const Sample* state_values
 ) {
     switch (n.op) {
         // ── Load ops (runtime context required) ─────────────────────────
         case NodeOp::Const:       return n.imm;
-        case NodeOp::RawTimeLoad: return t;
+        case NodeOp::RawTimeLoad:    return t;
+        case NodeOp::GroundTimeLoad: return ground_t;
         case NodeOp::LoadState:   return state_values[(uint16_t)n.imm];
         case NodeOp::LoadDt:      return dt;
         case NodeOp::CellLoad:    return cell_values[(uint16_t)n.imm];
@@ -75,7 +78,7 @@ static inline double eval_node(
             uint16_t off = data_offsets[tid];
             uint16_t len = data_lengths[tid];
             if (len <= 1) return (len == 1) ? data_pool[off] : 0.0;
-            double scaled = a * (len - 1);
+            Sample scaled = a * (len - 1);
             int i0 = (int)floor(scaled);
             if (i0 < 0) i0 = 0;
             if (i0 >= len - 1) i0 = len - 2;
@@ -85,7 +88,7 @@ static inline double eval_node(
             // len-2, so frac == 1.0 and we correctly return the LAST element
             // (data[len-1]); using floor(scaled) here yielded frac == 0 and the
             // wrong element (data[len-2]). Also gracefully clamps phase > 1.
-            double frac = scaled - i0;
+            Sample frac = scaled - i0;
             if (frac < 0.0) frac = 0.0;
             if (frac > 1.0) frac = 1.0;
             return data_pool[off + i0] + (data_pool[off + i1] - data_pool[off + i0]) * frac;
@@ -149,20 +152,22 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
         uint16_t idx = pool.exec_order[i];
         const Node& n = pool.nodes[idx];
 
-        double result;
+        Sample result;
         if (n.op == NodeOp::SlotLoad) {
             uint16_t slot_idx = (uint16_t)n.imm;
             result = (slot_idx < pool.live_slot_count)
                 ? pool.live_slots[slot_idx].value : 0.0;
         } else {
-            double a = (n.input_a != NODE_NONE) ? ctx.workspace[n.input_a] : 0.0;
-            double b = (n.input_b != NODE_NONE) ? ctx.workspace[n.input_b] : 0.0;
-            double c = (n.input_c != NODE_NONE) ? ctx.workspace[n.input_c] : 0.0;
+            Sample a = (n.input_a != NODE_NONE) ? ctx.workspace[n.input_a] : 0.0;
+            Sample b = (n.input_b != NODE_NONE) ? ctx.workspace[n.input_b] : 0.0;
+            Sample c = (n.input_c != NODE_NONE) ? ctx.workspace[n.input_c] : 0.0;
 
-            result = eval_node(n, a, b, c, ctx.t, ctx.dt,
+            const Sample* state_values = ctx.state_values
+                ? ctx.state_values : pool.state_values;
+            result = eval_node(n, a, b, c, ctx.t, ctx.dt, ctx.ground_t,
                                ctx.cell_values, ctx.hw_inputs,
                                ctx.data_pool, ctx.data_offsets, ctx.data_lengths,
-                               ctx.prev_outputs, pool.state_values);
+                               ctx.prev_outputs, state_values);
         }
 
         // Per-node NaN/Inf guard — legacy ZeroSquash mode only. In
@@ -179,7 +184,7 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
     uint64_t fallback_mask = 0;
     for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
         if (pool.outputs[i].root_node != NODE_NONE) {
-            double v = ctx.workspace[pool.outputs[i].root_node];
+            Sample v = ctx.workspace[pool.outputs[i].root_node];
             if (g_failure_mode == FailureMode::LkgFallback &&
                 !std::isfinite(v)) {
                 // Non-finite at the root: substitute the last-known-good
@@ -201,9 +206,98 @@ void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx) {
     pool.runtime_fallback_mask = fallback_mask;
 }
 
+// ── Authoritative Tick Transition ─────────────────────────────────────────
+
+void prepare_tick(const NodePool& pool, ExecutionContext& ctx,
+                  TickTransition& transition) {
+    transition.attempted_mask = 0;
+    transition.failure_mask = 0;
+    transition.start_mask = 0;
+    for (uint16_t s = 0; s < pool.state_slot_count; ++s) {
+        transition.state_values[s] = pool.state_values[s];
+        if (!pool.state_observed[s])
+            transition.start_mask |= (uint64_t)1 << s;
+    }
+
+    const Sample* saved_state_values = ctx.state_values;
+    ctx.state_values = pool.state_values;
+
+    if (ctx.advance_state && pool.state_slot_count > 0) {
+        // First pass: every update equation sees the same previous state.
+        execute_all_outputs(pool, ctx);
+        for (uint16_t s = 0; s < pool.state_slot_count; ++s) {
+            if (!pool.state_observed[s]) continue;
+            uint16_t root = pool.state_update_roots[s];
+            if (root == NODE_NONE) continue;
+            uint64_t bit = (uint64_t)1 << s;
+            transition.attempted_mask |= bit;
+            Sample candidate = ctx.workspace[root];
+            if (std::isfinite(candidate))
+                transition.state_values[s] = candidate;
+            else
+                transition.failure_mask |= bit;
+        }
+    }
+
+    // Final pass: output bodies observe the simultaneous current-tick state.
+    // A rejected non-finite state candidate has already been replaced with its
+    // previous finite value, so unrelated outputs remain healthy.
+    ctx.state_values = transition.state_values;
+    execute_all_outputs(pool, ctx);
+    ctx.state_values = saved_state_values;
+}
+
+static bool owner_failed(uint16_t owner,
+                         const uint16_t* failed_owner_contexts,
+                         uint16_t failed_owner_count) {
+    for (uint16_t i = 0; i < failed_owner_count; ++i) {
+        if (failed_owner_contexts[i] == owner) return true;
+    }
+    return false;
+}
+
+void commit_tick(NodePool& pool, const ExecutionContext& ctx,
+                 const TickTransition& transition,
+                 const uint16_t* failed_owner_contexts,
+                 uint16_t failed_owner_count) {
+    for (uint16_t s = 0; s < pool.state_slot_count; ++s) {
+        uint64_t bit = (uint64_t)1 << s;
+        uint16_t owner = pool.state_owner_context[s];
+        if (owner < MAX_OUTPUTS &&
+            ((pool.runtime_fallback_mask >> owner) & 1u) != 0)
+            continue;
+        if (owner_failed(owner, failed_owner_contexts, failed_owner_count))
+            continue;
+
+        if ((transition.start_mask & bit) != 0) {
+            pool.state_observed[s] = true;
+            pool.state_update_failure_mask &= ~bit;
+            continue;
+        }
+        if ((transition.attempted_mask & bit) == 0) {
+            if (pool.state_update_roots[s] == NODE_NONE)
+                pool.state_update_failure_mask &= ~bit;
+            continue;
+        }
+
+        if ((transition.failure_mask & bit) != 0) {
+            pool.state_update_failure_mask |= bit;
+        } else {
+            pool.state_values[s] = transition.state_values[s];
+            pool.state_update_failure_mask &= ~bit;
+        }
+    }
+    if (pool.state_slot_count < 64) {
+        uint64_t live_bits = pool.state_slot_count == 0
+            ? 0 : (((uint64_t)1 << pool.state_slot_count) - 1);
+        pool.state_update_failure_mask &= live_bits;
+    }
+    commit_outputs(pool, ctx.output_values);
+}
+
 // ── Post-Tick Commit ───────────────────────────────────────────────────────
 
-void commit_outputs(NodePool& pool, const double* output_values) {
+void commit_outputs(NodePool& pool, const Sample* output_values) {
     for (uint16_t i = 0; i < MAX_OUTPUTS; i++) {
         pool.prev_output_values[i] = output_values[i];
         bool substituted =
@@ -218,10 +312,11 @@ void commit_outputs(NodePool& pool, const double* output_values) {
 
 // ── Post-Tick State Commit ────────────────────────────────────────────────
 
-void commit_state(NodePool& pool, const double* workspace,
+void commit_state(NodePool& pool, const Sample* workspace,
                   const uint16_t* failed_owner_contexts,
                   uint16_t failed_owner_count) {
     for (uint16_t s = 0; s < pool.state_slot_count; ++s) {
+        pool.state_observed[s] = true;
         uint64_t state_bit = (uint64_t)1 << s;
         if (pool.state_update_roots[s] != NODE_NONE) {
             uint16_t owner = pool.state_owner_context[s];
@@ -241,7 +336,7 @@ void commit_state(NodePool& pool, const double* workspace,
                 }
             }
             if (owner_failed) continue;
-            double v = workspace[pool.state_update_roots[s]];
+            Sample v = workspace[pool.state_update_roots[s]];
             // Never commit non-finite state: in LkgFallback mode NaN/Inf can
             // flow through the workspace, and a poisoned state slot would
             // never recover. Keep the previous (finite) value instead.
@@ -266,20 +361,20 @@ void commit_state(NodePool& pool, const double* workspace,
 
 void execute_batch(
     const NodePool& pool,
-    const double* t_array,
+    const Sample* t_array,
     size_t sample_count,
-    const double* cell_values,
-    const double* hw_inputs,
-    const double* data_pool,
+    const Sample* cell_values,
+    const Sample* hw_inputs,
+    const Sample* data_pool,
     const uint16_t* data_offsets,
     const uint16_t* data_lengths,
-    double* output_buffer,
+    Sample* output_buffer,
     uint16_t num_outputs
 ) {
     if (!pool.batch_workspace) return;
 
     const size_t CHUNK = pool.batch_chunk_size;
-    double* regs = pool.batch_workspace.get();
+    Sample* regs = pool.batch_workspace.get();
     uint64_t fallback_mask = 0;
 
     for (size_t chunk_start = 0; chunk_start < sample_count; chunk_start += CHUNK) {
@@ -288,11 +383,11 @@ void execute_batch(
         for (uint16_t ni = 0; ni < pool.exec_count; ni++) {
             uint16_t idx = pool.exec_order[ni];
             const Node& n = pool.nodes[idx];
-            double* reg_out = regs + (size_t)idx * CHUNK;
+            Sample* reg_out = regs + (size_t)idx * CHUNK;
 
             if (n.op == NodeOp::SlotLoad) {
                 uint16_t slot_idx = (uint16_t)n.imm;
-                double val = (slot_idx < pool.live_slot_count)
+                Sample val = (slot_idx < pool.live_slot_count)
                     ? pool.live_slots[slot_idx].value : 0.0;
                 for (size_t s = 0; s < chunk_size; s++) reg_out[s] = val;
             } else if (n.flags & FLAG_TIME_INVARIANT) {
@@ -300,10 +395,10 @@ void execute_batch(
                 // Read input values from registers — time-invariant inputs
                 // were already computed and are the same for every sample,
                 // so reading at index 0 is sufficient.
-                double a = (n.input_a != NODE_NONE) ? regs[(size_t)n.input_a * CHUNK] : 0.0;
-                double b = (n.input_b != NODE_NONE) ? regs[(size_t)n.input_b * CHUNK] : 0.0;
-                double c = (n.input_c != NODE_NONE) ? regs[(size_t)n.input_c * CHUNK] : 0.0;
-                double val = eval_node(n, a, b, c, 0.0, 0.0,
+                Sample a = (n.input_a != NODE_NONE) ? regs[(size_t)n.input_a * CHUNK] : 0.0;
+                Sample b = (n.input_b != NODE_NONE) ? regs[(size_t)n.input_b * CHUNK] : 0.0;
+                Sample c = (n.input_c != NODE_NONE) ? regs[(size_t)n.input_c * CHUNK] : 0.0;
+                Sample val = eval_node(n, a, b, c, 0.0, 0.0, 0.0,
                                        cell_values, hw_inputs,
                                        data_pool, data_offsets, data_lengths,
                                        pool.prev_output_values,
@@ -313,13 +408,13 @@ void execute_batch(
                 for (size_t s = 0; s < chunk_size; s++) reg_out[s] = val;
             } else {
                 for (size_t s = 0; s < chunk_size; s++) {
-                    double t = t_array[chunk_start + s];
+                    Sample t = t_array[chunk_start + s];
 
-                    double a = (n.input_a != NODE_NONE) ? regs[(size_t)n.input_a * CHUNK + s] : 0.0;
-                    double b = (n.input_b != NODE_NONE) ? regs[(size_t)n.input_b * CHUNK + s] : 0.0;
-                    double c = (n.input_c != NODE_NONE) ? regs[(size_t)n.input_c * CHUNK + s] : 0.0;
+                    Sample a = (n.input_a != NODE_NONE) ? regs[(size_t)n.input_a * CHUNK + s] : 0.0;
+                    Sample b = (n.input_b != NODE_NONE) ? regs[(size_t)n.input_b * CHUNK + s] : 0.0;
+                    Sample c = (n.input_c != NODE_NONE) ? regs[(size_t)n.input_c * CHUNK + s] : 0.0;
 
-                    double result = eval_node(n, a, b, c, t, 0.0,
+                    Sample result = eval_node(n, a, b, c, t, 0.0, t,
                                               cell_values, hw_inputs,
                                               data_pool, data_offsets, data_lengths,
                                               pool.prev_output_values,
@@ -343,15 +438,15 @@ void execute_batch(
         uint16_t out_idx = 0;
         for (uint16_t o = 0; o < MAX_OUTPUTS && out_idx < num_outputs; o++) {
             if (pool.outputs[o].valid) {
-                double* dst = output_buffer + (size_t)out_idx * sample_count + chunk_start;
+                Sample* dst = output_buffer + (size_t)out_idx * sample_count + chunk_start;
                 if (pool.outputs[o].root_node != NODE_NONE) {
-                    double* src = regs + (size_t)pool.outputs[o].root_node * CHUNK;
+                    Sample* src = regs + (size_t)pool.outputs[o].root_node * CHUNK;
                     if (g_failure_mode == FailureMode::LkgFallback) {
                         // Non-finite at the root → substitute LKG per sample
                         // and record the fallback (failure-model.md §10.2).
-                        double lkg = pool.outputs[o].lkg_value;
+                        Sample lkg = pool.outputs[o].lkg_value;
                         for (size_t s = 0; s < chunk_size; s++) {
-                            double v = src[s];
+                            Sample v = src[s];
                             if (!std::isfinite(v)) {
                                 v = lkg;
                                 fallback_mask |= (uint64_t)1 << o;
@@ -359,10 +454,10 @@ void execute_batch(
                             dst[s] = v;
                         }
                     } else {
-                        memcpy(dst, src, chunk_size * sizeof(double));
+                        memcpy(dst, src, chunk_size * sizeof(Sample));
                     }
                 } else {
-                    double lkg = pool.outputs[o].lkg_value;
+                    Sample lkg = pool.outputs[o].lkg_value;
                     for (size_t s = 0; s < chunk_size; s++) dst[s] = lkg;
                 }
                 out_idx++;
@@ -423,11 +518,15 @@ void classify_outputs(NodePool& pool) {
         if (!pool.outputs[i].valid || pool.outputs[i].root_node == NODE_NONE) {
             pool.output_class[i] = OutputClass::Inactive;
             pool.output_input_mask[i] = 0;
+            pool.output_semantic_effects[i] = EffectNone;
             continue;
         }
 
         ClassifyResult cr = {};
         classify_node_tree(pool, pool.outputs[i].root_node, cr);
+        ProgramAnalysis analysis =
+            analyze_program(pool, pool.outputs[i].root_node);
+        pool.output_semantic_effects[i] = analysis.effects;
 
         if (cr.has_state) {
             pool.output_class[i] = OutputClass::Stateful;

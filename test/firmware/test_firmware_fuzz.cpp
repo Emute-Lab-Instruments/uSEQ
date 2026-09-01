@@ -21,11 +21,11 @@ static const char* binops[] = {"+", "-", "*", "/", "%", "min", "max", "pow"};
 static const int num_binops = 8;
 
 static const char* unary_ops[] = {
-    "abs", "floor", "ceil", "sin", "cos", "sqrt", "usin", "ucos", "neg", "not", "frac"
+    "abs", "floor", "ceil", "sin", "cos", "sqrt", "sin", "cos", "neg", "not", "frac"
 };
 static const int num_unary = 11;
 
-static const char* waveform_ops[] = {"tri", "sqr", "usin", "ucos"};
+static const char* waveform_ops[] = {"tri", "sqr", "sin", "cos"};
 static const int num_waveforms = 4;
 
 static const char* temporal_refs[] = {"beat", "bar", "phrase", "section", "t"};
@@ -249,7 +249,7 @@ TEST_CASE("Grammar-aware random expression fuzzing", "[fuzz][grammar]")
 TEST_CASE("Mutation fuzzing of valid expressions", "[fuzz][mutation]")
 {
     const std::vector<std::string> seeds = {
-        "(a1 (usin beat))",
+        "(a1 (sin beat))",
         "(define x 42)",
         "(a1 (* beat 0.5))",
         "(a1 (if (> beat 0.5) 1.0 0.0))",
@@ -258,7 +258,7 @@ TEST_CASE("Mutation fuzzing of valid expressions", "[fuzz][mutation]")
         "(d1 (sqr beat))",
         "(a1 (clamp beat 0.0 1.0))",
         "(set-bpm 120)",
-        "(a3 (lerp (usin beat) 0.2 0.8))",
+        "(a3 (lerp (sin beat) 0.2 0.8))",
     };
 
     std::mt19937 rng(123);
@@ -412,7 +412,7 @@ TEST_CASE("Boundary value expressions", "[fuzz][boundary]")
 
             INFO("bpm cmd: " << cmd);
             h.eval(cmd);
-            h.eval("(a1 (usin beat))");
+            h.eval("(a1 (sin beat))");
             h.run_ticks(50);
             assert_all_outputs_finite(h);
         }
@@ -430,7 +430,7 @@ TEST_CASE("Temporal fuzzing with random command injection", "[fuzz][temporal]")
     h.init();
 
     // Start with a valid output
-    h.eval("(a1 (usin beat))");
+    h.eval("(a1 (sin beat))");
 
     for (int tick = 0; tick < 5000; tick++) {
         // 10% chance: inject random valid expression as output
@@ -502,7 +502,7 @@ TEST_CASE("Multi-output random assignment", "[fuzz][multi_output]")
     std::mt19937 rng(77);
 
     // Initialise all outputs with known-good expressions
-    h.eval("(a1 (usin beat))");
+    h.eval("(a1 (sin beat))");
     h.eval("(a2 0.5)");
     h.eval("(a3 beat)");
     h.eval("(a4 bar)");
@@ -538,11 +538,11 @@ TEST_CASE("Sequential mutation storm on single harness", "[fuzz][mutation][stres
     std::mt19937 rng(999);
 
     // Start with valid output
-    h.eval("(a1 (usin beat))");
+    h.eval("(a1 (sin beat))");
     h.run_ticks(10);
 
     const std::vector<std::string> seeds = {
-        "(a1 (usin beat))",
+        "(a1 (sin beat))",
         "(a1 (* (sin t) 0.5))",
         "(a2 (tri bar))",
         "(d1 (> beat 0.5))",

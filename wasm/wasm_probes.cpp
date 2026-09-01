@@ -141,6 +141,8 @@ extern "C" {
             ctx.prev_outputs  = g_engine->pool.prev_output_values;
             ctx.output_values = outputs;
             ctx.workspace     = workspace;
+            ctx.ground_t      = g_engine->state.current_wall_time
+                + (t - g_engine->state.current_time);
 
             sig::execute_all_outputs(*g_probe_pool, ctx);
             buf[i] = outputs[slot];

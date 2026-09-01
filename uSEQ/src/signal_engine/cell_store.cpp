@@ -47,7 +47,7 @@ void SourceArena::reset() {
 
 // ── CellStore ───────────────────────────────────────────────────────────────
 
-uint16_t CellStore::store_data_table(const double* values, uint16_t count) {
+uint16_t CellStore::store_data_table(const Sample* values, uint16_t count) {
     // Content-intern: identical source text compiles to identical tables, and
     // tables are immutable after storage, so recompiles (on_cell_changed,
     // output reassign) must reuse the existing table instead of appending a
@@ -57,7 +57,7 @@ uint16_t CellStore::store_data_table(const double* values, uint16_t count) {
     for (uint16_t t = 0; t < data_table_count; t++) {
         if (data_lengths[t] != count) continue;
         if (memcmp(data_pool + data_offsets[t], values,
-                   count * sizeof(double)) == 0) {
+                   count * sizeof(Sample)) == 0) {
             return t;
         }
     }
@@ -76,13 +76,13 @@ uint16_t CellStore::store_data_table(const double* values, uint16_t count) {
     uint16_t table_id = data_table_count;
     data_offsets[table_id] = pool_offset;
     data_lengths[table_id] = count;
-    memcpy(data_pool + pool_offset, values, count * sizeof(double));
+    memcpy(data_pool + pool_offset, values, count * sizeof(Sample));
     data_table_count++;
 
     return table_id;
 }
 
-const double* CellStore::get_data_table(uint16_t table_id, uint16_t& out_length) const {
+const Sample* CellStore::get_data_table(uint16_t table_id, uint16_t& out_length) const {
     if (table_id >= data_table_count) {
         out_length = 0;
         return nullptr;
@@ -91,14 +91,14 @@ const double* CellStore::get_data_table(uint16_t table_id, uint16_t& out_length)
     return data_pool + data_offsets[table_id];
 }
 
-void CellStore::snapshot_values(double* out, size_t max_count) const {
+void CellStore::snapshot_values(Sample* out, size_t max_count) const {
     size_t n = max_count < MAX_CELLS ? max_count : MAX_CELLS;
     for (size_t i = 0; i < n; i++) {
         out[i] = cells[i].value;
     }
 }
 
-void CellStore::reset(double bpm, int beats_per_bar,
+void CellStore::reset(Sample bpm, int beats_per_bar,
                       int bars_per_phrase, int phrases_per_section) {
     // Keep the monotonic store revision across resets so cached snapshots can
     // never mistake a freshly-cleared store for their previous generation.
@@ -119,7 +119,7 @@ void CellStore::reset(double bpm, int beats_per_bar,
                          phrases_per_section);
 }
 
-void CellStore::init_timing_defaults(double bpm, int beats_per_bar,
+void CellStore::init_timing_defaults(Sample bpm, int beats_per_bar,
                                      int bars_per_phrase, int phrases_per_section) {
     store_revision++; // A12: cell values change below
     auto& si = SymbolIntern::getInstance();
@@ -131,17 +131,17 @@ void CellStore::init_timing_defaults(double bpm, int beats_per_bar,
 
     SymbolID bpb_sym = si.intern("beats-per-bar");
     cells[bpb_sym].kind     = CellKind::Number;
-    cells[bpb_sym].value    = (double)beats_per_bar;
+    cells[bpb_sym].value    = (Sample)beats_per_bar;
     cells[bpb_sym].revision = 1;
 
     SymbolID bpp_sym = si.intern("bars-per-phrase");
     cells[bpp_sym].kind     = CellKind::Number;
-    cells[bpp_sym].value    = (double)bars_per_phrase;
+    cells[bpp_sym].value    = (Sample)bars_per_phrase;
     cells[bpp_sym].revision = 1;
 
     SymbolID pps_sym = si.intern("phrases-per-section");
     cells[pps_sym].kind     = CellKind::Number;
-    cells[pps_sym].value    = (double)phrases_per_section;
+    cells[pps_sym].value    = (Sample)phrases_per_section;
     cells[pps_sym].revision = 1;
 }
 

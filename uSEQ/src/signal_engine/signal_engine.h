@@ -10,6 +10,8 @@
 #include "node_pool.h"
 #include "graph_builder.h"
 #include "executor.h"
+#include "program_semantics.h"
 #include "cold_eval.h"
+#include "temporal_query.h"
 
 #endif // SIGNAL_ENGINE_H

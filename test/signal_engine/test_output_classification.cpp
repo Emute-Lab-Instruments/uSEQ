@@ -51,11 +51,11 @@ TEST_CASE("Classification: function of t is pure", "[classification]") {
 }
 
 TEST_CASE("Classification: sin of beat (time-derived) is pure", "[classification]") {
-    REQUIRE(classify("(usin beat)") == OutputClass::Pure);
+    REQUIRE(classify("(sin beat)") == OutputClass::Pure);
 }
 
 TEST_CASE("Classification: nested time transforms are pure", "[classification]") {
-    REQUIRE(classify("(fast 2 (usin beat))") == OutputClass::Pure);
+    REQUIRE(classify("(fast 2 (sin beat))") == OutputClass::Pure);
 }
 
 TEST_CASE("Classification: seq of constants is pure", "[classification]") {
@@ -63,7 +63,7 @@ TEST_CASE("Classification: seq of constants is pure", "[classification]") {
 }
 
 TEST_CASE("Classification: euclid pattern is pure", "[classification]") {
-    REQUIRE(classify("(euclid 3 8)") == OutputClass::Pure);
+    REQUIRE(classify("(euclid 3 8 beat)") == OutputClass::Pure);
 }
 
 TEST_CASE("Classification: step with data table is pure", "[classification]") {
@@ -83,7 +83,7 @@ TEST_CASE("Classification: hardware input is input-dep", "[classification]") {
 }
 
 TEST_CASE("Classification: expression using hardware input is input-dep", "[classification]") {
-    auto [cls, mask] = classify_with_mask("(* ain1 (usin beat))");
+    auto [cls, mask] = classify_with_mask("(* ain1 (sin beat))");
     REQUIRE(cls == OutputClass::InputDep);
 }
 
@@ -115,7 +115,7 @@ TEST_CASE("Classification: multiple outputs classified independently", "[classif
     engine.init_defaults();
 
     // a1 = pure (sin of t)
-    const char* src1 = "(a1 (usin beat))";
+    const char* src1 = "(a1 (sin beat))";
     eval_cold(src1, (uint32_t)strlen(src1), engine);
 
     // a2 = input-dep
@@ -152,7 +152,7 @@ TEST_CASE("Classification: reclassifies when expression changes", "[classificati
     engine.init_defaults();
 
     // Start pure
-    const char* src1 = "(a1 (usin beat))";
+    const char* src1 = "(a1 (sin beat))";
     eval_cold(src1, (uint32_t)strlen(src1), engine);
     REQUIRE(engine.pool.output_class[0] == OutputClass::Pure);
 

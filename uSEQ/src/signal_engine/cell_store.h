@@ -11,7 +11,7 @@ namespace sig {
 
 enum class CellKind : uint8_t {
     Empty,       // unused slot
-    Number,      // double constant
+    Number,      // Sample constant
     Data,        // numeric array (vectors, step patterns, scale tables)
     Callable,    // user function template (params + body token offset)
     Nil          // explicitly nil
@@ -22,7 +22,7 @@ struct Cell {
     uint8_t flags       = 0;       // 0x01 = frozen
     uint16_t data_table_id = 0;    // for Data cells: index into shared data pool
     uint32_t revision   = 0;       // bumped on every change; dirty detection
-    double value        = 0.0;     // Number: the value. Data: length as double.
+    Sample value        = 0.0;     // Number: the value. Data: length as Sample.
 };
 // sizeof(Cell) == 16 bytes
 
@@ -73,30 +73,30 @@ struct CellStore {
     uint32_t store_revision = 1;
 
     // Shared data pool
-    double data_pool[MAX_DATA_ENTRIES]    = {};
+    Sample data_pool[MAX_DATA_ENTRIES]    = {};
     uint16_t data_offsets[MAX_DATA_TABLES] = {};
     uint16_t data_lengths[MAX_DATA_TABLES] = {};
     uint8_t data_table_count              = 0;
 
     // Store a new data table. Returns table ID, or UINT8_MAX on overflow.
-    uint16_t store_data_table(const double* values, uint16_t count);
+    uint16_t store_data_table(const Sample* values, uint16_t count);
 
     // Get data table pointer and length.
-    const double* get_data_table(uint16_t table_id, uint16_t& out_length) const;
+    const Sample* get_data_table(uint16_t table_id, uint16_t& out_length) const;
 
     // Snapshot cell numeric values for executor (copies cell[i].value for all).
-    void snapshot_values(double* out, size_t max_count) const;
+    void snapshot_values(Sample* out, size_t max_count) const;
 
     // Clear all session-owned definitions, callable metadata, and immutable
     // data tables, then restore only the well-known timing cells. Used by a
     // full session reset (`useq-clear`) and by engine initialisation.
-    void reset(double bpm = 120.0, int beats_per_bar = 4,
+    void reset(Sample bpm = 120.0, int beats_per_bar = 4,
                int bars_per_phrase = 4, int phrases_per_section = 4);
 
     // Convenience: initialise the four well-known timing cells.
     // bpm (default 120), beats-per-bar (default 4),
     // bars-per-phrase (default 4), phrases-per-section (default 4).
-    void init_timing_defaults(double bpm = 120.0, int beats_per_bar = 4,
+    void init_timing_defaults(Sample bpm = 120.0, int beats_per_bar = 4,
                               int bars_per_phrase = 4, int phrases_per_section = 4);
 };
 

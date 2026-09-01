@@ -155,6 +155,21 @@ TEST_CASE("synth: minimum sine form compiles as identity-keyed declaration",
     REQUIRE(std::string(decl.identity).size() > 0);
 }
 
+TEST_CASE("synth: osc namespace is registry-backed synth sugar",
+          "[synth][namespaces]") {
+    SynthHarness h;
+
+    REQUIRE(h.eval_ok("(osc/sine :name \"lead\" :freq 440 :amp 0.1)"));
+    REQUIRE(h.engine.synth_graph.declaration_count() == 1);
+    const auto& decl = h.engine.synth_graph.declarations[0];
+    REQUIRE(decl.def_name == std::string("osc/sine"));
+    REQUIRE(decl.identity == std::string("lead"));
+
+    REQUIRE(h.eval_fails("(osc/unknown :freq 440)"));
+    REQUIRE(h.first_message("(osc/unknown :freq 440)").find("osc/unknown") !=
+            std::string::npos);
+}
+
 // ============================================================================
 // VAL-COMP-002: Amplitude form compiles with bound frequency and amplitude
 // ============================================================================

@@ -325,7 +325,7 @@ TEST_CASE("Reclaim: hundreds of identical output re-evals reuse source arena",
     // Long enough that the old append-only behavior exhausts the desktop
     // arena during this loop (and exhausts the firmware-sized arena much
     // earlier), while still being a small, ordinary output expression.
-    const std::string code = "(a1 (+ (usin beat) 123456789))";
+    const std::string code = "(a1 (+ (sin beat) 123456789))";
     h.eval_ok(code);
     const uint32_t head_after_first = h.engine.arena.write_head;
     REQUIRE(head_after_first > 0);

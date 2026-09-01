@@ -747,7 +747,7 @@ TEST_CASE("Sampling after compilation produces finite values", "[robustness][sam
     SECTION("Sampling with extreme time values")
     {
         RobustHarness h;
-        h.eval_ok("(a1 (usin beat))");
+        h.eval_ok("(a1 (sin beat))");
 
         // Very large time values
         double v1 = h.sample("a1", 1e10);
@@ -769,7 +769,7 @@ TEST_CASE("Sampling after compilation produces finite values", "[robustness][sam
     SECTION("Recompilation mid-stream produces finite values")
     {
         RobustHarness h;
-        h.eval_ok("(a1 (usin beat))");
+        h.eval_ok("(a1 (sin beat))");
 
         // Sample some
         h.run_samples("a1", 100);
@@ -960,7 +960,7 @@ TEST_CASE("Hundreds of sequential evals do not degrade engine", "[robustness][po
     for (int i = 0; i < 200; i++) {
         std::string code;
         switch (i % 5) {
-            case 0: code = "(a1 (usin beat))"; break;
+            case 0: code = "(a1 (sin beat))"; break;
             case 1: code = "(a1 (* beat 0.5))"; break;
             case 2: code = "(a1 (if (> beat 0.5) 1.0 0.0))"; break;
             case 3: code = "(a1 (+ (sin t) 0.5))"; break;
@@ -985,7 +985,7 @@ TEST_CASE("Output errors do not corrupt other outputs", "[robustness][edge]")
     RobustHarness h;
 
     // Set up a valid output
-    h.eval_ok("(a1 (usin beat))");
+    h.eval_ok("(a1 (sin beat))");
 
     // Try to assign an invalid expression to a2
     EvalResult r = h.eval_result("(a2 (undefined_fn beat))");

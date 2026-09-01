@@ -27,16 +27,24 @@
 | Comparison | `>`, `<`, `>=`, `<=`, `=` | exactly 2 |
 | Logic | `not` | exactly 1 |
 | Logic | `and`, `or` | exactly 2 |
-| Unary maths | `sin`, `cos`, `tan`, `abs`, `floor`, `ceil`, `sqrt`, `neg`, `frac`, `usin`, `ucos`, `bi-to-uni`, `b>u`, `uni-to-bi`, `u>b` | exactly 1 |
-| Binary maths | `pow`, `expt`, `mod`, `pulse` | exactly 2 |
+| Unary maths | `tan`, `abs`, `floor`, `ceil`, `sqrt`, `neg`, `frac`, `bi-to-uni`, `b>u`, `uni-to-bi`, `u>b` | exactly 1 |
+| Phase waveforms | `sin`, `cos`, `tri`, `sqr` | exactly 1 phasor |
+| Width waveform | `pulse` | exactly 1 phasor; `:duty` is an attached modifier option |
+| Binary maths | `pow`, `expt`, `mod` | exactly 2 |
 | Ternary maths | `clamp`, `lerp`, `scale` | exactly 3 |
-| Phase waveforms | `tri`, `sqr` | exactly 1 |
 
-`tri` and `sqr` are pure phase-to-value functions. They are not oscillators,
-do not allocate state, and have no pivot/frequency argument. The historical
-two-argument compiler path discarded its first argument, so that spelling is
-rejected. Use `tri-osc`/`sqr-osc` for phase-coherent oscillators and `pulse`
-for a square wave with an explicit width.
+`sin`, `cos`, `tri`, `sqr`, and `pulse` are pure phase-to-value functions.
+They are not oscillators, do not allocate state, and have no frequency
+argument. Domain, range, and free-running behavior are explicit attached
+facets: for example `sin[uni norm]`, `sin[bi norm]`, and `sin[lfo bi]`.
+`pulse` reads `(pulse[:duty value] phasor)`; `:duty` defaults to the
+signal-rate value `0.5`. The historical positional-width and two-argument
+`tri`/`sqr` paths are rejected.
+
+Rejected adapter spellings such as `b/sin`, `lfo/tri`, and `blfo/sin` have no
+dual lowering. They are exact qualified bindings if declared, otherwise
+unknown bindings; targeted diagnostics may suggest `sin[bi]`, `tri[lfo]`, or
+`sin[lfo bi]`. See [operator-modifiers.md](operator-modifiers.md) §5.5.
 
 Unary `%` is rejected: remainder has no coherent unary identity. `mod` is
 the exactly-two-argument spelling; `%` permits a left fold of two or more
@@ -53,9 +61,9 @@ The executable catalogue covers the complete named surface:
 - pattern/data: `step`, `gates`, `trigs`, `euclid`/`eu`, `seq`/`from-list`,
   `interp`/`flatseq`, `dm`, `range`, `gatesw`, `random`, `index-rand`,
   `rpulse`, `rstep`, `ridx`, `rwarp`;
-- state: `integrate`, `phasor`, `lfo`, `slew`, `one-pole`, `env-follow`,
-  `sah`, `noise`, `toggle`, `count`, and the aliases `osc`, `tri-osc`, `saw`,
-  `sqr-osc`, `envelope-follower`, `latch`;
+- state: `integrate`, `phasor`, modifier-specialized waveform callables such as
+  `sin[lfo]` and `tri[lfo]`, `slew`, `one-pole`, `env-follow`, `sah`, `noise`,
+  `toggle`, `count`, and the aliases `envelope-follower`, `latch`;
 - external/special reads: `live-edit`, `prev`, and `input`.
 
 State-bearing forms accept only their documented keywords. Unknown or
@@ -64,7 +72,21 @@ positional arguments are compile errors. A rejected output candidate leaves
 the active root/source/dependencies, state and live-slot resources, data
 tables, source arena, and synth revision unchanged.
 
-### 2.1 Leaf and runtime-generated names
+2.1 **Driving signals are last.** `pulse` takes its phasor as its sole
+positional argument; `:duty` lives in the attached modifier block under
+[operator-modifiers.md](operator-modifiers.md) §4. The exact Euclidean
+signatures remain:
+
+```text
+euclid hits total phasor
+euclid hits total pulse-width phasor
+euclid hits total pulse-width rotation phasor
+```
+
+`eu` has the same signatures. Hits come before total steps; optional values
+stack immediately before the driving phasor, with rotation nearest it.
+
+### 2.2 Leaf and runtime-generated names
 
 | Disposition | Names | Meaning |
 |---|---|---|
@@ -80,12 +102,12 @@ The 28 hardware/output leaf names are generated from their spelling rather
 than stored in `symbols.def`. The conformance suite executes all 28 mappings;
 they are part of the language inventory despite that implementation detail.
 
-### 2.2 Keyword dispositions
+### 2.3 Keyword dispositions
 
 | Context | Keywords | Disposition |
 |---|---|---|
-| Stateful UGens | `:id`; plus `:phase`, `:wave`, `:pw`, or `:reset` on the forms that declare them | Typed option; each may occur once |
-| Wave selection | `:sin`, `:tri`, `:saw`, `:sqr` | Values of LFO `:wave`, not standalone forms |
+| Stateful UGens | `:id`; plus `:phase` or `:reset` on the forms that declare them | Typed call option; each may occur once |
+| Operator modifier | `:duty` on `pulse` | Attached keyword plus exactly one signal-rate expression; defaults to `0.5` |
 | Reserved | `:fresh`, `:attack`, `:release` | Recognised names but rejected: no implemented option uses them |
 | Synth metadata | `:name`, `:id`, `:version` | Typed identity/version fields; each may occur once |
 | `osc/sine` synth ports | `:freq`, `:amp`, `:fm` | NodeDef-declared control/audio bindings; duplicates reject |
@@ -97,7 +119,7 @@ inventory entries. Other NodeDef parameter keywords, if future registered
 NodeDefs add them, are registry-derived runtime surfaces and must acquire a
 NodeDef descriptor plus generated positive/negative witnesses.
 
-### 2.3 Live-edit variants
+### 2.4 Live-edit variants
 
 `live-edit` accepts exactly one literal seed category:
 
@@ -119,9 +141,14 @@ numeric index.
 The top-level forms are `define`/`def`, `defn`/`defun`, `defs`, `defstate`,
 `set`, `unassign`, `zeros`, `get-expr`, `set-bpm`, `set-time-sig`,
 `useq-clear`, `useq-set-time-offset`, `useq-nudge-time`, `useq-play`,
-`useq-pause`, `useq-stop`, `useq-rewind`, `synth`, and the editor-generated
-`with-state-id` wrapper. Their appearance anywhere in a signal expression is
-a compile-time boundary error.
+`useq-pause`, `useq-stop`, `useq-rewind`, `q/zeros`, `q/crossings`, `q/range`,
+`q/explain`, `synth`, and the editor-generated `with-state-id` wrapper. Their
+appearance anywhere in a signal expression is a compile-time boundary error.
+
+The `q/*` family is host/WASM-only and follows
+[temporal-queries.md](temporal-queries.md). Every query signature places its
+target signal last; `:rising` and `:falling` are the only direction keywords
+and occur immediately before the final target.
 
 `(set-time-sig beats subdivision)` requires a positive whole beat count and
 currently accepts only subdivision `4`. The clock model measures `bpm`,
@@ -144,3 +171,15 @@ a new name without a catalogue row, adding a duplicate row, or duplicating an
 inventory name fails `builtin_conformance_test`. Bounded
 forms also carry too-few/too-many witnesses; top-level forms carry a valid
 witness, an invalid witness, and a nested signal-context rejection witness.
+
+4.1 Every callable declares the modifier facts required by
+[operator-modifiers.md](operator-modifiers.md) §5.2: intrinsic raw and bare
+default `OperatorSpec`s, applicable facets, conflicts, options, option rates,
+and one lowering target. Generated reference data projects this inventory; it
+is not a second hand-maintained list.
+
+4.2 Conformance covers each declared default, applicable modifier,
+permutation-equivalent modifier set, and rejected duplicate, conflict, unknown,
+or inapplicable entry. Rejected adapter spellings have no signal disposition
+or alias row; their only permitted special handling is a targeted migration
+diagnostic.

@@ -46,16 +46,19 @@ const char* output_health_to_cstr(OutputHealth health);
 // 10-parameter execute_all_outputs signature.
 
 struct ExecutionContext {
-    double t;
-    double dt;                       // time delta since last tick
-    const double* cell_values;
-    const double* hw_inputs;
-    const double* data_pool;
+    Sample t;
+    Sample dt;                       // time delta since last tick
+    const Sample* cell_values;
+    const Sample* hw_inputs;
+    const Sample* data_pool;
     const uint16_t* data_offsets;
     const uint16_t* data_lengths;
-    const double* prev_outputs;
-    double* output_values;           // out  [MAX_OUTPUTS]
-    double* workspace;               // scratch [MAX_TOTAL_NODES]
+    const Sample* prev_outputs;
+    Sample* output_values;           // out  [MAX_OUTPUTS]
+    Sample* workspace;               // scratch [MAX_TOTAL_NODES]
+    Sample ground_t = 0.0;           // monotonic time since adapter/session boot
+    const Sample* state_values = nullptr; // optional immutable state snapshot
+    bool advance_state = true;       // false on a first/discontinuous tick
 };
 
 // ── Single-Sample Execution ─────────────────────────────────────────────────
@@ -65,13 +68,35 @@ struct ExecutionContext {
 
 void execute_all_outputs(const NodePool& pool, ExecutionContext& ctx);
 
+// ── Authoritative Tick Transition ─────────────────────────────────────────
+// Stateful update expressions read one immutable previous-state snapshot.
+// Output expressions then read the simultaneous finite next-state candidates,
+// as required by state.md §2.3-2.4.  Adapters may inspect other published
+// roots between prepare_tick() and commit_tick() (notably synth controls), but
+// must commit the returned transition exactly once for an authoritative tick.
+
+struct TickTransition {
+    Sample state_values[MAX_STATE_SLOTS] = {};
+    uint64_t start_mask = 0;
+    uint64_t attempted_mask = 0;
+    uint64_t failure_mask = 0;
+};
+
+void prepare_tick(const NodePool& pool, ExecutionContext& ctx,
+                  TickTransition& transition);
+
+void commit_tick(NodePool& pool, const ExecutionContext& ctx,
+                 const TickTransition& transition,
+                 const uint16_t* failed_owner_contexts = nullptr,
+                 uint16_t failed_owner_count = 0);
+
 // ── Post-Tick Commit ────────────────────────────────────────────────────────
 // After execute_all_outputs, call this to:
 //   1. Copy output_values → pool.prev_output_values (for next tick's PrevOutputLoad)
 //   2. Promote only finite, non-substituted roots to lkg_value / has_lkg
 // This mutates pool state, so it is NOT used in the batch/visualization path.
 
-void commit_outputs(NodePool& pool, const double* output_values);
+void commit_outputs(NodePool& pool, const Sample* output_values);
 
 // ── Post-Tick State Commit ─────────────────────────────────────────────────
 // After execute_all_outputs, call this to update state slots from their
@@ -80,7 +105,7 @@ void commit_outputs(NodePool& pool, const double* output_values);
 // retain the previous value and publish state_update_failure_mask until a
 // later finite candidate clears it.
 
-void commit_state(NodePool& pool, const double* workspace,
+void commit_state(NodePool& pool, const Sample* workspace,
                   const uint16_t* failed_owner_contexts = nullptr,
                   uint16_t failed_owner_count = 0);
 
@@ -89,14 +114,14 @@ void commit_state(NodePool& pool, const double* workspace,
 
 void execute_batch(
     const NodePool& pool,
-    const double* t_array,
+    const Sample* t_array,
     size_t sample_count,
-    const double* cell_values,
-    const double* hw_inputs,
-    const double* data_pool,
+    const Sample* cell_values,
+    const Sample* hw_inputs,
+    const Sample* data_pool,
     const uint16_t* data_offsets,
     const uint16_t* data_lengths,
-    double* output_buffer,  // [num_outputs × sample_count], row-major
+    Sample* output_buffer,  // [num_outputs × sample_count], row-major
     uint16_t num_outputs
 );
 

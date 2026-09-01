@@ -21,7 +21,9 @@
     "uSEQ/src/signal_engine/cold_eval.cpp",
     "uSEQ/src/signal_engine/state_registry.cpp",
     "uSEQ/src/signal_engine/synth_registry.cpp",
-    "uSEQ/src/signal_engine/synth_graph.cpp"
+    "uSEQ/src/signal_engine/synth_graph.cpp",
+    "uSEQ/src/signal_engine/program_semantics.cpp",
+    "uSEQ/src/signal_engine/temporal_query.cpp"
   ],
   "compile_flags": [
     "-I./uSEQ",
@@ -34,6 +36,7 @@
     "-std=c++17",
     "-Oz",
     "-flto",
+    "-sDEFAULT_TO_CXX=1",
     "-sGROWABLE_ARRAYBUFFERS=0"
   ],
   "public_function_exports": [
@@ -58,6 +61,7 @@
     "useq_apply_state_snapshot",
     "useq_output_classifications",
     "useq_output_dependencies",
+    "useq_output_semantic_effects",
     "useq_probe_set",
     "useq_probe_sample",
     "useq_probe_free",

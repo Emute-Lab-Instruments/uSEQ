@@ -84,6 +84,7 @@ void execute_batch_sequential(
 
     // Save all mutable state so visualization doesn't corrupt the live signal
     double saved_state[sig::MAX_STATE_SLOTS];
+    bool saved_state_observed[sig::MAX_STATE_SLOTS];
     double saved_prev_outputs[sig::MAX_OUTPUTS];
     double saved_lkg[sig::MAX_OUTPUTS];
     bool saved_valid[sig::MAX_OUTPUTS];
@@ -91,6 +92,8 @@ void execute_batch_sequential(
     uint16_t saved_slot_count = g_engine->pool.state_slot_count;
     double saved_prev_t = g_prev_tick_time;
     memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
+    memcpy(saved_state_observed, g_engine->pool.state_observed,
+           sizeof(saved_state_observed));
     memcpy(saved_prev_outputs, g_engine->pool.prev_output_values, sizeof(saved_prev_outputs));
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
@@ -127,10 +130,13 @@ void execute_batch_sequential(
         ctx.prev_outputs  = g_engine->pool.prev_output_values;
         ctx.output_values = output_values;
         ctx.workspace     = node_values;
-        sig::execute_all_outputs(g_engine->pool, ctx);
+        ctx.ground_t      = g_engine->state.current_wall_time
+            + (t - g_engine->state.current_time);
+        ctx.advance_state = t != g_prev_tick_time;
 
-        sig::commit_state(g_engine->pool, node_values);
-        sig::commit_outputs(g_engine->pool, output_values);
+        sig::TickTransition transition;
+        sig::prepare_tick(g_engine->pool, ctx, transition);
+        sig::commit_tick(g_engine->pool, ctx, transition);
         g_prev_tick_time = t;
 
         for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
@@ -141,6 +147,8 @@ void execute_batch_sequential(
 
     // Restore all state — visualization is read-only
     memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
+    memcpy(g_engine->pool.state_observed, saved_state_observed,
+           sizeof(saved_state_observed));
     memcpy(g_engine->pool.prev_output_values, saved_prev_outputs, sizeof(saved_prev_outputs));
     for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
         g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
@@ -204,7 +212,11 @@ bool execute_at_time(double wall_time, double* output_values,
     ctx.prev_outputs  = g_engine->pool.prev_output_values;
     ctx.output_values = output_values;
     ctx.workspace     = node_values;
-    sig::execute_all_outputs(g_engine->pool, ctx);
+    ctx.ground_t      = wall_time;
+    ctx.advance_state = !g_engine->state.reset_dt_on_next_tick;
+
+    sig::TickTransition transition;
+    sig::prepare_tick(g_engine->pool, ctx, transition);
 
     uint16_t failed_contexts[sig::MAX_SYNTH_CONTROLS] = {};
     uint16_t failed_count = 0;
@@ -236,16 +248,12 @@ bool execute_at_time(double wall_time, double* output_values,
         }
     }
 
-    sig::commit_state(g_engine->pool, node_values,
-                      failed_contexts, failed_count);
+    sig::commit_tick(g_engine->pool, ctx, transition,
+                     failed_contexts, failed_count);
     g_engine->state.current_dt = ctx.dt;
     g_engine->state.reset_dt_on_next_tick = false;
     g_prev_tick_time = t;
 
-    // Publish the values actually heard, but promote only finite roots that
-    // were not substituted. This preserves the no-LKG Error state across a
-    // first-ever non-finite sample.
-    sig::commit_outputs(g_engine->pool, output_values);
     if (ownership == ExecutionOwnership::Authoritative) {
         g_authoritative_wall_frontier = wall_time;
         g_has_authoritative_wall_frontier = true;

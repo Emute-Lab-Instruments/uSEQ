@@ -258,7 +258,7 @@ uint16_t TokenStream::tokenize(const char* source, uint32_t length,
             // space). Restricted to plain decimal text (A14) so strtod's
             // inf/nan/hex forms stay symbols.
             char* end_ptr = nullptr;
-            double val = strtod(buf, &end_ptr);
+            Sample val = strtod(buf, &end_ptr);
             if (end_ptr == buf + sym_len &&
                 is_plain_number_text(buf, sym_len)) {
                 if (!std::isfinite(val)) {

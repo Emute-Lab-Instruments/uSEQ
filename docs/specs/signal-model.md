@@ -10,9 +10,11 @@
 - `uSEQ/src/signal_engine/node_pool.h` — `NodeOp` enum: `Const` (constant signal), `RawTimeLoad` (the `t` leaf), `CellLoad`, `InputLoad`, `PrevOutputLoad`, `LoadState`, `LoadDt`, plus all pointwise arithmetic/math/comparison/logic ops
 - `uSEQ/src/signal_engine/graph_builder.{h,cpp}` — implicit lifting via graph compilation: `compile_expr()`, `compile_symbol()`, time-context threading (`TimeContext`), `expand_beat()`/`expand_bar()`/etc. (derived phasors from local `t`)
 - `uSEQ/src/signal_engine/executor.{h,cpp}` — `execute_all_outputs()` (single-sample evaluation — the "sampling" of signals), `execute_batch()` (SOA batch sampling for visualisation)
+- `uSEQ/src/signal_engine/program_semantics.{h,cpp}` — compositional dependency/effect analysis, owning immutable `ProgramView` snapshot, and independent reference evaluation
 - `uSEQ/src/signal_engine/types.h` — `MAX_TOTAL_NODES`, `FLAG_TIME_INVARIANT`
-- `wasm/wasm_wrapper.cpp` — `useq_eval_output()` (sample a single output at a time), projection fork (visualisation lookahead without mutating live state)
+- `wasm/wasm_wrapper.cpp`, `wasm/wasm_evaluation.cpp`, and `wasm/wasm_projection.cpp` — single-output sampling, authoritative ticks, and projection-fork lookahead without mutating live state
 - `test/signal_engine/test_signal_engine_golden.cpp` — golden tests verifying signal semantics at the language boundary
+- `test/signal_engine/test_program_semantics.cpp` — optimized/reference differential tests and scoped function-profunctor law witnesses
 
 1.1 The fundamental semantic claim of Reactive ModuLisp is **implicit lifting**: every expression appearing in signal position is automatically interpreted as a function of a numerical argument representing time, plus cells, declared state, previous-output buffers, and external inputs inserted into the graph by e.g. reading hardware/MIDI/OSC/etc inputs.
 

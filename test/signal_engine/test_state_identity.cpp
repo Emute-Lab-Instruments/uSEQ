@@ -242,7 +242,7 @@ TEST_CASE("State identity: operator-compatible change preserves phase",
 
     // saw and tri-osc both use ResourceKind::OscillatorPhase, so sharing
     // an :id between them should resolve to the same state slot.
-    h.eval_ok("(a1 (saw 1 :id \"x\"))");
+    h.eval_ok("(a1 (lfo/saw 1 :id \"x\"))");
 
     // Accumulate phase.
     h.tick("a1", 0.0);
@@ -269,7 +269,7 @@ TEST_CASE("State identity: operator-compatible change preserves phase",
 
     // Recompile as tri-osc with the same :id.
     // The OscillatorPhase slot should be reused (same key).
-    h.eval_ok("(a1 (tri-osc 1 :id \"x\"))");
+    h.eval_ok("(a1 (lfo/tri 1 :id \"x\"))");
 
     double phase_after = h.engine.pool.state_values[slot];
     INFO("phase_after: " << phase_after);

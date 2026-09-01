@@ -30,7 +30,6 @@ struct GoldenHarness {
     double prev_t = 0.0;
     double last_dt = 0.0;
     bool has_ticked = false;
-    bool state_committed_this_step = false;
 
     explicit GoldenHarness(double bpm = 120.0, int beats_per_bar = 4) {
         engine.init_defaults(bpm, beats_per_bar);
@@ -69,26 +68,28 @@ struct GoldenHarness {
 
         last_dt = t - prev_t;
 
-        if (engine.pool.state_slot_count > 0 &&
-            has_ticked && t != prev_t && !state_committed_this_step)
-        {
-            ExecutionContext state_ctx;
-            state_ctx.t = t;
-            state_ctx.dt = last_dt;
-            state_ctx.cell_values = cell_values;
-            state_ctx.hw_inputs = hw_inputs;
-            state_ctx.data_pool = engine.cells.data_pool;
-            state_ctx.data_offsets = engine.cells.data_offsets;
-            state_ctx.data_lengths = engine.cells.data_lengths;
-            state_ctx.prev_outputs = engine.pool.prev_output_values;
-            state_ctx.output_values = outputs;
-            state_ctx.workspace = workspace;
-            execute_all_outputs(engine.pool, state_ctx);
-            commit_state(engine.pool, workspace);
-            state_committed_this_step = true;
-            std::memset(workspace, 0, sizeof(workspace));
-            std::memset(outputs, 0, sizeof(outputs));
-        }
+        ExecutionContext ctx;
+        ctx.t = t;
+        ctx.dt = last_dt;
+        ctx.cell_values = cell_values;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = engine.cells.data_pool;
+        ctx.data_offsets = engine.cells.data_offsets;
+        ctx.data_lengths = engine.cells.data_lengths;
+        ctx.prev_outputs = engine.pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        ctx.ground_t = t;
+        execute_all_outputs(engine.pool, ctx);
+
+        return outputs[output_index(output_name)];
+    }
+
+    double tick(const char* output_name, double t) {
+        std::memset(outputs, 0, sizeof(outputs));
+        std::memset(workspace, 0, sizeof(workspace));
+        engine.cells.snapshot_values(cell_values, MAX_CELLS);
+        last_dt = t - prev_t;
 
         ExecutionContext ctx;
         ctx.t = t;
@@ -101,15 +102,13 @@ struct GoldenHarness {
         ctx.prev_outputs = engine.pool.prev_output_values;
         ctx.output_values = outputs;
         ctx.workspace = workspace;
-        execute_all_outputs(engine.pool, ctx);
+        ctx.ground_t = t;
+        ctx.advance_state = has_ticked && t != prev_t;
 
-        return outputs[output_index(output_name)];
-    }
-
-    double tick(const char* output_name, double t) {
-        if (t != prev_t) state_committed_this_step = false;
-        double value = sample(output_name, t);
-        commit_outputs(engine.pool, outputs);
+        TickTransition transition;
+        prepare_tick(engine.pool, ctx, transition);
+        double value = outputs[output_index(output_name)];
+        commit_tick(engine.pool, ctx, transition);
         has_ticked = true;
         prev_t = t;
         return value;
@@ -209,30 +208,30 @@ TEST_CASE("UGen: lfo :sqr with :pw", "[ugens][lfo]") {
     REQUIRE(h.tick("a1", 0.3) == Approx(0.0));
 }
 
-// ── lfo aliases ─────────────────────────────────────────────────────────────
+// ── namespaced lfo waveforms ────────────────────────────────────────────────
 
-TEST_CASE("UGen: osc is alias for sine lfo", "[ugens][lfo][alias]") {
+TEST_CASE("UGen: lfo/sin is a unipolar sine lfo", "[ugens][lfo][namespace]") {
     GoldenHarness h;
-    h.assign_ok("a1", "(osc 1.0)");
+    h.assign_ok("a1", "(lfo/sin 1.0)");
     REQUIRE(h.tick("a1", 0.0) == Approx(0.5)); // usin(0) = 0.5
 }
 
-TEST_CASE("UGen: saw is alias for saw lfo", "[ugens][lfo][alias]") {
+TEST_CASE("UGen: lfo/saw is a saw lfo", "[ugens][lfo][namespace]") {
     GoldenHarness h;
-    h.assign_ok("a1", "(saw 1.0)");
+    h.assign_ok("a1", "(lfo/saw 1.0)");
     REQUIRE(h.tick("a1", 0.0) == Approx(0.0));
     REQUIRE(h.tick("a1", 0.1) == Approx(0.1));
 }
 
-TEST_CASE("UGen: tri-osc is alias for tri lfo", "[ugens][lfo][alias]") {
+TEST_CASE("UGen: lfo/tri is a triangle lfo", "[ugens][lfo][namespace]") {
     GoldenHarness h;
-    h.assign_ok("a1", "(tri-osc 1.0)");
+    h.assign_ok("a1", "(lfo/tri 1.0)");
     REQUIRE(h.tick("a1", 0.0) == Approx(0.0)); // tri(0) = 0
 }
 
-TEST_CASE("UGen: sqr-osc is alias for sqr lfo", "[ugens][lfo][alias]") {
+TEST_CASE("UGen: lfo/sqr is a square lfo", "[ugens][lfo][namespace]") {
     GoldenHarness h;
-    h.assign_ok("a1", "(sqr-osc 1.0)");
+    h.assign_ok("a1", "(lfo/sqr 1.0)");
     REQUIRE(h.tick("a1", 0.0) == Approx(1.0)); // phase < 0.5 → 1
 }
 

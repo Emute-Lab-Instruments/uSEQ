@@ -9,9 +9,9 @@ namespace sig {
 // ── Constant folding evaluation ─────────────────────────────────────────────
 // Thin wrappers that delegate to the shared eval_ops.h functions.
 
-double eval_unary(NodeOp op, double a)                    { return eval_unary_op(op, a); }
-double eval_binop(NodeOp op, double a, double b)          { return eval_binary_op(op, a, b); }
-double eval_ternary(NodeOp op, double a, double b, double c) { return eval_ternary_op(op, a, b, c); }
+Sample eval_unary(NodeOp op, Sample a)                    { return eval_unary_op(op, a); }
+Sample eval_binop(NodeOp op, Sample a, Sample b)          { return eval_binary_op(op, a, b); }
+Sample eval_ternary(NodeOp op, Sample a, Sample b, Sample c) { return eval_ternary_op(op, a, b, c); }
 
 // ── OutputDeps ──────────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ static bool nodes_equal(const Node& a, const Node& b) {
         && a.input_a == b.input_a
         && a.input_b == b.input_b
         && a.input_c == b.input_c
-        && memcmp(&a.imm, &b.imm, sizeof(double)) == 0;
+        && memcmp(&a.imm, &b.imm, sizeof(Sample)) == 0;
 }
 
 // ── NodePool ────────────────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ uint16_t NodePool::intern_node(const Node& n) {
     return ni;
 }
 
-uint16_t NodePool::make_const(double value) {
+uint16_t NodePool::make_const(Sample value) {
     Node n;
     n.op = NodeOp::Const;
     n.flags = FLAG_TIME_INVARIANT;
@@ -129,11 +129,18 @@ uint16_t NodePool::make_raw_time_load() {
     return intern_node(n);
 }
 
+uint16_t NodePool::make_ground_time_load() {
+    Node n;
+    n.op = NodeOp::GroundTimeLoad;
+    n.flags = 0;
+    return intern_node(n);
+}
+
 uint16_t NodePool::make_cell_load(SymbolID cell_id) {
     Node n;
     n.op = NodeOp::CellLoad;
     n.flags = FLAG_TIME_INVARIANT; // cells don't change per-sample
-    n.imm = (double)cell_id;
+    n.imm = (Sample)cell_id;
     return intern_node(n);
 }
 
@@ -141,7 +148,7 @@ uint16_t NodePool::make_input_load(uint16_t input_index) {
     Node n;
     n.op = NodeOp::InputLoad;
     n.flags = 0; // hardware inputs can change per-sample
-    n.imm = (double)input_index;
+    n.imm = (Sample)input_index;
     return intern_node(n);
 }
 
@@ -149,7 +156,7 @@ uint16_t NodePool::make_prev_output_load(uint16_t output_index) {
     Node n;
     n.op = NodeOp::PrevOutputLoad;
     n.flags = 0;
-    n.imm = (double)output_index;
+    n.imm = (Sample)output_index;
     return intern_node(n);
 }
 
@@ -157,7 +164,7 @@ uint16_t NodePool::make_state_load(uint16_t state_slot) {
     Node n;
     n.op = NodeOp::LoadState;
     n.flags = 0;  // state is time-varying (changes each tick)
-    n.imm = (double)state_slot;
+    n.imm = (Sample)state_slot;
     return intern_node(n);
 }
 
@@ -165,7 +172,7 @@ uint16_t NodePool::make_slot_load(uint16_t slot_index) {
     Node n;
     n.op = NodeOp::SlotLoad;
     n.flags = 0;  // live slots change externally per tick
-    n.imm = (double)slot_index;
+    n.imm = (Sample)slot_index;
     return intern_node(n);
 }
 
@@ -178,8 +185,8 @@ int16_t NodePool::find_live_slot(const char* id) const {
     return -1;
 }
 
-int16_t NodePool::alloc_live_slot(const char* id, double seed, double min_val, double max_val,
-                                   SlotVariant variant, double step, int precision,
+int16_t NodePool::alloc_live_slot(const char* id, Sample seed, Sample min_val, Sample max_val,
+                                   SlotVariant variant, Sample step, int precision,
                                    uint16_t owner_context) {
     int16_t existing = find_live_slot(id);
     if (existing >= 0) {
@@ -191,11 +198,11 @@ int16_t NodePool::alloc_live_slot(const char* id, double seed, double min_val, d
         live_slots[existing].precision = precision;
         // Reclamp existing value to new bounds (numeric only)
         if (variant == SlotVariant::Numeric) {
-            double& v = live_slots[existing].value;
+            Sample& v = live_slots[existing].value;
             if (v < min_val) v = min_val;
             if (v > max_val) v = max_val;
         } else if (variant == SlotVariant::Boolean) {
-            double& v = live_slots[existing].value;
+            Sample& v = live_slots[existing].value;
             v = (v != 0.0) ? 1.0 : 0.0;
         }
         // Keyword: value is index into options, validated by caller
@@ -216,13 +223,13 @@ int16_t NodePool::alloc_live_slot(const char* id, double seed, double min_val, d
     return (int16_t)idx;
 }
 
-void NodePool::set_live_slot_value(const char* id, double value) {
+void NodePool::set_live_slot_value(const char* id, Sample value) {
     int16_t idx = find_live_slot(id);
     if (idx < 0) return;
     set_live_slot_value_by_index((uint16_t)idx, value);
 }
 
-void NodePool::set_live_slot_value_by_index(uint16_t idx, double value) {
+void NodePool::set_live_slot_value_by_index(uint16_t idx, Sample value) {
     // Bounds-check against the live slot capacity. Out-of-range indices are
     // ignored (wire-protocol §6.5: garbage/stale slot_index → skip).
     if (idx >= live_slot_count) return;
@@ -233,7 +240,7 @@ void NodePool::set_live_slot_value_by_index(uint16_t idx, double value) {
     switch (live_slots[idx].variant) {
         case SlotVariant::Numeric: {
             // Clamp to [min, max]
-            double clamped = value;
+            Sample clamped = value;
             if (clamped < live_slots[idx].min_val) clamped = live_slots[idx].min_val;
             if (clamped > live_slots[idx].max_val) clamped = live_slots[idx].max_val;
             live_slots[idx].value = clamped;
@@ -247,7 +254,7 @@ void NodePool::set_live_slot_value_by_index(uint16_t idx, double value) {
             // Validate against options vector length
             int index = (int)value;
             if (index < 0 || index >= (int)live_slots[idx].options_count) return;
-            live_slots[idx].value = (double)index;
+            live_slots[idx].value = (Sample)index;
             break;
         }
     }
@@ -486,10 +493,12 @@ void NodePool::reset() {
     }
     memset(output_class, 0, sizeof(output_class));
     memset(output_input_mask, 0, sizeof(output_input_mask));
+    memset(output_semantic_effects, 0, sizeof(output_semantic_effects));
     memset(prev_output_values, 0, sizeof(prev_output_values));
     runtime_fallback_mask = 0;
     state_update_failure_mask = 0;
     memset(state_values, 0, sizeof(state_values));
+    memset(state_observed, 0, sizeof(state_observed));
     for (uint16_t s = 0; s < MAX_STATE_SLOTS; s++) {
         state_update_roots[s] = NODE_NONE;
         state_owner_context[s] = NODE_NONE;
@@ -506,7 +515,7 @@ void NodePool::reset() {
 
 void NodePool::allocate_batch_workspace() {
     if (!batch_workspace) {
-        batch_workspace.reset(new double[MAX_TOTAL_NODES * batch_chunk_size]);
+        batch_workspace.reset(new Sample[MAX_TOTAL_NODES * batch_chunk_size]);
     }
 }
 

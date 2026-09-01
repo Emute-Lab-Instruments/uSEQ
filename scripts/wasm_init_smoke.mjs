@@ -44,6 +44,41 @@ if (exactBoundaryNumber !== "12") {
   throw new Error("generated WASM did not parse a numeric token at source end");
 }
 
+const temporalZeros = mod.ccall(
+  "useq_eval",
+  "string",
+  ["string"],
+  ["(q/zeros [0 1] (bsin t))"],
+);
+if (
+  temporalZeros !==
+  "[[:instant :rising :whole [0 0] :part [0 0]] " +
+    "[:instant :falling :whole [0.5 0.5] :part [0.5 0.5]]]"
+) {
+  throw new Error(`generated WASM temporal query mismatch: ${temporalZeros}`);
+}
+const temporalExplain = mod.ccall(
+  "useq_eval",
+  "string",
+  ["string"],
+  ["(q/explain [0 1] (bsin t))"],
+);
+if (!temporalExplain.includes(":status :complete")) {
+  throw new Error(`generated WASM temporal explain failed: ${temporalExplain}`);
+}
+const misplacedTemporalTarget = mod.ccall(
+  "useq_eval",
+  "string",
+  ["string"],
+  ["(q/zeros [0 1] (bsin t) 0)"],
+);
+if (
+  !misplacedTemporalTarget.startsWith("Error") ||
+  !misplacedTemporalTarget.includes("last argument")
+) {
+  throw new Error("generated WASM did not enforce final temporal target");
+}
+
 const healthProgram = mod.ccall(
   "useq_eval",
   "string",
@@ -78,6 +113,27 @@ if (result.startsWith("Error")) {
 if (health() !== 1) {
   throw new Error("generated WASM assignment did not clear stale failure health");
 }
+evalOk("(a1 (b/sin 0.25))");
+const namespaceValue = mod.ccall(
+  "useq_eval_output",
+  "number",
+  ["string", "number"],
+  ["a1", 0],
+);
+if (Math.abs(namespaceValue - 1) > 1e-9) {
+  throw new Error("generated WASM did not execute the namespace adapter grammar");
+}
+evalOk("(d1 (euclid 3 8 0.3 2 bar))");
+evalOk("(a2 (pulse 0.25 beat))");
+const removedName = mod.ccall(
+  "useq_eval",
+  "string",
+  ["string"],
+  ["(a3 (usin beat))"],
+);
+if (!removedName.startsWith("Error") || !removedName.includes("sin")) {
+  throw new Error("generated WASM did not reject a removed name with its replacement");
+}
 const synthResult = mod.ccall(
   "useq_eval",
   "string",
@@ -97,6 +153,16 @@ if (
   !Array.isArray(artifacts.connections)
 ) {
   throw new Error("generated WASM did not expose the synth ABI-2 envelope");
+}
+evalOk('(osc/sine :name "namespace-sugar" :freq 220)');
+const sugarArtifacts = JSON.parse(
+  mod.ccall("useq_synth_artifacts", "string", [], []),
+);
+if (!sugarArtifacts.declarations?.some(
+  (declaration) => declaration.identity === "namespace-sugar" &&
+    declaration.def === "osc/sine",
+)) {
+  throw new Error("generated WASM did not lower osc/ registry sugar");
 }
 
 const liveEditResult = mod.ccall(

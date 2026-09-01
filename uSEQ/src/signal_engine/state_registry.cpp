@@ -4,11 +4,12 @@
 namespace sig {
 
 uint16_t StateResourceRegistry::resolve(const StateResourceKey& key,
-                                        double init_value,
-                                        double* state_values,
+                                        Sample init_value,
+                                        Sample* state_values,
                                         uint16_t& state_slot_count,
                                         uint16_t owner_context) {
     last_owner_conflict = false;
+    last_resolve_created = false;
     // Search for existing entry
     for (uint16_t i = 0; i < entry_count; i++) {
         if (entries[i].key == key) {
@@ -34,6 +35,7 @@ uint16_t StateResourceRegistry::resolve(const StateResourceKey& key,
         slot = state_slot_count++;
     }
     state_values[slot] = init_value;
+    last_resolve_created = true;
 
     entries[entry_count].key = key;
     entries[entry_count].slot_index = slot;
@@ -108,6 +110,7 @@ void StateResourceRegistry::clear() {
     entry_count = 0;
     free_slot_count = 0;
     last_owner_conflict = false;
+    last_resolve_created = false;
 }
 
 } // namespace sig

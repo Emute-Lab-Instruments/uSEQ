@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <type_traits>
 #include "build_profile.h"
 #include "../modulisp/lisp/symbol_intern.h"
 
@@ -10,7 +11,29 @@ namespace sig {
 
 using SymbolID = SymbolIntern::SymbolID;
 
-// ── Limits ──────────────────────────────────────────────────────────────────
+// ── Numeric Width ───────────────────────────────────────────────────────────
+// Sample is the engine's numeric scalar: signal values, cell values, time
+// (t/dt), node results, and output samples all use it. One control point for
+// the width so a measured firmware decision (software double vs hardware
+// float on RP2040, workspace SRAM halves) can be made without touching call
+// sites. Default stays double: phasor time accumulates over long sessions and
+// float's 24-bit mantissa degrades beat phase measurably.
+//
+// Known costs of enabling USEQ_SAMPLE_F32 (deliberately not hidden):
+//   - double literals (0.5) will promote under -Wdouble-promotion; the build
+//     keeps a zero-warning policy, so suffixes/casts must be fixed then.
+//   - Unqualified math calls (floor, sin) resolve to double overloads unless
+//     std::-qualified; qualify before flipping.
+//   - Flash persistence layout and the WASM C ABI are double today; they
+//     convert at their boundary or version their formats.
+#if defined(USEQ_SAMPLE_F32)
+using Sample = float;
+#else
+using Sample = double;
+#endif
+static_assert(std::is_floating_point_v<Sample>,
+              "Sample must be a floating-point type");
+
 // Firmware builds use smaller limits to fit within the RP2040's 264 KB SRAM.
 // USEQ_FIRMWARE_PROFILE selects the same retained capacities in a native
 // process so capacity and endurance workloads can run without Arduino I/O.

@@ -8,16 +8,18 @@
 
 ## Source files
 
-- `uSEQ/src/signal_engine/node_pool.h` — `NodeOp::RawTimeLoad` (the `t` leaf); `NodeOp::LoadDt`; `NodeOp::USin`/`UCos`/`Sin`/`Cos` (unipolar/bipolar waveforms); `NodeOp::Fmod` (phasor wrapping); `NodeOp::BiToUni`/`UniToBi`.
-- `uSEQ/src/signal_engine/graph_builder.cpp` — `compile_symbol()` emits `RawTimeLoad` for `t`; phasor derivation from timing cells (`beat`, `bar`, `phrase`, `section`, `beat-num`, `bar-num`, `beat-dur`, `bar-dur`).
-- `uSEQ/src/signal_engine/graph_builder.h` — `TimeContext` struct carries the local time node through compilation.
+- `uSEQ/src/signal_engine/node_pool.h` — `NodeOp::RawTimeLoad` (`t`/`t0`), `NodeOp::GroundTimeLoad` (`ground-time`), and `NodeOp::LoadDt` (`dt-wall`, with local `dt` represented by the current time context); `NodeOp::USin`/`UCos`/`Sin`/`Cos` (unipolar/bipolar waveforms); `NodeOp::Fmod` (phasor wrapping); `NodeOp::BiToUni`/`UniToBi`.
+- `uSEQ/src/signal_engine/graph_builder.cpp` — `compile_symbol()` resolves `t`, `t0`, `ground-time`, `dt`, and `dt-wall`; phasor derivation from timing cells (`beat`, `bar`, `phrase`, `section`, `beat-num`, `bar-num`, `beat-dur`, `bar-dur`).
+- `uSEQ/src/signal_engine/graph_builder.h` — `TimeContext` carries local/base/ground time and local/wall delta nodes through compilation.
 - `uSEQ/src/signal_engine/cell_store.h` / `cell_store.cpp` — `init_timing_defaults()` populates `bpm`, `beats-per-bar`, `bars-per-phrase`, `phrases-per-section` cells.
-- `uSEQ/src/signal_engine/executor.cpp` — `ExecutionContext::t` and `ExecutionContext::dt`; `RawTimeLoad` returns `ctx.t`.
+- `uSEQ/src/signal_engine/executor.{h,cpp}` — `ExecutionContext::t`, `dt`, and `ground_t`; `RawTimeLoad`, `GroundTimeLoad`, and `LoadDt` evaluation.
 - `uSEQ/src/firmware/firmware.cpp` — sets `ctx.t` from the hardware clock before each tick.
-- `wasm/wasm_wrapper.cpp` — `g_current_time`; `useq_update_time()`; the shared
-  authoritative frontier for generated-runtime live-tick entry points.
-- `uSEQ/src/dsp/tempoEstimator.h` / `tempoEstimator.cpp` — external tempo estimation from clock inputs.
-- `test/signal_engine/test_signal_engine_golden.cpp` — "beat phasor", "bar phasor", "phrase phasor", "section phasor", "beat-num", "bar-num", "beat-dur" golden tests.
+- `wasm/wasm_host_session.cpp`, `wasm/wasm_wrapper.cpp`, and
+  `wasm/wasm_evaluation.cpp` — generated-runtime wall/logical time state,
+  `useq_update_time()`, and authoritative live-tick entry points.
+- `uSEQ/src/firmware/clock_sync.{h,cpp}` — external tempo estimation and phase alignment from clock inputs.
+- `test/signal_engine/test_signal_engine_golden.cpp` — phasor/counter/duration and explicit time-context golden tests.
+- `test/signal_engine/test_program_semantics.cpp` — independent reference evaluation and local/ground/delta-time effect witnesses.
 
 ---
 
@@ -69,6 +71,15 @@ and subdivision `4`. Other subdivisions are rejected because the current
 clock model stores quarter-note `beats-per-bar` and has no denominator cell;
 silently accepting (for example) `6/8` would produce a six-quarter-note bar.
 
-1.6 Phasors are bipolar-domain agnostic. Whether a phasor maps to a unipolar `[0,1]` or bipolar `[-1,1]` output is decided by the operator that consumes it (e.g. `usin` is unipolar, `sin` is mathematical, `sqr` thresholds).
+1.6 Phasors are polarity-agnostic. The consuming operator chooses the output
+range: `sin[uni norm]` maps a normalized phasor to `[0,1]`, `sin[bi norm]`
+maps it to `[-1,1]`, and `sqr` thresholds it. Raw angle-domain trigonometry is
+explicit as `sin[raw rad]` or `cos[raw rad]`.
 
-1.7 **Mathematical primitives are bipolar by default.** `(sin x)` is the standard `sin(x)`; `(u-sin p)` is `sin(2π·p)/2 + 1/2` — the unipolar phasor-domain convenience operator. The user picks which they want; the engine does not silently rescale. (See `node_pool.h` `NodeOp::Sin` vs `NodeOp::USin`; `node_pool.cpp` `eval_unary()` for the math.)
+1.7 **Normalised waveform primitives are unipolar by default.**
+`(sin[uni norm] p) = (/ (+ (sin[raw rad] (* 2 π p)) 1) 2)` — one cycle per
+unit of phasor input, mapped to `[0,1]`. `(sin[bi norm] p)` is its bipolar
+counterpart. `(sin[raw rad] x)` is mathematical `sin(x)` for an angle in
+radians. The user picks the required domain and range; the engine does not
+silently infer either from the value. See
+[operator-modifiers.md](operator-modifiers.md) §3.

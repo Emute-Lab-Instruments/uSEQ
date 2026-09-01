@@ -56,6 +56,7 @@ struct Firmware {
     // store_revision starts at 1 so the first tick always snapshots.
     uint32_t cell_snapshot_revision                = 0;
     double workspace[sig::MAX_TOTAL_NODES]         = {};
+    sig::TickTransition tick_transition             = {};
 #endif
 
     // ── Lifecycle ──────────────────────────────────────────────────────────

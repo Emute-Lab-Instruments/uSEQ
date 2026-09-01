@@ -180,7 +180,7 @@ bool synth_artifacts_render_abi_wrapper(const SignalEngine& engine,
     }
 
     // Render the body into a scratch buffer first so we can prepend the
-    // `abi` marker without a double-copy of the engine state.
+    // `abi` marker without a duplicate copy of the engine state.
     static char body_scratch[SYNTH_ARTIFACT_JSON_CAP];
     const char* body = synth_graph_render_json_scratch(engine.synth_graph);
     if (!body) return false;

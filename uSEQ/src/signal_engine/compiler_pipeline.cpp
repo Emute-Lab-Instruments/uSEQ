@@ -79,6 +79,9 @@ void GraphMutationTransaction::begin(SignalEngine& engine) {
 
     std::memcpy(engine.scratch_pool.state_values, engine.pool.state_values,
                 sizeof(engine.pool.state_values));
+    std::memcpy(engine.scratch_pool.state_observed,
+                engine.pool.state_observed,
+                sizeof(engine.pool.state_observed));
     std::memcpy(engine.scratch_pool.state_update_roots,
                 engine.pool.state_update_roots,
                 sizeof(engine.pool.state_update_roots));
@@ -100,6 +103,9 @@ void GraphMutationTransaction::rollback() {
     engine.arena.write_head = arena_write_head_;
     std::memcpy(engine.pool.state_values, engine.scratch_pool.state_values,
                 sizeof(engine.pool.state_values));
+    std::memcpy(engine.pool.state_observed,
+                engine.scratch_pool.state_observed,
+                sizeof(engine.pool.state_observed));
     std::memcpy(engine.pool.state_update_roots,
                 engine.scratch_pool.state_update_roots,
                 sizeof(engine.pool.state_update_roots));

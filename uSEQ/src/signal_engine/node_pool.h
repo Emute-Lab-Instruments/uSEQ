@@ -14,6 +14,7 @@ enum class NodeOp : uint8_t {
     // Constants and loads
     Const,          // imm = value
     RawTimeLoad,    // loads the single 't' input
+    GroundTimeLoad, // monotonic session time, unaffected by transport rewind
     CellLoad,       // imm = cell_id
     InputLoad,      // imm = input_index (hardware input channel)
     PrevOutputLoad, // imm = output_index; previous tick's value
@@ -69,7 +70,7 @@ struct Node {
     uint16_t input_a  = NODE_NONE;
     uint16_t input_b  = NODE_NONE;
     uint16_t input_c  = NODE_NONE;
-    double imm        = 0.0;       // immediate value
+    Sample imm        = 0.0;       // immediate value
     uint16_t span_start = 0;       // source location for diagnostics
     uint16_t span_len   = 0;
 };
@@ -79,7 +80,7 @@ struct Node {
 
 struct OutputSlot {
     uint16_t root_node = NODE_NONE;
-    double lkg_value   = 0.0;      // last known good output value
+    Sample lkg_value   = 0.0;      // last known good output value
     // `valid` is retained as the active-assignment bit for source/API
     // compatibility.  It does NOT mean that a healthy sample has been
     // observed: a freshly compiled program is active before its first tick.
@@ -141,9 +142,10 @@ struct NodePool {
     // Per-output classification (recomputed after each eval)
     OutputClass output_class[MAX_OUTPUTS] = {};
     uint32_t    output_input_mask[MAX_OUTPUTS] = {};  // bitmask of hw input channels referenced
+    uint32_t    output_semantic_effects[MAX_OUTPUTS] = {};
 
     // Cross-output reads use previous-tick values
-    double prev_output_values[MAX_OUTPUTS] = {};
+    Sample prev_output_values[MAX_OUTPUTS] = {};
 
     // Runtime fallback tracking (failure-model.md §2.1/§5): bit i is set when
     // output i substituted its LKG value on the most recent execution pass
@@ -162,7 +164,8 @@ struct NodePool {
                   "state_update_failure_mask is 64-bit");
 
     // ── Cross-sample state ──────────────────────────────────────────────
-    double state_values[MAX_STATE_SLOTS]  = {};       // current state (read during execution)
+    Sample state_values[MAX_STATE_SLOTS]  = {};       // current state (read during execution)
+    bool state_observed[MAX_STATE_SLOTS] = {};        // init has been published for one tick
     uint16_t state_update_roots[MAX_STATE_SLOTS] = {}; // root node for each state's update expr (init to 0, set to NODE_NONE by init)
     // Compiler context owning the sole update writer. Output contexts are
     // 0..MAX_OUTPUTS-1; other live state sources use disjoint contexts.
@@ -177,12 +180,12 @@ struct NodePool {
     struct LiveSlot {
         char id[MAX_LIVE_SLOT_ID] = {};
         uint16_t owner_context = LIVE_SLOT_OWNER_NONE;
-        double value    = 0.0;
-        double min_val  = 0.0;
-        double max_val  = 1.0;
-        double seed     = 0.0;
+        Sample value    = 0.0;
+        Sample min_val  = 0.0;
+        Sample max_val  = 1.0;
+        Sample seed     = 0.0;
         SlotVariant variant = SlotVariant::Numeric;
-        double step     = 0.0;
+        Sample step     = 0.0;
         int precision   = -1;  // -1 means unset
         char options[MAX_LIVE_SLOT_OPTIONS][MAX_LIVE_SLOT_OPTION_LEN] = {};
         uint8_t options_count = 0;
@@ -191,20 +194,20 @@ struct NodePool {
     uint16_t live_slot_count = 0;
 
     int16_t find_live_slot(const char* id) const;
-    int16_t alloc_live_slot(const char* id, double seed, double min_val, double max_val,
+    int16_t alloc_live_slot(const char* id, Sample seed, Sample min_val, Sample max_val,
                             SlotVariant variant = SlotVariant::Numeric,
-                            double step = 0.0, int precision = -1,
+                            Sample step = 0.0, int precision = -1,
                             uint16_t owner_context = LIVE_SLOT_OWNER_NONE);
-    void set_live_slot_value(const char* id, double value);
+    void set_live_slot_value(const char* id, Sample value);
     // Fast-path write addressed by array index (wire-protocol §6.5 binary
     // INPUT_SET). `idx` is a direct index into live_slots[0..live_slot_count).
     // Out-of-range indices are ignored. Applies the same clamp / variant
     // coercion as set_live_slot_value(), but skips the string lookup so it is
     // allocation-free and cheap on the serial RX hot path.
-    void set_live_slot_value_by_index(uint16_t idx, double value);
+    void set_live_slot_value_by_index(uint16_t idx, Sample value);
 
     // WASM batch workspace (heap-allocated once at init, null on firmware)
-    std::unique_ptr<double[]> batch_workspace;
+    std::unique_ptr<Sample[]> batch_workspace;
     uint16_t batch_chunk_size = BATCH_CHUNK_SIZE;
 
 #if USEQ_HAS_SYNTH_ENGINE
@@ -230,8 +233,9 @@ struct NodePool {
 
     // ── Node construction (with CSE + constant folding) ─────────────────
 
-    uint16_t make_const(double value);
+    uint16_t make_const(Sample value);
     uint16_t make_raw_time_load();
+    uint16_t make_ground_time_load();
     uint16_t make_cell_load(SymbolID cell_id);
     uint16_t make_input_load(uint16_t input_index);
     uint16_t make_prev_output_load(uint16_t output_index);
@@ -266,9 +270,9 @@ struct NodePool {
 
 // ── Constant folding helpers ────────────────────────────────────────────────
 
-double eval_unary(NodeOp op, double a);
-double eval_binop(NodeOp op, double a, double b);
-double eval_ternary(NodeOp op, double a, double b, double c);
+Sample eval_unary(NodeOp op, Sample a);
+Sample eval_binop(NodeOp op, Sample a, Sample b);
+Sample eval_ternary(NodeOp op, Sample a, Sample b, Sample c);
 
 } // namespace sig
 

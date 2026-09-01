@@ -20,21 +20,21 @@ namespace sig {
 // boundary; the firmware-side ClockSync module interprets the values.
 //   0 = internal, 1 = external on input I1, 2 = external on input I2
 struct EngineState {
-    double time_offset   = 0.0;
+    Sample time_offset   = 0.0;
     // Internal transport-origin correction. Kept separate from the
     // user-visible time_offset reported over the wire.
-    double transport_offset = 0.0;
+    Sample transport_offset = 0.0;
     bool is_playing      = true;
-    double current_time  = 0.0;
-    double current_dt    = 0.0;
-    double current_wall_time = 0.0;
-    double paused_time   = 0.0;
+    Sample current_time  = 0.0;
+    Sample current_dt    = 0.0;
+    Sample current_wall_time = 0.0;
+    Sample paused_time   = 0.0;
     bool has_pause_anchor = false;
     bool reset_dt_on_next_tick = true;
 
     // Translate a host/hardware monotonic clock into session-logical time.
     // Paused time is an anchor, not a wall clock that continues invisibly.
-    double logical_time(double wall_time) const {
+    Sample logical_time(Sample wall_time) const {
         return (!is_playing && has_pause_anchor)
             ? paused_time : wall_time + time_offset + transport_offset;
     }
@@ -99,7 +99,7 @@ struct OutputSource {
 
 struct EvalResult {
     enum Kind : uint8_t { Number, Text, DataRef, Ok, Error } kind = Ok;
-    double number     = 0.0;
+    Sample number     = 0.0;
     const char* text  = nullptr;
     uint16_t text_length = 0;
     Diagnostic diagnostics[8] = {};
@@ -147,7 +147,14 @@ struct SignalEngine {
 
     StateResourceRegistry registry;
     NodePool scratch_pool;
+#if USEQ_HAS_TEMPORAL_QUERY
+    // q/* results are printable event collections and may contain dozens of
+    // events. Firmware does not compile temporal queries and keeps the former
+    // small cold-eval buffer below.
+    char eval_text_buf[8192] = {};
+#else
     char eval_text_buf[512] = {};
+#endif
 
 #if USEQ_HAS_SYNTH_ENGINE
     // ── Host synth compiler domain (synth-nodes.md) ─────────────────────
@@ -176,12 +183,12 @@ struct SignalEngine {
     // compiler caches use this to discard references outside SignalEngine.
     uint32_t session_generation = 0;
 
-    void init_defaults(double bpm = 120.0, int beats_per_bar = 4,
+    void init_defaults(Sample bpm = 120.0, int beats_per_bar = 4,
                        int bars_per_phrase = 4, int phrases_per_section = 4);
 
     // Reset all compiler/runtime storage owned by a livecoding session while
     // leaving transport state and any persistent flash image untouched.
-    void reset_session_storage(double bpm = 120.0, int beats_per_bar = 4,
+    void reset_session_storage(Sample bpm = 120.0, int beats_per_bar = 4,
                                int bars_per_phrase = 4,
                                int phrases_per_section = 4,
                                bool publish_session_clear = true);

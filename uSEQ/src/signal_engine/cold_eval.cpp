@@ -5,6 +5,9 @@
 #include "graph_builder.h"
 #include "compiler_pipeline.h"
 #include "executor.h"
+#if USEQ_HAS_TEMPORAL_QUERY
+#include "temporal_query.h"
+#endif
 #if USEQ_HAS_SYNTH_ENGINE
 #include "synth_registry.h"
 #endif
@@ -25,7 +28,7 @@ struct RuntimeMemorySampleScope {
 
 // ── SignalEngine::init_defaults ────────────────────────────────────────────
 
-void SignalEngine::init_defaults(double bpm, int beats_per_bar,
+void SignalEngine::init_defaults(Sample bpm, int beats_per_bar,
                                  int bars_per_phrase, int phrases_per_section) {
     GraphBuilder::init_symbols();
     state = EngineState{};
@@ -34,7 +37,7 @@ void SignalEngine::init_defaults(double bpm, int beats_per_bar,
                           phrases_per_section, false);
 }
 
-void SignalEngine::reset_session_storage(double bpm, int beats_per_bar,
+void SignalEngine::reset_session_storage(Sample bpm, int beats_per_bar,
                                          int bars_per_phrase,
                                          int phrases_per_section,
                                          bool publish_session_clear) {
@@ -77,7 +80,7 @@ static EvalResult make_ok() {
     return r;
 }
 
-static EvalResult make_number(double v) {
+static EvalResult make_number(Sample v) {
     EvalResult r;
     r.kind = EvalResult::Number;
     r.number = v;
@@ -264,6 +267,7 @@ static void compact_reachable_state_slots(SignalEngine& engine) {
         remap[old] = fresh;
         if (fresh != old) {
             pool.state_values[fresh] = pool.state_values[old];
+            pool.state_observed[fresh] = pool.state_observed[old];
             pool.state_update_roots[fresh] = pool.state_update_roots[old];
             pool.state_owner_context[fresh] = pool.state_owner_context[old];
             engine.state_sources[fresh] = engine.state_sources[old];
@@ -277,7 +281,7 @@ static void compact_reachable_state_slots(SignalEngine& engine) {
         if (pool.nodes[n].op != NodeOp::LoadState) continue;
         uint16_t old = (uint16_t)pool.nodes[n].imm;
         if (old < MAX_STATE_SLOTS && remap[old] != NODE_NONE)
-            pool.nodes[n].imm = (double)remap[old];
+            pool.nodes[n].imm = (Sample)remap[old];
     }
     for (uint32_t c = 0; c < MAX_CELLS; c++) {
         Cell& cell = engine.cells.cells[c];
@@ -342,6 +346,7 @@ static void compact_reachable_state_slots(SignalEngine& engine) {
     }
     for (uint16_t s = new_count; s < pool.state_slot_count; s++) {
         pool.state_values[s] = 0.0;
+        pool.state_observed[s] = false;
         pool.state_update_roots[s] = NODE_NONE;
         pool.state_owner_context[s] = ANON_STATE_CONTEXT_NONE;
         engine.state_sources[s] = StateUpdateSource{};
@@ -380,7 +385,7 @@ static void compact_reachable_live_slots(SignalEngine& engine) {
         if (pool.nodes[n].op != NodeOp::SlotLoad) continue;
         uint16_t old = (uint16_t)pool.nodes[n].imm;
         if (old < MAX_LIVE_SLOTS && remap[old] != NODE_NONE)
-            pool.nodes[n].imm = (double)remap[old];
+            pool.nodes[n].imm = (Sample)remap[old];
     }
     for (uint16_t o = 0; o < MAX_OUTPUTS; o++) {
         OutputDeps& deps = pool.output_deps[o];
@@ -509,7 +514,7 @@ static bool source_aliases_live_arena(const char* source,
     return address >= begin && address < end;
 }
 
-static bool parse_numeric_vector(TokenStream& ts, double* values,
+static bool parse_numeric_vector(TokenStream& ts, Sample* values,
                                  uint16_t& count, EvalResult& error) {
     if (!ts.expect(TokenKind::LBracket)) {
         error = make_error("Expected a vector", "Try: [1 2 3]");
@@ -570,7 +575,7 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
     }
     else if (val_tok.kind == TokenKind::LBracket) {
         // Vector data: [1 2 3 4]
-        double values[64];
+        Sample values[64];
         uint16_t count = 0;
         EvalResult parse_error;
         if (!parse_numeric_vector(ts, values, count, parse_error))
@@ -586,7 +591,7 @@ static EvalResult do_define(TokenStream& ts, SignalEngine& engine,
         engine.cells.cells[sym].kind = CellKind::Data;
         engine.cells.cells[sym].data_table_id = table_id;
         engine.cells.cells[sym].revision++;
-        engine.cells.cells[sym].value = (double)count;
+        engine.cells.cells[sym].value = (Sample)count;
         engine.cells.cells[sym].flags = 0; // clear stale defstate marker (see above)
         engine.cells.callables[sym] = CallableInfo{};
     }
@@ -741,7 +746,7 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
     bool is_state_cell = engine.cells.cells[sym].kind == CellKind::Number
                       && engine.cells.cells[sym].flags == 0x02;
 
-    auto store_number = [&](double v) {
+    auto store_number = [&](Sample v) {
         if (is_state_cell) {
             uint16_t slot = (uint16_t)engine.cells.cells[sym].data_table_id;
             engine.pool.state_values[slot] = v;
@@ -798,11 +803,11 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
             engine.scratch_pool.outputs[0].valid = true;
             engine.scratch_pool.rebuild_execution_order();
 
-            double cell_vals[MAX_CELLS];
+            Sample cell_vals[MAX_CELLS];
             engine.cells.snapshot_values(cell_vals, MAX_CELLS);
-            double hw_inputs[32] = {};
-            double workspace[MAX_TOTAL_NODES] = {};
-            double outputs[MAX_OUTPUTS] = {};
+            Sample hw_inputs[32] = {};
+            Sample workspace[MAX_TOTAL_NODES] = {};
+            Sample outputs[MAX_OUTPUTS] = {};
 
             ExecutionContext ctx;
             ctx.t = engine.state.current_time;
@@ -815,6 +820,7 @@ static EvalResult do_set(TokenStream& ts, SignalEngine& engine,
             ctx.prev_outputs = engine.pool.prev_output_values;
             ctx.output_values = outputs;
             ctx.workspace = workspace;
+            ctx.ground_t = engine.state.current_wall_time;
             execute_all_outputs(engine.scratch_pool, ctx);
 
             store_number(outputs[0]);
@@ -856,7 +862,7 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
         return make_error("defstate initial value must be a number",
                           "Try: (defstate counter 0 (+ counter 1))");
     }
-    double init_value = init_tok.number;
+    Sample init_value = init_tok.number;
 
     // Resolve an existing state slot before storing its update source so a
     // re-definition can reuse that slot's arena region.
@@ -914,6 +920,7 @@ static EvalResult do_defstate(TokenStream& ts, SignalEngine& engine,
             state_slot = engine.pool.state_slot_count++;
         }
         engine.pool.state_values[state_slot] = init_value;
+        engine.pool.state_observed[state_slot] = false;
         engine.pool.state_update_roots[state_slot] = NODE_NONE;
         engine.pool.state_owner_context[state_slot] =
             (uint16_t)(MAX_OUTPUTS + state_slot);
@@ -1172,11 +1179,13 @@ static EvalResult make_synth_error_at(const Token& tok,
 static const NodeDefDescriptor* resolve_nodedef(
     const Token& name_tok, const Token* version_tok,
     const char* source_base,
-    EvalResult& out_error)
+    EvalResult& out_error,
+    bool allow_symbol_name = false)
 {
     out_error = EvalResult{};
 
-    if (name_tok.kind != TokenKind::String) {
+    if (name_tok.kind != TokenKind::String &&
+        !(allow_symbol_name && name_tok.kind == TokenKind::Symbol)) {
         out_error = make_synth_error_at(
             name_tok, DiagnosticCategory::Type,
             "synth needs a NodeDef name in quotes",
@@ -1185,14 +1194,18 @@ static const NodeDefDescriptor* resolve_nodedef(
     }
 
     char name_buf[MAX_NODEDEF_NAME];
-    uint16_t name_len = name_tok.string.length;
+    const bool symbol_name = name_tok.kind == TokenKind::Symbol;
+    uint16_t name_len = symbol_name ? name_tok.span_len : name_tok.string.length;
     if (name_len >= MAX_NODEDEF_NAME) name_len = MAX_NODEDEF_NAME - 1;
-    std::memcpy(name_buf, source_base + name_tok.string.offset, name_len);
+    const uint32_t name_offset = symbol_name
+        ? name_tok.span_start
+        : name_tok.string.offset;
+    std::memcpy(name_buf, source_base + name_offset, name_len);
     name_buf[name_len] = '\0';
 
     uint16_t version = 0;
     if (version_tok && version_tok->kind == TokenKind::Number) {
-        double requested = version_tok->number;
+        Sample requested = version_tok->number;
         if (!std::isfinite(requested) || requested < 1.0 ||
             requested > 65535.0 || std::floor(requested) != requested) {
             out_error = make_synth_error_at(
@@ -1381,7 +1394,8 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
                            char* out_identity = nullptr,
                            bool nested = false,
                            const SynthGraph* transaction_snapshot = nullptr,
-                           uint16_t nested_depth = 0) {
+                           uint16_t nested_depth = 0,
+                           const Token* explicit_def_name = nullptr) {
     GraphBuilder::init_symbols();
     auto& sym = GraphBuilder::sym;
 
@@ -1393,8 +1407,8 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     }
 
     // ── Parse def name (required string) ────────────────────────────────
-    Token def_name_tok = ts.consume();
-    if (def_name_tok.kind != TokenKind::String) {
+    Token def_name_tok = explicit_def_name ? *explicit_def_name : ts.consume();
+    if (def_name_tok.kind != TokenKind::String && !explicit_def_name) {
         return make_synth_error_at(
             def_name_tok, DiagnosticCategory::Type,
             "synth needs a NodeDef name in quotes",
@@ -1500,7 +1514,7 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
     const NodeDefDescriptor* def = resolve_nodedef(
         def_name_tok,
         have_explicit_version ? &version_tok : nullptr,
-        source, resolve_err);
+        source, resolve_err, explicit_def_name != nullptr);
     if (!def) {
         return resolve_err;
     }
@@ -1875,17 +1889,23 @@ static EvalResult do_synth(TokenStream& ts, SignalEngine& engine,
                 std::memcpy(from_identity, source + id_tok.string.offset,
                             id_tok.string.length);
                 from_identity[id_tok.string.length] = '\0';
-            } else if (head == "synth") {
+            } else if (head == "synth" ||
+                       GraphBuilder::resolve_namespaced_operator(
+                           ts.tokens[b.expr_start_pos + 1].symbol).name_space ==
+                           OperatorNamespace::Osc) {
                 TokenStream nested_ts;
                 std::memcpy(nested_ts.tokens,
                             ts.tokens + b.expr_start_pos,
                             token_count * sizeof(Token));
                 nested_ts.count = token_count;
-                nested_ts.pos = 2; // after `(` and `synth`
+                nested_ts.pos = 2; // after `(` and declaration head
+                const Token* nested_explicit_def = head == "synth"
+                    ? nullptr
+                    : &nested_ts.tokens[1];
                 EvalResult child = do_synth(
                     nested_ts, engine, source, source_length,
                     from_identity, true, transaction_snapshot,
-                    (uint16_t)(nested_depth + 1));
+                    (uint16_t)(nested_depth + 1), nested_explicit_def);
                 if (child.kind == EvalResult::Error)
                     return rollback_synth(child);
                 // Updating an existing child compacts the declaration table;
@@ -2151,7 +2171,7 @@ static EvalResult do_get_clock_source(TokenStream& ts, EngineState& state) {
     if (arity.kind == EvalResult::Error) return arity;
     EvalResult r;
     r.kind = EvalResult::Number;
-    r.number = (double)state.clock_source;
+    r.number = (Sample)state.clock_source;
     return r;
 }
 
@@ -2347,13 +2367,13 @@ EvalResult eval_expression(const char* source, uint32_t length,
     engine.scratch_pool.rebuild_execution_order();
 
     // Snapshot cell values
-    double cell_values[MAX_CELLS];
+    Sample cell_values[MAX_CELLS];
     engine.cells.snapshot_values(cell_values, MAX_CELLS);
 
     // Execute one sample
-    double hw_inputs[32] = {};
-    double outputs[MAX_OUTPUTS] = {};
-    double workspace[MAX_TOTAL_NODES] = {};
+    Sample hw_inputs[32] = {};
+    Sample outputs[MAX_OUTPUTS] = {};
+    Sample workspace[MAX_TOTAL_NODES] = {};
 
     ExecutionContext ctx;
     ctx.t = engine.state.current_time;
@@ -2366,6 +2386,7 @@ EvalResult eval_expression(const char* source, uint32_t length,
     ctx.prev_outputs = engine.pool.prev_output_values;
     ctx.output_values = outputs;
     ctx.workspace = workspace;
+    ctx.ground_t = engine.state.current_wall_time;
     execute_all_outputs(engine.scratch_pool, ctx);
 
     // Restore CellStore data table state
@@ -2508,7 +2529,7 @@ static EvalResult do_defs(TokenStream& ts, SignalEngine& engine,
             engine.cells.callables[cell_sym] = CallableInfo{};
         } else if (val_tok.kind == TokenKind::LBracket) {
             ts.consume();
-            double values[64];
+            Sample values[64];
             uint16_t count = 0;
             while (ts.peek().kind != TokenKind::RBracket) {
                 values[count++] = ts.consume().number;
@@ -2520,7 +2541,7 @@ static EvalResult do_defs(TokenStream& ts, SignalEngine& engine,
             engine.cells.cells[cell_sym].flags = 0;
             engine.cells.cells[cell_sym].data_table_id = table_id;
             engine.cells.cells[cell_sym].revision++;
-            engine.cells.cells[cell_sym].value = (double)count;
+            engine.cells.cells[cell_sym].value = (Sample)count;
             engine.cells.callables[cell_sym] = CallableInfo{};
         } else {
             uint32_t byte_start = span_begin(ts, ts.pos);
@@ -2561,6 +2582,323 @@ static EvalResult finish_parenthesized_form(TokenStream& ts,
     ts.expect(TokenKind::RParen);
     return result;
 }
+
+#if USEQ_HAS_TEMPORAL_QUERY
+
+constexpr size_t MAX_PRINTED_TEMPORAL_EVENTS = 64;
+
+class TemporalTextBuilder {
+public:
+    TemporalTextBuilder(char* storage, size_t storage_capacity)
+        : buffer(storage), capacity(storage_capacity) {
+        if (capacity > 0) buffer[0] = '\0';
+    }
+
+    void append(const char* text) {
+        if (!valid || !text) return;
+        const size_t length = std::strlen(text);
+        if (position >= capacity || length >= capacity - position) {
+            valid = false;
+            return;
+        }
+        std::memcpy(buffer + position, text, length);
+        position += length;
+        buffer[position] = '\0';
+    }
+
+    void append_number(Sample value) {
+        if (!valid) return;
+        const int written = std::snprintf(
+            buffer + position, capacity - position, "%.15g", value);
+        accept_written(written);
+    }
+
+    void append_size(size_t value) {
+        if (!valid) return;
+        const int written = std::snprintf(
+            buffer + position, capacity - position, "%zu", value);
+        accept_written(written);
+    }
+
+    void append_node(uint16_t value) {
+        if (!valid) return;
+        const int written = std::snprintf(
+            buffer + position, capacity - position, "%u",
+            static_cast<unsigned>(value));
+        accept_written(written);
+    }
+
+    bool ok() const { return valid; }
+    uint16_t length() const { return static_cast<uint16_t>(position); }
+
+private:
+    char* buffer = nullptr;
+    size_t capacity = 0;
+    size_t position = 0;
+    bool valid = true;
+
+    void accept_written(int written) {
+        if (position >= capacity || written < 0 ||
+            static_cast<size_t>(written) >= capacity - position) {
+            valid = false;
+            return;
+        }
+        position += static_cast<size_t>(written);
+    }
+};
+
+static const char* temporal_direction_keyword(TemporalDirection direction) {
+    switch (direction) {
+        case TemporalDirection::Any: return ":any";
+        case TemporalDirection::Rising: return ":rising";
+        case TemporalDirection::Falling: return ":falling";
+        case TemporalDirection::Tangent: return ":tangent";
+    }
+    return ":any";
+}
+
+static EvalResult finish_temporal_text(SignalEngine& engine,
+                                       const TemporalTextBuilder& text) {
+    if (!text.ok()) {
+        return make_error(
+            "Temporal query result is too large to print",
+            "Query a shorter time window");
+    }
+    EvalResult result;
+    result.kind = EvalResult::Text;
+    result.text = engine.eval_text_buf;
+    result.text_length = text.length();
+    return result;
+}
+
+static EvalResult format_temporal_status(SignalEngine& engine,
+                                         const TemporalQueryResult& query) {
+    TemporalTextBuilder text(engine.eval_text_buf,
+                             sizeof(engine.eval_text_buf));
+    text.append("{:status :");
+    text.append(temporal_query_status_to_cstr(query.status));
+    text.append(" :analysis :analytic-piecewise-affine-wave :segments ");
+    text.append_size(query.segment_count);
+    if (query.detail_node != NODE_NONE) {
+        text.append(" :detail-node ");
+        text.append_node(query.detail_node);
+    }
+    text.append("}");
+    return finish_temporal_text(engine, text);
+}
+
+static void append_temporal_arc(TemporalTextBuilder& text, TemporalArc arc) {
+    text.append("[");
+    text.append_number(arc.start);
+    text.append(" ");
+    text.append_number(arc.end);
+    text.append("]");
+}
+
+static EvalResult format_temporal_events(
+        SignalEngine& engine, const TemporalQueryResult& query,
+        const TemporalEvent* events) {
+    if (query.status != TemporalQueryStatus::Complete)
+        return format_temporal_status(engine, query);
+
+    TemporalTextBuilder text(engine.eval_text_buf,
+                             sizeof(engine.eval_text_buf));
+    text.append("[");
+    for (size_t index = 0; index < query.event_count; ++index) {
+        const TemporalEvent& event = events[index];
+        if (index > 0) text.append(" ");
+        if (event.kind == TemporalEventKind::Instant) {
+            text.append("[:instant ");
+            text.append(temporal_direction_keyword(event.direction));
+            text.append(" :whole ");
+            append_temporal_arc(text, event.whole);
+            text.append(" :part ");
+            append_temporal_arc(text, event.part);
+            text.append("]");
+        } else {
+            text.append("[:span :whole ");
+            if (event.whole_known) append_temporal_arc(text, event.whole);
+            else text.append("nil");
+            text.append(" :part ");
+            append_temporal_arc(text, event.part);
+            text.append("]");
+        }
+    }
+    text.append("]");
+    return finish_temporal_text(engine, text);
+}
+
+static bool parse_temporal_pair(TokenStream& ts, Sample& first,
+                                Sample& second, EvalResult& error,
+                                const char* message,
+                                const char* suggestion) {
+    if (ts.peek().kind != TokenKind::LBracket) {
+        error = make_error(message, suggestion);
+        return false;
+    }
+    ts.consume();
+    Token first_token = ts.consume();
+    Token second_token = ts.consume();
+    if (first_token.kind != TokenKind::Number ||
+        second_token.kind != TokenKind::Number ||
+        ts.peek().kind != TokenKind::RBracket ||
+        !std::isfinite(first_token.number) ||
+        !std::isfinite(second_token.number)) {
+        error = make_error(message, suggestion);
+        return false;
+    }
+    ts.consume();
+    first = first_token.number;
+    second = second_token.number;
+    return true;
+}
+
+static EvalResult temporal_graph_error(const GraphBuildResult& graph) {
+    EvalResult error;
+    error.kind = EvalResult::Error;
+    std::memcpy(error.diagnostics, graph.diagnostics,
+                graph.diagnostic_count * sizeof(Diagnostic));
+    error.diagnostic_count = graph.diagnostic_count;
+    return error;
+}
+
+static EvalResult do_temporal_query(SymbolID op, TokenStream& ts,
+                                    SignalEngine& engine,
+                                    const char* source,
+                                    const GraphBuilder::Symbols& symbols) {
+    TemporalArc arc;
+    TemporalCondition condition = TemporalCondition::equal_to(0.0);
+    bool explain_only = false;
+    EvalResult parse_error;
+
+    if (op == symbols.q_zeros || op == symbols.q_explain) {
+        if (!parse_temporal_pair(
+                ts, arc.start, arc.end, parse_error,
+                "Temporal query needs a [start end] time window",
+                op == symbols.q_zeros
+                    ? "Try: (q/zeros [0 1] (bsin t))"
+                    : "Try: (q/explain [0 1] (bsin t))"))
+            return parse_error;
+        explain_only = op == symbols.q_explain;
+    } else if (op == symbols.q_crossings) {
+        Token level = ts.consume();
+        if (level.kind != TokenKind::Number || !std::isfinite(level.number)) {
+            return make_error(
+                "q/crossings needs a finite level first",
+                "Try: (q/crossings 0 [0 1] (bsin t))");
+        }
+        if (!parse_temporal_pair(
+                ts, arc.start, arc.end, parse_error,
+                "q/crossings needs a [start end] time window",
+                "Try: (q/crossings 0 [0 1] (bsin t))"))
+            return parse_error;
+        TemporalDirection direction = TemporalDirection::Any;
+        if (ts.peek().kind == TokenKind::Symbol &&
+            (ts.peek().symbol == symbols.kw_rising ||
+             ts.peek().symbol == symbols.kw_falling)) {
+            direction = ts.consume().symbol == symbols.kw_rising
+                ? TemporalDirection::Rising
+                : TemporalDirection::Falling;
+        }
+        condition = TemporalCondition::crosses(level.number, direction);
+    } else if (op == symbols.q_range) {
+        Sample low = 0.0;
+        Sample high = 0.0;
+        if (!parse_temporal_pair(
+                ts, low, high, parse_error,
+                "q/range needs a [low high] value range first",
+                "Try: (q/range [-0.5 0.5] [0 1] (bsin t))"))
+            return parse_error;
+        if (!parse_temporal_pair(
+                ts, arc.start, arc.end, parse_error,
+                "q/range needs a [start end] time window second",
+                "Try: (q/range [-0.5 0.5] [0 1] (bsin t))"))
+            return parse_error;
+        if (low > high) {
+            return make_error(
+                "q/range needs low to be less than or equal to high",
+                "Try: (q/range [-0.5 0.5] [0 1] (bsin t))");
+        }
+        condition = TemporalCondition::between(low, high);
+    }
+
+    if (!(arc.start < arc.end)) {
+        return make_error(
+            "Temporal query time window must increase",
+            "Use a window like [0 1], where start is before end");
+    }
+    if (ts.peek().kind == TokenKind::RParen || ts.at_end()) {
+        return make_error(
+            "Temporal query needs a final target signal",
+            "Put the signal last, for example (q/zeros [0 1] (bsin t))");
+    }
+
+    TemporalQueryOptions options;
+    options.max_events = MAX_PRINTED_TEMPORAL_EVENTS;
+    TemporalEvent events[MAX_PRINTED_TEMPORAL_EVENTS] = {};
+    TemporalQueryResult query;
+
+    // A bare active output is a reference to its published root for query
+    // purposes, not the previous-sample value that it denotes in a signal.
+    const bool final_output_target =
+        ts.peek().kind == TokenKind::Symbol &&
+        GraphBuilder::is_output_symbol(ts.peek().symbol) &&
+        ts.pos + 1 < ts.count &&
+        ts.tokens[ts.pos + 1].kind == TokenKind::RParen;
+
+    if (final_output_target) {
+        const uint16_t output_index =
+            GraphBuilder::resolve_output_index(ts.consume().symbol);
+        if (explain_only) {
+            if (output_index >= MAX_OUTPUTS ||
+                !engine.pool.outputs[output_index].valid ||
+                engine.pool.outputs[output_index].root_node == NODE_NONE) {
+                query.status = TemporalQueryStatus::InactiveOutput;
+            } else {
+                query = inspect_temporal_root(
+                    engine.pool, engine.cells,
+                    engine.pool.outputs[output_index].root_node, arc, options);
+            }
+        } else {
+            query = query_temporal_output(
+                engine.pool, engine.cells, output_index, arc, condition,
+                events, MAX_PRINTED_TEMPORAL_EVENTS, options);
+        }
+    } else {
+        const uint8_t saved_table_count = engine.cells.data_table_count;
+        engine.scratch_pool.reset();
+        std::memcpy(engine.scratch_pool.state_values,
+                    engine.pool.state_values,
+                    sizeof(engine.pool.state_values));
+
+        GraphBuildResult graph = build_output_graph(
+            engine.scratch_pool, ts, engine.cells, engine.arena, source);
+        if (graph.has_error) {
+            engine.cells.data_table_count = saved_table_count;
+            return temporal_graph_error(graph);
+        }
+        if (ts.peek().kind != TokenKind::RParen) {
+            engine.cells.data_table_count = saved_table_count;
+            return make_error(
+                "The temporal query target signal must be the last argument",
+                "Move the signal to the final position");
+        }
+
+        query = explain_only
+            ? inspect_temporal_root(engine.scratch_pool, engine.cells,
+                                    graph.root_node, arc, options)
+            : query_temporal_root(engine.scratch_pool, engine.cells,
+                                  graph.root_node, arc, condition, events,
+                                  MAX_PRINTED_TEMPORAL_EVENTS, options);
+        engine.cells.data_table_count = saved_table_count;
+    }
+
+    return explain_only
+        ? format_temporal_status(engine, query)
+        : format_temporal_events(engine, query, events);
+}
+
+#endif // USEQ_HAS_TEMPORAL_QUERY
 
 static EvalDispatchResult eval_cell_mutation_form(
         SymbolID op, TokenStream& ts, SignalEngine& engine,
@@ -2767,10 +3105,32 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             eval_transport_form(op, ts, engine, sym);
         if (transport.handled) return transport.result;
 
+#if USEQ_HAS_TEMPORAL_QUERY
+        if (op == sym.q_zeros || op == sym.q_crossings ||
+            op == sym.q_range || op == sym.q_explain) {
+            EvalResult result = do_temporal_query(
+                op, ts, engine, source, sym);
+            ts.expect(TokenKind::RParen);
+            return result;
+        }
+#endif
+
 #if USEQ_HAS_SYNTH_ENGINE
+        const NamespacedOperator namespaced =
+            GraphBuilder::resolve_namespaced_operator(op);
+
         // synth — top-level NodeDef instantiation (synth-nodes.md §3)
         if (op == sym.synth) {
             EvalResult r = do_synth(ts, engine, source, source_length);
+            ts.expect(TokenKind::RParen);
+            return r;
+        }
+
+        // osc/<name> — registry-backed sugar for (synth "osc/<name>" ...).
+        if (namespaced.name_space == OperatorNamespace::Osc) {
+            EvalResult r = do_synth(
+                ts, engine, source, source_length,
+                nullptr, false, nullptr, 0, &op_tok);
             ts.expect(TokenKind::RParen);
             return r;
         }
@@ -2872,12 +3232,12 @@ static EvalResult eval_form(TokenStream& ts, SignalEngine& engine,
             int n = (int)n_tok.number;
             if (n < 1) n = 1;
             if (n > 64) n = 64;
-            double values[64] = {};
+            Sample values[64] = {};
             uint16_t table_id = engine.cells.store_data_table(values, (uint16_t)n);
             ts.expect(TokenKind::RParen);
             EvalResult r;
             r.kind = EvalResult::DataRef;
-            r.number = (double)table_id;
+            r.number = (Sample)table_id;
             return r;
         }
 

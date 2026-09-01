@@ -12,6 +12,8 @@ namespace sig {
 
 GraphBuilder::Symbols GraphBuilder::sym = {};
 bool GraphBuilder::symbols_initialized = false;
+OperatorDeclaration GraphBuilder::operator_declarations[MAX_OPERATOR_DECLARATIONS] = {};
+uint16_t GraphBuilder::operator_declaration_count = 0;
 
 // ── Form dispatch table statics ─────────────────────────────────────────────
 
@@ -39,8 +41,136 @@ void GraphBuilder::init_symbols() {
     #define SYM(f, s, c) sym.f = si.intern(s);
     #include "symbols.def"
     #undef SYM
+
+    operator_declaration_count = 0;
+    #define SYM(f, s, c) \
+        operator_declarations[operator_declaration_count++] = { \
+            sym.f, s, SymbolCategory::c, OperatorInputDomain::None, \
+            OperatorOutputRange::None, OperatorRegime::None, \
+            ColdEvaluable::No, BareIdentity::Native \
+        };
+    #include "symbols.def"
+    #undef SYM
+
+    #define SYM(f, s, c)
+    #define OP_META(f, domain, range, regime_value, cold, identity) \
+        do { \
+            OperatorDeclaration* declaration = const_cast<OperatorDeclaration*>( \
+                find_operator_declaration(sym.f)); \
+            if (declaration) { \
+                declaration->input_domain = OperatorInputDomain::domain; \
+                declaration->output_range = OperatorOutputRange::range; \
+                declaration->regime = OperatorRegime::regime_value; \
+                declaration->cold_evaluable = ColdEvaluable::cold; \
+                declaration->bare_identity = BareIdentity::identity; \
+            } \
+        } while (false);
+    #include "symbols.def"
+    #undef OP_META
+    #undef SYM
+
     symbols_initialized = true;
     init_form_table();
+}
+
+const OperatorDeclaration* GraphBuilder::find_operator_declaration(SymbolID symbol) {
+    for (uint16_t i = 0; i < operator_declaration_count; ++i) {
+        if (operator_declarations[i].symbol == symbol) {
+            return &operator_declarations[i];
+        }
+    }
+    return nullptr;
+}
+
+static OperatorNamespace parse_namespace_name(const char* name, size_t length) {
+    if ((length == 1 && name[0] == 'n') ||
+        (length == 4 && std::strncmp(name, "norm", 4) == 0)) {
+        return OperatorNamespace::Normalized;
+    }
+    if ((length == 1 && name[0] == 'r') ||
+        (length == 3 && std::strncmp(name, "rad", 3) == 0)) {
+        return OperatorNamespace::Radians;
+    }
+    if ((length == 1 && name[0] == 'u') ||
+        (length == 3 && std::strncmp(name, "uni", 3) == 0)) {
+        return OperatorNamespace::Unipolar;
+    }
+    if ((length == 1 && name[0] == 'b') ||
+        (length == 2 && std::strncmp(name, "bi", 2) == 0)) {
+        return OperatorNamespace::Bipolar;
+    }
+    if (length == 3 && std::strncmp(name, "lfo", 3) == 0) {
+        return OperatorNamespace::Lfo;
+    }
+    if (length == 4 && std::strncmp(name, "blfo", 4) == 0) {
+        return OperatorNamespace::BipolarLfo;
+    }
+    if (length == 3 && std::strncmp(name, "osc", 3) == 0) {
+        return OperatorNamespace::Osc;
+    }
+    if ((length == 1 && name[0] == 'k') ||
+        (length == 4 && std::strncmp(name, "once", 4) == 0)) {
+        return OperatorNamespace::Cold;
+    }
+    if (length == 3 && std::strncmp(name, "raw", 3) == 0) {
+        return OperatorNamespace::Raw;
+    }
+    return OperatorNamespace::Unknown;
+}
+
+NamespacedOperator GraphBuilder::resolve_namespaced_operator(SymbolID symbol) {
+    NamespacedOperator resolved;
+    const String& spelling = getSymbolString(symbol);
+    if (spelling == "/") return resolved;
+
+    const char* text = spelling.c_str();
+    const size_t length = spelling.length();
+    const char* slash = std::strchr(text, '/');
+    if (!slash) return resolved;
+    if (slash == text || slash == text + length - 1 ||
+        std::strchr(slash + 1, '/') != nullptr) {
+        resolved.name_space = OperatorNamespace::Malformed;
+        return resolved;
+    }
+
+    resolved.namespace_span_len = static_cast<uint16_t>(slash - text);
+    resolved.name_space = parse_namespace_name(text, resolved.namespace_span_len);
+    if (resolved.name_space == OperatorNamespace::Unknown) return resolved;
+
+    auto& interner = SymbolIntern::getInstance();
+    resolved.base_symbol = interner.getID(String(
+        slash + 1, static_cast<unsigned int>(length - resolved.namespace_span_len - 1)));
+    if (resolved.base_symbol != SymbolIntern::INVALID_ID) {
+        resolved.declaration = find_operator_declaration(resolved.base_symbol);
+    }
+    return resolved;
+}
+
+bool GraphBuilder::namespace_applies(
+    OperatorNamespace name_space, const OperatorDeclaration& declaration) {
+    switch (name_space) {
+        case OperatorNamespace::Normalized:
+        case OperatorNamespace::Radians:
+            return declaration.input_domain == OperatorInputDomain::Angle ||
+                   declaration.input_domain == OperatorInputDomain::Phase;
+        case OperatorNamespace::Unipolar:
+        case OperatorNamespace::Bipolar:
+            return declaration.output_range != OperatorOutputRange::None;
+        case OperatorNamespace::Lfo:
+        case OperatorNamespace::BipolarLfo:
+            return declaration.regime == OperatorRegime::PureShaper;
+        case OperatorNamespace::Cold:
+            return declaration.cold_evaluable == ColdEvaluable::Yes;
+        case OperatorNamespace::Raw:
+            return declaration.category != SymbolCategory::none;
+        case OperatorNamespace::Osc:
+            return false;
+        case OperatorNamespace::None:
+        case OperatorNamespace::Unknown:
+        case OperatorNamespace::Malformed:
+            return false;
+    }
+    return false;
 }
 
 void GraphBuilder::init_form_table() {
@@ -55,6 +185,8 @@ void GraphBuilder::init_form_table() {
 
     // Time transforms
     add(sym.time_as,      &GraphBuilder::compile_eval_at_time);
+    add(sym.premap,       &GraphBuilder::compile_eval_at_time);
+    add(sym.rate_as,      &GraphBuilder::compile_rate_as);
     add(sym.fast,         &GraphBuilder::compile_fast);
     add(sym.slow,         &GraphBuilder::compile_slow);
     add(sym.offset,       &GraphBuilder::compile_offset);
@@ -96,6 +228,7 @@ void GraphBuilder::init_form_table() {
     // UGens — primary names
     add(sym.phasor_,      &GraphBuilder::compile_phasor);
     add(sym.lfo,          &GraphBuilder::compile_lfo);
+    add(sym.blfo,         &GraphBuilder::compile_blfo);
     add(sym.slew,         &GraphBuilder::compile_slew);
     add(sym.one_pole,     &GraphBuilder::compile_one_pole);
     add(sym.env_follow,   &GraphBuilder::compile_env_follow);
@@ -104,11 +237,7 @@ void GraphBuilder::init_form_table() {
     add(sym.toggle,       &GraphBuilder::compile_toggle);
     add(sym.count,        &GraphBuilder::compile_count);
 
-    // UGens — aliases with wave-type defaults
-    add(sym.osc,          &GraphBuilder::compile_lfo_sin);
-    add(sym.tri_osc,      &GraphBuilder::compile_lfo_tri);
-    add(sym.saw,          &GraphBuilder::compile_lfo_saw);
-    add(sym.sqr_osc,      &GraphBuilder::compile_lfo_sqr);
+    // Compatibility aliases unrelated to the namespace cut.
     add(sym.envelope_follower, &GraphBuilder::compile_env_follow);
     add(sym.latch,        &GraphBuilder::compile_sah);
 
@@ -187,7 +316,7 @@ bool GraphBuilder::is_const(uint16_t node_idx) const {
     return node_idx != NODE_NONE && pool.nodes[node_idx].op == NodeOp::Const;
 }
 
-double GraphBuilder::const_value(uint16_t node_idx) const {
+Sample GraphBuilder::const_value(uint16_t node_idx) const {
     return pool.nodes[node_idx].imm;
 }
 
@@ -270,11 +399,35 @@ static char fuzzy_sug_buf[128];
 uint16_t GraphBuilder::report_error_with_fuzzy_match(SymbolID sym_id,
                                                       uint16_t span_start,
                                                       uint16_t span_len) {
-    SymbolID match = find_fuzzy_match(sym_id, cells);
     auto& si = SymbolIntern::getInstance();
+    const String& unknown_str = si.getString(sym_id);
+
+    struct RemovedName {
+        const char* name;
+        const char* replacement;
+        const char* suggestion;
+    };
+    static constexpr RemovedName removed_names[] = {
+        {"usin", "sin", "Try: (sin phasor)"},
+        {"ucos", "cos", "Try: (cos phasor)"},
+        {"osc", "lfo/sin", "Try: (lfo/sin 2)"},
+        {"tri-osc", "lfo/tri", "Try: (lfo/tri 2)"},
+        {"sqr-osc", "lfo/sqr", "Try: (lfo/sqr 2)"},
+    };
+    for (const RemovedName& removed : removed_names) {
+        if (unknown_str == removed.name) {
+            snprintf(fuzzy_msg_buf, sizeof(fuzzy_msg_buf),
+                     "'%s' was removed in v1.2.0; use '%s'",
+                     removed.name, removed.replacement);
+            return report_error_at_cat(DiagnosticCategory::UndefinedName,
+                                       span_start, span_len,
+                                       fuzzy_msg_buf, removed.suggestion);
+        }
+    }
+
+    SymbolID match = find_fuzzy_match(sym_id, cells);
 
     if (match != SymbolIntern::INVALID_ID) {
-        const String& unknown_str = si.getString(sym_id);
         const String& match_str = si.getString(match);
         snprintf(fuzzy_msg_buf, sizeof(fuzzy_msg_buf),
                  "Unknown '%s'. Did you mean '%s'?",
@@ -315,7 +468,9 @@ bool GraphBuilder::is_side_effect_form(SymbolID op) const {
            op == sym.useq_clear || op == sym.set_time_offset ||
            op == sym.nudge_time || op == sym.useq_play ||
            op == sym.useq_pause || op == sym.useq_stop ||
-           op == sym.useq_rewind
+           op == sym.useq_rewind || op == sym.q_zeros ||
+           op == sym.q_crossings || op == sym.q_range ||
+           op == sym.q_explain
 #if USEQ_HAS_SYNTH_ENGINE
            || op == sym.synth
 #endif
@@ -344,7 +499,7 @@ bool GraphBuilder::is_unary_math(SymbolID op) const {
     return op == sym.sin_ || op == sym.cos_ || op == sym.tan_ ||
            op == sym.abs_ || op == sym.floor_ || op == sym.ceil_ ||
            op == sym.sqrt_ || op == sym.neg || op == sym.frac_ ||
-           op == sym.usin || op == sym.ucos ||
+           op == sym.bsin || op == sym.bcos ||
            op == sym.bi_to_uni || op == sym.b_to_u ||
            op == sym.uni_to_bi || op == sym.u_to_b;
 }
@@ -387,8 +542,8 @@ NodeOp GraphBuilder::unary_sym_to_op(SymbolID op) const {
     if (op == sym.sqrt_)    return NodeOp::Sqrt;
     if (op == sym.neg)      return NodeOp::Neg;
     if (op == sym.frac_)    return NodeOp::Frac;
-    if (op == sym.usin)     return NodeOp::USin;
-    if (op == sym.ucos)     return NodeOp::UCos;
+    if (op == sym.bsin)     return NodeOp::Sin;
+    if (op == sym.bcos)     return NodeOp::Cos;
     if (op == sym.bi_to_uni || op == sym.b_to_u) return NodeOp::BiToUni;
     if (op == sym.uni_to_bi || op == sym.u_to_b) return NodeOp::UniToBi;
     return NodeOp::Abs;
@@ -755,9 +910,12 @@ uint16_t GraphBuilder::compile_symbol(SymbolID sym_id, Scope& scope,
 
     // 2. Raw time input
     if (sym_id == sym.t) return ctx.t_node;
+    if (sym_id == sym.t0) return ctx.base_t_node;
+    if (sym_id == sym.ground_time) return ctx.ground_t_node;
 
     // 2b. dt (time delta)
-    if (sym_id == sym.dt) return pool.make_dt_load();
+    if (sym_id == sym.dt) return ctx.dt_node;
+    if (sym_id == sym.dt_wall) return ctx.wall_dt_node;
 
     // 3. Well-known temporal templates
     if (sym_id == sym.beat)     return expand_beat(ctx);
@@ -878,8 +1036,281 @@ uint16_t GraphBuilder::inline_expression_cell(SymbolID sym_id, const CallableInf
 
 // ── Form Compilation ────────────────────────────────────────────────────────
 
+uint16_t GraphBuilder::compile_waveform(
+    SymbolID waveform, OperatorNamespace name_space, TokenStream& ts,
+    Scope& scope, TimeContext& ctx, Token op_tok) {
+    const bool is_pulse = waveform == sym.pulse;
+    uint16_t width = pool.make_const(0.5);
+    uint16_t input = NODE_NONE;
+
+    if (is_pulse) {
+        if (ts.peek().kind == TokenKind::RParen) {
+            return report_error_at_cat(
+                DiagnosticCategory::Arity, op_tok.span_start, op_tok.span_len,
+                "pulse needs a width followed by a phasor",
+                "Try: (pulse 0.5 beat)");
+        }
+        width = compile_expr(ts, scope, ctx);
+        if (width == NODE_NONE) return NODE_NONE;
+        if (ts.peek().kind == TokenKind::RParen) {
+            return report_error_at_cat(
+                DiagnosticCategory::Arity, op_tok.span_start, op_tok.span_len,
+                "pulse needs a final phasor argument",
+                "Try: (pulse 0.5 beat)");
+        }
+        input = compile_expr(ts, scope, ctx);
+    } else {
+        if (ts.peek().kind == TokenKind::RParen) {
+            return report_error_at_cat(
+                DiagnosticCategory::Arity, op_tok.span_start, op_tok.span_len,
+                "This waveform needs exactly one input value",
+                "Put the driving phasor last");
+        }
+        input = compile_expr(ts, scope, ctx);
+    }
+    if (input == NODE_NONE) return NODE_NONE;
+    if (ts.peek().kind != TokenKind::RParen) {
+        return report_error_at_cat(
+            DiagnosticCategory::Arity, op_tok.span_start, op_tok.span_len,
+            "This waveform got more arguments than expected",
+            "Remove the extra arguments");
+    }
+
+    constexpr Sample FULL_TURN_RADIANS = 6.28318530717958647692;
+    const bool is_trig = waveform == sym.sin_ || waveform == sym.cos_ ||
+                         waveform == sym.bsin || waveform == sym.bcos ||
+                         waveform == sym.tan_;
+    const bool cosine = waveform == sym.cos_ || waveform == sym.bcos;
+    const bool bipolar_bare = waveform == sym.bsin || waveform == sym.bcos;
+
+    uint16_t phase_or_angle = input;
+    if (is_trig) {
+        if (name_space != OperatorNamespace::Radians &&
+            name_space != OperatorNamespace::Raw) {
+            phase_or_angle = pool.make_binop(
+                NodeOp::Mul, input, pool.make_const(FULL_TURN_RADIANS));
+        }
+    } else if (name_space == OperatorNamespace::Radians) {
+        phase_or_angle = pool.make_binop(
+            NodeOp::Div, input, pool.make_const(FULL_TURN_RADIANS));
+    }
+
+    uint16_t result = NODE_NONE;
+    if (is_trig) {
+        result = pool.make_unary(
+            waveform == sym.tan_ ? NodeOp::Tan
+                                 : (cosine ? NodeOp::Cos : NodeOp::Sin),
+            phase_or_angle);
+    } else if (waveform == sym.tri) {
+        result = pool.make_unary(NodeOp::Tri, phase_or_angle);
+    } else if (waveform == sym.sqr) {
+        result = pool.make_unary(NodeOp::Sqr, phase_or_angle);
+    } else if (waveform == sym.saw) {
+        result = pool.make_unary(NodeOp::Frac, phase_or_angle);
+    } else if (waveform == sym.pulse) {
+        result = pool.make_binop(NodeOp::Pulse, phase_or_angle, width);
+    }
+
+    if (result == NODE_NONE) {
+        return report_error_cat(
+            DiagnosticCategory::UndefinedName, op_tok,
+            "This operator has no waveform adapter",
+            "Use one of sin, cos, saw, tri, sqr, or pulse");
+    }
+
+    const OperatorDeclaration* declaration =
+        find_operator_declaration(waveform);
+    const OperatorOutputRange natural_range = declaration
+        ? declaration->output_range
+        : OperatorOutputRange::None;
+
+    bool want_unipolar = false;
+    bool want_bipolar = false;
+    switch (name_space) {
+        case OperatorNamespace::Unipolar:
+            want_unipolar = true;
+            break;
+        case OperatorNamespace::Bipolar:
+            want_bipolar = true;
+            break;
+        case OperatorNamespace::Normalized:
+            want_unipolar = !bipolar_bare;
+            want_bipolar = bipolar_bare;
+            break;
+        case OperatorNamespace::None:
+            want_unipolar = waveform == sym.sin_ || waveform == sym.cos_ ||
+                            natural_range == OperatorOutputRange::Unipolar;
+            want_bipolar = bipolar_bare;
+            break;
+        case OperatorNamespace::Radians:
+        case OperatorNamespace::Raw:
+            want_bipolar = natural_range == OperatorOutputRange::Bipolar;
+            want_unipolar = natural_range == OperatorOutputRange::Unipolar;
+            break;
+        default:
+            break;
+    }
+
+    if (want_unipolar && natural_range == OperatorOutputRange::Bipolar) {
+        result = pool.make_unary(NodeOp::BiToUni, result);
+    } else if (want_bipolar && natural_range == OperatorOutputRange::Unipolar) {
+        result = pool.make_unary(NodeOp::UniToBi, result);
+    }
+    return result;
+}
+
+uint16_t GraphBuilder::compile_lfo_namespace(
+    SymbolID waveform, bool bipolar, TokenStream& ts, Scope& scope,
+    TimeContext& ctx, Token op_tok) {
+    uint16_t wave_type = 0;
+    if (waveform == sym.sin_ || waveform == sym.bsin) wave_type = 0;
+    else if (waveform == sym.tri) wave_type = 1;
+    else if (waveform == sym.saw) wave_type = 2;
+    else if (waveform == sym.sqr || waveform == sym.pulse) wave_type = 3;
+    else if (waveform == sym.cos_ || waveform == sym.bcos) wave_type = 4;
+    else {
+        return report_error_cat(
+            DiagnosticCategory::UndefinedName, op_tok,
+            "This operator has no free-running form",
+            "Use lfo/sin, lfo/cos, lfo/saw, lfo/tri, or lfo/sqr");
+    }
+
+    uint16_t result = build_lfo(ts, scope, ctx, wave_type);
+    if (result == NODE_NONE) return NODE_NONE;
+    const bool base_is_bipolar = waveform == sym.bsin || waveform == sym.bcos;
+    if (bipolar || base_is_bipolar) {
+        result = pool.make_unary(NodeOp::UniToBi, result);
+    }
+    return result;
+}
+
+uint16_t GraphBuilder::compile_cold_namespace(
+    SymbolID op, TokenStream& ts, Scope& scope, TimeContext& ctx,
+    Token op_tok) {
+    if (op == sym.random_) {
+        uint16_t lo = pool.make_const(0.0);
+        uint16_t hi = pool.make_const(1.0);
+        if (ts.peek().kind != TokenKind::RParen) {
+            lo = compile_expr(ts, scope, ctx);
+            if (lo == NODE_NONE) return NODE_NONE;
+            if (ts.peek().kind == TokenKind::RParen) {
+                hi = lo;
+                lo = pool.make_const(0.0);
+            } else {
+                hi = compile_expr(ts, scope, ctx);
+                if (hi == NODE_NONE) return NODE_NONE;
+            }
+        }
+        if (ts.peek().kind != TokenKind::RParen || !is_const(lo) || !is_const(hi)) {
+            return report_error_cat(
+                DiagnosticCategory::Type, op_tok,
+                "k/random needs zero, one, or two constant bounds",
+                "Try: (k/random) or (k/random -1 1)");
+        }
+        const uint32_t nonce = cells.store_revision * 2654435761u;
+        const Sample unit = static_cast<Sample>(nonce & 0x00ffffffu) /
+                            static_cast<Sample>(0x01000000u);
+        return pool.make_const(
+            const_value(lo) + unit * (const_value(hi) - const_value(lo)));
+    }
+
+    uint16_t result = compile_form(op, ts, scope, ctx, op_tok);
+    if (result == NODE_NONE) return NODE_NONE;
+    if (!is_const(result)) {
+        return report_error_cat(
+            DiagnosticCategory::Type, op_tok,
+            "This k/ form is not constant at evaluation time",
+            "Use only literal inputs with k/, or remove the k/ prefix");
+    }
+    return result;
+}
+
+uint16_t GraphBuilder::compile_namespaced_form(
+    const NamespacedOperator& resolved, TokenStream& ts, Scope& scope,
+    TimeContext& ctx, Token op_tok) {
+    if (resolved.name_space == OperatorNamespace::Malformed) {
+        return report_error_cat(
+            DiagnosticCategory::Syntax, op_tok,
+            "A symbol can contain at most one namespace separator",
+            "Use one namespace in the form ns/operator");
+    }
+    if (resolved.name_space == OperatorNamespace::Unknown) {
+        return report_error_cat(
+            DiagnosticCategory::UndefinedName, op_tok,
+            "Unknown operator namespace",
+            "Valid namespaces: n, r, u, b, lfo, blfo, osc, k, raw");
+    }
+    if (resolved.name_space == OperatorNamespace::Osc) {
+        return report_error_cat(
+            DiagnosticCategory::Boundary, op_tok,
+            "Audio-rate osc/ nodes are top-level declarations",
+            "Use osc/name at the top level, not inside an output expression");
+    }
+    if (!resolved.declaration ||
+        !namespace_applies(resolved.name_space, *resolved.declaration)) {
+        return report_error_cat(
+            DiagnosticCategory::UndefinedName, op_tok,
+            "This operator has no form under that namespace",
+            "Choose a namespace offered for this operator");
+    }
+
+    const SymbolID base = resolved.base_symbol;
+    if (resolved.name_space == OperatorNamespace::Lfo ||
+        resolved.name_space == OperatorNamespace::BipolarLfo) {
+        return compile_lfo_namespace(
+            base, resolved.name_space == OperatorNamespace::BipolarLfo,
+            ts, scope, ctx, op_tok);
+    }
+    if (resolved.name_space == OperatorNamespace::Cold) {
+        return compile_cold_namespace(base, ts, scope, ctx, op_tok);
+    }
+    if (resolved.name_space == OperatorNamespace::Raw) {
+        if (base == sym.sin_) return compile_unary_math(NodeOp::Sin, ts, scope, ctx);
+        if (base == sym.cos_) return compile_unary_math(NodeOp::Cos, ts, scope, ctx);
+        if (base == sym.bsin) return compile_unary_math(NodeOp::Sin, ts, scope, ctx);
+        if (base == sym.bcos) return compile_unary_math(NodeOp::Cos, ts, scope, ctx);
+        if (base == sym.saw) return compile_lfo_saw(ts, scope, ctx);
+        if (base == sym.tri || base == sym.sqr || base == sym.pulse) {
+            return compile_waveform(
+                base, OperatorNamespace::Raw, ts, scope, ctx, op_tok);
+        }
+        return compile_form(base, ts, scope, ctx, op_tok);
+    }
+
+    if (resolved.declaration->regime == OperatorRegime::PureShaper ||
+        ((resolved.name_space == OperatorNamespace::Normalized ||
+          resolved.name_space == OperatorNamespace::Radians) &&
+         (resolved.declaration->input_domain == OperatorInputDomain::Angle ||
+          resolved.declaration->input_domain == OperatorInputDomain::Phase))) {
+        return compile_waveform(base, resolved.name_space, ts, scope, ctx, op_tok);
+    }
+
+    uint16_t result = compile_form(base, ts, scope, ctx, op_tok);
+    if (result == NODE_NONE) return NODE_NONE;
+    if (resolved.name_space == OperatorNamespace::Unipolar &&
+        resolved.declaration->output_range == OperatorOutputRange::Bipolar) {
+        return pool.make_unary(NodeOp::BiToUni, result);
+    }
+    if (resolved.name_space == OperatorNamespace::Bipolar &&
+        resolved.declaration->output_range == OperatorOutputRange::Unipolar) {
+        return pool.make_unary(NodeOp::UniToBi, result);
+    }
+    return result;
+}
+
 uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
                                      Scope& scope, TimeContext& ctx, Token op_tok) {
+    const NamespacedOperator resolved = resolve_namespaced_operator(op);
+    if (resolved.name_space != OperatorNamespace::None) {
+        return compile_namespaced_form(resolved, ts, scope, ctx, op_tok);
+    }
+
+    if (op == sym.sin_ || op == sym.cos_ || op == sym.bsin || op == sym.bcos ||
+        op == sym.tri || op == sym.sqr || op == sym.saw || op == sym.pulse) {
+        return compile_waveform(op, OperatorNamespace::None,
+                                ts, scope, ctx, op_tok);
+    }
+
     // 1. Side effects → compile-time error in signal context
     //    (compile_expr drains remaining tokens to RParen after we return)
     if (is_side_effect_form(op)) {
@@ -919,7 +1350,6 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
         if (op == sym.pow_)  { nop = NodeOp::Expt; swap_args = true; } // (pow a b) = b^a
         if (op == sym.expt)  nop = NodeOp::Expt;
         if (op == sym.mod_)  nop = NodeOp::Mod;
-        if (op == sym.pulse) nop = NodeOp::Pulse;
         if (swap_args)
             return compile_binary_math_swapped(nop, ts, scope, ctx);
         return compile_binary_math(nop, ts, scope, ctx);
@@ -935,24 +1365,6 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
 
     // 7. Special forms with non-standard signatures
     if (op == sym.gates || op == sym.trigs) return compile_gates(op, ts, scope, ctx);
-
-    if (op == sym.tri || op == sym.sqr) {
-        NodeOp nop = (op == sym.tri) ? NodeOp::Tri : NodeOp::Sqr;
-        if (ts.peek().kind == TokenKind::RParen) {
-            return report_error_at_cat(DiagnosticCategory::Arity,
-                op_tok.span_start, op_tok.span_len,
-                "This waveform needs exactly 1 phase value",
-                (op == sym.tri) ? "Try: (tri beat)" : "Try: (sqr beat)");
-        }
-        uint16_t first = compile_expr(ts, scope, ctx);
-        if (ts.peek().kind != TokenKind::RParen) {
-            return report_error_at_cat(DiagnosticCategory::Arity,
-                op_tok.span_start, op_tok.span_len,
-                "This waveform takes exactly 1 phase value",
-                (op == sym.tri) ? "Try: (tri beat)" : "Try: (sqr beat)");
-        }
-        return pool.make_unary(nop, first);
-    }
 
     if (op == sym.fn || op == sym.lambda) return compile_lambda(ts, scope, ctx);
 
@@ -983,35 +1395,61 @@ uint16_t GraphBuilder::compile_form(SymbolID op, TokenStream& ts,
 uint16_t GraphBuilder::compile_fast(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t factor = compile_expr(ts, scope, ctx);
     if (factor == NODE_NONE) return NODE_NONE;
-    TimeContext inner = { pool.make_binop(NodeOp::Mul, ctx.t_node, factor) };
+    TimeContext inner = ctx;
+    inner.t_node = pool.make_binop(NodeOp::Mul, ctx.t_node, factor);
     return compile_expr(ts, scope, inner);
 }
 
 uint16_t GraphBuilder::compile_slow(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t factor = compile_expr(ts, scope, ctx);
     if (factor == NODE_NONE) return NODE_NONE;
-    TimeContext inner = { pool.make_binop(NodeOp::Div, ctx.t_node, factor) };
+    TimeContext inner = ctx;
+    inner.t_node = pool.make_binop(NodeOp::Div, ctx.t_node, factor);
     return compile_expr(ts, scope, inner);
 }
 
 uint16_t GraphBuilder::compile_offset(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t amount = compile_expr(ts, scope, ctx);
     if (amount == NODE_NONE) return NODE_NONE;
-    TimeContext inner = { pool.make_binop(NodeOp::Add, ctx.t_node, amount) };
+    TimeContext inner = ctx;
+    inner.t_node = pool.make_binop(NodeOp::Add, ctx.t_node, amount);
     return compile_expr(ts, scope, inner);
 }
 
 uint16_t GraphBuilder::compile_loop_at(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t duration = compile_expr(ts, scope, ctx);
     if (duration == NODE_NONE) return NODE_NONE;
-    TimeContext inner = { pool.make_binop(NodeOp::Mod, ctx.t_node, duration) };
+    TimeContext inner = ctx;
+    inner.t_node = pool.make_binop(NodeOp::Mod, ctx.t_node, duration);
     return compile_expr(ts, scope, inner);
 }
 
 uint16_t GraphBuilder::compile_eval_at_time(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     uint16_t time_node = compile_expr(ts, scope, ctx);
     if (time_node == NODE_NONE) return NODE_NONE;
-    TimeContext inner = { time_node };
+    TimeContext inner = ctx;
+    inner.t_node = time_node;
+    return compile_expr(ts, scope, inner);
+}
+
+uint16_t GraphBuilder::compile_rate_as(TokenStream& ts, Scope& scope,
+                                       TimeContext& ctx) {
+    uint16_t rate = compile_expr(ts, scope, ctx);
+    if (rate == NODE_NONE) return NODE_NONE;
+
+    // The clock and all compiler-owned state introduced inside the body share
+    // one lexical delta. Named defstate cells remain external state reads.
+    uint16_t slot = resolve_or_alloc(0, ResourceKind::LocalClock, 0, 0.0);
+    if (slot == NODE_NONE) return NODE_NONE;
+
+    uint16_t state_load = pool.make_state_load(slot);
+    uint16_t local_dt = pool.make_binop(NodeOp::Mul, rate, ctx.dt_node);
+    uint16_t updated = pool.make_binop(NodeOp::Add, state_load, local_dt);
+    pool.state_update_roots[slot] = updated;
+
+    TimeContext inner = ctx;
+    inner.t_node = state_load;
+    inner.dt_node = local_dt;
     return compile_expr(ts, scope, inner);
 }
 
@@ -1449,13 +1887,13 @@ uint16_t GraphBuilder::compile_step(TokenStream& ts, Scope& scope, TimeContext& 
         phase = expand_beat(ctx);
     }
 
-    uint16_t len = pool.make_const((double)data.length);
+    uint16_t len = pool.make_const((Sample)data.length);
     uint16_t scaled = pool.make_binop(NodeOp::Mul, phase, len);
     uint16_t idx = pool.make_unary(NodeOp::Floor, scaled);
     Node n;
     n.op = NodeOp::VecIndex;
     n.input_a = idx;
-    n.imm = (double)data.table_id;
+    n.imm = (Sample)data.table_id;
     n.flags = 0;
     return pool.intern_node(n);
 }
@@ -1486,13 +1924,13 @@ uint16_t GraphBuilder::compile_gates(SymbolID op, TokenStream& ts,
         phase = expand_beat(ctx);
     }
 
-    uint16_t len = pool.make_const((double)data.length);
+    uint16_t len = pool.make_const((Sample)data.length);
     uint16_t scaled = pool.make_binop(NodeOp::Mul, phase, len);
     uint16_t idx = pool.make_unary(NodeOp::Floor, scaled);
     Node vec_node;
     vec_node.op = NodeOp::VecIndex;
     vec_node.input_a = idx;
-    vec_node.imm = (double)data.table_id;
+    vec_node.imm = (Sample)data.table_id;
     vec_node.flags = 0;
     uint16_t raw = pool.intern_node(vec_node);
 
@@ -1509,43 +1947,50 @@ uint16_t GraphBuilder::compile_gates(SymbolID op, TokenStream& ts,
 }
 
 uint16_t GraphBuilder::compile_euclid(TokenStream& ts, Scope& scope, TimeContext& ctx) {
-    // (euclid total active phase)
-    // Matches old engine: idx = (step * active) % total; hit if idx < active AND rem < pw
-
-    // Arity check: needs at least 2 args (total, active)
+    // (euclid hits total phasor)
+    // (euclid hits total pulse-width phasor)
+    // (euclid hits total pulse-width rotation phasor)
+    // The driving phasor is always final. Rotation follows the historical
+    // engine convention: positive values rotate the pattern to the right.
     if (ts.peek().kind == TokenKind::RParen) {
         return report_error_at_cat(DiagnosticCategory::Arity,
-            0, 0, "euclid needs at least 2 values: total hits and active hits",
-            "Try: (euclid 8 3 beat)");
+            0, 0, "euclid needs hits, total steps, and a final phasor",
+            "Try: (euclid 3 8 beat)");
+    }
+    uint16_t active = compile_expr(ts, scope, ctx);
+    if (active == NODE_NONE) return NODE_NONE;
+    if (ts.peek().kind == TokenKind::RParen) {
+        return report_error_at_cat(DiagnosticCategory::Arity,
+            0, 0, "euclid needs total steps and a final phasor",
+            "Try: (euclid 3 8 beat)");
     }
     uint16_t total = compile_expr(ts, scope, ctx);
     if (total == NODE_NONE) return NODE_NONE;
     if (ts.peek().kind == TokenKind::RParen) {
         return report_error_at_cat(DiagnosticCategory::Arity,
-            0, 0, "euclid needs at least 2 values: total hits and active hits",
-            "Try: (euclid 8 3 beat)");
+            0, 0, "euclid needs a final phasor argument",
+            "Try: (euclid 3 8 beat)");
     }
-    uint16_t active = compile_expr(ts, scope, ctx);
-    if (active == NODE_NONE) return NODE_NONE;
 
-    // Optional pulse-width argument (default 0.5)
-    uint16_t pulse_width;
-    uint16_t phase;
-    if (ts.peek().kind != TokenKind::RParen) {
-        uint16_t arg3 = compile_expr(ts, scope, ctx);
-        if (ts.peek().kind != TokenKind::RParen) {
-            // 4 args: (euclid total active pulseWidth phase)
-            pulse_width = arg3;
-            phase = compile_expr(ts, scope, ctx);
-        } else {
-            // 3 args: (euclid total active phase)
-            pulse_width = pool.make_const(0.5);
-            phase = arg3;
-        }
+    uint16_t pulse_width = pool.make_const(0.5);
+    uint16_t rotation = pool.make_const(0.0);
+    uint16_t phase = NODE_NONE;
+    uint16_t arg3 = compile_expr(ts, scope, ctx);
+    if (arg3 == NODE_NONE) return NODE_NONE;
+    if (ts.peek().kind == TokenKind::RParen) {
+        phase = arg3;
     } else {
-        pulse_width = pool.make_const(0.5);
-        phase = expand_beat(ctx);
+        uint16_t arg4 = compile_expr(ts, scope, ctx);
+        if (arg4 == NODE_NONE) return NODE_NONE;
+        pulse_width = arg3;
+        if (ts.peek().kind == TokenKind::RParen) {
+            phase = arg4;
+        } else {
+            rotation = arg4;
+            phase = compile_expr(ts, scope, ctx);
+        }
     }
+    if (phase == NODE_NONE) return NODE_NONE;
 
     // scaled = phase * total
     uint16_t scaled = pool.make_binop(NodeOp::Mul, phase, total);
@@ -1558,8 +2003,13 @@ uint16_t GraphBuilder::compile_euclid(TokenStream& ts, Scope& scope, TimeContext
     // rem = scaled - step_idx  (fractional position within current step)
     uint16_t rem = pool.make_binop(NodeOp::Sub, scaled, step_idx);
 
-    // idx = (step_idx * active) % total
-    uint16_t product = pool.make_binop(NodeOp::Mul, step_idx, active);
+    // rotated_step = (step + total - rotation) % total
+    uint16_t shifted_step = pool.make_binop(
+        NodeOp::Sub, pool.make_binop(NodeOp::Add, step_idx, total), rotation);
+    uint16_t rotated_step = pool.make_binop(NodeOp::Mod, shifted_step, total);
+
+    // idx = (rotated_step * active) % total
+    uint16_t product = pool.make_binop(NodeOp::Mul, rotated_step, active);
     uint16_t idx = pool.make_binop(NodeOp::Mod, product, total);
 
     // hit = idx < active
@@ -1591,7 +2041,7 @@ uint16_t GraphBuilder::compile_interp(TokenStream& ts, Scope& scope, TimeContext
     Node n;
     n.op = NodeOp::VecLerp;
     n.input_a = phase;
-    n.imm = (double)data.table_id;
+    n.imm = (Sample)data.table_id;
     n.flags = 0;
     return pool.intern_node(n);
 }
@@ -1618,7 +2068,7 @@ uint16_t GraphBuilder::compile_gatesw(TokenStream& ts, Scope& scope, TimeContext
         phase = expand_beat(ctx);
     }
 
-    uint16_t len = pool.make_const((double)data.length);
+    uint16_t len = pool.make_const((Sample)data.length);
     uint16_t scaled = pool.make_binop(NodeOp::Mul, phase, len);
     uint16_t idx = pool.make_unary(NodeOp::Floor, scaled);
 
@@ -1628,7 +2078,7 @@ uint16_t GraphBuilder::compile_gatesw(TokenStream& ts, Scope& scope, TimeContext
     vec_node.input_a = idx;
     vec_node.input_b = NODE_NONE;
     vec_node.input_c = NODE_NONE;
-    vec_node.imm = (double)data.table_id;
+    vec_node.imm = (Sample)data.table_id;
     vec_node.flags = 0;
     uint16_t raw = pool.intern_node(vec_node);
 
@@ -1647,13 +2097,13 @@ uint16_t GraphBuilder::compile_gatesw(TokenStream& ts, Scope& scope, TimeContext
 // Helper: resolve a data table and read its raw constant values.
 // Computes cumulative normalized boundaries into out_cum.
 static bool resolve_ratio_table(GraphBuilder& gb, TokenStream& ts, Scope& scope,
-                                 TimeContext& ctx, double* out_values, double* out_cum,
-                                 uint16_t& out_count, double& out_total) {
+                                 TimeContext& ctx, Sample* out_values, Sample* out_cum,
+                                 uint16_t& out_count, Sample& out_total) {
     auto data = gb.resolve_data_table(ts, scope, ctx);
     if (!data.ok || data.length == 0) return false;
 
     uint16_t len = 0;
-    const double* raw = gb.cells.get_data_table(data.table_id, len);
+    const Sample* raw = gb.cells.get_data_table(data.table_id, len);
     if (!raw || len == 0) return false;
 
     out_count = len;
@@ -1664,7 +2114,7 @@ static bool resolve_ratio_table(GraphBuilder& gb, TokenStream& ts, Scope& scope,
     }
     if (out_total == 0.0) return false;
 
-    double acc = 0.0;
+    Sample acc = 0.0;
     for (uint16_t i = 0; i < len; i++) {
         acc += out_values[i];
         out_cum[i] = acc / out_total;
@@ -1675,9 +2125,9 @@ static bool resolve_ratio_table(GraphBuilder& gb, TokenStream& ts, Scope& scope,
 uint16_t GraphBuilder::compile_ridx(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     // (ridx ratios phase)
     // Returns index / ratios.size() (normalized index of current subdivision)
-    double values[64], cum[64];
+    Sample values[64], cum[64];
     uint16_t count = 0;
-    double total = 0.0;
+    Sample total = 0.0;
 
     if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
         return report_error_at_cat(DiagnosticCategory::Arity, 0, 0,
@@ -1696,13 +2146,13 @@ uint16_t GraphBuilder::compile_ridx(TokenStream& ts, Scope& scope, TimeContext& 
     //   if (phase <= cum[0]) => 0/N
     //   elif (phase <= cum[1]) => 1/N
     //   else => (N-1)/N
-    double n = (double)count;
-    uint16_t result = pool.make_const((double)(count - 1) / n);
+    Sample n = (Sample)count;
+    uint16_t result = pool.make_const((Sample)(count - 1) / n);
 
     for (int i = (int)count - 2; i >= 0; i--) {
         uint16_t boundary = pool.make_const(cum[i]);
         uint16_t cmp = pool.make_binop(NodeOp::CmpLe, phase, boundary);
-        uint16_t this_val = pool.make_const((double)i / n);
+        uint16_t this_val = pool.make_const((Sample)i / n);
         result = pool.make_select(cmp, this_val, result);
     }
 
@@ -1712,9 +2162,9 @@ uint16_t GraphBuilder::compile_ridx(TokenStream& ts, Scope& scope, TimeContext& 
 uint16_t GraphBuilder::compile_rstep(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     // (rstep ratios phase)
     // Returns lastAccumulatedSum / ratioSum (normalized start of current subdivision)
-    double values[64], cum[64];
+    Sample values[64], cum[64];
     uint16_t count = 0;
-    double total = 0.0;
+    Sample total = 0.0;
 
     if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
         return report_error_at_cat(DiagnosticCategory::Arity, 0, 0,
@@ -1738,7 +2188,7 @@ uint16_t GraphBuilder::compile_rstep(TokenStream& ts, Scope& scope, TimeContext&
     for (int i = (int)count - 2; i >= 0; i--) {
         uint16_t boundary = pool.make_const(cum[i]);
         uint16_t cmp = pool.make_binop(NodeOp::CmpLe, phase, boundary);
-        double start_val = (i == 0) ? 0.0 : cum[i - 1];
+        Sample start_val = (i == 0) ? 0.0 : cum[i - 1];
         uint16_t this_val = pool.make_const(start_val);
         result = pool.make_select(cmp, this_val, result);
     }
@@ -1749,9 +2199,9 @@ uint16_t GraphBuilder::compile_rstep(TokenStream& ts, Scope& scope, TimeContext&
 uint16_t GraphBuilder::compile_rpulse(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     // (rpulse ratios pulseWidth phase)
     // Within current subdivision, compute local beat phase and compare to pulseWidth.
-    double values[64], cum[64];
+    Sample values[64], cum[64];
     uint16_t count = 0;
-    double total = 0.0;
+    Sample total = 0.0;
 
     if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
         return report_error_at_cat(DiagnosticCategory::Arity, 0, 0,
@@ -1772,9 +2222,9 @@ uint16_t GraphBuilder::compile_rpulse(TokenStream& ts, Scope& scope, TimeContext
     //   local_phase = (phase - start) / (end - start)
     //   hit = local_phase <= pulseWidth
     auto make_local_pulse = [&](int i) -> uint16_t {
-        double start = (i == 0) ? 0.0 : cum[i - 1];
-        double end = cum[i];
-        double width = end - start;
+        Sample start = (i == 0) ? 0.0 : cum[i - 1];
+        Sample end = cum[i];
+        Sample width = end - start;
         if (width <= 0.0) return pool.make_const(0.0);
         uint16_t offset_phase = pool.make_binop(NodeOp::Sub, phase, pool.make_const(start));
         uint16_t local_phase = pool.make_binop(NodeOp::Div, offset_phase, pool.make_const(width));
@@ -1796,9 +2246,9 @@ uint16_t GraphBuilder::compile_rwarp(TokenStream& ts, Scope& scope, TimeContext&
     // (rwarp ratios phase)
     // Remap phase through ratio boundaries to uniform spacing.
     // output = (index + beatPhase) / N
-    double values[64], cum[64];
+    Sample values[64], cum[64];
     uint16_t count = 0;
-    double total = 0.0;
+    Sample total = 0.0;
 
     if (!resolve_ratio_table(*this, ts, scope, ctx, values, cum, count, total)) {
         return report_error_at_cat(DiagnosticCategory::Arity, 0, 0,
@@ -1813,17 +2263,17 @@ uint16_t GraphBuilder::compile_rwarp(TokenStream& ts, Scope& scope, TimeContext&
         phase = expand_beat(ctx);
     }
 
-    double n = (double)count;
-    double iw = 1.0 / n;
+    Sample n = (Sample)count;
+    Sample iw = 1.0 / n;
 
     auto make_warped = [&](int i) -> uint16_t {
-        double start = (i == 0) ? 0.0 : cum[i - 1];
-        double end = cum[i];
-        double width = end - start;
-        if (width <= 0.0) return pool.make_const((double)i * iw);
+        Sample start = (i == 0) ? 0.0 : cum[i - 1];
+        Sample end = cum[i];
+        Sample width = end - start;
+        if (width <= 0.0) return pool.make_const((Sample)i * iw);
         uint16_t offset_phase = pool.make_binop(NodeOp::Sub, phase, pool.make_const(start));
         uint16_t local_phase = pool.make_binop(NodeOp::Div, offset_phase, pool.make_const(width));
-        uint16_t idx_plus_local = pool.make_binop(NodeOp::Add, pool.make_const((double)i), local_phase);
+        uint16_t idx_plus_local = pool.make_binop(NodeOp::Add, pool.make_const((Sample)i), local_phase);
         return pool.make_binop(NodeOp::Mul, idx_plus_local, pool.make_const(iw));
     };
 
@@ -1882,7 +2332,7 @@ uint16_t GraphBuilder::compile_integrate(TokenStream& ts, Scope& scope, TimeCont
 
     // Build update graph: state_load + rate * dt_load
     uint16_t state_load = pool.make_state_load(slot);
-    uint16_t dt_load = pool.make_dt_load();
+    uint16_t dt_load = ctx.dt_node;
     uint16_t rate_dt = pool.make_binop(NodeOp::Mul, rate, dt_load);
     uint16_t updated = pool.make_binop(NodeOp::Add, state_load, rate_dt);
 
@@ -1926,7 +2376,7 @@ uint16_t GraphBuilder::report_unknown_ugen_keyword(const Token& kw) {
         "Check the keyword spelling — try :id (or :wave/:phase/:pw on oscillators)");
 }
 
-uint16_t GraphBuilder::alloc_state_slot(double init_value) {
+uint16_t GraphBuilder::alloc_state_slot(Sample init_value) {
     if (pool.state_slot_count >= MAX_STATE_SLOTS) {
         report_error_at(0, 0,
             state_slots_exhausted_msg(),
@@ -1935,12 +2385,13 @@ uint16_t GraphBuilder::alloc_state_slot(double init_value) {
     }
     uint16_t slot = pool.state_slot_count++;
     pool.state_values[slot] = init_value;
+    pool.state_observed[slot] = false;
     pool.state_owner_context[slot] = anon_state_context;
     return slot;
 }
 
 uint16_t GraphBuilder::resolve_or_alloc(StateID state_id, ResourceKind kind,
-                                        uint8_t role, double init_value) {
+                                        uint8_t role, Sample init_value) {
     if (registry) {
         // Anonymous stateful expressions (no :id) get a structural/positional
         // key from the build context so recompiling the same program reuses
@@ -1980,6 +2431,8 @@ uint16_t GraphBuilder::resolve_or_alloc(StateID state_id, ResourceKind kind,
             }
             if (slot < MAX_STATE_SLOTS) slot_claimed_this_build[slot] = true;
             if (slot < MAX_STATE_SLOTS) {
+                if (registry->last_resolve_created)
+                    pool.state_observed[slot] = false;
                 pool.state_owner_context[slot] = anon_state_context;
             }
             return slot;
@@ -1994,7 +2447,7 @@ uint16_t GraphBuilder::compile_phasor(TokenStream& ts, Scope& scope, TimeContext
     uint16_t freq = compile_expr(ts, scope, ctx);
     if (freq == NODE_NONE) return NODE_NONE;
 
-    double init_phase = 0.0;
+    Sample init_phase = 0.0;
     StateID state_id = 0;
     SymbolID seen_keywords[2] = {};
     uint8_t seen_keyword_count = 0;
@@ -2037,7 +2490,7 @@ uint16_t GraphBuilder::compile_phasor(TokenStream& ts, Scope& scope, TimeContext
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
-    uint16_t dt_load = pool.make_dt_load();
+    uint16_t dt_load = ctx.dt_node;
     uint16_t freq_dt = pool.make_binop(NodeOp::Mul, freq, dt_load);
     uint16_t updated = pool.make_binop(NodeOp::Add, state_load, freq_dt);
     uint16_t wrapped = pool.make_unary(NodeOp::Frac, updated);
@@ -2054,6 +2507,7 @@ uint16_t GraphBuilder::build_osc_output(uint16_t state_load, uint16_t wave_type,
         case 1:  return pool.make_unary(NodeOp::Tri, state_load);
         case 2:  return state_load; // saw = phasor [0,1)
         case 3:  return pool.make_binop(NodeOp::CmpLt, state_load, pw_node);
+        case 4:  return pool.make_unary(NodeOp::UCos, state_load);
         default: return pool.make_unary(NodeOp::USin, state_load);
     }
 }
@@ -2063,7 +2517,7 @@ uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx
     if (freq == NODE_NONE) return NODE_NONE;
 
     uint16_t wave_type = default_wave;
-    double init_phase = 0.0;
+    Sample init_phase = 0.0;
     uint16_t pulse_width_node = pool.make_const(0.5);
     StateID state_id = 0;
     SymbolID seen_keywords[4] = {};
@@ -2088,17 +2542,18 @@ uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx
             Token val = ts.consume();
             if (val.kind != TokenKind::Symbol) {
                 return report_error_cat(DiagnosticCategory::Type, val,
-                    ":wave must be a keyword like :sin, :tri, :saw, or :sqr",
+                    ":wave must be a keyword like :sin, :cos, :tri, :saw, or :sqr",
                     "Try: (lfo 440 :wave :saw)");
             }
             if (val.symbol == sym.kw_sin)       wave_type = 0;
+            else if (val.symbol == sym.kw_cos)  wave_type = 4;
             else if (val.symbol == sym.kw_tri)  wave_type = 1;
             else if (val.symbol == sym.kw_saw_kw) wave_type = 2;
             else if (val.symbol == sym.kw_sqr)  wave_type = 3;
             else {
                 return report_error_cat(DiagnosticCategory::Type, val,
                     "Unknown waveform",
-                    "Try :sin, :tri, :saw, or :sqr");
+                    "Try :sin, :cos, :tri, :saw, or :sqr");
             }
         } else if (kw.symbol == sym.kw_phase) {
             uint16_t val = compile_expr(ts, scope, ctx);
@@ -2130,7 +2585,7 @@ uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
-    uint16_t dt_load = pool.make_dt_load();
+    uint16_t dt_load = ctx.dt_node;
     uint16_t freq_dt = pool.make_binop(NodeOp::Mul, freq, dt_load);
     uint16_t updated = pool.make_binop(NodeOp::Add, state_load, freq_dt);
     uint16_t phase = pool.make_unary(NodeOp::Frac, updated);
@@ -2142,6 +2597,12 @@ uint16_t GraphBuilder::build_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx
 
 uint16_t GraphBuilder::compile_lfo(TokenStream& ts, Scope& scope, TimeContext& ctx) {
     return build_lfo(ts, scope, ctx, 0); // default: :sin
+}
+
+uint16_t GraphBuilder::compile_blfo(TokenStream& ts, Scope& scope, TimeContext& ctx) {
+    uint16_t result = build_lfo(ts, scope, ctx, 0);
+    if (result == NODE_NONE) return NODE_NONE;
+    return pool.make_unary(NodeOp::UniToBi, result);
 }
 
 uint16_t GraphBuilder::compile_lfo_sin(TokenStream& ts, Scope& scope, TimeContext& ctx) {
@@ -2205,7 +2666,7 @@ uint16_t GraphBuilder::compile_slew(TokenStream& ts, Scope& scope, TimeContext& 
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
-    uint16_t dt_load = pool.make_dt_load();
+    uint16_t dt_load = ctx.dt_node;
 
     // delta = target - state
     uint16_t delta = pool.make_binop(NodeOp::Sub, target, state_load);
@@ -2271,7 +2732,7 @@ uint16_t GraphBuilder::compile_one_pole(TokenStream& ts, Scope& scope, TimeConte
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
-    uint16_t dt_load = pool.make_dt_load();
+    uint16_t dt_load = ctx.dt_node;
 
     // 2*pi*cutoff*dt
     uint16_t two_pi = pool.make_const(6.283185307179586);
@@ -2361,7 +2822,7 @@ uint16_t GraphBuilder::compile_env_follow(TokenStream& ts, Scope& scope, TimeCon
     if (slot == NODE_NONE) return NODE_NONE;
 
     uint16_t state_load = pool.make_state_load(slot);
-    uint16_t dt_load = pool.make_dt_load();
+    uint16_t dt_load = ctx.dt_node;
 
     // abs_input = abs(input)
     uint16_t abs_input = pool.make_unary(NodeOp::Abs, input);
@@ -2674,7 +3135,7 @@ namespace {
 struct LiveEditSpec {
     uint16_t form_start = 0;
     NodePool::SlotVariant variant = NodePool::SlotVariant::Numeric;
-    double seed = 0.0;
+    Sample seed = 0.0;
     char seed_keyword[MAX_LIVE_SLOT_OPTION_LEN] = {};
 
     char id[MAX_LIVE_SLOT_ID] = {};
@@ -2682,9 +3143,9 @@ struct LiveEditSpec {
     bool has_min = false;
     bool has_max = false;
     bool has_options = false;
-    double min_value = 0.0;
-    double max_value = 1.0;
-    double step = 0.0;
+    Sample min_value = 0.0;
+    Sample max_value = 1.0;
+    Sample step = 0.0;
     int precision = -1;
     char options[MAX_LIVE_SLOT_OPTIONS][MAX_LIVE_SLOT_OPTION_LEN] = {};
     uint8_t option_count = 0;
@@ -3003,7 +3464,7 @@ bool validate_live_edit_spec(GraphBuilder& builder, LiveEditSpec& spec) {
     for (uint8_t i = 0; i < spec.option_count; ++i) {
         if (std::strncmp(spec.options[i], spec.seed_keyword,
                          MAX_LIVE_SLOT_OPTION_LEN) == 0) {
-            spec.seed = static_cast<double>(i);
+            spec.seed = static_cast<Sample>(i);
             return true;
         }
     }
@@ -3049,7 +3510,7 @@ uint16_t update_existing_live_edit(GraphBuilder& builder, int16_t slot_index,
     builder.remember_live_slot(static_cast<uint16_t>(slot_index));
     NodePool::LiveSlot& old_slot = builder.pool.live_slots[slot_index];
     const NodePool::SlotVariant old_variant = old_slot.variant;
-    const double preserved_value = old_slot.value;
+    const Sample preserved_value = old_slot.value;
     char preserved_keyword[MAX_LIVE_SLOT_OPTION_LEN] = {};
     if (old_variant == NodePool::SlotVariant::Keyword) {
         const int old_index = static_cast<int>(old_slot.value);
@@ -3071,7 +3532,7 @@ uint16_t update_existing_live_edit(GraphBuilder& builder, int16_t slot_index,
         for (uint8_t i = 0; i < spec.option_count; ++i) {
             if (std::strncmp(spec.options[i], preserved_keyword,
                              MAX_LIVE_SLOT_OPTION_LEN) == 0) {
-                slot.value = static_cast<double>(i);
+                slot.value = static_cast<Sample>(i);
                 break;
             }
         }
@@ -3212,7 +3673,7 @@ uint16_t GraphBuilder::compile_range(TokenStream& ts, Scope& scope, TimeContext&
     // All arguments must fold to constants.
     uint16_t arg1 = compile_expr(ts, scope, ctx);
 
-    double start = 0, end_val, step_val = 1;
+    Sample start = 0, end_val, step_val = 1;
 
     if (ts.peek().kind == TokenKind::RParen) {
         if (!is_const(arg1)) {
@@ -3247,7 +3708,7 @@ uint16_t GraphBuilder::compile_range(TokenStream& ts, Scope& scope, TimeContext&
     // This is used as a collection producer (e.g., for `for` loops)
     // We return the last element as the scalar value
     // The collection is built in resolve_collection which calls compile_range
-    double v = start;
+    Sample v = start;
     uint16_t last = pool.make_const(0.0);
     for (int i = 0; i < 64 && (step_val > 0 ? v < end_val : v > end_val); i++) {
         last = pool.make_const(v);
@@ -3262,7 +3723,7 @@ uint16_t GraphBuilder::compile_vector_literal(TokenStream& ts, Scope& scope, Tim
     ts.consume(); // eat '['
 
     // Collect elements as doubles (for data table)
-    double values[64];
+    Sample values[64];
     uint16_t count = 0;
 
     while (ts.peek().kind != TokenKind::RBracket && !ts.at_end() && count < 64) {
@@ -3271,7 +3732,7 @@ uint16_t GraphBuilder::compile_vector_literal(TokenStream& ts, Scope& scope, Tim
         if (is_const(elem)) {
             values[count++] = const_value(elem);
         } else {
-            // A vector literal lowers to a static double table; a time-varying
+            // A vector literal lowers to a static Sample table; a time-varying
             // per-slot signal can't be represented. Fail loudly rather than
             // silently substituting 0 (values-types.md §1.7). For time-varying
             // values iterate with (for x [...] ...).
@@ -3290,7 +3751,7 @@ uint16_t GraphBuilder::compile_vector_literal(TokenStream& ts, Scope& scope, Tim
 
     // Store as data table and return the length as a constant
     cells.store_data_table(values, count);
-    return pool.make_const((double)count);
+    return pool.make_const((Sample)count);
 }
 
 // ── Collection Resolution ───────────────────────────────────────────────────
@@ -3337,7 +3798,7 @@ GraphBuilder::Collection GraphBuilder::resolve_symbol_collection(
     if (cell.kind != CellKind::Data) return collection;
     add_dependency(symbol);
     uint16_t length = 0;
-    const double* data = cells.get_data_table(cell.data_table_id, length);
+    const Sample* data = cells.get_data_table(cell.data_table_id, length);
     if (!data) return collection;
 
     for (uint16_t i = 0; i < length && collection.count < 64; ++i) {
@@ -3347,9 +3808,9 @@ GraphBuilder::Collection GraphBuilder::resolve_symbol_collection(
     return collection;
 }
 
-void GraphBuilder::fill_range_collection(Collection& collection, double start,
-                                         double end, double step) {
-    for (double value = start;
+void GraphBuilder::fill_range_collection(Collection& collection, Sample start,
+                                         Sample end, Sample step) {
+    for (Sample value = start;
          collection.count < 64 && (step > 0 ? value < end : value > end);
          value += step) {
         collection.element_nodes[collection.count++] = pool.make_const(value);
@@ -3415,7 +3876,7 @@ GraphBuilder::DataRef GraphBuilder::resolve_data_table(TokenStream& ts, Scope& s
     // Literal vector [1 2 3]
     if (tok.kind == TokenKind::LBracket) {
         ts.consume(); // eat '['
-        double values[64];
+        Sample values[64];
         uint16_t count = 0;
         while (ts.peek().kind != TokenKind::RBracket && !ts.at_end() && count < 64) {
             Token elem_tok = ts.peek();
@@ -3424,7 +3885,7 @@ GraphBuilder::DataRef GraphBuilder::resolve_data_table(TokenStream& ts, Scope& s
                 values[count++] = const_value(elem);
             } else {
                 // Data-consuming primitives (step/seq/gates/interp/…) lower a
-                // vector to a static double table read by index, so a per-slot
+                // vector to a static Sample table read by index, so a per-slot
                 // time-varying signal can't be represented here. Fail loudly
                 // rather than silently substituting 0 (values-types.md §1.7).
                 report_error_at_cat(DiagnosticCategory::Type,
@@ -3514,7 +3975,14 @@ GraphBuildResult build_output_graph(
     builder.shared_live_edit_ids = shared_ids;
     builder.anon_state_context = anon_state_context;
     Scope root_scope = {};
-    TimeContext ctx = { pool.make_raw_time_load() };
+    const uint16_t base_t = pool.make_raw_time_load();
+    const uint16_t wall_dt = pool.make_dt_load();
+    TimeContext ctx = {};
+    ctx.t_node = base_t;
+    ctx.dt_node = wall_dt;
+    ctx.base_t_node = base_t;
+    ctx.wall_dt_node = wall_dt;
+    ctx.ground_t_node = pool.make_ground_time_load();
 
     uint16_t root = builder.compile_expr(ts, root_scope, ctx);
 

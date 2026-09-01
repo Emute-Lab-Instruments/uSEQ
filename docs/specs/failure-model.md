@@ -9,7 +9,7 @@
 
 ### Source Files
 
-- `uSEQ/src/signal_engine/executor.{h,cpp}` — `execute_all_outputs()` (per-output isolation, LKG fallback via `OutputSlot.lkg_value`), `commit_outputs()` (LKG promotion), `commit_state()` (state-slot updates)
+- `uSEQ/src/signal_engine/executor.{h,cpp}` — `execute_all_outputs()` (per-output isolation, LKG fallback via `OutputSlot.lkg_value`), `TickTransition`/`prepare_tick()`/`commit_tick()` (authoritative state-first transition and commit), and the low-level output/state commit helpers
 - `uSEQ/src/signal_engine/node_pool.h` — `OutputSlot` (`root_node`, active-assignment `valid`, `lkg_value`, independent `has_lkg`); runtime output/state failure masks
 - `uSEQ/src/signal_engine/graph_builder.{h,cpp}` — compile-time error reporting (`report_error`, `report_error_cat`, `report_warning`), `GraphBuildResult.has_error`, dependency tracking for chain-of-blame (`dep_cells`)
 - `uSEQ/src/signal_engine/compiler_pipeline.{h,cpp}` — fixed-capacity parsed

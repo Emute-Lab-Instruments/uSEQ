@@ -16,7 +16,8 @@
   `SourceMutationPlan`, and `GraphMutationTransaction`: fixed-capacity parse
   IR, prevalidated source writes, and rollback ownership for candidate builds
 - `uSEQ/src/signal_engine/cold_eval.{h,cpp}` — `eval_cold()`: parse + compile + dispatch, `on_cell_changed()` for dependency-driven recompilation
-- `uSEQ/src/signal_engine/executor.{h,cpp}` — `execute_all_outputs()`: single-sample forward pass (the hot path), `commit_state()`
+- `uSEQ/src/signal_engine/executor.{h,cpp}` — `execute_all_outputs()`: single-sample forward pass; `TickTransition`, `prepare_tick()`, and `commit_tick()` for authoritative state-first ticks
+- `uSEQ/src/signal_engine/program_semantics.{h,cpp}` — reachable-DAG effect analysis, owning immutable `ProgramView` snapshot, finite-DAG termination witness, and independent recursive reference evaluator
 - `uSEQ/src/signal_engine/types.h` — limits (`MAX_TOTAL_NODES`, `MAX_STATE_SLOTS`, `MAX_INLINE_DEPTH`, etc.)
 - `uSEQ/src/signal_engine/symbols.def` — X-macro symbol table (builtins, side-effect forms, output names)
 - `test/signal_engine/test_builtin_conformance.cpp` — exhaustive executable
@@ -25,6 +26,7 @@
 - `uSEQ/src/signal_engine/diagnostics.{h,cpp}` — `Diagnostic` struct, `find_fuzzy_match()` for "did you mean" suggestions
 - `test/signal_engine/test_signal_engine.cpp` — compilation and execution tests
 - `test/signal_engine/test_signal_engine_golden.cpp` — golden semantic tests
+- `test/signal_engine/test_program_semantics.cpp` — executor/reference differential tests and proof-facing effect/profunctor witnesses
 - `test/signal_engine/test_node_pool_traversal.cpp` — adversarial reachability,
   execution-order, and GC tests for high-sharing DAGs
 

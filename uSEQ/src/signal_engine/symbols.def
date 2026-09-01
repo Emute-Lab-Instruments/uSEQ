@@ -14,9 +14,17 @@
 //   signal      — domain signal function with custom compilation
 //   side_effect — side-effect forms (error in signal context)
 //   waveform    — unary phase-to-value waveform functions
+//
+// Namespace metadata is declared with OP_META after the symbol inventory.
+// Each row: OP_META(field, input-domain, output-range, regime,
+//                    cold-evaluable, bare-identity)
+// The compiler and reference-data generator derive namespace applicability
+// from these declarations; neither owns a hand-curated applicability list.
 
 // ── Temporal / time symbols ────────────────────────────────────────────────
 SYM(t,                   "t",                    none)
+SYM(t0,                  "t0",                   none)
+SYM(ground_time,         "ground-time",          none)
 SYM(beat,                "beat",                 none)
 SYM(bar,                 "bar",                  none)
 SYM(phrase,              "phrase",               none)
@@ -51,6 +59,8 @@ SYM(or_,                 "or",                   logic)
 
 // ── Time transforms ────────────────────────────────────────────────────────
 SYM(time_as,             "time-as",              time_warp)
+SYM(premap,              "premap",               time_warp)
+SYM(rate_as,             "rate-as",              time_warp)
 SYM(fast,                "fast",                 time_warp)
 SYM(slow,                "slow",                 time_warp)
 SYM(offset,              "offset",               time_warp)
@@ -76,8 +86,8 @@ SYM(ceil_,               "ceil",                 unary)
 SYM(sqrt_,               "sqrt",                 unary)
 SYM(neg,                 "neg",                  unary)
 SYM(frac_,               "frac",                 unary)
-SYM(usin,                "usin",                 unary)
-SYM(ucos,                "ucos",                 unary)
+SYM(bsin,                "bsin",                 unary)
+SYM(bcos,                "bcos",                 unary)
 SYM(bi_to_uni,           "bi-to-uni",            unary)
 SYM(b_to_u,              "b>u",                  unary)
 SYM(uni_to_bi,           "uni-to-bi",            unary)
@@ -99,6 +109,7 @@ SYM(scale,               "scale",                ternary)
 // ── Unary phase-to-value waveform functions ────────────────────────────────
 SYM(tri,                 "tri",                  waveform)
 SYM(sqr,                 "sqr",                  waveform)
+SYM(saw,                 "saw",                  waveform)
 
 // ── Domain signal functions ────────────────────────────────────────────────
 SYM(step,                "step",                 signal)
@@ -126,11 +137,13 @@ SYM(rwarp,               "rwarp",                signal)
 SYM(defstate,            "defstate",             side_effect)
 SYM(integrate,           "integrate",            signal)
 SYM(dt,                  "dt",                   none)
+SYM(dt_wall,             "dt-wall",              none)
 
 // ── UGen forms (state-bearing unit generators) ─────────────────────────────
 // Primary names
 SYM(phasor_,             "phasor",               signal)
 SYM(lfo,                 "lfo",                  signal)
+SYM(blfo,                "blfo",                 signal)
 SYM(slew,                "slew",                 signal)
 SYM(one_pole,            "one-pole",             signal)
 SYM(env_follow,          "env-follow",           signal)
@@ -139,11 +152,7 @@ SYM(noise,               "noise",                signal)
 SYM(toggle,              "toggle",               signal)
 SYM(count,               "count",                signal)
 
-// Aliases (spec-compat names)
-SYM(osc,                 "osc",                  signal)
-SYM(tri_osc,             "tri-osc",              signal)
-SYM(saw,                 "saw",                  signal)
-SYM(sqr_osc,             "sqr-osc",              signal)
+// Compatibility aliases unrelated to the v1.2 namespace cut.
 SYM(envelope_follower,   "envelope-follower",    signal)
 SYM(latch,               "latch",                signal)
 
@@ -157,6 +166,7 @@ SYM(kw_attack,           ":attack",              none)
 SYM(kw_release,          ":release",             none)
 SYM(kw_reset,            ":reset",               none)
 SYM(kw_sin,              ":sin",                 none)
+SYM(kw_cos,              ":cos",                 none)
 SYM(kw_tri,              ":tri",                 none)
 SYM(kw_saw_kw,           ":saw",                 none)
 SYM(kw_sqr,              ":sqr",                 none)
@@ -180,6 +190,10 @@ SYM(useq_play,           "useq-play",            side_effect)
 SYM(useq_pause,          "useq-pause",           side_effect)
 SYM(useq_stop,           "useq-stop",            side_effect)
 SYM(useq_rewind,         "useq-rewind",          side_effect)
+SYM(q_zeros,             "q/zeros",              side_effect)
+SYM(q_crossings,         "q/crossings",          side_effect)
+SYM(q_range,             "q/range",              side_effect)
+SYM(q_explain,           "q/explain",            side_effect)
 SYM(set_clock_ext,       "set-clock-ext",        side_effect)
 SYM(set_clock_int,       "set-clock-int",        side_effect)
 SYM(get_clock_source,    "get-clock-source",     side_effect)
@@ -220,6 +234,80 @@ SYM(kw_max,              ":max",                 none)
 SYM(kw_options,          ":options",             none)
 SYM(kw_step,             ":step",                none)
 SYM(kw_precision,        ":precision",           none)
+SYM(kw_rising,           ":rising",              none)
+SYM(kw_falling,          ":falling",             none)
+
+// ── Operator namespace metadata ───────────────────────────────────────────
+// Tokens map directly to the enum members in graph_builder.h and to the
+// generator's string vocabulary. Undeclared axes are `None`; `Native` means
+// the bare spelling keeps the engine-native lowering.
+#ifndef OP_META
+#define OP_META(field, domain, range, regime, cold, identity)
+#define USEQ_SYMBOLS_DEF_UNDEF_OP_META
+#endif
+
+OP_META(plus,       None,   None,      Pure,        Yes, Native)
+OP_META(minus,      None,   None,      Pure,        Yes, Native)
+OP_META(star,       None,   None,      Pure,        Yes, Native)
+OP_META(slash,      None,   None,      Pure,        Yes, Native)
+OP_META(mod_pct,    None,   None,      Pure,        Yes, Native)
+OP_META(min_,       None,   None,      Pure,        Yes, Native)
+OP_META(max_,       None,   None,      Pure,        Yes, Native)
+
+OP_META(gt,         None,   Unipolar,  Pure,        Yes, Native)
+OP_META(lt,         None,   Unipolar,  Pure,        Yes, Native)
+OP_META(ge,         None,   Unipolar,  Pure,        Yes, Native)
+OP_META(le,         None,   Unipolar,  Pure,        Yes, Native)
+OP_META(eq,         None,   Unipolar,  Pure,        Yes, Native)
+OP_META(not_,       None,   Unipolar,  Pure,        Yes, Native)
+OP_META(and_,       None,   Unipolar,  Pure,        Yes, Native)
+OP_META(or_,        None,   Unipolar,  Pure,        Yes, Native)
+
+OP_META(sin_,       Phase,  Bipolar,   PureShaper,  Yes, NormalizedUnipolar)
+OP_META(cos_,       Phase,  Bipolar,   PureShaper,  Yes, NormalizedUnipolar)
+OP_META(bsin,       Phase,  Bipolar,   PureShaper,  Yes, NormalizedBipolar)
+OP_META(bcos,       Phase,  Bipolar,   PureShaper,  Yes, NormalizedBipolar)
+OP_META(tan_,       Angle,  None,      Pure,        Yes, Native)
+OP_META(abs_,       Scalar, None,      Pure,        Yes, Native)
+OP_META(floor_,     Scalar, None,      Pure,        Yes, Native)
+OP_META(ceil_,      Scalar, None,      Pure,        Yes, Native)
+OP_META(sqrt_,      Scalar, None,      Pure,        Yes, Native)
+OP_META(neg,        Scalar, None,      Pure,        Yes, Native)
+OP_META(frac_,      Scalar, Unipolar,  Pure,        Yes, Native)
+OP_META(bi_to_uni,  Scalar, Unipolar,  Pure,        Yes, Native)
+OP_META(b_to_u,     Scalar, Unipolar,  Pure,        Yes, Native)
+OP_META(uni_to_bi,  Scalar, Bipolar,   Pure,        Yes, Native)
+OP_META(u_to_b,     Scalar, Bipolar,   Pure,        Yes, Native)
+
+OP_META(pow_,       Scalar, None,      Pure,        Yes, Native)
+OP_META(expt,       Scalar, None,      Pure,        Yes, Native)
+OP_META(mod_,       Scalar, None,      Pure,        Yes, Native)
+OP_META(pulse,      Phase,  Unipolar,  PureShaper,  Yes, UnipolarShaper)
+OP_META(clamp,      Scalar, None,      Pure,        Yes, Native)
+OP_META(lerp,       Scalar, None,      Pure,        Yes, Native)
+OP_META(scale,      Scalar, None,      Pure,        Yes, Native)
+
+OP_META(tri,        Phase,  Unipolar,  PureShaper,  Yes, UnipolarShaper)
+OP_META(sqr,        Phase,  Unipolar,  PureShaper,  Yes, UnipolarShaper)
+OP_META(saw,        Phase,  Unipolar,  PureShaper,  Yes, UnipolarShaper)
+
+OP_META(random_,    None,   Unipolar,  Pure,        Yes, Native)
+OP_META(index_rand, Scalar, Unipolar,  Pure,        Yes, Native)
+OP_META(phasor_,    Scalar, Unipolar,  Stateful,    No,  Native)
+OP_META(lfo,        Scalar, Unipolar,  Stateful,    No,  LfoUnipolar)
+OP_META(blfo,       Scalar, Bipolar,   Stateful,    No,  LfoBipolar)
+OP_META(slew,       Scalar, None,      Stateful,    No,  Native)
+OP_META(one_pole,   Scalar, None,      Stateful,    No,  Native)
+OP_META(env_follow, Scalar, Unipolar,  Stateful,    No,  Native)
+OP_META(sah,        Scalar, None,      Stateful,    No,  Native)
+OP_META(noise,      None,   Bipolar,   Stateful,    No,  Native)
+OP_META(toggle,     Scalar, Unipolar,  Stateful,    No,  Native)
+OP_META(count,      Scalar, None,      Stateful,    No,  Native)
+
+#ifdef USEQ_SYMBOLS_DEF_UNDEF_OP_META
+#undef OP_META
+#undef USEQ_SYMBOLS_DEF_UNDEF_OP_META
+#endif
 
 #if USEQ_HAS_SYNTH_ENGINE
 // ── State-identity wrapper (state-identity.md §6.3) ────────────────────────

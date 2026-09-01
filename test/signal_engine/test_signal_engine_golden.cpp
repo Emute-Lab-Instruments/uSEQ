@@ -34,7 +34,6 @@ struct GoldenHarness {
     double prev_t = 0.0;       // track previous tick time for dt
     double last_dt = 0.0;      // dt used for current tick
     bool has_ticked = false;   // false until first tick completes
-    bool state_committed_this_step = false; // prevents double-commit at same t
 
     explicit GoldenHarness(double bpm = 120.0, int beats_per_bar = 4)
     {
@@ -79,31 +78,29 @@ struct GoldenHarness {
 
         last_dt = t - prev_t;
 
-        // State update: at the start of each NEW time-step (after the very
-        // first tick), execute update graphs and commit state before outputs.
-        if (engine.pool.state_slot_count > 0 &&
-            has_ticked && t != prev_t && !state_committed_this_step)
-        {
-            // Execute all nodes to evaluate state update subgraphs
-            ExecutionContext state_ctx;
-            state_ctx.t = t;
-            state_ctx.dt = last_dt;
-            state_ctx.cell_values = cell_values;
-            state_ctx.hw_inputs = hw_inputs;
-            state_ctx.data_pool = engine.cells.data_pool;
-            state_ctx.data_offsets = engine.cells.data_offsets;
-            state_ctx.data_lengths = engine.cells.data_lengths;
-            state_ctx.prev_outputs = engine.pool.prev_output_values;
-            state_ctx.output_values = outputs;
-            state_ctx.workspace = workspace;
-            execute_all_outputs(engine.pool, state_ctx);
-            commit_state(engine.pool, workspace);
-            state_committed_this_step = true;
+        ExecutionContext ctx;
+        ctx.t = t;
+        ctx.dt = last_dt;
+        ctx.cell_values = cell_values;
+        ctx.hw_inputs = hw_inputs;
+        ctx.data_pool = engine.cells.data_pool;
+        ctx.data_offsets = engine.cells.data_offsets;
+        ctx.data_lengths = engine.cells.data_lengths;
+        ctx.prev_outputs = engine.pool.prev_output_values;
+        ctx.output_values = outputs;
+        ctx.workspace = workspace;
+        ctx.ground_t = t;
+        execute_all_outputs(engine.pool, ctx);
 
-            // Clear workspace and outputs for the real output evaluation
-            std::memset(workspace, 0, sizeof(workspace));
-            std::memset(outputs, 0, sizeof(outputs));
-        }
+        return outputs[output_index(output_name)];
+    }
+
+    double tick(const char* output_name, double t)
+    {
+        std::memset(outputs, 0, sizeof(outputs));
+        std::memset(workspace, 0, sizeof(workspace));
+        engine.cells.snapshot_values(cell_values, MAX_CELLS);
+        last_dt = t - prev_t;
 
         ExecutionContext ctx;
         ctx.t = t;
@@ -116,18 +113,13 @@ struct GoldenHarness {
         ctx.prev_outputs = engine.pool.prev_output_values;
         ctx.output_values = outputs;
         ctx.workspace = workspace;
-        execute_all_outputs(engine.pool, ctx);
+        ctx.ground_t = t;
+        ctx.advance_state = has_ticked && t != prev_t;
 
-        return outputs[output_index(output_name)];
-    }
-
-    double tick(const char* output_name, double t)
-    {
-        if (t != prev_t) {
-            state_committed_this_step = false;
-        }
-        double value = sample(output_name, t);
-        commit_outputs(engine.pool, outputs);
+        TickTransition transition;
+        prepare_tick(engine.pool, ctx, transition);
+        double value = outputs[output_index(output_name)];
+        commit_tick(engine.pool, ctx, transition);
         has_ticked = true;
         prev_t = t;
         return value;
@@ -397,6 +389,14 @@ TEST_CASE("Golden semantics: numeric expressions are lifted into signals",
 TEST_CASE("Golden semantics: time, phasors, and time substitutions",
           "[golden][signal_engine][time]") {
     check_expr("raw t is seconds", "t", {{0.0, 0.0}, {1.25, 1.25}});
+    check_expr("t0 remains anchored outside substitution", "(time-as 9 t0)",
+               {{1.25, 1.25}});
+    check_expr("ground-time remains anchored outside substitution",
+               "(time-as 9 ground-time)", {{1.25, 1.25}});
+    check_expr("time-as substitutes the local time leaf", "(time-as 9 t)",
+               {{1.25, 9.0}});
+    check_expr("premap is explicit time substitution",
+               "(premap (* 2 t) t)", {{0.75, 1.5}});
     check_expr("beat phasor at 120 bpm",
                "beat",
                {{0.0, 0.0}, {0.125, 0.25}, {0.25, 0.5}, {0.5, 0.0}});
@@ -443,15 +443,15 @@ TEST_CASE("Golden semantics: time, phasors, and time substitutions",
 
 TEST_CASE("Golden semantics: waveform and sequence helpers",
           "[golden][signal_engine][sequences]") {
-    check_expr("usin is unipolar sine over phase",
-               "(usin beat)",
+    check_expr("sin is unipolar sine over normalized phase",
+               "(sin beat)",
                {{0.0, 0.5, 1e-9}, {0.125, 1.0, 1e-9}, {0.375, 0.0, 1e-9}});
-    check_expr("ucos is unipolar cosine over phase",
-               "(ucos beat)",
+    check_expr("cos is unipolar cosine over normalized phase",
+               "(cos beat)",
                {{0.0, 1.0, 1e-9}, {0.25, 0.0, 1e-9}});
     check_expr("tri maps one phase value", "(tri 0.25)", {{0.0, 0.5, 1e-9}});
     check_expr("sqr thresholds phase at half", "(sqr beat)", {{0.125, 1.0}, {0.375, 0.0}});
-    check_expr("pulse uses supplied width", "(pulse beat 0.25)", {{0.1, 1.0}, {0.2, 0.0}});
+    check_expr("pulse reads width before its final phasor", "(pulse 0.25 beat)", {{0.1, 1.0}, {0.2, 0.0}});
     check_expr("bipolar to unipolar", "(b>u -1)", {{0.0, 0.0}});
     check_expr("unipolar to bipolar", "(u>b 0.25)", {{0.0, -0.5}});
 
@@ -558,7 +558,7 @@ TEST_CASE("Golden semantics: outputs, prev, inputs, and batch execution",
 
     SECTION("batch execution matches single-sample execution") {
         GoldenHarness h;
-        h.assign_ok("a1", "(+ (usin beat) (* 0.25 bar))");
+        h.assign_ok("a1", "(+ (sin beat) (* 0.25 bar))");
         h.engine.pool.allocate_batch_workspace();
 
         constexpr size_t sample_count = 5;
@@ -694,7 +694,7 @@ TEST_CASE("Golden semantics: sample_window and tick_sequence helpers",
 
     SECTION("verify_batch_matches_single for a compound expression") {
         GoldenHarness h;
-        h.assign_ok("a1", "(+ (usin beat) (* 0.1 bar))");
+        h.assign_ok("a1", "(+ (sin beat) (* 0.1 bar))");
         h.verify_batch_matches_single("a1", 0.0, 1.0, 10);
     }
 
@@ -1641,6 +1641,17 @@ TEST_CASE("State: defstate creates a cell with initial value and update body",
         REQUIRE(h.tick("a1", 0.002) == Approx(102.0));
     }
 
+    SECTION("state declared during a running session publishes init first") {
+        GoldenHarness h;
+        h.assign_ok("a1", "42");
+        REQUIRE(h.tick("a1", 10.0) == Approx(42.0));
+
+        h.eval_ok("(defstate late 0 (+ late 1))");
+        h.assign_ok("a1", "late");
+        REQUIRE(h.tick("a1", 11.0) == Approx(0.0));
+        REQUIRE(h.tick("a1", 12.0) == Approx(1.0));
+    }
+
     SECTION("multiple defstate cells are independent") {
         GoldenHarness h;
         h.eval_ok("(defstate a 0 (+ a 1))");
@@ -1703,6 +1714,39 @@ TEST_CASE("State: integrate accumulates rate over time",
         REQUIRE(h.tick("a1", dt) == Approx(3.0 * dt));
         REQUIRE(h.tick("a1", 2*dt) == Approx(2 * 3.0 * dt));
     }
+}
+
+TEST_CASE("State: rate-as integrates local time and distinguishes local dt",
+          "[golden][signal_engine][state][rate-as][time]") {
+    GoldenHarness h;
+    h.assign_ok("a1", "(rate-as 2 t)");
+    h.assign_ok("a2", "(rate-as 2 dt)");
+    h.assign_ok("a3", "(rate-as 2 dt-wall)");
+    h.assign_ok("a4", "(rate-as 2 t0)");
+    h.assign_ok("a5", "(rate-as 2 (integrate 1))");
+
+    REQUIRE(h.tick("a1", 0.0) == Approx(0.0));
+    REQUIRE(h.outputs[h.output_index("a2")] == Approx(0.0));
+    REQUIRE(h.outputs[h.output_index("a3")] == Approx(0.0));
+    REQUIRE(h.outputs[h.output_index("a4")] == Approx(0.0));
+    REQUIRE(h.outputs[h.output_index("a5")] == Approx(0.0));
+
+    REQUIRE(h.tick("a1", 0.25) == Approx(0.5));
+    REQUIRE(h.outputs[h.output_index("a2")] == Approx(0.5));
+    REQUIRE(h.outputs[h.output_index("a3")] == Approx(0.25));
+    REQUIRE(h.outputs[h.output_index("a4")] == Approx(0.25));
+    REQUIRE(h.outputs[h.output_index("a5")] == Approx(0.5));
+}
+
+TEST_CASE("State: rate-as declared mid-session publishes local-clock init",
+          "[golden][signal_engine][state][rate-as][live-edit]") {
+    GoldenHarness h;
+    h.assign_ok("a1", "42");
+    REQUIRE(h.tick("a1", 10.0) == Approx(42.0));
+
+    h.assign_ok("a1", "(rate-as 2 t)");
+    REQUIRE(h.tick("a1", 11.0) == Approx(0.0));
+    REQUIRE(h.tick("a1", 12.0) == Approx(2.0));
 }
 
 // ── Top-level expression eval (scratch isolation) ──────────────────────────
