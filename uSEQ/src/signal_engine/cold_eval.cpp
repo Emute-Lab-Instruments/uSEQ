@@ -1006,10 +1006,6 @@ static EvalResult do_set_bpm(TokenStream& ts, SignalEngine& engine) {
         return make_error("set-bpm accepts exactly one number",
                           "Try: (set-bpm 120)");
     }
-    if (ts.peek().kind != TokenKind::RParen) {
-        return make_error("set-bpm accepts exactly one number",
-                          "Try: (set-bpm 120)");
-    }
     auto& si = SymbolIntern::getInstance();
     SymbolID bpm_sym = si.intern("bpm");
     engine.cells.cells[bpm_sym].kind = CellKind::Number;

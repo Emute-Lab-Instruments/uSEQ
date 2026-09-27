@@ -1,4 +1,5 @@
 #include "wasm_wrapper_internal.h"
+#include "../uSEQ/src/signal_engine/output_names.h"
 
 sig::SignalEngine* g_engine = nullptr;
 double g_hw_inputs[32] = {};
@@ -53,16 +54,7 @@ bool parse_output_names(const char* json, std::vector<String>& outputs)
 
 uint16_t resolve_output_name(const char* name)
 {
-    if (!name || strlen(name) != 2) return sig::NODE_NONE;
-    char digit = name[1];
-    if (digit < '1' || digit > '8') return sig::NODE_NONE;
-    uint16_t number = static_cast<uint16_t>(digit - '1');
-    switch (name[0]) {
-        case 'a': return number;
-        case 'd': return 8 + number;
-        case 's': return 16 + number;
-        default: return sig::NODE_NONE;
-    }
+    return sig::output_name_to_index(name);
 }
 
 bool format_output_name(uint16_t index, char (&name)[3])

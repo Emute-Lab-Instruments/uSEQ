@@ -96,12 +96,6 @@ uint16_t StateResourceRegistry::take_free_slot() {
     return free_slots[--free_slot_count];
 }
 
-void StateResourceRegistry::mark_all_inactive() {
-    for (uint16_t i = 0; i < entry_count; i++) {
-        entries[i].active = false;
-    }
-}
-
 void StateResourceRegistry::clear() {
     for (uint16_t i = 0; i < MAX_STATE_SLOTS; i++) {
         entries[i] = StateResourceEntry{};

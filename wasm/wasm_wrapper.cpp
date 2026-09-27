@@ -25,75 +25,65 @@ extern "C" {
             return alloc_cstr("Error: uSEQ not initialized. Call useq_init() first.");
         }
 
-        try {
-            // Clear diagnostics from previous eval
-            g_last_diagnostic_count = 0;
-            invalidate_projection();
+        // Clear diagnostics from previous eval
+        g_last_diagnostic_count = 0;
+        invalidate_projection();
 
-            g_engine->state.current_wall_time = g_current_time;
-            g_engine->state.current_time =
-                g_engine->state.logical_time(g_current_time);
-            g_engine->state.current_dt = g_engine->state.reset_dt_on_next_tick
-                ? 0.0 : g_engine->state.current_time - g_prev_tick_time;
+        g_engine->state.current_wall_time = g_current_time;
+        g_engine->state.current_time =
+            g_engine->state.logical_time(g_current_time);
+        g_engine->state.current_dt = g_engine->state.reset_dt_on_next_tick
+            ? 0.0 : g_engine->state.current_time - g_prev_tick_time;
 
-            uint32_t length = (uint32_t)strlen(input);
-            uint32_t generation_before = g_engine->session_generation;
-            sig::EvalResult result = sig::eval_cold(input, length, *g_engine);
+        uint32_t length = (uint32_t)strlen(input);
+        uint32_t generation_before = g_engine->session_generation;
+        sig::EvalResult result = sig::eval_cold(input, length, *g_engine);
 
-            if (g_engine->session_generation != generation_before)
-                reset_host_session_state();
+        if (g_engine->session_generation != generation_before)
+            reset_host_session_state();
 
-            // User eval may have changed cell definitions — invalidate
-            // probe compilation cache so probes pick up the new state.
-            if (g_engine->session_generation == generation_before)
-                g_cell_revision++;
+        // User eval may have changed cell definitions — invalidate
+        // probe compilation cache so probes pick up the new state.
+        if (g_engine->session_generation == generation_before)
+            g_cell_revision++;
 
-            // Copy diagnostics
-            g_last_diagnostic_count = result.diagnostic_count;
-            if (result.diagnostic_count > 0) {
-                memcpy(g_last_diagnostics, result.diagnostics,
-                       result.diagnostic_count * sizeof(sig::Diagnostic));
+        // Copy diagnostics
+        g_last_diagnostic_count = result.diagnostic_count;
+        if (result.diagnostic_count > 0) {
+            memcpy(g_last_diagnostics, result.diagnostics,
+                   result.diagnostic_count * sizeof(sig::Diagnostic));
+        }
+
+        // Convert result to string
+        switch (result.kind) {
+            case sig::EvalResult::Number: {
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%.15g", result.number);
+                return alloc_cstr(buf);
             }
-
-            // Convert result to string
-            switch (result.kind) {
-                case sig::EvalResult::Number: {
-                    char buf[32];
-                    snprintf(buf, sizeof(buf), "%.15g", result.number);
-                    return alloc_cstr(buf);
+            case sig::EvalResult::Text:
+                if (result.text && result.text_length > 0) {
+                    char* buf = (char*)malloc(result.text_length + 1);
+                    memcpy(buf, result.text, result.text_length);
+                    buf[result.text_length] = '\0';
+                    return buf;
                 }
-                case sig::EvalResult::Text:
-                    if (result.text && result.text_length > 0) {
-                        char* buf = (char*)malloc(result.text_length + 1);
-                        memcpy(buf, result.text, result.text_length);
-                        buf[result.text_length] = '\0';
-                        return buf;
-                    }
-                    return alloc_cstr("");
-                case sig::EvalResult::Ok:
-                    return alloc_cstr("ok");
-                case sig::EvalResult::Error: {
-                    // Return first diagnostic message as error string
-                    if (result.diagnostic_count > 0 && result.diagnostics[0].message) {
-                        String msg = "Error: ";
-                        msg += result.diagnostics[0].message;
-                        return alloc_string(msg);
-                    }
-                    return alloc_cstr("Error: evaluation failed");
+                return alloc_cstr("");
+            case sig::EvalResult::Ok:
+                return alloc_cstr("ok");
+            case sig::EvalResult::Error: {
+                // Return first diagnostic message as error string
+                if (result.diagnostic_count > 0 && result.diagnostics[0].message) {
+                    String msg = "Error: ";
+                    msg += result.diagnostics[0].message;
+                    return alloc_string(msg);
                 }
-                case sig::EvalResult::DataRef:
-                    return alloc_cstr("[data]");
+                return alloc_cstr("Error: evaluation failed");
             }
-            return alloc_cstr("");
+            case sig::EvalResult::DataRef:
+                return alloc_cstr("[data]");
         }
-        catch (const std::exception& e) {
-            String msg = "Error: ";
-            msg += e.what();
-            return alloc_string(msg);
-        }
-        catch (...) {
-            return alloc_cstr("Error: Failed to evaluate expression");
-        }
+        return alloc_cstr("");
     }
 
     void useq_update_time(double time_seconds)

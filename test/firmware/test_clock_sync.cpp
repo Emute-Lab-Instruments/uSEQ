@@ -283,6 +283,32 @@ TEST_CASE("ClockSync pulse publication refreshes the cached cell generation",
     REQUIRE(engine.cells.store_revision > revision_before);
 }
 
+TEST_CASE("ClockSync BPM changes recompile expressions that read bpm",
+          "[clock_sync][bpm]") {
+    sig::SignalEngine engine;
+    engine.init_defaults(60.0);
+    firmware::ClockSync cs;
+    cs.active_source = 1;
+    cs.divisor = 1;
+    constexpr char expression[] = "(a2 (/ bpm 240))";
+    REQUIRE(sig::eval_cold(expression, sizeof(expression) - 1, engine).kind ==
+            sig::EvalResult::Ok);
+    const uint16_t root = engine.pool.outputs[1].root_node;
+    REQUIRE(engine.pool.nodes[root].op == sig::NodeOp::Const);
+    REQUIRE(engine.pool.nodes[root].imm == Approx(0.25));
+
+    uint32_t pulse_us = 0;
+    cs.process_pulse(engine, pulse_us, 0.0);
+    for (size_t i = 0; i < firmware::TempoEstimator::WINDOW; i++) {
+        pulse_us += 500000;
+        cs.process_pulse(engine, pulse_us, pulse_us / 1000000.0);
+    }
+
+    const uint16_t updated_root = engine.pool.outputs[1].root_node;
+    REQUIRE(engine.pool.nodes[updated_root].op == sig::NodeOp::Const);
+    REQUIRE(engine.pool.nodes[updated_root].imm == Approx(0.5));
+}
+
 TEST_CASE("ClockSync phase lock changes only the internal transport origin",
           "[clock_sync]") {
     sig::SignalEngine engine;

@@ -91,10 +91,6 @@ struct StateResourceRegistry {
     // NODE_NONE when there is no reusable hole.
     uint16_t take_free_slot();
 
-    // Mark all entries inactive. Used before recompilation — entries that
-    // remain inactive after compilation are candidates for GC.
-    void mark_all_inactive();
-
     // Full reset (useq-clear).
     void clear();
 };

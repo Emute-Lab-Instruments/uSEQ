@@ -71,10 +71,8 @@ struct Node {
     uint16_t input_b  = NODE_NONE;
     uint16_t input_c  = NODE_NONE;
     Sample imm        = 0.0;       // immediate value
-    uint16_t span_start = 0;       // source location for diagnostics
-    uint16_t span_len   = 0;
 };
-// sizeof(Node) == 20 bytes
+// sizeof(Node) == 16 bytes
 
 // ── Output Slot ─────────────────────────────────────────────────────────────
 

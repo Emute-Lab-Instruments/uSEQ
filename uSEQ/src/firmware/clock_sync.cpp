@@ -114,15 +114,16 @@ void ClockSync::process_pulse(sig::SignalEngine& engine, uint32_t pulse_us,
     double new_bpm = bpm_estimate / (double)divisor;
     if (new_bpm < 20.0 || new_bpm > 600.0) return;  // sanity gate
 
-    // Update bpm cell directly. We deliberately skip on_cell_changed: the
-    // executor takes a fresh snapshot every tick, so a value-only change to
-    // an existing Number cell propagates without graph rebuild.
+    // Publish tempo through the same invalidation path as `(set-bpm)`. Direct
+    // Number-cell references compile to constants, so refreshing the tick's
+    // cell snapshot alone cannot update those graphs.
     auto& si = SymbolIntern::getInstance();
     sig::SymbolID bpm_sym = si.intern("bpm");
     engine.cells.cells[bpm_sym].kind = sig::CellKind::Number;
     engine.cells.cells[bpm_sym].value = new_bpm;
     engine.cells.cells[bpm_sym].revision++;
     engine.cells.store_revision++;
+    sig::on_cell_changed(bpm_sym, engine);
 
     // Bar-boundary phase nudge: every `divisor` pulses (i.e. once per beat),
     // and at the start of each bar, snap transport time to the nearest bar

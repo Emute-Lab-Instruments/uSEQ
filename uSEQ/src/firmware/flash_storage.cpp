@@ -1,5 +1,6 @@
 #include "flash_storage.h"
 #include "../modulisp/lisp/symbol_intern.h"
+#include "../signal_engine/output_names.h"
 #include <cstring>
 #include <cstdio>
 
@@ -122,20 +123,6 @@ static const char* output_index_to_name(uint16_t idx) {
     }
     name[2] = '\0';
     return name;
-}
-
-static uint16_t output_name_to_index(const char* name) {
-    if (!name || name[0] == '\0' || name[1] == '\0') return sig::NODE_NONE;
-    char prefix = name[0];
-    char digit = name[1];
-    if (digit < '1' || digit > '8') return sig::NODE_NONE;
-    uint16_t num = (uint16_t)(digit - '1');
-    switch (prefix) {
-        case 'a': return num;
-        case 'd': return 8 + num;
-        case 's': return 16 + num;
-        default:  return sig::NODE_NONE;
-    }
 }
 
 // ── Serialize ──────────────────────────────────────────────────────────────
@@ -425,7 +412,7 @@ static bool deserialize(const uint8_t* buf, size_t buf_size, sig::SignalEngine& 
         const char* source = read_cstr(buf, pos, end);
         if (!source) return false;
 
-        uint16_t idx = output_name_to_index(name);
+        uint16_t idx = sig::output_name_to_index(name);
         if (idx == sig::NODE_NONE || idx >= sig::MAX_OUTPUTS) continue;
 
         if (source[0] != '\0') {

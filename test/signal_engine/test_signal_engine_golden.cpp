@@ -1900,24 +1900,6 @@ TEST_CASE("Registry: different keys get different slots",
     REQUIRE(state_values[s3] == 1.0);
 }
 
-TEST_CASE("Registry: mark_all_inactive and re-resolve reactivates",
-          "[golden][registry]") {
-    StateResourceRegistry reg;
-    double state_values[MAX_STATE_SLOTS] = {};
-    uint16_t slot_count = 0;
-
-    StateResourceKey key = { internSymbol("X"), ResourceKind::Integrator, 0 };
-    reg.resolve(key, 0.0, state_values, slot_count);
-    REQUIRE(reg.entries[0].active == true);
-
-    reg.mark_all_inactive();
-    REQUIRE(reg.entries[0].active == false);
-
-    reg.resolve(key, 0.0, state_values, slot_count);
-    REQUIRE(reg.entries[0].active == true);
-    REQUIRE(slot_count == 1);
-}
-
 TEST_CASE("Registry: clear resets completely",
           "[golden][registry]") {
     StateResourceRegistry reg;

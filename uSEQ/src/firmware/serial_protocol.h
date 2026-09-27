@@ -85,7 +85,10 @@ struct SerialProtocol {
     //   wire channel 1 = time (always index 0 internally)
     //   wire channels 2+ = editor-subscribed signals (ain1, ain2, etc.)
     // The editor sends stream-config to define which signals map to which channels.
-    static constexpr uint8_t MAX_STREAM_CHANNELS = 10;
+    // Capacity must hold time plus every advertised channel: the reference
+    // editor subscribes all hello inputs (2) and all non-time serial outputs
+    // (s1-s8) — 11 slots for current hardware. 12 leaves one slot spare.
+    static constexpr uint8_t MAX_STREAM_CHANNELS = 12;
 
     enum class StreamSource : uint8_t { Time = 0, Output = 1, Input = 2 };
     struct StreamChannel {

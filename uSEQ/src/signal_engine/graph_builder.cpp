@@ -1,5 +1,6 @@
 #include "graph_builder.h"
 #include "compiler_pipeline.h"
+#include "output_names.h"
 #include "../modulisp/lisp/symbol_intern.h"
 #include <cstring>
 #include <cstdio>
@@ -561,14 +562,7 @@ bool GraphBuilder::is_output_symbol(SymbolID op) {
 
 uint16_t GraphBuilder::resolve_output_index(SymbolID op) {
     const String& name = getSymbolString(op);
-    char prefix = name[0];
-    uint16_t num = (uint16_t)(name[1] - '1');
-    switch (prefix) {
-        case 'a': return num;       // 0-7
-        case 'd': return 8 + num;   // 8-15
-        case 's': return 16 + num;  // 16-23
-        default:  return NODE_NONE;
-    }
+    return output_name_to_index(name.c_str());
 }
 
 uint16_t GraphBuilder::resolve_hardware_input(SymbolID sym_id) {
