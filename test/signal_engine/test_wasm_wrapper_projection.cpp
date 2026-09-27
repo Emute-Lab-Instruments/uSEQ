@@ -5,13 +5,16 @@
 
 #define CATCH_CONFIG_MAIN
 #include "../catch.hpp"
+#include "../../wasm/wasm_wrapper_internal.h"
 
 #include <cmath>
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <climits>
 #include <limits>
 #include <string>
+#include <vector>
 
 #if defined(__linux__) && defined(__x86_64__)
 #include <sys/mman.h>
@@ -34,6 +37,9 @@ int useq_tick_and_project(
     int buffer_ptr,
     int buffer_length);
 int useq_tick_synth_controls(double wall_time, int buffer_ptr, int buffer_length);
+int useq_sample_synth_controls_into(int indices_ptr, int control_count,
+                                    int times_ptr, int sample_count,
+                                    int values_ptr);
 int useq_set_live_inputs(const char* json_str);
 uint32_t useq_output_semantic_effects(int output_index);
 char* useq_last_error();
@@ -360,4 +366,47 @@ TEST_CASE("WASM sampling is diagnostic-pure and invalid projection is atomic",
     REQUIRE(useq_tick_synth_controls(0.0, 0, 0) == 0);
     REQUIRE(last_error().empty());
     REQUIRE(take_owned(useq_eval("wrapper-clear-dt")) == "0");
+
+    // Dense audio sampling reads control roots at explicit times without
+    // moving the authoritative live VM frontier.
+    eval_ok("(useq-clear)");
+    eval_ok("(defstate sampler-state 0 (+ sampler-state dt))");
+    eval_ok("(synth \"osc/sine\" :name \"sample-points\" :freq sampler-state :amp (* 0.01 t))");
+    Wasm32Buffer indices(2);
+    Wasm32Buffer times(3);
+    Wasm32Buffer values(6);
+    REQUIRE(indices.available());
+    REQUIRE(times.available());
+    REQUIRE(values.available());
+    indices.data()[0] = 0;
+    indices.data()[1] = 1;
+    times.data()[0] = 40.0;
+    times.data()[1] = 41.0;
+    times.data()[2] = 42.0;
+    Wasm32Buffer live(2);
+    REQUIRE(live.available());
+    REQUIRE(useq_tick_synth_controls(39.0, live.wasm_ptr(), 2) == 2);
+    const double live_tick_time = g_prev_tick_time;
+    const std::vector<double> state_before(
+        g_engine->pool.state_values,
+        g_engine->pool.state_values + sig::MAX_STATE_SLOTS);
+    const std::vector<bool> observed_before(
+        g_engine->pool.state_observed,
+        g_engine->pool.state_observed + sig::MAX_STATE_SLOTS);
+    REQUIRE(useq_sample_synth_controls_into(
+        indices.wasm_ptr(), 2, times.wasm_ptr(), 3, values.wasm_ptr()) == 0);
+    CHECK(g_prev_tick_time == live_tick_time);
+    CHECK(std::equal(state_before.begin(), state_before.end(),
+                     g_engine->pool.state_values));
+    CHECK(std::equal(observed_before.begin(), observed_before.end(),
+                     g_engine->pool.state_observed));
+    CHECK(values.data()[0] == Approx(1.0));
+    CHECK(values.data()[1] == Approx(2.0));
+    CHECK(values.data()[2] == Approx(3.0));
+    CHECK(values.data()[3] == Approx(0.40));
+    CHECK(values.data()[4] == Approx(0.41));
+    CHECK(values.data()[5] == Approx(0.42));
+    REQUIRE(useq_tick_synth_controls(40.0, live.wasm_ptr(), 2) == 2);
+    CHECK(g_prev_tick_time == 40.0);
+    CHECK(live.data()[0] == Approx(1.0));
 }

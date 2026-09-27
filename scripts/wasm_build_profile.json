@@ -51,6 +51,7 @@
     "useq_projection_frontier_time",
     "useq_clear_synth_declarations",
     "useq_tick_synth_controls",
+    "useq_sample_synth_controls_into",
     "useq_last_error",
     "useq_last_diagnostics",
     "useq_active_diagnostics",

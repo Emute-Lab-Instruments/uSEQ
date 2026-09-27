@@ -37,6 +37,113 @@ extern "C" double useq_projection_frontier_time() {
         : std::numeric_limits<double>::quiet_NaN();
 }
 
+// Evaluate selected synth-control roots at caller-supplied wall times on a
+// restorable sequential scratch trajectory. This is the audio producer's
+// dense sampling path; the live executor remains owned by the tick export.
+extern "C" int useq_sample_synth_controls_into(
+        int control_indices_ptr, int control_count,
+        int sample_times_ptr, int sample_count,
+        int out_values_ptr) {
+    if (!g_engine || control_count < 0 || sample_count < 0 ||
+        control_count > sig::MAX_SYNTH_CONTROLS || sample_count > 8192 ||
+        (control_count > 0 && sample_count > 65536 / control_count) ||
+        (control_count > 0 && (!control_indices_ptr || !out_values_ptr)) ||
+        (sample_count > 0 && !sample_times_ptr)) {
+        s_last_error = "Invalid synth-control sample buffer";
+        return -1;
+    }
+    const uint16_t available = g_engine->synth_graph.control_count();
+    const auto* indices = reinterpret_cast<const double*>(control_indices_ptr);
+    const auto* times = reinterpret_cast<const double*>(sample_times_ptr);
+    auto* values = reinterpret_cast<double*>(out_values_ptr);
+    for (int row = 0; row < control_count; ++row) {
+        if (!std::isfinite(indices[row]) || indices[row] < 0 ||
+            indices[row] >= available || std::floor(indices[row]) != indices[row]) {
+            s_last_error = "Synth control index out of range";
+            return -1;
+        }
+    }
+
+    double logical_times[8192];
+    for (int sample = 0; sample < sample_count; ++sample) {
+        if (!std::isfinite(times[sample]) ||
+            !validate_execution_time(times[sample],
+                                     ExecutionOwnership::Observational,
+                                     logical_times[sample])) {
+            s_last_error = "Invalid synth-control sample time";
+            return -1;
+        }
+    }
+
+    double cells[sig::MAX_CELLS];
+    g_engine->cells.snapshot_values(cells, sig::MAX_CELLS);
+    double output_values[sig::MAX_OUTPUTS] = {};
+    double node_values[sig::MAX_TOTAL_NODES];
+    double saved_state[sig::MAX_STATE_SLOTS];
+    bool saved_state_observed[sig::MAX_STATE_SLOTS];
+    double saved_prev_outputs[sig::MAX_OUTPUTS];
+    double saved_lkg[sig::MAX_OUTPUTS];
+    bool saved_valid[sig::MAX_OUTPUTS];
+    bool saved_has_lkg[sig::MAX_OUTPUTS];
+    const uint16_t saved_slot_count = g_engine->pool.state_slot_count;
+    const double saved_prev_time = g_prev_tick_time;
+    memcpy(saved_state, g_engine->pool.state_values, sizeof(saved_state));
+    memcpy(saved_state_observed, g_engine->pool.state_observed,
+           sizeof(saved_state_observed));
+    memcpy(saved_prev_outputs, g_engine->pool.prev_output_values,
+           sizeof(saved_prev_outputs));
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; ++i) {
+        saved_lkg[i] = g_engine->pool.outputs[i].lkg_value;
+        saved_valid[i] = g_engine->pool.outputs[i].valid;
+        saved_has_lkg[i] = g_engine->pool.outputs[i].has_lkg;
+    }
+    PreserveRuntimeHealth preserve_runtime_health(g_engine->pool);
+    for (int sample = 0; sample < sample_count; ++sample) {
+        const double logical_time = logical_times[sample];
+        sig::ExecutionContext ctx;
+        memset(output_values, 0, sizeof(output_values));
+        ctx.t = logical_time;
+        ctx.dt = logical_time - g_prev_tick_time;
+        ctx.cell_values = cells;
+        ctx.hw_inputs = g_hw_inputs;
+        ctx.data_pool = g_engine->cells.data_pool;
+        ctx.data_offsets = g_engine->cells.data_offsets;
+        ctx.data_lengths = g_engine->cells.data_lengths;
+        ctx.prev_outputs = g_engine->pool.prev_output_values;
+        ctx.output_values = output_values;
+        ctx.workspace = node_values;
+        ctx.ground_t = g_engine->state.current_wall_time +
+            (logical_time - g_engine->state.current_time);
+        ctx.advance_state = logical_time != g_prev_tick_time;
+        sig::TickTransition transition;
+        sig::prepare_tick(g_engine->pool, ctx, transition);
+        sig::commit_tick(g_engine->pool, ctx, transition);
+        g_prev_tick_time = logical_time;
+        for (int row = 0; row < control_count; ++row) {
+            const sig::SynthControlChannel& control =
+                g_engine->synth_graph.controls[static_cast<uint16_t>(indices[row])];
+            values[row * sample_count + sample] =
+                control.root_node < g_engine->pool.node_count
+                    ? node_values[control.root_node]
+                    : std::numeric_limits<double>::quiet_NaN();
+        }
+    }
+    memcpy(g_engine->pool.state_values, saved_state, sizeof(saved_state));
+    memcpy(g_engine->pool.state_observed, saved_state_observed,
+           sizeof(saved_state_observed));
+    memcpy(g_engine->pool.prev_output_values, saved_prev_outputs,
+           sizeof(saved_prev_outputs));
+    for (uint16_t i = 0; i < sig::MAX_OUTPUTS; ++i) {
+        g_engine->pool.outputs[i].lkg_value = saved_lkg[i];
+        g_engine->pool.outputs[i].valid = saved_valid[i];
+        g_engine->pool.outputs[i].has_lkg = saved_has_lkg[i];
+    }
+    g_engine->pool.state_slot_count = saved_slot_count;
+    g_prev_tick_time = saved_prev_time;
+    s_last_error = "";
+    return 0;
+}
+
 void reset_projection_session()
 {
     g_projection_fork = ProjectionFork{};

@@ -8,6 +8,13 @@
 
 namespace firmware {
 
+// Minimum time (milliseconds) a physical-input level must stay stable
+// before an hw-input edge frame is emitted (wire-protocol.md §5.10:
+// "the device debounces; the editor receives clean edges"). Contact
+// bounce on buttons, toggles, encoders and gate inputs settles well
+// inside 20 ms of human-rate actuation.
+constexpr uint32_t HW_INPUT_DEBOUNCE_MS = 20;
+
 constexpr size_t MAX_HW_INPUTS = 32;
 
 struct HardwareIO {

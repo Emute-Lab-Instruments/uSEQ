@@ -4,6 +4,7 @@
 #define CATCH_CONFIG_MAIN
 #include "../catch.hpp"
 #include "firmware_test_harness.h"
+#include "stdout_capture.h"
 #include "dsp_helpers.h"
 
 TEST_CASE("(memory-save) persists the live engine through the serial eval path",
@@ -27,6 +28,51 @@ TEST_CASE("(memory-save) persists the live engine through the serial eval path",
     REQUIRE(boot_flash.has_saved_state());
     REQUIRE(boot_flash.load(restored));
     REQUIRE(restored.output_sources[0].has_source);
+}
+
+// firmware.md §5.3 / wire-protocol.md §5.20: the save path announces itself
+// with a save-in-progress status frame before the correlated response, and
+// pending serial input is drained first — a request that arrived behind the
+// save is dropped, never processed after it.
+TEST_CASE("(memory-save) emits save-in-progress and drains pending input first",
+          "[e2e][firmware][flash][wire-protocol]") {
+    FirmwareTestHarness h;
+    h.init();
+    REQUIRE(h.eval("(a1 0.5)").kind != sig::EvalResult::Error);
+    h.firmware().serial.init();
+    h.firmware().serial.engine = &h.engine();
+
+    // Two complete requests injected together: the save, then a ping that
+    // arrives while the save is in flight.
+    const char requests[] =
+        "{\"type\":\"eval\",\"requestId\":\"save-1\",\"code\":\"(memory-save)\"}\n"
+        "{\"type\":\"ping\",\"requestId\":\"ping-after-save\"}\n";
+    REQUIRE(h.firmware().serial.rx_inject(
+                reinterpret_cast<const uint8_t*>(requests),
+                sizeof(requests) - 1) == sizeof(requests) - 1);
+
+    StdoutCapture capture;
+    h.tick();
+    const std::string out = capture.drain();
+
+    // The status frame precedes the correlated save response.
+    const size_t status_pos =
+        out.find("\"type\":\"status\",\"status\":\"save-in-progress\"");
+    REQUIRE(status_pos != std::string::npos);
+    const size_t response_pos = out.find("\"requestId\":\"save-1\"");
+    REQUIRE(response_pos != std::string::npos);
+    REQUIRE(status_pos < response_pos);
+
+    // The drained trailing request is gone: no ping response, ever (without
+    // the drain it would be answered on the tick after the save).
+    h.run_ticks(3);
+    REQUIRE(capture.drain().find("\"requestId\":\"ping-after-save\"") ==
+            std::string::npos);
+
+    // The save itself still landed (readable by the boot-time load path).
+    firmware::FlashStorage boot_flash;
+    boot_flash.set_storage(&h.storage());
+    REQUIRE(boot_flash.has_saved_state());
 }
 
 // ============================================================================

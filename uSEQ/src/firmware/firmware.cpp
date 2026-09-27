@@ -103,7 +103,8 @@ void Firmware::tick()
     engine.state.current_dt = engine.state.reset_dt_on_next_tick
         ? 0.0 : t - prev_tick_time;
 #else
-    const double t = get_system_time_seconds();
+    const double wall_t = get_system_time_seconds();
+    const double t = wall_t;
 #endif
 
     // ── 2. Read hardware inputs ────────────────────────────────────────────
@@ -113,11 +114,24 @@ void Firmware::tick()
     // Emit the discrete input edges consumed by hardware bindings (§5.10).
     // Input slots follow the shared I1/I2/M1/M2/T1/T2/RS1 layout; the
     // Music Thing switch has its separate ZSWITCH slot at index 13.
+    // Levels are debounced (hardware_io.h HW_INPUT_DEBOUNCE_MS): a raw
+    // change only becomes a frame after it has stayed stable for that
+    // interval, so a bouncing contact emits exactly one frame per edge.
     if (event_inputs_initialized) {
         const uint32_t ts_ms = static_cast<uint32_t>(wall_t * 1000.0);
         for (uint8_t i = 0; i < 14; ++i) {
-            if (io.inputs[i] == last_event_inputs[i]) continue;
-            const bool pressed = io.inputs[i] > 0.5;
+            const bool level = io.inputs[i] > 0.5;
+            if (level != pending_event_inputs[i]) {
+                // New raw level — restart the stability window.
+                pending_event_inputs[i] = level;
+                pending_event_since[i] = wall_t;
+            }
+            if (level == debounced_event_inputs[i]) continue;
+            if (wall_t - pending_event_since[i] <
+                static_cast<double>(HW_INPUT_DEBOUNCE_MS) * 0.001) {
+                continue; // still bouncing — wait for a stable level
+            }
+            const bool pressed = pending_event_inputs[i];
             if (i < 2) {
                 serial.send_hw_input("gate", i == 0 ? "in1" : "in2",
                                      pressed ? "pressed" : "released", ts_ms);
@@ -141,10 +155,19 @@ void Firmware::tick()
                 serial.send_hw_toggle("sw1", pressed, ts_ms);
 #endif
             }
+            debounced_event_inputs[i] = pressed;
         }
+    } else {
+        // First tick: adopt the raw levels as the debounced baseline so the
+        // boot-time state emits no false edges.
+        for (uint8_t i = 0; i < 14; ++i) {
+            const bool level = io.inputs[i] > 0.5;
+            debounced_event_inputs[i] = level;
+            pending_event_inputs[i] = level;
+            pending_event_since[i] = wall_t;
+        }
+        event_inputs_initialized = true;
     }
-    for (uint8_t i = 0; i < 14; ++i) last_event_inputs[i] = io.inputs[i];
-    event_inputs_initialized = true;
 
     // ── 3. Serial: non-blocking command intake ─────────────────────────────
     dt::mark("serial");

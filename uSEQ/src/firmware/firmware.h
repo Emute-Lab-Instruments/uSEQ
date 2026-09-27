@@ -49,7 +49,14 @@ struct Firmware {
     char code_buffer[2048]                        = {};
     double output_values[sig::MAX_OUTPUTS]         = {};
     double prev_tick_time                          = 0.0;
-    double last_event_inputs[14]                   = {};
+    // ── Hw-input edge debounce state (wire-protocol.md §5.10) ────────────
+    // A raw level change is only reported once it has stayed stable for
+    // HW_INPUT_DEBOUNCE_MS, so a bouncing contact yields exactly one frame
+    // per real edge. debounced_* is the level last reported to the editor;
+    // pending_* is the candidate level and the wall time it first appeared.
+    bool   debounced_event_inputs[14]              = {};
+    bool   pending_event_inputs[14]                = {};
+    double pending_event_since[14]                 = {};
     bool event_inputs_initialized                  = false;
 
 #ifdef ENABLE_SIGNAL_ENGINE

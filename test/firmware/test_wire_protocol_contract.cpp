@@ -31,10 +31,9 @@
 #include "../../uSEQ/src/devtools/devtools.h"
 #include "../../uSEQ/src/signal_engine/cold_eval.h"
 #include "../../uSEQ/src/signal_engine/graph_builder.h"
+#include "firmware_test_harness.h"
+#include "stdout_capture.h"
 
-#include <fcntl.h>
-#include <unistd.h>
-#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -61,48 +60,7 @@ TEST_CASE("schema-generated request fixtures validate identically in C++",
 
 // ── stdout capture helper ────────────────────────────────────────────────
 //
-// Redirects fd 1 (stdout) to a pipe, runs `body`, returns whatever was
-// written. Restores stdout on scope exit. Linux/macOS only (POSIX pipe +
-// dup2). Tests run on desktop with NO_ARDUINO so this path is exercised.
-
-class StdoutCapture {
-public:
-    StdoutCapture()
-    {
-        std::fflush(stdout);
-        saved_fd_ = ::dup(1);
-        if (::pipe(pipe_fds_) != 0) std::fprintf(stderr, "pipe() failed\n");
-        ::dup2(pipe_fds_[1], 1);
-        ::close(pipe_fds_[1]);
-        // Make read end non-blocking so we can drain without hanging.
-        int flags = ::fcntl(pipe_fds_[0], F_GETFL, 0);
-        ::fcntl(pipe_fds_[0], F_SETFL, flags | O_NONBLOCK);
-    }
-
-    ~StdoutCapture()
-    {
-        std::fflush(stdout);
-        ::dup2(saved_fd_, 1);
-        ::close(saved_fd_);
-        ::close(pipe_fds_[0]);
-    }
-
-    std::string drain()
-    {
-        std::fflush(stdout);
-        std::string out;
-        char buf[4096];
-        ssize_t n;
-        while ((n = ::read(pipe_fds_[0], buf, sizeof(buf))) > 0) {
-            out.append(buf, static_cast<size_t>(n));
-        }
-        return out;
-    }
-
-private:
-    int saved_fd_   = -1;
-    int pipe_fds_[2] = { -1, -1 };
-};
+// Shared across the firmware test binaries in stdout_capture.h.
 
 // Helper: find a JSON message in captured output, returns its body
 // (without any 0x1F/0x65 framing prefix or trailing newline).
@@ -823,15 +781,16 @@ TEST_CASE("get-state live slots include complete widget metadata",
 
 TEST_CASE("firmware unsolicited hardware input emitters match §5.10",
           "[contract][wire-protocol][hw-input]") {
-    firmware::Firmware fw;
-    fw.engine.init_defaults();
-    fw.serial.init();
-    fw.serial.engine = &fw.engine;
-    fw.tick(); // establishes the initial levels without emitting false edges
+    FirmwareTestHarness h;
+    h.init();
+    h.firmware().serial.init();
+    h.firmware().serial.engine = &h.engine();
+    h.tick(); // establishes the initial levels without emitting false edges
     StdoutCapture capture;
-    fw.io.inputs[0] = 1.0;
-    fw.tick();
-    fw.serial.send_hw_toggle("sw2", true, 124);
+    h.set_input_value(0, 1.0);
+    // A stable level is reported once the §5.10 debounce window has passed.
+    h.run_ticks(static_cast<int>(firmware::HW_INPUT_DEBOUNCE_MS) + 10);
+    h.firmware().serial.send_hw_toggle("sw2", true, 124);
     const std::string output = capture.drain();
     REQUIRE(output.find("\"type\":\"hw-input\",\"kind\":\"gate\"") !=
             std::string::npos);
@@ -839,6 +798,49 @@ TEST_CASE("firmware unsolicited hardware input emitters match §5.10",
             std::string::npos);
     REQUIRE(output.find("\"kind\":\"toggle\",\"id\":\"sw2\",\"state\":true") !=
             std::string::npos);
+}
+
+TEST_CASE("§5.10 debounce: a bouncing input emits exactly one frame per real edge",
+          "[contract][wire-protocol][hw-input][debounce]") {
+    FirmwareTestHarness h;
+    h.init();
+    h.firmware().serial.init();
+    h.firmware().serial.engine = &h.engine();
+    h.tick(); // baseline levels, no frames
+
+    auto count_of = [](const std::string& haystack, const std::string& needle) {
+        size_t count = 0, pos = 0;
+        while ((pos = haystack.find(needle, pos)) != std::string::npos) {
+            ++count;
+            pos += needle.size();
+        }
+        return count;
+    };
+
+    StdoutCapture capture;
+    // 12 ms of contact bounce on :in1 (gate), settling high. Every raw flip
+    // restarts the stability window, so nothing is emitted while bouncing.
+    for (int i = 0; i < 12; ++i) {
+        h.set_input_value(0, (i % 2 == 0) ? 1.0 : 0.0);
+        h.tick();
+    }
+    h.set_input_value(0, 1.0);
+    h.run_ticks(static_cast<int>(firmware::HW_INPUT_DEBOUNCE_MS) + 10);
+
+    const std::string out = capture.drain();
+    INFO(out);
+    REQUIRE(count_of(out, "\"type\":\"hw-input\"") == 1);
+    REQUIRE(count_of(out, "\"state\":\"pressed\"") == 1);
+    REQUIRE(count_of(out, "\"state\":\"released\"") == 0);
+
+    // A clean release likewise yields exactly one released frame.
+    h.set_input_value(0, 0.0);
+    h.run_ticks(static_cast<int>(firmware::HW_INPUT_DEBOUNCE_MS) + 10);
+    const std::string released_out = capture.drain();
+    INFO(released_out);
+    REQUIRE(count_of(released_out, "\"type\":\"hw-input\"") == 1);
+    REQUIRE(count_of(released_out, "\"state\":\"released\"") == 1);
+    REQUIRE(count_of(released_out, "\"state\":\"pressed\"") == 0);
 }
 
 TEST_CASE("invalid live-input writes emit an unsolicited runtime diagnostic",

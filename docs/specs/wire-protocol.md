@@ -542,6 +542,12 @@ for how the editor routes these events to bound expressions.
 - `"gate"` — external gate/trigger input (`:in1`, `:in2`). Carries
   `"pressed"` (gate high) and `"released"` (gate low).
 
+**Debounce.** All kinds are debounced on the device: a raw level change
+is only reported once it has stayed stable for a minimum interval (the
+firmware constant `HW_INPUT_DEBOUNCE_MS`, 20 ms — `hardware_io.h`), so
+a bouncing contact produces exactly one frame per real edge. The `ts`
+field, when present, is the emission time.
+
 **Delivery.** `hw-input` frames are **must-deliver**: hardware input
 events are infrequent (human-rate, not audio-rate) and losing one would
 silently break the performer's control flow. The device blocks briefly

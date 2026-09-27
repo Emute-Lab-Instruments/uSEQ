@@ -25,8 +25,9 @@ Implemented and adversarially hardened (2026-08). The executable proof set is
 `osc/sine` version 2, synth artefact ABI 2, up to 64 declarations, named or
 nested acyclic routing through the node's `fm` input, and persistent
 block-rate `freq`/`amp` control programs. Vector voice fan-out, explicit free,
-document-sync freeing, latch/fast channels, and runtime-registered NodeDefs
-remain specified future surfaces and must not be inferred from the proof set.
+document-sync freeing, and runtime-registered NodeDefs remain specified future
+surfaces and must not be inferred from the proof set. Fast-rate and latch
+control transport is implemented by the app producer/worklet path.
 
 ---
 
@@ -95,7 +96,8 @@ not documentation: compiler, artefact consumer, and module must agree.
 
 2.3 **Rate class** declares how densely the host samples the controlling
 signal: `block` (once per audio block) or `fast` (a declared higher
-control rate, an integer number of points per block). Params that must be
+control rate, an integer number of points per block; SAB ABI v1 uses eight
+evenly spaced fast points). Params that must be
 audio-rate modulatable are not params at all — they are declared as audio
 *inputs* (§4.1).
 
@@ -115,11 +117,11 @@ points:
   sample-accurately within the block (`synthesis.md` §4.6), never as
   block-rate level samples.
 
-2.5 Smoothing ownership: `linear`/`slew` behaviour is implemented *inside*
-the def (for Faust defs, baked into the source); the declared class and
-time constant are a conformance requirement on the def author, and the
-host delivers raw control points. `step` and `latch` are implemented by
-the host (`step` is plain hold; `latch` via edge synthesis). Users never
+2.5 Smoothing ownership: `linear`/`slew` behavior remains part of the def's
+contract (for Faust defs, baked into the source); with fast transport the
+host linearly interpolates `linear` samples per frame and holds `slew` raw
+points for the def to smooth. `step` and `latch` are implemented by the
+host (`step` is plain hold; `latch` via edge synthesis). Users never
 annotate rates or smoothing in v1 (per-binding override is deferred,
 §8.9); correctness-by-default is the def author's responsibility.
 
