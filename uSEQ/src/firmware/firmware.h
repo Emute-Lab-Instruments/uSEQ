@@ -49,6 +49,8 @@ struct Firmware {
     char code_buffer[2048]                        = {};
     double output_values[sig::MAX_OUTPUTS]         = {};
     double prev_tick_time                          = 0.0;
+    double last_event_inputs[14]                   = {};
+    bool event_inputs_initialized                  = false;
 
 #ifdef ENABLE_SIGNAL_ENGINE
     double cell_snapshot[sig::MAX_CELLS]           = {};

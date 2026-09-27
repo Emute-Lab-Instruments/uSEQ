@@ -110,6 +110,42 @@ void Firmware::tick()
     dt::mark("input");
     io.read_inputs();
 
+    // Emit the discrete input edges consumed by hardware bindings (§5.10).
+    // Input slots follow the shared I1/I2/M1/M2/T1/T2/RS1 layout; the
+    // Music Thing switch has its separate ZSWITCH slot at index 13.
+    if (event_inputs_initialized) {
+        const uint32_t ts_ms = static_cast<uint32_t>(wall_t * 1000.0);
+        for (uint8_t i = 0; i < 14; ++i) {
+            if (io.inputs[i] == last_event_inputs[i]) continue;
+            const bool pressed = io.inputs[i] > 0.5;
+            if (i < 2) {
+                serial.send_hw_input("gate", i == 0 ? "in1" : "in2",
+                                     pressed ? "pressed" : "released", ts_ms);
+#if defined(USEQHARDWARE_1_0)
+            } else if (i == 2) {
+                serial.send_hw_input("button", "sw2",
+                                     pressed ? "pressed" : "released", ts_ms);
+            } else if (i == 4) {
+                serial.send_hw_toggle("sw1", pressed, ts_ms);
+#elif defined(USEQHARDWARE_0_2)
+            } else if (i == 2 || i == 3) {
+                serial.send_hw_input("button", i == 2 ? "sw1" : "sw2",
+                                     pressed ? "pressed" : "released", ts_ms);
+            } else if (i == 4 || i == 5) {
+                serial.send_hw_toggle(i == 4 ? "sw1" : "sw2", pressed, ts_ms);
+            } else if (i == 6) {
+                serial.send_hw_input("encoder", "swr",
+                                     pressed ? "pressed" : "released", ts_ms);
+#elif defined(MUSICTHING)
+            } else if (i == 13) {
+                serial.send_hw_toggle("sw1", pressed, ts_ms);
+#endif
+            }
+        }
+    }
+    for (uint8_t i = 0; i < 14; ++i) last_event_inputs[i] = io.inputs[i];
+    event_inputs_initialized = true;
+
     // ── 3. Serial: non-blocking command intake ─────────────────────────────
     dt::mark("serial");
 #ifdef ENABLE_SIGNAL_ENGINE
@@ -121,7 +157,26 @@ void Firmware::tick()
             }
 
             dt::eval_begin();
-            sig::EvalResult result = sig::eval_cold(code_buffer, len, engine);
+            sig::EvalResult result;
+            if (len == 13 && std::memcmp(code_buffer, "(memory-save)", 13) == 0) {
+#ifdef ENABLE_FLASH_STORAGE
+                serial.drain_pending_input();
+                serial.send_status("save-in-progress");
+                const bool saved = flash.save(engine);
+                result.kind = saved ? sig::EvalResult::Ok : sig::EvalResult::Error;
+                static const char saved_text[] = "memory saved";
+                static const char failed_text[] = "memory save failed";
+                result.text = saved ? saved_text : failed_text;
+                result.text_length = saved ? sizeof(saved_text) - 1 : sizeof(failed_text) - 1;
+#else
+                result.kind = sig::EvalResult::Error;
+                static const char unavailable_text[] = "flash storage not available";
+                result.text = unavailable_text;
+                result.text_length = sizeof(unavailable_text) - 1;
+#endif
+            } else {
+                result = sig::eval_cold(code_buffer, len, engine);
+            }
             dt::eval_end(result.kind != sig::EvalResult::Error);
             serial.send_eval_response(result);
 

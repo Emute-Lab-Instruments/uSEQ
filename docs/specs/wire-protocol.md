@@ -781,6 +781,13 @@ false when the build is not operating as an I2C host. Discovery does not imply
 an I2C firmware-update relay: a subordinate expander must use its own supported
 update transport.
 
+### 5.20 `status` (device → editor, unsolicited)
+
+The device may send a brief operation status before a cold-path action that can
+pause serial processing. The persistence command `(memory-save)` emits
+`{"type":"status","status":"save-in-progress"}` after draining pending
+serial input and before writing flash. This status frame is must-deliver.
+
 ---
 
 ## 6. Binary Stream Frames
@@ -861,6 +868,12 @@ table, the editor MUST re-sync its `id → slot_index` map after every
 successful eval; until it has, it should fall back to JSON
 `set-live-inputs` (which is keyed by string `:id` and is robust to
 re-ordering).
+
+Each `get-state` `liveSlots` entry includes `id`, `value`, `min`, `max`,
+`seed`, `variant` (`numeric`, `boolean`, or `keyword`), `options` (an array of
+keyword tokens including their leading colon, empty for other variants), `step`, and `precision` (`-1` when
+unspecified). This is sufficient for the editor to register the same live-edit
+widget in hardware-only mode as it does from WASM metadata.
 
 **Bounds / garbage.** A `slot_index ≥ live_slot_count` is silently
 dropped (consistent with §5.4 "unknown ids are dropped" and the

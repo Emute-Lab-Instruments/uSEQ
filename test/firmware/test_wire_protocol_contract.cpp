@@ -22,6 +22,7 @@
 #include "../catch.hpp"
 
 #include "../../uSEQ/src/firmware/serial_protocol.h"
+#include "../../uSEQ/src/firmware/firmware.h"
 #include "../../uSEQ/src/firmware/serial_protocol_json.h"
 #ifdef ENABLE_I2C_NETWORKING
 #include "../../uSEQ/src/firmware/i2c_network.h"
@@ -788,6 +789,77 @@ TEST_CASE("F9 [state-sync §2] get-state includes defined cells",
     REQUIRE(json.find("\"my-val\"") != std::string::npos);
     REQUIRE(json.find("\"type\":\"number\"") != std::string::npos);
     REQUIRE(json.find("42") != std::string::npos);
+}
+
+TEST_CASE("get-state live slots include complete widget metadata",
+          "[contract][state-sync][live-edit]") {
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+    const char* numeric =
+        "(a1 (live-edit 0.5 :id \"wire-precision\" :min 0 :max 1 :step 0.1 :precision 2))";
+    const char* keyword =
+        "(a2 (live-edit :beta :id \"wire-mode\" :options [:alpha :beta]))";
+    REQUIRE(sig::eval_cold(numeric, static_cast<uint32_t>(std::strlen(numeric)), engine).kind !=
+            sig::EvalResult::Error);
+    REQUIRE(sig::eval_cold(keyword, static_cast<uint32_t>(std::strlen(keyword)), engine).kind !=
+            sig::EvalResult::Error);
+
+    firmware::SerialProtocol sp;
+    sp.init();
+    sp.engine = &engine;
+    StdoutCapture capture;
+    char code[64] = {};
+    const char* request = R"({"type":"get-state","requestId":"metadata"})";
+    sp.dispatch_message(request, std::strlen(request), code, sizeof(code));
+    const std::string json = extract_last_json(capture.drain());
+    REQUIRE(json.find("\"seed\":1") != std::string::npos);
+    REQUIRE(json.find("\"seed\":0.5") != std::string::npos);
+    REQUIRE(json.find("\"variant\":\"keyword\"") != std::string::npos);
+    REQUIRE(json.find("\"options\":[\":alpha\",\":beta\"]") != std::string::npos);
+    REQUIRE(json.find("\"step\":0.1") != std::string::npos);
+    REQUIRE(json.find("\"precision\":2") != std::string::npos);
+}
+
+TEST_CASE("firmware unsolicited hardware input emitters match §5.10",
+          "[contract][wire-protocol][hw-input]") {
+    firmware::Firmware fw;
+    fw.engine.init_defaults();
+    fw.serial.init();
+    fw.serial.engine = &fw.engine;
+    fw.tick(); // establishes the initial levels without emitting false edges
+    StdoutCapture capture;
+    fw.io.inputs[0] = 1.0;
+    fw.tick();
+    fw.serial.send_hw_toggle("sw2", true, 124);
+    const std::string output = capture.drain();
+    REQUIRE(output.find("\"type\":\"hw-input\",\"kind\":\"gate\"") !=
+            std::string::npos);
+    REQUIRE(output.find("\"id\":\"in1\",\"state\":\"pressed\"") !=
+            std::string::npos);
+    REQUIRE(output.find("\"kind\":\"toggle\",\"id\":\"sw2\",\"state\":true") !=
+            std::string::npos);
+}
+
+TEST_CASE("invalid live-input writes emit an unsolicited runtime diagnostic",
+          "[contract][wire-protocol][diagnostics]") {
+    sig::GraphBuilder::init_symbols();
+    sig::SignalEngine engine;
+    engine.init_defaults();
+    const char* source = "(a1 (live-edit 0.5 :id \"runtime-slot\" :min 0 :max 1))";
+    REQUIRE(sig::eval_cold(source, static_cast<uint32_t>(std::strlen(source)), engine).kind !=
+            sig::EvalResult::Error);
+    firmware::SerialProtocol sp;
+    sp.init();
+    sp.engine = &engine;
+    StdoutCapture capture;
+    char code[64] = {};
+    const char* request =
+        R"({"type":"set-live-inputs","slots":{"runtime-slot":"bad"}})";
+    sp.dispatch_message(request, std::strlen(request), code, sizeof(code));
+    const std::string output = capture.drain();
+    REQUIRE(output.find("\"type\":\"diagnostics\"") != std::string::npos);
+    REQUIRE(output.find("Invalid live-input value was ignored") != std::string::npos);
 }
 
 TEST_CASE("F10 [state-sync §2] get-state includes active outputs",

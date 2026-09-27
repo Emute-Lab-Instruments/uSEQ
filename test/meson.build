@@ -134,6 +134,17 @@ firmware_e2e_test_exe = executable(
 
 test('firmware_e2e_test', firmware_e2e_test_exe, timeout: 60)
 
+stream_config_capacity_test_exe = executable(
+  'test_stream_config_capacity',
+  sources : ['firmware/test_stream_config_capacity.cpp'],
+  include_directories : test_inc,
+  cpp_args : firmware_test_args,
+  cpp_pch : test_pch_file,
+  dependencies : [firmware_dep, math_dep]
+)
+
+test('stream_config_capacity_test', stream_config_capacity_test_exe)
+
 json_cursor_test_exe = executable(
   'test_json_cursor',
   sources : ['firmware/test_json_cursor.cpp'],

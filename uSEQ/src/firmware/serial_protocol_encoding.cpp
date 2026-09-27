@@ -212,6 +212,53 @@ void SerialProtocol::send_log(const char* level, const char* text)
     write_json_str(b.build().c_str());
 }
 
+void SerialProtocol::send_status(const char* status)
+{
+    JsonBuilder b;
+    b.object_begin().field("type", "status").field("status", status).object_end();
+    write_json_str(b.build().c_str());
+#ifdef ARDUINO
+    Serial.flush();
+#endif
+}
+
+void SerialProtocol::drain_pending_input()
+{
+    drain_serial_into_rx_buf();
+    m_rx_head = 0;
+    m_rx_len = 0;
+    m_message_ready = false;
+    m_msg_len = 0;
+}
+
+void SerialProtocol::send_hw_input(const char* kind, const char* id,
+                                   const char* state, uint32_t timestamp_ms)
+{
+    JsonBuilder b;
+    b.object_begin()
+        .field("type", "hw-input")
+        .field("kind", kind)
+        .field("id", id)
+        .field("state", state)
+        .field("ts", static_cast<int>(timestamp_ms))
+        .object_end();
+    write_json_str(b.build().c_str());
+}
+
+void SerialProtocol::send_hw_toggle(const char* id, bool state,
+                                    uint32_t timestamp_ms)
+{
+    JsonBuilder b;
+    b.object_begin()
+        .field("type", "hw-input")
+        .field("kind", "toggle")
+        .field("id", id)
+        .field("state", state)
+        .field("ts", static_cast<int>(timestamp_ms))
+        .object_end();
+    write_json_str(b.build().c_str());
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // Internal: wire-level I/O
 // ══════════════════════════════════════════════════════════════════════════

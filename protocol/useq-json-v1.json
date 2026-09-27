@@ -182,6 +182,7 @@
     { "type": "log", "fields": [{ "name": "level", "kind": "string", "required": true }, { "name": "text", "kind": "string", "required": true }] },
     { "type": "diagnostics", "fields": [{ "name": "diagnostics", "kind": "array", "required": true }] },
     { "type": "hw-input", "fields": [{ "name": "kind", "kind": "string", "required": true }, { "name": "id", "kind": "string", "required": true }, { "name": "state", "kind": "scalar", "required": true }] },
+    { "type": "status", "fields": [{ "name": "status", "kind": "string", "required": true }] },
     { "type": "meta", "fields": [{ "name": "meta", "kind": "object", "required": true }] }
   ],
   "invalidFixtures": [

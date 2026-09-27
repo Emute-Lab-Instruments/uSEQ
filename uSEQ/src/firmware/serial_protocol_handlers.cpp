@@ -4,6 +4,7 @@
 #include "i2c_network.h"
 #include "../modulisp/lisp/symbol_intern.h"
 #include "../signal_engine/executor.h"
+#include "../signal_engine/output_names.h"
 #include "../utils/json_builder.h"
 
 #include <cmath>
@@ -209,10 +210,9 @@ void SerialProtocol::handle_stream_config(const char* payload, size_t len)
                 stream.on_change_only = true;
             } else {
                 stream.source = StreamSource::Output;
-                if (name[0] == 's' && name[1] >= '1' && name[1] <= '8' &&
-                    name[2] == '\0') {
-                    stream.source_idx = 16 + (name[1] - '1');
-                }
+                const uint16_t output_idx = sig::output_name_to_index(name);
+                if (output_idx != sig::NODE_NONE)
+                    stream.source_idx = static_cast<uint8_t>(output_idx);
             }
             ++num_stream_channels;
         }
@@ -264,6 +264,8 @@ void SerialProtocol::handle_set_failure_mode(const char* payload, size_t len)
 void SerialProtocol::handle_set_live_inputs(const char* payload, size_t len)
 {
     int applied = 0;
+    sig::Diagnostic runtime_diags[8] = {};
+    uint8_t runtime_diag_count = 0;
     useq::json::ObjectCursor request(payload, len);
     useq::json::Value slots_value;
     if (engine && request.find("slots", slots_value) &&
@@ -310,9 +312,19 @@ void SerialProtocol::handle_set_live_inputs(const char* payload, size_t len)
                 engine->pool.set_live_slot_value_by_index(
                     static_cast<uint16_t>(slot_index), value);
                 ++applied;
+            } else if (runtime_diag_count < 8) {
+                runtime_diags[runtime_diag_count++] = {
+                    sig::DiagnosticSeverity::Warning,
+                    sig::DiagnosticCategory::Runtime, 0, 0,
+                    "Invalid live-input value was ignored",
+                    "Send a finite number, boolean, or declared keyword option"
+                };
             }
         }
     }
+
+    if (runtime_diag_count > 0)
+        send_diagnostics(runtime_diags, runtime_diag_count);
 
     // If the request included a requestId, emit the ack response (§5.8).
     // If no requestId, this is fire-and-forget — no response emitted.
@@ -508,6 +520,25 @@ void SerialProtocol::handle_get_state(const char* /*payload*/, size_t /*len*/)
             l.field_raw("min", String(numbuf));
             snprintf(numbuf, sizeof(numbuf), "%.15g", slot.max_val);
             l.field_raw("max", String(numbuf));
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.seed);
+            l.field_raw("seed", String(numbuf));
+            const char* variant = slot.variant == sig::NodePool::SlotVariant::Boolean
+                ? "boolean"
+                : slot.variant == sig::NodePool::SlotVariant::Keyword
+                    ? "keyword" : "numeric";
+            l.field("variant", variant);
+            snprintf(numbuf, sizeof(numbuf), "%.15g", slot.step);
+            l.field_raw("step", String(numbuf));
+            l.field("precision", slot.precision);
+            String options = "[";
+            for (uint8_t option = 0; option < slot.options_count; ++option) {
+                if (option > 0) options += ",";
+                options += "\"";
+                options += slot.options[option]; // compiler emits keyword tokens only
+                options += "\"";
+            }
+            options += "]";
+            l.field_raw("options", options);
             l.object_end();
             arr += l.build();
         }

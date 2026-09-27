@@ -883,6 +883,25 @@ TEST_CASE("synth: useq-clear publishes one empty-graph revision",
     REQUIRE(h.engine.pool.external_root_count == 0);
 }
 
+TEST_CASE("synth: declaration-only clear preserves the live program",
+          "[synth][clear][recovery]") {
+    SynthHarness h;
+    REQUIRE(h.eval_ok("(def recovery-value 23)"));
+    REQUIRE(h.eval_ok("(synth \"osc/sine\" :freq 440)"));
+    const uint32_t session_generation = h.engine.session_generation;
+    const uint32_t graph_revision = h.engine.synth_graph.revision;
+    const uint32_t cell_revision = h.engine.cells.store_revision;
+
+    h.engine.clear_synth_declarations();
+
+    REQUIRE(h.engine.synth_graph.declaration_count() == 0);
+    REQUIRE(h.engine.synth_graph.control_count() == 0);
+    REQUIRE(h.engine.synth_graph.revision == graph_revision + 1);
+    REQUIRE(h.engine.session_generation == session_generation);
+    REQUIRE(h.engine.cells.store_revision == cell_revision);
+    REQUIRE(h.eval_ok("(+ recovery-value 1)"));
+}
+
 TEST_CASE("synth: unwrapped anonymous synth re-eval updates in place",
           "[synth][synth-anon-identity]") {
     SynthHarness h;

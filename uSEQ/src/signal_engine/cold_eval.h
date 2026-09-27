@@ -192,6 +192,17 @@ struct SignalEngine {
                                int bars_per_phrase = 4,
                                int phrases_per_section = 4,
                                bool publish_session_clear = true);
+
+#if USEQ_HAS_SYNTH_ENGINE
+    // Drop only published host synth declarations while preserving the live
+    // program, cells, state slots, and transport/session state.
+    void clear_synth_declarations() {
+        synth_graph.clear_and_advance();
+        pending_state_identity[0] = '\0';
+        has_pending_state_identity = false;
+        eval_anon_synth_ordinal = 0;
+    }
+#endif
 };
 
 // ── Cold-Path Evaluation ────────────────────────────────────────────────────

@@ -136,7 +136,7 @@ Indices beyond the variant's physical count are skipped by `write_outputs()`; th
 
 5.2 **LittleFS for flash persistence.** State is stored as a named file on a LittleFS filesystem mounted on the RP2040's on-chip flash. LittleFS provides wear-levelling, power-loss atomicity, and named-file access. The `IStorage` port interface (`uSEQ/src/ports/IStorage.h`) abstracts the filesystem for testability; `MockStorage` provides an in-memory implementation for tests.
 
-5.3 **`save` is a cold-path action.** Triggered by `(memory-save)`. The serial buffer is drained first and a `"save-in-progress"` status sent so the editor knows to expect a brief pause. Outputs continue running from the live pool throughout the save. **Status: current implementation uses raw flash sector writes — migration to LittleFS is pending.**
+5.3 **`save` is a cold-path action.** Triggered by `(memory-save)`. The serial buffer is drained first and a `"save-in-progress"` status sent so the editor knows to expect a brief pause. Outputs continue running from the live pool throughout the save. The state is stored through `FlashStorage` using LittleFS on hardware and the `IStorage` test seam on desktop.
 
 5.4 **No backward compatibility with pre-2.0 firmware flash.** Upgrading requires a clean flash erase. The old format serialised `Value` objects and environment maps that have no equivalent in the current signal engine.
 
@@ -171,7 +171,6 @@ These are known discrepancies between what this spec describes and what the firm
 
 | Gap | Spec says | Current state | Priority |
 |---|---|---|---|
-| LittleFS | Persistence via LittleFS filesystem | Raw flash sector writes with CRC32 | P2 |
 | General I2C networking | Named modules, leader/follower negotiation, tempo/input sharing | The output-expander discovery and value path is implemented; general module networking remains deferred | P2 |
 | DSPEngine | Optional core 1 audio synthesis | Hollow stub | P3 |
 

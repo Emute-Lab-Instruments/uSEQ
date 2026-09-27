@@ -69,6 +69,11 @@ struct SerialProtocol {
     // Log envelope (§5.6) — replaces legacy TEXT/MSG_TO_EDITOR framed bytes.
     // level: one of "debug", "info", "notice", "warn", "error"
     void send_log(const char* level, const char* text);
+    void send_status(const char* status);
+    void drain_pending_input();
+    void send_hw_input(const char* kind, const char* id, const char* state,
+                       uint32_t timestamp_ms);
+    void send_hw_toggle(const char* id, bool state, uint32_t timestamp_ms);
 
     // ── Testable dispatch entry point ──────────────────────────────────────
     // Dispatch a fully-framed JSON message (without the trailing '\n').

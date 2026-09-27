@@ -11,9 +11,8 @@
 //    state — the ISR does the absolute minimum: timestamp + seq increment.
 // 2. ClockSync::tick() runs in the main loop, reads the mailbox, runs the
 //    tempo estimator, and updates the bpm cell.
-// 3. We deliberately do NOT call on_cell_changed when updating bpm from
-//    external clock. The value write bumps CellStore::store_revision, so the
-//    firmware refreshes its cached snapshot without recompiling the graph.
+// 3. Updating bpm from external clock calls on_cell_changed so dependent
+//    outputs recompile while the graph remains aligned with the new tempo.
 //
 // BPM convention
 // ──────────────

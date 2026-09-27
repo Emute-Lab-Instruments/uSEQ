@@ -1,4 +1,5 @@
 #include "wasm_wrapper_internal.h"
+#include <limits>
 
 // ── Persistent projection fork (visualisation-projection.md §2) ──────────
 //
@@ -29,6 +30,12 @@ struct ProjectionFork {
 };
 
 static ProjectionFork g_projection_fork = {};
+
+extern "C" double useq_projection_frontier_time() {
+    return g_projection_fork.valid
+        ? g_projection_fork.frontier_time
+        : std::numeric_limits<double>::quiet_NaN();
+}
 
 void reset_projection_session()
 {

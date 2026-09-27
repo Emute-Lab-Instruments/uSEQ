@@ -86,6 +86,16 @@ extern "C" {
         return alloc_cstr("");
     }
 
+    int useq_clear_synth_declarations()
+    {
+        if (!g_engine) {
+            s_last_error = "uSEQ not initialized";
+            return 0;
+        }
+        g_engine->clear_synth_declarations();
+        return 1;
+    }
+
     void useq_update_time(double time_seconds)
     {
         g_current_time = time_seconds;
@@ -777,19 +787,17 @@ extern "C" {
         invalidate_projection();
         return 0;
     }
-    const char* useq_output_classifications()
+    uint8_t* useq_output_classifications()
     {
-        if (!g_engine) return alloc_cstr("[]");
-
-        String result = "[";
-        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
-            if (i > 0) result += ",";
-            char buf[4];
-            snprintf(buf, sizeof(buf), "%d", (int)g_engine->pool.output_class[i]);
-            result += buf;
+        static uint8_t classifications[sig::MAX_OUTPUTS] = {};
+        if (!g_engine) {
+            memset(classifications, 0, sizeof(classifications));
+            return classifications;
         }
-        result += "]";
-        return alloc_string(result);
+        for (uint16_t i = 0; i < sig::MAX_OUTPUTS; i++) {
+            classifications[i] = (uint8_t)g_engine->pool.output_class[i];
+        }
+        return classifications;
     }
 
     uint32_t useq_output_dependencies(int output_index)

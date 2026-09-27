@@ -6,6 +6,29 @@
 #include "firmware_test_harness.h"
 #include "dsp_helpers.h"
 
+TEST_CASE("(memory-save) persists the live engine through the serial eval path",
+          "[e2e][firmware][flash]") {
+    FirmwareTestHarness h;
+    h.init();
+    REQUIRE(h.eval("(a1 0.75)").kind != sig::EvalResult::Error);
+    h.firmware().serial.init();
+    h.firmware().serial.engine = &h.engine();
+    const char request[] =
+        "{\"type\":\"eval\",\"requestId\":\"save-1\",\"code\":\"(memory-save)\"}\n";
+    REQUIRE(h.firmware().serial.rx_inject(
+        reinterpret_cast<const uint8_t*>(request), sizeof(request) - 1) ==
+        sizeof(request) - 1);
+    h.tick();
+
+    sig::SignalEngine restored;
+    restored.init_defaults();
+    firmware::FlashStorage boot_flash;
+    boot_flash.set_storage(&h.storage());
+    REQUIRE(boot_flash.has_saved_state());
+    REQUIRE(boot_flash.load(restored));
+    REQUIRE(restored.output_sources[0].has_source);
+}
+
 // ============================================================================
 // A. Input Waveform Fidelity [e2e][input]
 // ============================================================================
