@@ -20,6 +20,7 @@
 #include <cstring>
 #include <cmath>
 #include <limits>
+#include <string>
 
 // ── Static state ───────────────────────────────────────────────────────────
 
