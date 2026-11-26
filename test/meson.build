@@ -23,6 +23,17 @@ test_inc = include_directories('../uSEQ', '../uSEQ/src')
 # Math library dependency
 math_dep = declare_dependency(link_args : ['-lm'])
 
+# Test binaries instantiate the signal engine in stack-resident harness
+# structs (e.g. GoldenHarness), which can exceed macOS's default 8 MiB
+# main-thread stack. Give test executables extra stack on Apple platforms.
+# Measured need: ~10.5 MiB (test_signal_engine_golden bisect: fails at
+# 10500 KiB, passes at 11000 KiB). 16 MiB leaves comfortable headroom.
+if host_machine.system() == 'darwin'
+  stack_dep = declare_dependency(link_args : ['-Wl,-stack_size,0x1000000'])
+else
+  stack_dep = declare_dependency(link_args : [])
+endif
+
 # ===== Signal Engine Tests =====
 
 signal_engine_test_exe = executable(
@@ -31,7 +42,7 @@ signal_engine_test_exe = executable(
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [signal_engine_dep, math_dep]
+  dependencies : [signal_engine_dep, math_dep, stack_dep]
 )
 
 test('signal_engine_test', signal_engine_test_exe)
@@ -42,7 +53,7 @@ signal_engine_probe_exe = executable(
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [signal_engine_dep, math_dep]
+  dependencies : [signal_engine_dep, math_dep, stack_dep]
 )
 
 test('signal_engine_probe_smoke', signal_engine_probe_exe)
@@ -53,7 +64,7 @@ signal_engine_golden_test_exe = executable(
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [signal_engine_dep, math_dep]
+  dependencies : [signal_engine_dep, math_dep, stack_dep]
 )
 
 test('signal_engine_golden_test', signal_engine_golden_test_exe)
@@ -66,7 +77,7 @@ signal_engine_phase4_test_exe = executable(
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [signal_engine_dep, math_dep]
+  dependencies : [signal_engine_dep, math_dep, stack_dep]
 )
 
 test('signal_engine_phase4_test', signal_engine_phase4_test_exe)
@@ -79,7 +90,7 @@ flash_storage_test_exe = executable(
   include_directories : test_inc,
   cpp_args : firmware_test_args,
   cpp_pch : test_pch_file,
-  dependencies : [firmware_dep, math_dep]
+  dependencies : [firmware_dep, math_dep, stack_dep]
 )
 
 test('flash_storage_test', flash_storage_test_exe)
@@ -92,7 +103,7 @@ firmware_e2e_test_exe = executable(
   include_directories : test_inc,
   cpp_args : firmware_test_args,
   cpp_pch : test_pch_file,
-  dependencies : [firmware_dep, math_dep]
+  dependencies : [firmware_dep, math_dep, stack_dep]
 )
 
 test('firmware_e2e_test', firmware_e2e_test_exe, timeout: 60)
@@ -103,7 +114,7 @@ firmware_e2e2_test_exe = executable(
   include_directories : test_inc,
   cpp_args : firmware_test_args,
   cpp_pch : test_pch_file,
-  dependencies : [firmware_dep, math_dep]
+  dependencies : [firmware_dep, math_dep, stack_dep]
 )
 
 test('firmware_e2e_test_part2', firmware_e2e2_test_exe, timeout: 60)
@@ -116,7 +127,7 @@ firmware_fuzz_test_exe = executable(
   include_directories : test_inc,
   cpp_args : firmware_test_args,
   cpp_pch : test_pch_file,
-  dependencies : [firmware_dep, math_dep]
+  dependencies : [firmware_dep, math_dep, stack_dep]
 )
 
 test('firmware_fuzz_test', firmware_fuzz_test_exe, timeout: 120)
@@ -132,7 +143,7 @@ wire_protocol_contract_test_exe = executable(
   include_directories : test_inc,
   cpp_args : firmware_test_args,
   cpp_pch : test_pch_file,
-  dependencies : [firmware_dep, math_dep]
+  dependencies : [firmware_dep, math_dep, stack_dep]
 )
 
 test('wire_protocol_contract_test', wire_protocol_contract_test_exe, timeout: 30)
@@ -148,7 +159,7 @@ devtools_contract_test_exe = executable(
   include_directories : test_inc,
   cpp_args : test_args + ['-DUSEQ_DEVTOOLS=1'],
   cpp_pch : test_pch_file,
-  dependencies : [signal_engine_dep, devtools_dep, math_dep]
+  dependencies : [signal_engine_dep, devtools_dep, math_dep, stack_dep]
 )
 
 test('devtools_contract_test', devtools_contract_test_exe, timeout: 30)
@@ -161,7 +172,7 @@ live_edit_test_exe = executable(
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [signal_engine_dep, math_dep]
+  dependencies : [signal_engine_dep, math_dep, stack_dep]
 )
 
 test('live_edit_test', live_edit_test_exe)
@@ -174,7 +185,7 @@ signal_engine_robustness_test_exe = executable(
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [signal_engine_dep, math_dep]
+  dependencies : [signal_engine_dep, math_dep, stack_dep]
 )
 
 test('signal_engine_robustness_test', signal_engine_robustness_test_exe, timeout: 120)
@@ -187,7 +198,7 @@ output_classification_test_exe = executable(
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [signal_engine_dep, math_dep]
+  dependencies : [signal_engine_dep, math_dep, stack_dep]
 )
 
 test('output_classification_test', output_classification_test_exe)
@@ -200,7 +211,7 @@ ugen_test_exe = executable(
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [signal_engine_dep, math_dep]
+  dependencies : [signal_engine_dep, math_dep, stack_dep]
 )
 
 test('ugen_test', ugen_test_exe)
@@ -213,7 +224,7 @@ state_identity_test_exe = executable(
   include_directories : test_inc,
   cpp_args : test_args,
   cpp_pch : test_pch_file,
-  dependencies : [signal_engine_dep, math_dep]
+  dependencies : [signal_engine_dep, math_dep, stack_dep]
 )
 
 test('state_identity_test', state_identity_test_exe)
